@@ -4,7 +4,7 @@ import asyncio
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 _MAX_OUTPUT_BYTES = 64 * 1024  # 64 KB
 _DEFAULT_TIMEOUT = 60

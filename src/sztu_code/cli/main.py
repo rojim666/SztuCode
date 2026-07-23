@@ -3,19 +3,19 @@ from __future__ import annotations
 import argparse
 import sys
 
-from kama_claude.cli.commands.chat import cmd_chat
-from kama_claude.cli.commands.core import cmd_core_start, cmd_core_status, cmd_core_stop
-from kama_claude.cli.commands.ping import cmd_ping
-from kama_claude.cli.commands.run import cmd_run
-from kama_claude.cli.commands.trace import cmd_trace
-from kama_claude.cli.commands.version import cmd_version
-from kama_claude.core.config import get_config
-from kama_claude.core.logging_setup import setup_logging
+from sztu_code.cli.commands.chat import cmd_chat
+from sztu_code.cli.commands.core import cmd_core_start, cmd_core_status, cmd_core_stop
+from sztu_code.cli.commands.ping import cmd_ping
+from sztu_code.cli.commands.run import cmd_run
+from sztu_code.cli.commands.trace import cmd_trace
+from sztu_code.cli.commands.version import cmd_version
+from sztu_code.core.config import get_config
+from sztu_code.core.logging_setup import setup_logging
 
 
 # CLI 主入口：解析命令行参数并分发到对应子命令
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="kama", description="KamaClaude CLI")
+    parser = argparse.ArgumentParser(prog="sztu", description="SztuCode CLI")
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     subparsers = parser.add_subparsers(dest="command")
 

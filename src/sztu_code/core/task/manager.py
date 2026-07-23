@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from kama_claude.core.task.model import Task, TaskStatus
+from sztu_code.core.task.model import Task, TaskStatus
 
 
 def _now() -> str:

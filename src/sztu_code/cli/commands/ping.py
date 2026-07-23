@@ -5,14 +5,14 @@ import json
 import sys
 import time
 
-import kama_claude
-from kama_claude.core.bus.commands import PongResult
-from kama_claude.core.bus.envelope import JsonRpcError, JsonRpcSuccess
-from kama_claude.core.config import KamaConfig
+import sztu_code
+from sztu_code.core.bus.commands import PongResult
+from sztu_code.core.bus.envelope import JsonRpcError, JsonRpcSuccess
+from sztu_code.core.config import SztuConfig
 
 
 # 同步入口：运行 ping 协程，连接失败时打印错误并退出
-def cmd_ping(config: KamaConfig) -> None:
+def cmd_ping(config: SztuConfig) -> None:
     try:
         asyncio.run(_ping(config))
     except (ConnectionRefusedError, OSError):
@@ -21,7 +21,7 @@ def cmd_ping(config: KamaConfig) -> None:
 
 
 # 向 core 守护进程发送 ping 请求，打印 pong 响应及延迟
-async def _ping(config: KamaConfig) -> None:
+async def _ping(config: SztuConfig) -> None:
     t0 = time.monotonic()
     reader, writer = await asyncio.open_connection(config.host, config.port)
 
@@ -29,7 +29,7 @@ async def _ping(config: KamaConfig) -> None:
         "jsonrpc": "2.0",
         "id": "cli-1",
         "method": "core.ping",
-        "params": {"client": f"cli/{kama_claude.__version__}"},
+        "params": {"client": f"cli/{sztu_code.__version__}"},
     }
     writer.write((json.dumps(req) + "\n").encode())
     await writer.drain()

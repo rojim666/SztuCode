@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
-from kama_claude.core.bus.envelope import EventPushEnvelope
-from kama_claude.core.trace.record import TraceRecord
-from kama_claude.core.trace.writer import TraceWriter
+from sztu_code.core.bus.envelope import EventPushEnvelope
+from sztu_code.core.trace.record import TraceRecord
+from sztu_code.core.trace.writer import TraceWriter
 
 logger = logging.getLogger(__name__)
 

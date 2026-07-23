@@ -18,9 +18,9 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Label, Static, TextArea
 
-from kama_claude.core.config import KamaConfig
-from kama_claude.core.skills.loader import SkillLoader
-from kama_claude.core.transport.socket_client import IpcError, SocketClient
+from sztu_code.core.config import SztuConfig
+from sztu_code.core.skills.loader import SkillLoader
+from sztu_code.core.transport.socket_client import IpcError, SocketClient
 
 
 def _preview(s: str, n: int) -> str:
@@ -462,9 +462,9 @@ class ChatTextArea(TextArea):
 
 
 class KamaTuiApp(App[None]):
-    """KamaClaude TUI：终端滚屏风格，实时展示 agent 执行过程。"""
+    """SztuCode TUI：终端滚屏风格，实时展示 agent 执行过程。"""
 
-    TITLE = "KamaClaude"
+    TITLE = "SztuCode"
     BINDINGS = [
         Binding("ctrl+q", "quit", "quit"),
     ]
@@ -492,12 +492,12 @@ class KamaTuiApp(App[None]):
     """
 
     _BANNER = (
-        "[bold cyan]██╗  ██╗ █████╗ ███╗   ███╗ █████╗  ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗[/bold cyan]\n"
-        "[bold cyan]██║ ██╔╝██╔══██╗████╗ ████║██╔══██╗██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝[/bold cyan]\n"
-        "[bold cyan]█████╔╝ ███████║██╔████╔██║███████║██║     ██║     ███████║██║   ██║██║  ██║█████╗  [/bold cyan]\n"
-        "[bold cyan]██╔═██╗ ██╔══██║██║╚██╔╝██║██╔══██║██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  [/bold cyan]\n"
-        "[bold cyan]██║  ██╗██║  ██║██║ ╚═╝ ██║██║  ██║╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗[/bold cyan]\n"
-        "[bold cyan]╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold cyan]\n"
+        "[bold cyan]███████╗███████╗████████╗██╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗[/bold cyan]\n"
+        "[bold cyan]██╔════╝╚══███╔╝╚══██╔══╝██║   ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝[/bold cyan]\n"
+        "[bold cyan]███████╗  ███╔╝    ██║   ██║   ██║██║     ██║   ██║██║  ██║█████╗  [/bold cyan]\n"
+        "[bold cyan]╚════██║ ███╔╝     ██║   ██║   ██║██║     ██║   ██║██║  ██║██╔══╝  [/bold cyan]\n"
+        "[bold cyan]███████║███████╗   ██║   ╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗[/bold cyan]\n"
+        "[bold cyan]╚══════╝╚══════╝   ╚═╝    ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold cyan]\n"
         "[dim]  输入消息开始对话  ·  键入 / 触发 skill  ·  Ctrl+C 退出[/dim]"
     )
 
@@ -519,7 +519,7 @@ class KamaTuiApp(App[None]):
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
 
     def compose(self) -> ComposeResult:
-        yield Label("[bold]KamaClaude[/bold]  [dim]connecting...[/dim]", id="header")
+        yield Label("[bold]SztuCode[/bold]  [dim]connecting...[/dim]", id="header")
         yield VerticalScroll(id="log-view")
         yield ChatTextArea(id="prompt", show_line_numbers=False)
 
@@ -752,7 +752,7 @@ class KamaTuiApp(App[None]):
             "connecting": "dim",
         }.get(state, "dim")
         header.update(
-            f"[bold]KamaClaude[/bold]  [dim]{self._host}:{self._port}[/dim]"
+            f"[bold]SztuCode[/bold]  [dim]{self._host}:{self._port}[/dim]"
             f"{session}  [{color}]{state}[/{color}]"
         )
 
@@ -818,7 +818,7 @@ class KamaTuiApp(App[None]):
                 self._update_header("ready")
                 await loop_task
             except IpcError as e:
-                header.update(f"[bold]KamaClaude[/bold]  [red]subscribe error: {e}[/red]")
+                header.update(f"[bold]SztuCode[/bold]  [red]subscribe error: {e}[/red]")
             finally:
                 if not loop_task.done():
                     loop_task.cancel()
@@ -1056,6 +1056,6 @@ class KamaTuiApp(App[None]):
 
 
 # TUI 入口：读取配置并启动 KamaTuiApp
-def run(config: KamaConfig, replay_run_id: str | None = None) -> None:
+def run(config: SztuConfig, replay_run_id: str | None = None) -> None:
     app = KamaTuiApp(config.host, config.port, replay_run_id=replay_run_id)
     app.run()

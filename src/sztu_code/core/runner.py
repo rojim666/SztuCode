@@ -6,25 +6,25 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from kama_claude.core.bus.events import RunFinishedEvent, RunStartedEvent
-from kama_claude.core.compact.compactor import Compactor
-from kama_claude.core.config import KamaConfig
-from kama_claude.core.context import ExecutionContext
-from kama_claude.core.events.bus import EventBus, EventHandler
-from kama_claude.core.events.writer import EventWriter
-from kama_claude.core.llm.base import LLMProvider
-from kama_claude.core.llm.provider import AnthropicProvider
-from kama_claude.core.loop import AgentLoop
-from kama_claude.core.mcp.server import McpServerManager
-from kama_claude.core.memory.loader import load_context_file
-from kama_claude.core.permissions.manager import PermissionManager
-from kama_claude.core.runs import RUNS_DIR, new_run_id
-from kama_claude.core.session.model import Session
-from kama_claude.core.session.store import SessionStore
-from kama_claude.core.subagent.registry import BackgroundTaskRegistry
-from kama_claude.core.subagent.tool import AgentResultTool, SpawnAgentTool
-from kama_claude.core.task.manager import TaskManager
-from kama_claude.core.tools.builtin import (
+from sztu_code.core.bus.events import RunFinishedEvent, RunStartedEvent
+from sztu_code.core.compact.compactor import Compactor
+from sztu_code.core.config import SztuConfig
+from sztu_code.core.context import ExecutionContext
+from sztu_code.core.events.bus import EventBus, EventHandler
+from sztu_code.core.events.writer import EventWriter
+from sztu_code.core.llm.base import LLMProvider
+from sztu_code.core.llm.provider import AnthropicProvider
+from sztu_code.core.loop import AgentLoop
+from sztu_code.core.mcp.server import McpServerManager
+from sztu_code.core.memory.loader import load_context_file
+from sztu_code.core.permissions.manager import PermissionManager
+from sztu_code.core.runs import RUNS_DIR, new_run_id
+from sztu_code.core.session.model import Session
+from sztu_code.core.session.store import SessionStore
+from sztu_code.core.subagent.registry import BackgroundTaskRegistry
+from sztu_code.core.subagent.tool import AgentResultTool, SpawnAgentTool
+from sztu_code.core.task.manager import TaskManager
+from sztu_code.core.tools.builtin import (
     BashTool,
     ListDirTool,
     NoteSaveTool,
@@ -35,9 +35,9 @@ from kama_claude.core.tools.builtin import (
     TaskUpdateTool,
     WriteFileTool,
 )
-from kama_claude.core.tools.registry import ToolRegistry
-from kama_claude.core.trace.provider import TracingProvider
-from kama_claude.core.trace.writer import TraceWriter
+from sztu_code.core.tools.registry import ToolRegistry
+from sztu_code.core.trace.provider import TracingProvider
+from sztu_code.core.trace.writer import TraceWriter
 
 
 def _now() -> str:
@@ -55,7 +55,7 @@ class AgentRunner:
     # 组装所有运行时依赖，准备执行一次完整的 agent run
     def __init__(
         self,
-        config: KamaConfig,
+        config: SztuConfig,
         *,
         bus: EventBus | None = None,
         provider: LLMProvider | None = None,
@@ -161,8 +161,8 @@ class AgentRunner:
             notes = ""
         run_path.mkdir(parents=True, exist_ok=True)
 
-        global_ctx = load_context_file(Path("~/.kama/context.md").expanduser())
-        project_ctx = load_context_file(Path(".kama/context.md"))
+        global_ctx = load_context_file(Path("~/.sztu/context.md").expanduser())
+        project_ctx = load_context_file(Path(".sztu/context.md"))
 
         task_manager = TaskManager(run_path / ".tasks")
 

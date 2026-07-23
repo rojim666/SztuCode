@@ -9,9 +9,9 @@ from typing import Any
 import anthropic
 import httpx
 
-from kama_claude.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmUsageEvent
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
+from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmUsageEvent
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
 _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "claude-sonnet-4-6": 200_000,
@@ -49,7 +49,11 @@ class AnthropicProvider:
             api_key = os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
                 raise SystemExit("ANTHROPIC_API_KEY not set")
-            self._client: Any = anthropic.AsyncAnthropic(api_key=api_key)
+            base_url = os.environ.get("ANTHROPIC_BASE_URL")
+            kwargs: dict[str, str] = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            self._client: Any = anthropic.AsyncAnthropic(**kwargs)
         else:
             self._client = client
         self._model = model

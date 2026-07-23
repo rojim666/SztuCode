@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from kama_claude.core.tools.builtin.bash import BashParams
-from kama_claude.core.tools.builtin.list_dir import ListDirParams
-from kama_claude.core.tools.builtin.note_save import NoteSaveParams
-from kama_claude.core.tools.builtin.read_file import ReadFileParams
-from kama_claude.core.tools.builtin.write_file import WriteFileParams
+from sztu_code.core.tools.builtin.bash import BashParams
+from sztu_code.core.tools.builtin.list_dir import ListDirParams
+from sztu_code.core.tools.builtin.note_save import NoteSaveParams
+from sztu_code.core.tools.builtin.read_file import ReadFileParams
+from sztu_code.core.tools.builtin.write_file import WriteFileParams
 
 
 # 功能：验证 BashParams 接受合法参数，缺省 timeout 为 60

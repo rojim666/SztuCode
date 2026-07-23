@@ -13,8 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-import kama_claude
-from kama_claude.core.bus.commands import (
+import sztu_code
+from sztu_code.core.bus.commands import (
     AgentRunCommand,
     AgentRunResult,
     EventSubscribeCommand,
@@ -33,21 +33,21 @@ from kama_claude.core.bus.commands import (
     SessionSendMessageCommand,
     SessionSendMessageResult,
 )
-from kama_claude.core.bus.envelope import EventPushEnvelope
-from kama_claude.core.config import KamaConfig, get_config
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.provider import AnthropicProvider
-from kama_claude.core.logging_setup import setup_logging
-from kama_claude.core.mcp.server import McpServerManager
-from kama_claude.core.permissions.manager import PermissionManager
-from kama_claude.core.permissions.storage import load_policy_file
-from kama_claude.core.runner import AgentRunner
-from kama_claude.core.runs import events_file, new_run_id
-from kama_claude.core.session import SessionManager, SessionStore
-from kama_claude.core.trace.record import TraceRecord
-from kama_claude.core.trace.writer import TraceWriter
-from kama_claude.core.transport.ipc_broadcaster import IpcEventBroadcaster
-from kama_claude.core.transport.socket_server import SocketServer, get_connection_writer
+from sztu_code.core.bus.envelope import EventPushEnvelope
+from sztu_code.core.config import SztuConfig, get_config
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.provider import AnthropicProvider
+from sztu_code.core.logging_setup import setup_logging
+from sztu_code.core.mcp.server import McpServerManager
+from sztu_code.core.permissions.manager import PermissionManager
+from sztu_code.core.permissions.storage import load_policy_file
+from sztu_code.core.runner import AgentRunner
+from sztu_code.core.runs import events_file, new_run_id
+from sztu_code.core.session import SessionManager, SessionStore
+from sztu_code.core.trace.record import TraceRecord
+from sztu_code.core.trace.writer import TraceWriter
+from sztu_code.core.transport.ipc_broadcaster import IpcEventBroadcaster
+from sztu_code.core.transport.socket_server import SocketServer, get_connection_writer
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class CoreApp:
         self._bus = EventBus()
         self._broadcaster: IpcEventBroadcaster | None = None
         self._trace: TraceWriter | None = None
-        self._config: KamaConfig | None = None
+        self._config: SztuConfig | None = None
         self._running_runs: set[asyncio.Task[Any]] = set()
         self._sessions: SessionManager | None = None
         self._permission_manager: PermissionManager | None = None
@@ -73,7 +73,7 @@ class CoreApp:
         client = params.get("client", "unknown")
         logger.debug("ping from %s", client)
         return PongResult(
-            server_version=kama_claude.__version__,
+            server_version=sztu_code.__version__,
             uptime_ms=int((time.monotonic() - self._start_time) * 1000),
             received_at=datetime.datetime.now(datetime.UTC).isoformat(),
         )
@@ -178,7 +178,7 @@ class CoreApp:
     ) -> int:
         path = events_file(run_id)
         if not path.exists():
-            for candidate in Path("~/.kama/sessions").expanduser().glob(
+            for candidate in Path("~/.sztu/sessions").expanduser().glob(
                 f"*/runs/{run_id}/events.jsonl"
             ):
                 path = candidate
@@ -217,7 +217,7 @@ class CoreApp:
             await self._trace.start()
             self._bus.subscribe(self._trace_event_handler)
 
-        policy_file = Path("~/.kama/policy.toml").expanduser()
+        policy_file = Path("~/.sztu/policy.toml").expanduser()
         self._permission_manager = PermissionManager(
             policy_file=policy_file,
             timeout_s=self._config.permission.timeout_s,
@@ -230,7 +230,7 @@ class CoreApp:
 
         self._broadcaster = IpcEventBroadcaster(trace=self._trace)
         self._bus.subscribe(self._broadcaster.handle)
-        sessions_root = Path("~/.kama/sessions").expanduser()
+        sessions_root = Path("~/.sztu/sessions").expanduser()
         store = SessionStore(sessions_root)
         assert self._config is not None
         compact_provider = AnthropicProvider(self._config.llm.default_model)
@@ -270,13 +270,19 @@ class CoreApp:
         server.register("session.compact", self._session_compact_handler)
 
         addr = await server.start()
-        logger.info("kama-core %s listening addr=%s", kama_claude.__version__, addr)
+        logger.info("sztu-code %s listening addr=%s", sztu_code.__version__, addr)
         logger.info("config: %s", self._config)
 
         loop = asyncio.get_running_loop()
         shutdown = asyncio.Event()
-        loop.add_signal_handler(signal.SIGINT, shutdown.set)
-        loop.add_signal_handler(signal.SIGTERM, shutdown.set)
+        # add_signal_handler 在 Windows 上不支持，回退到 signal.signal
+        try:
+            loop.add_signal_handler(signal.SIGINT, shutdown.set)
+            loop.add_signal_handler(signal.SIGTERM, shutdown.set)
+        except NotImplementedError:
+            signal.signal(signal.SIGINT, lambda signum, frame: shutdown.set())
+            if hasattr(signal, "SIGTERM"):
+                signal.signal(signal.SIGTERM, lambda signum, frame: shutdown.set())
 
         await shutdown.wait()
 

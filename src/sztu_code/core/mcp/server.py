@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from kama_claude.core.config import McpServerConfig
-from kama_claude.core.mcp.client import McpClient
-from kama_claude.core.mcp.tool import McpTool
-from kama_claude.core.tools.registry import ToolRegistry
+from sztu_code.core.config import McpServerConfig
+from sztu_code.core.mcp.client import McpClient
+from sztu_code.core.mcp.tool import McpTool
+from sztu_code.core.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
 

@@ -4,8 +4,8 @@ import asyncio
 import sys
 from typing import Any
 
-from kama_claude.core.config import KamaConfig
-from kama_claude.core.transport.socket_client import IpcError, SocketClient
+from sztu_code.core.config import SztuConfig
+from sztu_code.core.transport.socket_client import IpcError, SocketClient
 
 _DECISION_MAP: dict[str, str] = {
     "y": "allow_once",
@@ -60,7 +60,7 @@ async def _readline(prompt: str) -> str:
 
 
 # 异步核心：创建 chat session，循环读取用户输入并发送到 daemon；权限请求时优先处理审批
-async def _chat_async(config: KamaConfig) -> int:
+async def _chat_async(config: SztuConfig) -> int:
     client = SocketClient(config.host, config.port)
     try:
         await client.connect()
@@ -127,8 +127,8 @@ async def _chat_async(config: KamaConfig) -> int:
     return 0
 
 
-# 执行 kama chat 命令
-def cmd_chat(config: KamaConfig) -> None:
+# 执行 sztu chat 命令
+def cmd_chat(config: SztuConfig) -> None:
     try:
         exit_code = asyncio.run(_chat_async(config))
     except KeyboardInterrupt:

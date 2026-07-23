@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from kama_claude.core.session.store import SessionStore
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.session.store import SessionStore
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 
 class NoteSaveParams(BaseModel):

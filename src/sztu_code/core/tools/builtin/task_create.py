@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from kama_claude.core.task.manager import TaskManager
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.task.manager import TaskManager
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 
 class TaskCreateTool(BaseTool):

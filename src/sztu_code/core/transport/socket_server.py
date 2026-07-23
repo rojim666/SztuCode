@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from kama_claude.core.bus.envelope import (
+from sztu_code.core.bus.envelope import (
     INTERNAL_ERROR,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
@@ -21,9 +21,9 @@ from kama_claude.core.bus.envelope import (
     JsonRpcSuccess,
     make_error,
 )
-from kama_claude.core.trace.record import TraceRecord
-from kama_claude.core.trace.writer import TraceWriter
-from kama_claude.core.transport.ipc_broadcaster import IpcEventBroadcaster
+from sztu_code.core.trace.record import TraceRecord
+from sztu_code.core.trace.writer import TraceWriter
+from sztu_code.core.transport.ipc_broadcaster import IpcEventBroadcaster
 
 logger = logging.getLogger(__name__)
 

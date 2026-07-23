@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from kama_claude.core.trace.record import TraceRecord
+from sztu_code.core.trace.record import TraceRecord
 
 
 class TraceWriter:

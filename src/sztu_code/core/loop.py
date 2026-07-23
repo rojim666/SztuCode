@@ -4,17 +4,17 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from kama_claude.core.bus.events import StepFinishedEvent, StepStartedEvent
-from kama_claude.core.context import ExecutionContext
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.base import LLMProvider
-from kama_claude.core.tools.invocation import invoke_tool
-from kama_claude.core.tools.registry import ToolRegistry
+from sztu_code.core.bus.events import StepFinishedEvent, StepStartedEvent
+from sztu_code.core.context import ExecutionContext
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.base import LLMProvider
+from sztu_code.core.tools.invocation import invoke_tool
+from sztu_code.core.tools.registry import ToolRegistry
 import logging
 
 if TYPE_CHECKING:
-    from kama_claude.core.compact.compactor import Compactor
-    from kama_claude.core.permissions.manager import PermissionManager
+    from sztu_code.core.compact.compactor import Compactor
+    from sztu_code.core.permissions.manager import PermissionManager
 
 
 log = logging.getLogger(__name__)

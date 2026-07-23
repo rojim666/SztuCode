@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from kama_claude.core.bus.events import ContextCompactedEvent
-from kama_claude.core.events.bus import EventBus
+from sztu_code.core.bus.events import ContextCompactedEvent
+from sztu_code.core.events.bus import EventBus
 
 if TYPE_CHECKING:
-    from kama_claude.core.context import ExecutionContext
-    from kama_claude.core.llm.base import LLMProvider
+    from sztu_code.core.context import ExecutionContext
+    from sztu_code.core.llm.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class Compactor:
         provider: LLMProvider,
         focus: str = "",
     ) -> CompactionResult | None:
-        from kama_claude.core.events.bus import EventBus as _Bus
+        from sztu_code.core.events.bus import EventBus as _Bus
 
         original_estimate = sum(
             len(str(m.get("content", ""))) for m in messages

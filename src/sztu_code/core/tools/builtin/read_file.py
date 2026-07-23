@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 _MAX_BYTES = 512 * 1024  # 512 KB
 

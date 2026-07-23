@@ -1,3 +1,3 @@
-from kama_claude.core.app import run
+from sztu_code.core.app import run
 
 run()

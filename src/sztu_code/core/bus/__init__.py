@@ -1,5 +1,5 @@
-from kama_claude.core.bus.commands import Command, PingCommand, PongResult
-from kama_claude.core.bus.envelope import (
+from sztu_code.core.bus.commands import Command, PingCommand, PongResult
+from sztu_code.core.bus.envelope import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
     INVALID_REQUEST,
@@ -11,7 +11,7 @@ from kama_claude.core.bus.envelope import (
     JsonRpcSuccess,
     make_error,
 )
-from kama_claude.core.bus.events import (
+from sztu_code.core.bus.events import (
     CoreStartedEvent,
     Event,
     LlmModelSelectedEvent,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kama_claude.core.permissions.policy import (
+from sztu_code.core.permissions.policy import (
     PermissionDecision,
     ToolPolicy,
     evaluate,

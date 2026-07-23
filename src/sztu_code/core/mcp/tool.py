@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from kama_claude.core.mcp.client import McpClient, McpServerUnavailableError, McpToolDef, McpToolError
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.mcp.client import McpClient, McpServerUnavailableError, McpToolDef, McpToolError
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 
 # 将 MCP 工具包装为 BaseTool，使 ToolRegistry 可透明调用

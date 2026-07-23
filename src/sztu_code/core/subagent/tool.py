@@ -7,28 +7,28 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict
 
-from kama_claude.core.agents.loader import AgentProfile, AgentProfileLoader
-from kama_claude.core.bus.events import SubagentFinishedEvent, SubagentStartedEvent
-from kama_claude.core.context import ExecutionContext
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.events.writer import EventWriter
-from kama_claude.core.loop import AgentLoop
-from kama_claude.core.runs import new_run_id
-from kama_claude.core.subagent.registry import BackgroundTaskRegistry
-from kama_claude.core.tools.base import BaseTool, ToolResult
-from kama_claude.core.tools.builtin.bash import BashTool
-from kama_claude.core.tools.builtin.list_dir import ListDirTool
-from kama_claude.core.tools.builtin.read_file import ReadFileTool
-from kama_claude.core.tools.builtin.task_create import TaskCreateTool
-from kama_claude.core.tools.builtin.task_get import TaskGetTool
-from kama_claude.core.tools.builtin.task_list import TaskListTool
-from kama_claude.core.tools.builtin.task_update import TaskUpdateTool
-from kama_claude.core.tools.builtin.write_file import WriteFileTool
-from kama_claude.core.tools.registry import ToolRegistry
+from sztu_code.core.agents.loader import AgentProfile, AgentProfileLoader
+from sztu_code.core.bus.events import SubagentFinishedEvent, SubagentStartedEvent
+from sztu_code.core.context import ExecutionContext
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.events.writer import EventWriter
+from sztu_code.core.loop import AgentLoop
+from sztu_code.core.runs import new_run_id
+from sztu_code.core.subagent.registry import BackgroundTaskRegistry
+from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.builtin.bash import BashTool
+from sztu_code.core.tools.builtin.list_dir import ListDirTool
+from sztu_code.core.tools.builtin.read_file import ReadFileTool
+from sztu_code.core.tools.builtin.task_create import TaskCreateTool
+from sztu_code.core.tools.builtin.task_get import TaskGetTool
+from sztu_code.core.tools.builtin.task_list import TaskListTool
+from sztu_code.core.tools.builtin.task_update import TaskUpdateTool
+from sztu_code.core.tools.builtin.write_file import WriteFileTool
+from sztu_code.core.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
-    from kama_claude.core.llm.base import LLMProvider
-    from kama_claude.core.permissions.manager import PermissionManager
+    from sztu_code.core.llm.base import LLMProvider
+    from sztu_code.core.permissions.manager import PermissionManager
 
 _profile_loader = AgentProfileLoader()
 
@@ -224,7 +224,7 @@ class SpawnAgentTool(BaseTool):
         child_run_id: str,
         profile: AgentProfile | None,
     ) -> ToolRegistry:
-        from kama_claude.core.task.manager import TaskManager
+        from sztu_code.core.task.manager import TaskManager
 
         allowed: set[str] | None = (
             set(profile.allowed_tools) if profile and profile.allowed_tools else None

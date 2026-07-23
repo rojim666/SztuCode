@@ -5,8 +5,8 @@ import sys
 import time
 from pathlib import Path
 
-from kama_claude.core.config import KamaConfig
-from kama_claude.core.trace.record import TraceRecord
+from sztu_code.core.config import SztuConfig
+from sztu_code.core.trace.record import TraceRecord
 
 _COLORS = {
     "CLIENT→CORE": "\033[36m",
@@ -19,10 +19,10 @@ _RESET = "\033[0m"
 _BOLD = "\033[1m"
 
 
-# kama trace 子命令：从 daemon.jsonl 读取并展示 trace 记录
+# sztu trace 子命令：从 daemon.jsonl 读取并展示 trace 记录
 def cmd_trace(
     run_id: str | None,
-    config: KamaConfig,
+    config: SztuConfig,
     *,
     layer: str | None = None,
     direction: str | None = None,

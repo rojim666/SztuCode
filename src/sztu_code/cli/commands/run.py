@@ -6,8 +6,8 @@ import sys
 import time
 from typing import Any
 
-from kama_claude.core.config import KamaConfig
-from kama_claude.core.transport.socket_client import IpcError, SocketClient
+from sztu_code.core.config import SztuConfig
+from sztu_code.core.transport.socket_client import IpcError, SocketClient
 
 
 class StdoutPrinter:
@@ -63,7 +63,7 @@ class StdoutPrinter:
 
 
 # 异步核心：连接 daemon，订阅事件，触发 run，等待 run.finished
-async def _run_async(goal: str, config: KamaConfig) -> int:
+async def _run_async(goal: str, config: SztuConfig) -> int:
     client = SocketClient(config.host, config.port)
     try:
         await client.connect()
@@ -113,8 +113,8 @@ async def _run_async(goal: str, config: KamaConfig) -> int:
     return exit_code
 
 
-# 执行 kama run --goal "..." 命令
-def cmd_run(goal: str, config: KamaConfig) -> None:
+# 执行 sztu run --goal "..." 命令
+def cmd_run(goal: str, config: SztuConfig) -> None:
     try:
         exit_code = asyncio.run(_run_async(goal, config))
     except KeyboardInterrupt:

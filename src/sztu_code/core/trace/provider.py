@@ -5,11 +5,11 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.base import LLMProvider
-from kama_claude.core.llm.types import LlmResponse
-from kama_claude.core.trace.record import TraceRecord
-from kama_claude.core.trace.writer import TraceWriter
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.base import LLMProvider
+from sztu_code.core.llm.types import LlmResponse
+from sztu_code.core.trace.record import TraceRecord
+from sztu_code.core.trace.writer import TraceWriter
 
 
 def _now() -> str:

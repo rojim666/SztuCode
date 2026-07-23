@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kama_claude.core.tools.base import BaseTool
+from sztu_code.core.tools.base import BaseTool
 
 
 class ToolRegistry:

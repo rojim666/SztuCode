@@ -6,7 +6,7 @@ from typing import IO
 
 from pydantic import BaseModel
 
-from kama_claude.core.events.bus import EventBus
+from sztu_code.core.events.bus import EventBus
 
 logger = logging.getLogger(__name__)
 

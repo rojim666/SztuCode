@@ -11,12 +11,12 @@ from dotenv import load_dotenv
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 7437
 _DEFAULT_LOG_LEVEL = "INFO"
-_DEFAULT_LOG_FILE = "~/.kama/logs/core.log"
+_DEFAULT_LOG_FILE = "~/.sztu/logs/core.log"
 _DEFAULT_LOG_FORMAT = "text"
-_DEFAULT_CONFIG_PATH = "~/.kama/config.toml"
+_DEFAULT_CONFIG_PATH = "~/.sztu/config.toml"
 _DEFAULT_MAX_STEPS = 20
 _DEFAULT_MODEL = "claude-sonnet-4-6"
-_DEFAULT_TRACE_FILE = "~/.kama/traces/daemon.jsonl"
+_DEFAULT_TRACE_FILE = "~/.sztu/traces/daemon.jsonl"
 
 
 @dataclass
@@ -73,7 +73,7 @@ class McpConfig:
 
 
 @dataclass
-class KamaConfig:
+class SztuConfig:
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -86,20 +86,20 @@ class KamaConfig:
 
 
 # 构建并返回运行时配置：默认值 → 全局 TOML → 项目本地 TOML → .env → 系统环境变量（后者优先级最高）
-def get_config() -> KamaConfig:
-    config = KamaConfig()
+def get_config() -> SztuConfig:
+    config = SztuConfig()
 
-    # .env 必须在读取 KAMA_CONFIG 之前加载，以便 .env 中的 KAMA_CONFIG 能影响 TOML 路径
-    load_dotenv(".env", override=False)
+    # .env 必须在读取 SZTU_CONFIG 之前加载，以便 .env 中的 SZTU_CONFIG 能影响 TOML 路径
+    load_dotenv(".env", override=True)
 
-    # 若显式指定 KAMA_CONFIG，只读该文件；否则按优先级叠加：全局 → 项目本地
-    explicit = os.environ.get("KAMA_CONFIG")
+    # 若显式指定 SZTU_CONFIG，只读该文件；否则按优先级叠加：全局 → 项目本地
+    explicit = os.environ.get("SZTU_CONFIG")
     if explicit:
         config_paths = [Path(explicit).expanduser()]
     else:
         config_paths = [
             Path(_DEFAULT_CONFIG_PATH).expanduser(),
-            Path(".kama/config.toml"),
+            Path(".sztu/config.toml"),
         ]
 
     for config_path in config_paths:
@@ -116,7 +116,7 @@ def get_config() -> KamaConfig:
 
 
 # 将已解析的 TOML 根表写入 config；未知小节或类型错误时退出进程
-def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
+def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
     unknown = set(data.keys()) - {"core", "logging", "agent", "llm", "trace", "permission", "compaction", "mcp"}
     if unknown:
         raise SystemExit(f"Unknown top-level config keys: {', '.join(sorted(unknown))}")
@@ -291,114 +291,114 @@ def _apply_toml(config: KamaConfig, data: dict[str, Any]) -> None:
             config.mcp.servers.append(s)
 
 
-# 用 KAMA_* 环境变量覆盖 config 中对应字段（若变量已设置）
-def _apply_env(config: KamaConfig) -> None:
-    host = os.environ.get("KAMA_HOST")
+# 用 SZTU_* 环境变量覆盖 config 中对应字段（若变量已设置）
+def _apply_env(config: SztuConfig) -> None:
+    host = os.environ.get("SZTU_HOST")
     if host is not None:
         config.host = host
 
-    port_str = os.environ.get("KAMA_PORT")
+    port_str = os.environ.get("SZTU_PORT")
     if port_str is not None:
         try:
             config.port = int(port_str)
         except ValueError:
-            raise SystemExit(f"Config error: KAMA_PORT must be an integer, got: {port_str!r}")
+            raise SystemExit(f"Config error: SZTU_PORT must be an integer, got: {port_str!r}")
 
-    log_level = os.environ.get("KAMA_LOG_LEVEL")
+    log_level = os.environ.get("SZTU_LOG_LEVEL")
     if log_level is not None:
         config.logging.level = log_level
 
-    log_file = os.environ.get("KAMA_LOG_FILE")
+    log_file = os.environ.get("SZTU_LOG_FILE")
     if log_file is not None:
         config.logging.file = log_file
 
-    log_format = os.environ.get("KAMA_LOG_FORMAT")
+    log_format = os.environ.get("SZTU_LOG_FORMAT")
     if log_format is not None:
         config.logging.format = log_format
 
-    max_steps_str = os.environ.get("KAMA_MAX_STEPS")
+    max_steps_str = os.environ.get("SZTU_MAX_STEPS")
     if max_steps_str is not None:
         try:
             val = int(max_steps_str)
             if val <= 0:
                 raise SystemExit(
-                    "Config error: KAMA_MAX_STEPS must be a positive integer,"
+                    "Config error: SZTU_MAX_STEPS must be a positive integer,"
                     f" got: {max_steps_str!r}"
                 )
             config.agent.max_steps = val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_MAX_STEPS must be an integer, got: {max_steps_str!r}"
+                f"Config error: SZTU_MAX_STEPS must be an integer, got: {max_steps_str!r}"
             )
 
-    default_model = os.environ.get("KAMA_LLM_DEFAULT_MODEL")
+    default_model = os.environ.get("SZTU_LLM_DEFAULT_MODEL")
     if default_model is not None:
         config.llm.default_model = default_model
 
-    trace_enabled = os.environ.get("KAMA_TRACE_ENABLED")
+    trace_enabled = os.environ.get("SZTU_TRACE_ENABLED")
     if trace_enabled is not None:
         config.trace.enabled = trace_enabled.lower() not in ("0", "false", "no")
 
-    trace_file = os.environ.get("KAMA_TRACE_FILE")
+    trace_file = os.environ.get("SZTU_TRACE_FILE")
     if trace_file is not None:
         config.trace.file = trace_file
 
-    trace_payload = os.environ.get("KAMA_TRACE_INCLUDE_LLM_PAYLOAD")
+    trace_payload = os.environ.get("SZTU_TRACE_INCLUDE_LLM_PAYLOAD")
     if trace_payload is not None:
         config.trace.include_llm_payload = trace_payload.lower() not in ("0", "false", "no")
 
-    perm_timeout = os.environ.get("KAMA_PERMISSION_TIMEOUT_S")
+    perm_timeout = os.environ.get("SZTU_PERMISSION_TIMEOUT_S")
     if perm_timeout is not None:
         try:
             perm_timeout_val = float(perm_timeout)
             if perm_timeout_val < 0:
                 raise SystemExit(
-                    f"Config error: KAMA_PERMISSION_TIMEOUT_S must be >= 0, got: {perm_timeout!r}"
+                    f"Config error: SZTU_PERMISSION_TIMEOUT_S must be >= 0, got: {perm_timeout!r}"
                 )
             config.permission.timeout_s = perm_timeout_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_PERMISSION_TIMEOUT_S must be a number, got: {perm_timeout!r}"
+                f"Config error: SZTU_PERMISSION_TIMEOUT_S must be a number, got: {perm_timeout!r}"
             )
 
-    compact_threshold = os.environ.get("KAMA_COMPACT_THRESHOLD")
+    compact_threshold = os.environ.get("SZTU_COMPACT_THRESHOLD")
     if compact_threshold is not None:
         try:
             compact_threshold_val = float(compact_threshold)
             if not (0.0 <= compact_threshold_val <= 1.0):
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_THRESHOLD must be between 0 and 1, got: {compact_threshold!r}"
+                    f"Config error: SZTU_COMPACT_THRESHOLD must be between 0 and 1, got: {compact_threshold!r}"
                 )
             config.compaction.auto_threshold = compact_threshold_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_COMPACT_THRESHOLD must be a number, got: {compact_threshold!r}"
+                f"Config error: SZTU_COMPACT_THRESHOLD must be a number, got: {compact_threshold!r}"
             )
 
-    compact_tool_limit = os.environ.get("KAMA_COMPACT_TOOL_LIMIT")
+    compact_tool_limit = os.environ.get("SZTU_COMPACT_TOOL_LIMIT")
     if compact_tool_limit is not None:
         try:
             compact_tool_limit_val = int(compact_tool_limit)
             if compact_tool_limit_val <= 0:
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_TOOL_LIMIT must be a positive integer, got: {compact_tool_limit!r}"
+                    f"Config error: SZTU_COMPACT_TOOL_LIMIT must be a positive integer, got: {compact_tool_limit!r}"
                 )
             config.compaction.tool_result_limit = compact_tool_limit_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_COMPACT_TOOL_LIMIT must be an integer, got: {compact_tool_limit!r}"
+                f"Config error: SZTU_COMPACT_TOOL_LIMIT must be an integer, got: {compact_tool_limit!r}"
             )
 
-    compact_tool_keep = os.environ.get("KAMA_COMPACT_TOOL_KEEP")
+    compact_tool_keep = os.environ.get("SZTU_COMPACT_TOOL_KEEP")
     if compact_tool_keep is not None:
         try:
             compact_tool_keep_val = int(compact_tool_keep)
             if compact_tool_keep_val <= 0:
                 raise SystemExit(
-                    f"Config error: KAMA_COMPACT_TOOL_KEEP must be a positive integer, got: {compact_tool_keep!r}"
+                    f"Config error: SZTU_COMPACT_TOOL_KEEP must be a positive integer, got: {compact_tool_keep!r}"
                 )
             config.compaction.tool_result_keep = compact_tool_keep_val
         except ValueError:
             raise SystemExit(
-                f"Config error: KAMA_COMPACT_TOOL_KEEP must be an integer, got: {compact_tool_keep!r}"
+                f"Config error: SZTU_COMPACT_TOOL_KEEP must be an integer, got: {compact_tool_keep!r}"
             )

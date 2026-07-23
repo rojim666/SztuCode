@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.types import LlmResponse
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.types import LlmResponse
 
 
 class LLMProvider(Protocol):

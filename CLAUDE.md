@@ -27,28 +27,28 @@ uv run python scripts/gen_protocol_doc.py
 uv run python scripts/gen_protocol_doc.py --check
 
 # Run daemon manually
-uv run kama-core                        # foreground; Ctrl+C to stop
-KAMA_PORT=8000 uv run kama-core        # override port
+uv run sztu-code                        # foreground; Ctrl+C to stop
+SZTU_PORT=8000 uv run sztu-code        # override port
 
 # Send a ping
-uv run kama ping
-uv run kama --version
+uv run sztu ping
+uv run sztu --version
 ```
 
 ## Architecture
 
-This is a **dual-process** local AI agent system. `kama-core` is a persistent daemon; `kama` and `kama-tui` are clients that connect to it over a Unix domain socket.
+This is a **dual-process** local AI agent system. `sztu-code` is a persistent daemon; `sztu` and `sztu-tui` are clients that connect to it over a Unix domain socket.
 
 ```
-kama-core (daemon)
+sztu-code (daemon)
   └─ listens on 127.0.0.1:7437 (TCP)
        ↑ JSON-RPC 2.0 NDJSON
-kama (CLI)   kama-tui (TUI, S2+)
+sztu (CLI)   sztu-tui (TUI, S2+)
 ```
 
-**`kama-tui` is the primary frontend.** All user-facing work on task management, observability, and interaction should be designed for and validated in the TUI first. The `kama` CLI exists only for quick scripted testing and debugging — it is not a product surface. When implementing features that touch the user interface, invest in the TUI layout, event rendering, and keyboard interactions. Do not shortcut TUI work by pointing to the CLI as an alternative.
+**`sztu-tui` is the primary frontend.** All user-facing work on task management, observability, and interaction should be designed for and validated in the TUI first. The `sztu` CLI exists only for quick scripted testing and debugging — it is not a product surface. When implementing features that touch the user interface, invest in the TUI layout, event rendering, and keyboard interactions. Do not shortcut TUI work by pointing to the CLI as an alternative.
 
-### Protocol layer (`src/kama_claude/core/bus/`)
+### Protocol layer (`src/sztu_code/core/bus/`)
 
 All IPC messages are typed pydantic v2 models with a **discriminated union on the `type` field**. This is the contract boundary — adding a new command or event means adding a new model class to `commands.py` or `events.py` and extending the `Command`/`Event` union.
 
@@ -58,25 +58,25 @@ All IPC messages are typed pydantic v2 models with a **discriminated union on th
 
 `WIRE_PROTOCOL.md` is **generated** from these models by `scripts/gen_protocol_doc.py`. Always regenerate and commit it after changing bus models.
 
-### Transport layer (`src/kama_claude/core/transport/`)
+### Transport layer (`src/sztu_code/core/transport/`)
 
 - `socket_server.py` — TCP server (`asyncio.start_server`); reads NDJSON lines, dispatches to registered `CommandHandler`s, handles JSON-RPC error cases. On `start()`, probes `host:port` first — errors if another daemon is already listening. Handlers registered via `server.register("method.name", handler_fn)`.
 
-### Config (`src/kama_claude/core/config.py`)
+### Config (`src/sztu_code/core/config.py`)
 
-Four-tier priority: **built-in defaults → `~/.kama/config.toml` → `.env` → env vars**.
+Four-tier priority: **built-in defaults → `~/.sztu/config.toml` → `.env` → env vars**.
 
 S0 keys: `host` (default `127.0.0.1`), `port` (default `7437`), `log_level`, `log_file`. Config file is silently skipped if absent; unknown keys cause a hard exit.
 
-Relevant env vars: `KAMA_CONFIG`, `KAMA_HOST`, `KAMA_PORT`, `KAMA_LOG_LEVEL`, `KAMA_LOG_FILE`, `KAMA_LOG_FORMAT`.
+Relevant env vars: `SZTU_CONFIG`, `SZTU_HOST`, `SZTU_PORT`, `SZTU_LOG_LEVEL`, `SZTU_LOG_FILE`, `SZTU_LOG_FORMAT`.
 
-### Daemon entry (`src/kama_claude/core/app.py`)
+### Daemon entry (`src/sztu_code/core/app.py`)
 
 `CoreApp.run()` is the single async entry point: loads config → sets up logging → creates `SocketServer` → registers handlers → waits for `SIGINT`/`SIGTERM` → calls `server.stop()`. Adding new handlers: instantiate a handler method on `CoreApp` and call `server.register()`.
 
 ### Testing
 
-Integration tests in `tests/conftest.py` spawn a real daemon subprocess using a random free port (via `free_port` fixture). The fixture finds a free port, releases it, passes it to the daemon via `KAMA_PORT`, then polls `asyncio.open_connection` until the daemon is ready.
+Integration tests in `tests/conftest.py` spawn a real daemon subprocess using a random free port (via `free_port` fixture). The fixture finds a free port, releases it, passes it to the daemon via `SZTU_PORT`, then polls `asyncio.open_connection` until the daemon is ready.
 
 ### Code style
 

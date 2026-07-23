@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from kama_claude.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolResult
 
 _MAX_DEPTH = 4
 _MAX_ENTRIES = 200

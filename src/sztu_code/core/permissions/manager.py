@@ -10,14 +10,14 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any
 
-from kama_claude.core.permissions.policy import (
+from sztu_code.core.permissions.policy import (
     DEFAULT_POLICIES,
     PermissionDecision,
     ToolPolicy,
     matches_outside_cwd,
     param_preview,
 )
-from kama_claude.core.permissions.storage import load_policy_file, save_policy_file
+from sztu_code.core.permissions.storage import load_policy_file, save_policy_file
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class PermissionManager:
 
     # 对工具名 + 参数执行 4 层静态评估，不挂起
     def evaluate(self, tool_name: str, params: dict[str, Any]) -> PermissionDecision:
-        from kama_claude.core.permissions.policy import evaluate
+        from sztu_code.core.permissions.policy import evaluate
         policy = self._policies.get(tool_name)
         return evaluate(tool_name, params, policy)
 

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from kama_claude.core.bus.events import (
+from sztu_code.core.bus.events import (
     PermissionDeniedEvent,
     PermissionGrantedEvent,
     PermissionRequestedEvent,
@@ -15,14 +15,14 @@ from kama_claude.core.bus.events import (
     ToolCallFinishedEvent,
     ToolCallStartedEvent,
 )
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.llm.types import ToolCallBlock
-from kama_claude.core.tools.base import ToolResult
-from kama_claude.core.tools.errors import RateLimitedError
-from kama_claude.core.tools.registry import ToolRegistry
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.types import ToolCallBlock
+from sztu_code.core.tools.base import ToolResult
+from sztu_code.core.tools.errors import RateLimitedError
+from sztu_code.core.tools.registry import ToolRegistry
 
 if TYPE_CHECKING:
-    from kama_claude.core.permissions.manager import PermissionManager
+    from sztu_code.core.permissions.manager import PermissionManager
 
 _DEFAULT_TIMEOUT: float = 120.0
 _MAX_RETRIES: int = 2

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from kama_claude.core.session.model import Session
+from sztu_code.core.session.model import Session
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class SessionStore:
             messages.append({"role": role, "content": row.get("content", "")})
 
         messages = self._trim_orphan_tool_use(messages)
-        from kama_claude.core.compact.budget import truncate_tool_results
+        from sztu_code.core.compact.budget import truncate_tool_results
         return truncate_tool_results(messages)
 
     # 裁掉尾部未配对 tool_use 以及其后的消息，避免 Anthropic messages.invalid

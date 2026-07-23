@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Discriminator
 
-from kama_claude.core.session.model import SessionMode, SessionStatus
+from sztu_code.core.session.model import SessionMode, SessionStatus
 
 
 class PingCommand(BaseModel):

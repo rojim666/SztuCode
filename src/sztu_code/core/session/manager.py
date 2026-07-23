@@ -6,8 +6,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from kama_claude.core.bus.envelope import HandlerError
-from kama_claude.core.bus.events import (
+from sztu_code.core.bus.envelope import HandlerError
+from sztu_code.core.bus.events import (
     SessionClosedEvent,
     SessionCreatedEvent,
     SessionMessageReceivedEvent,
@@ -15,15 +15,15 @@ from kama_claude.core.bus.events import (
     SessionWaitingForInputEvent,
     SkillInvokedEvent,
 )
-from kama_claude.core.events.bus import EventBus
-from kama_claude.core.runs import new_run_id
-from kama_claude.core.session.model import Session, SessionMode
-from kama_claude.core.session.store import SessionStore
-from kama_claude.core.skills.loader import SkillLoader
+from sztu_code.core.events.bus import EventBus
+from sztu_code.core.runs import new_run_id
+from sztu_code.core.session.model import Session, SessionMode
+from sztu_code.core.session.store import SessionStore
+from sztu_code.core.skills.loader import SkillLoader
 
 if TYPE_CHECKING:
-    from kama_claude.core.llm.base import LLMProvider
-    from kama_claude.core.runner import AgentRunner
+    from sztu_code.core.llm.base import LLMProvider
+    from sztu_code.core.runner import AgentRunner
 
 SESSION_NOT_FOUND = -32010
 SESSION_CLOSED = -32011
@@ -167,8 +167,8 @@ class SessionManager:
         if self._provider is None:
             raise HandlerError(-32020, "provider not available for compaction")
         async with lock:
-            from kama_claude.core.bus.commands import SessionCompactResult
-            from kama_claude.core.compact.compactor import Compactor
+            from sztu_code.core.bus.commands import SessionCompactResult
+            from sztu_code.core.compact.compactor import Compactor
             messages = self._store.read_messages(sid)
             session_dir = self._store.session_dir(sid)
             compactor = Compactor(self._bus, session_dir, sid)
