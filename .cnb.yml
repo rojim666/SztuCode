@@ -1,0 +1,14 @@
+# 这里是一个示例 .cnb.yml
+  
+  # 匹配main分支
+  main:
+    # 触发事件为 push 事件
+    push:
+      # 这里是阶段任务示例，可配置任意多个阶段，这里以一个阶段为例
+      - name: "your first CNB building"
+        stages:
+          # 使用流水线输出你的构建配置数据
+          - name: echo your build data
+            script: echo ${CNB_BUILD_USER} 通过 ${CNB_BRANCH} 分支触发了 ${CNB_EVENT} 事件
+  
+  # 更多资料见 https://docs.cnb.cool/build/quick-start.html
