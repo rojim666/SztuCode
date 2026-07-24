@@ -18,11 +18,12 @@ dependencies = [
     "httpx[socks]>=0.28.1",
 ]
 
-# 安装后可在 PATH 中执行的入口：`sztu` / `sztu-code` / `sztu-tui`
+# 安装后可在 PATH 中执行的入口：`sztu` / `sztu-code` / `sztu-tui` / `sztu-desktop`
 [project.scripts]
 sztu = "sztu_code.cli.main:main"
 sztu-code = "sztu_code.core.app:run"
 sztu-tui = "sztu_code.tui.__main__:main"
+sztu-desktop = "sztu_code.desktop.__main__:main"
 
 # ---- Hatch：打 wheel 时从 src 布局收录包 ----
 [tool.hatch.build.targets.wheel]
