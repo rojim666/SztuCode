@@ -2,10 +2,6 @@
 
 从零实现一个本地 Claude Code Agent 系统（mini 版）—— 不只是调用大模型 API，而是搭建一个完整的本地 Agent 运行时。
 
-<p align="center">
-  <img src="docs/images/2026-06-10_14-30-58.jpg" alt="SztuCode TUI" width="800">
-</p>
-
 ## 这是什么？
 
 SztuCode 是一个**双进程本地 AI Agent 系统**。它把 Claude Code 这类 AI 编程 Agent 最核心的运行机制拆解出来，用 Python 从零实现：
