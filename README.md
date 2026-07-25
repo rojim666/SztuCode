@@ -41,7 +41,7 @@ sztu (CLI)   sztu-tui (TUI)
 | `core/bus/` | JSON-RPC 2.0 类型化协议（Pydantic v2 模型） |
 | `core/transport/` | TCP NDJSON 传输层、IPC 事件广播 |
 | `core/loop.py` | ReAct Agent Loop 主循环 |
-| `core/llm/` | LLM Provider 抽象层 |
+| `core/llm/` | LLM Provider 抽象层（Anthropic / OpenAI 双协议） |
 | `core/tools/` | 工具注册、调用、参数校验 |
 | `core/permissions/` | 权限管理器、审批策略 |
 | `core/session/` | Session 持久化与恢复 |
@@ -69,9 +69,9 @@ cd SztuCode
 # 安装依赖
 uv sync
 
-# 配置 LLM API Key
+# 配置 LLM
 cp .env.example .env
-# 编辑 .env，填入 ANTHROPIC_API_KEY
+# 编辑 .env，选择 LLM provider（见下方）
 
 # 启动 daemon（后台进程）
 uv run sztu-code
@@ -85,6 +85,38 @@ uv run sztu run --goal "创建一个 hello.py 文件，打印 Hello World"
 # 启动 TUI（终端 UI）
 uv run sztu-tui
 ```
+
+### LLM Provider 选择
+
+项目支持两种 LLM 后端协议，通过 `SZTU_LLM_PROVIDER` 环境变量切换：
+
+**Anthropic（默认）** — 无需额外配置，沿用原有设置：
+
+```bash
+# .env
+ANTHROPIC_API_KEY=sk-ant-...
+SZTU_LLM_DEFAULT_MODEL=claude-sonnet-4-6
+# SZTU_LLM_PROVIDER 留空或设为 anthropic
+```
+
+**OpenAI 兼容（DeepSeek / GPT 等）** — 设置 `SZTU_LLM_PROVIDER=openai`：
+
+```bash
+# .env — DeepSeek 示例
+SZTU_LLM_PROVIDER=openai
+SZTU_LLM_DEFAULT_MODEL=deepseek-chat
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.deepseek.com
+```
+
+```bash
+# .env — OpenAI 官方示例
+SZTU_LLM_PROVIDER=openai
+SZTU_LLM_DEFAULT_MODEL=gpt-4o
+OPENAI_API_KEY=sk-xxx
+```
+
+Provider 在内部自动完成 Anthropic ↔ OpenAI 消息格式转换，上层 Agent Loop、工具调用、TUI 渲染均不受影响。
 
 ### 可用命令
 
@@ -143,12 +175,21 @@ uv run python scripts/gen_protocol_doc.py
 主要环境变量：
 
 ```bash
+# Core
 SZTU_HOST=127.0.0.1
 SZTU_PORT=7437
 SZTU_LOG_LEVEL=INFO
+
+# LLM Provider（自动选择）
+SZTU_LLM_PROVIDER=anthropic        # anthropic（默认）| openai
 SZTU_LLM_DEFAULT_MODEL=claude-sonnet-4-6
+ANTHROPIC_API_KEY=sk-ant-...       # Anthropic 用户的 key
+ANTHROPIC_BASE_URL=...             # Anthropic 自定义 endpoint
+OPENAI_API_KEY=sk-...              # OpenAI / DeepSeek 用户的 key
+OPENAI_BASE_URL=...                # OpenAI 自定义 endpoint（如 api.deepseek.com）
+
+# Agent
 SZTU_MAX_STEPS=20
-ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## 协议

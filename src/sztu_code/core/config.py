@@ -34,6 +34,7 @@ class AgentConfig:
 @dataclass
 class LlmConfig:
     default_model: str = _DEFAULT_MODEL
+    provider: str = "anthropic"  # "anthropic" | "openai"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
 
 
@@ -170,7 +171,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         llm = data["llm"]
         if not isinstance(llm, dict):
             raise SystemExit("Config error: [llm] must be a table")
-        unknown_llm: set[str] = set(llm.keys()) - {"default_model", "router"}
+        unknown_llm: set[str] = set(llm.keys()) - {"default_model", "provider", "router"}
         if unknown_llm:
             raise SystemExit(f"Unknown [llm] keys: {', '.join(sorted(unknown_llm))}")
         if "default_model" in llm:
@@ -178,6 +179,13 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, str):
                 raise SystemExit("Config error: llm.default_model must be a string")
             config.llm.default_model = val
+        if "provider" in llm:
+            val = llm["provider"]
+            if not isinstance(val, str) or val not in ("anthropic", "openai"):
+                raise SystemExit(
+                    "Config error: llm.provider must be 'anthropic' or 'openai'"
+                )
+            config.llm.provider = val
         if "router" in llm:
             val = llm["router"]
             if not isinstance(val, str):
@@ -330,6 +338,15 @@ def _apply_env(config: SztuConfig) -> None:
             raise SystemExit(
                 f"Config error: SZTU_MAX_STEPS must be an integer, got: {max_steps_str!r}"
             )
+
+    llm_provider = os.environ.get("SZTU_LLM_PROVIDER")
+    if llm_provider is not None:
+        if llm_provider not in ("anthropic", "openai"):
+            raise SystemExit(
+                    "Config error: SZTU_LLM_PROVIDER must be 'anthropic' or 'openai',"
+                    f" got: {llm_provider!r}"
+                )
+        config.llm.provider = llm_provider
 
     default_model = os.environ.get("SZTU_LLM_DEFAULT_MODEL")
     if default_model is not None:

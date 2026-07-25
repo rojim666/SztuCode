@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.0",       # 数据校验与序列化（含 JSON 模型等）
     "python-dotenv>=1.0",  # .env 文件解析
     "anthropic>=0.25",     # Anthropic LLM SDK（流式 + prompt caching）
+    "openai>=1.0",         # OpenAI LLM SDK（兼容 DeepSeek 等 OpenAI 协议）
     "textual>=0.75",       # 终端 UI 框架（sztu-tui）
     "httpx[socks]>=0.28.1",
 ]

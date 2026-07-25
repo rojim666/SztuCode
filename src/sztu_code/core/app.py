@@ -36,7 +36,7 @@ from sztu_code.core.bus.commands import (
 from sztu_code.core.bus.envelope import EventPushEnvelope
 from sztu_code.core.config import SztuConfig, get_config
 from sztu_code.core.events.bus import EventBus
-from sztu_code.core.llm.provider import AnthropicProvider
+from sztu_code.core.llm import create_provider
 from sztu_code.core.logging_setup import setup_logging
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.permissions.manager import PermissionManager
@@ -233,7 +233,7 @@ class CoreApp:
         sessions_root = Path("~/.sztu/sessions").expanduser()
         store = SessionStore(sessions_root)
         assert self._config is not None
-        compact_provider = AnthropicProvider(self._config.llm.default_model)
+        compact_provider = create_provider(self._config)
 
         self._mcp_manager = McpServerManager()
         if self._config.mcp.servers:

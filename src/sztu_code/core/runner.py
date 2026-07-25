@@ -12,8 +12,8 @@ from sztu_code.core.config import SztuConfig
 from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus, EventHandler
 from sztu_code.core.events.writer import EventWriter
+from sztu_code.core.llm import create_provider
 from sztu_code.core.llm.base import LLMProvider
-from sztu_code.core.llm.provider import AnthropicProvider
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.memory.loader import load_context_file
@@ -188,9 +188,7 @@ class AgentRunner:
 
             cancelled = False
             try:
-                provider: LLMProvider = self._provider or AnthropicProvider(
-                    self._config.llm.default_model
-                )
+                provider: LLMProvider = self._provider or create_provider(self._config)
                 if self._trace is not None:
                     provider = TracingProvider(
                         provider,
