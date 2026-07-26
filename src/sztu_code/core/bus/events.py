@@ -179,6 +179,16 @@ class PermissionDeniedEvent(BaseModel):
     ts: str
 
 
+class DenialInterventionEvent(BaseModel):
+    type: Literal["denial.intervention"] = "denial.intervention"
+    run_id: str
+    tool_name: str  # 触发熔断的工具名
+    consecutive_count: int
+    total_denials: int
+    message: str  # 注入给 LLM 的干预消息
+    ts: str
+
+
 class SubagentStartedEvent(BaseModel):
     type: Literal["subagent.started"] = "subagent.started"
     run_id: str          # 子 agent run_id
@@ -223,6 +233,7 @@ Event = Annotated[
     | SessionResumedEvent
     | SessionClosedEvent
     | ContextCompactedEvent
+    | DenialInterventionEvent
     | PermissionRequestedEvent
     | PermissionGrantedEvent
     | PermissionDeniedEvent

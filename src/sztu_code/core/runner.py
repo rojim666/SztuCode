@@ -17,6 +17,7 @@ from sztu_code.core.llm.base import LLMProvider
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.memory.loader import load_context_file
+from sztu_code.core.permissions.denial_tracker import DenialTracker
 from sztu_code.core.permissions.manager import PermissionManager
 from sztu_code.core.runs import RUNS_DIR, new_run_id
 from sztu_code.core.session.model import Session
@@ -218,9 +219,11 @@ class AgentRunner:
                     else run_path
                 )
                 compactor = Compactor(bus, session_dir, session_id_str)
+                denial_tracker = DenialTracker()
                 loop = AgentLoop(
                     provider, registry, bus,
                     permission_manager=self._permission_manager,
+                    denial_tracker=denial_tracker,
                     compactor=compactor,
                     compact_threshold=self._config.compaction.auto_threshold,
                     session_id=session_id_str,
