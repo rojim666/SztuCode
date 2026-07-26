@@ -9,6 +9,7 @@ from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
 from sztu_code.core.loop import AgentLoop
+from sztu_code.core.permissions.denial_tracker import DenialTracker
 from sztu_code.core.tools.base import BaseTool, ToolResult
 from sztu_code.core.tools.registry import ToolRegistry
 
@@ -255,3 +256,100 @@ async def test_assistant_message_blocks_added_to_context() -> None:
     blocks = assistant_msg["content"]
     assert blocks[0]["type"] == "text"  # type: ignore[index]
     assert blocks[0]["text"] == "answer"  # type: ignore[index]
+
+
+# ── denial tracker 集成测试 ────────────────────────────────────────────────────
+
+
+class _PermissionDenyTool(BaseTool):
+    """模拟权限被拒绝的工具，返回 permission_denied 错误。"""
+
+    name = "deny_tool"
+    description = "Always returns permission_denied"
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {"x": {"type": "string"}},
+        "required": ["x"],
+    }
+
+    async def invoke(self, params: dict[str, object]) -> ToolResult:
+        return ToolResult(
+            content="Permission denied by user.",
+            is_error=True,
+            error_type="permission_denied",
+        )
+
+
+# 功能：验证连续 permission_denied 触发 DenialTracker 注入干预消息到上下文
+# 设计：用 _PermissionDenyTool + DenialTracker(max_consecutive=2, max_total=100)，
+#       验证第 3 次工具调用前 context.messages 中出现干预消息（以 role=user 且包含 tool name）
+async def test_denial_tracker_injects_intervention_message() -> None:
+    tc = _tc("deny_tool", {"x": "1"}, uid="td1")
+    # 步骤 1-2：tool_use（被拒绝），步骤 3：end_turn
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc]),
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc]),
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc]),
+        LlmResponse(stop_reason="end_turn", text="switched strategy"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_PermissionDenyTool())
+    bus = EventBus()
+    # max_consecutive=2 所以第 2 次拒绝后触发干预
+    denial_tracker = DenialTracker(max_consecutive=2, max_total=100)
+    loop = AgentLoop(
+        provider, registry, bus,
+        denial_tracker=denial_tracker,
+    )
+    ctx = _ctx(max_steps=10)
+    await loop.run(ctx)
+
+    # 干预消息应出现在 context.messages 中（role=user, 非 assistant/tool_result）
+    intervention_msgs = [
+        m for m in ctx.messages
+        if m["role"] == "user"
+        and isinstance(m["content"], str)
+        and "repeatedly rejected" in str(m["content"])
+    ]
+    assert len(intervention_msgs) >= 1, (
+        f"Expected intervention message in context, got messages: {ctx.messages}"
+    )
+    # 最终应成功
+    assert ctx.status == "success"
+
+
+# 功能：验证 DenialTracker 发布 denial.intervention 事件
+# 设计：订阅 bus 收集事件，确认 DenialInterventionEvent 出现在事件流中
+async def test_denial_tracker_publishes_intervention_event() -> None:
+    tc = _tc("deny_tool", {"x": "1"}, uid="td2")
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc]),
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc]),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_PermissionDenyTool())
+    bus = EventBus()
+    events: list[BaseModel] = []
+
+    async def _collect(e: BaseModel) -> None:
+        events.append(e)
+
+    bus.subscribe(_collect)
+
+    denial_tracker = DenialTracker(max_consecutive=2, max_total=100)
+    loop = AgentLoop(
+        provider, registry, bus,
+        denial_tracker=denial_tracker,
+    )
+    ctx = _ctx(max_steps=5)
+    await loop.run(ctx)
+
+    intervention_events = [
+        e for e in events
+        if getattr(e, "type", "") == "denial.intervention"
+    ]
+    assert len(intervention_events) == 1
+    evt = intervention_events[0]
+    assert getattr(evt, "tool_name", "") == "deny_tool"
+    assert getattr(evt, "total_denials", 0) >= 2

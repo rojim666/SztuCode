@@ -14,7 +14,8 @@ from sztu_code.core.permissions.policy import (
     DEFAULT_POLICIES,
     PermissionDecision,
     ToolPolicy,
-    matches_outside_cwd,
+    _any_segment_matches_deny,
+    _any_segment_matches_outside_cwd,
     param_preview,
 )
 from sztu_code.core.permissions.storage import load_policy_file, save_policy_file
@@ -73,15 +74,15 @@ class PermissionManager:
         command = str(params.get("command", "")) if tool_name == "bash" else ""
         policy = self._policies.get(tool_name)
 
-        # Tier 1: deny_patterns（bash only，不可被缓存绕过）
-        if command and policy:
-            for pat in policy.deny_patterns:
-                if re.search(pat, command):
-                    logger.debug("permission: deny_pattern hit tool=%s", tool_name)
-                    return False, "auto_deny"
+        # Tier 1: deny_patterns（bash only，不可被缓存绕过）— 逐段检查复合命令
+        if command and policy and policy.deny_patterns:
+            if _any_segment_matches_deny(command, policy.deny_patterns):
+                logger.debug("permission: deny_pattern hit tool=%s", tool_name)
+                return False, "auto_deny"
 
-        # Tier 2: OUTSIDE_CWD_HEURISTICS（bash only，强制 ASK，不可被任何缓存绕过）
-        outside_cwd = bool(command and matches_outside_cwd(command))
+        # Tier 2: OUTSIDE_CWD_HEURISTICS（bash only，强制 ASK）
+        # 不可被任何缓存绕过 — 逐段检查复合命令
+        outside_cwd = bool(command and _any_segment_matches_outside_cwd(command))
 
         if not outside_cwd:
             # Tier 3: session always 缓存
@@ -137,7 +138,7 @@ class PermissionManager:
                 raw = await asyncio.wait_for(future, timeout=self._timeout_s)
             else:
                 raw = await future
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(tool_use_id, None)
             logger.info("permission: timeout tool_use_id=%s tool=%s", tool_use_id, tool_name)
             return False, "timeout"

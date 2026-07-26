@@ -136,11 +136,14 @@ class SpawnAgentTool(BaseTool):
         child_bus.subscribe(_bridge)
 
         child_registry = self._build_child_registry(child_bus, child_run_id, profile)
+        # 子 agent 使用独立的 DenialTracker，避免父子 agent 拒绝计数互相干扰
+        from sztu_code.core.permissions.denial_tracker import DenialTracker
         child_loop = AgentLoop(
             self._provider,
             child_registry,
             child_bus,
             permission_manager=self._permission_manager,
+            denial_tracker=DenialTracker(),
             session_id=self._session_id,
         )
 
