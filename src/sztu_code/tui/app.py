@@ -518,6 +518,7 @@ class KamaTuiApp(App[None]):
         self._session_id: str | None = None
         self._busy = False
         self._last_context_pct: float = 0.0
+        self._session_tokens: dict[str, int] = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
         self._slash_items: list[tuple[str, str]] = []
         self._subagent_run_ids: dict[str, str] = {}  # child run_id -> description
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
@@ -781,16 +782,28 @@ class KamaTuiApp(App[None]):
 
     # 生成 context 占用率的彩色进度条字符串
     def _render_ctx_bar(self, pct: float) -> str:
-        filled = int(pct * 20)
-        bar = "█" * filled + "░" * (20 - filled)
-        label = f"ctx:{pct * 100:.1f}%"
-        if pct >= 0.85:
+        width = 20
+        filled = int(pct * width)
+        bar = "█" * filled + "░" * (width - filled)
+        label = f"ctx {pct * 100:.0f}%"
+        if pct >= 0.90:
             color = "bold red"
-        elif pct >= 0.70:
+        elif pct >= 0.75:
             color = "yellow"
+        elif pct >= 0.50:
+            color = "green"
         else:
             color = "dim"
         return f"[{color}]{label} {bar}[/{color}]"
+
+    # 将大数字格式化为人类可读形式（如 1.2K、3.4M）
+    @staticmethod
+    def _fmt_tokens(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}K"
+        return str(n)
 
     # 根据连接和运行状态刷新顶部标题
     def _update_header(self, state: str) -> None:
@@ -871,6 +884,7 @@ class KamaTuiApp(App[None]):
                 await client.send_command("event.subscribe", params)
                 created = await client.send_command("session.create", {"mode": "chat"})
                 self._session_id = str(created["session_id"])
+                self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
                 log.info("session created session_id=%s", self._session_id)
                 prompt = self._prompt()
                 if prompt is not None:
@@ -1043,17 +1057,36 @@ class KamaTuiApp(App[None]):
             run_id = event.get("run_id", "")
             if run_id in self._subagent_run_ids:
                 return
+            inp = int(event.get("input_tokens") or 0)
+            out = int(event.get("output_tokens") or 0)
+            cache_read = int(event.get("cache_read_input_tokens") or 0)
+            cache_write = int(event.get("cache_creation_input_tokens") or 0)
+            model = str(event.get("model") or "")
+            # 累加到 session 总计
+            self._session_tokens["in"] += inp
+            self._session_tokens["out"] += out
+            self._session_tokens["cache_read"] += cache_read
+            self._session_tokens["cache_write"] += cache_write
+            ses = self._session_tokens
             pct = float(event.get("context_pct") or 0.0)
             self._last_context_pct = pct
             ctx_bar = self._render_ctx_bar(pct)
-            self._append(Static(
-                f"[dim]  tokens  "
-                f"in={event.get('input_tokens')} "
-                f"out={event.get('output_tokens')} "
-                f"cache={event.get('cache_read_input_tokens')}[/dim]"
-                f"  {ctx_bar}",
-                classes="usage",
-            ))
+            # 本轮用量
+            parts = [f"in={self._fmt_tokens(inp)}", f"out={self._fmt_tokens(out)}"]
+            if cache_read:
+                parts.append(f"cache↗{self._fmt_tokens(cache_read)}")
+            if cache_write:
+                parts.append(f"cache↖{self._fmt_tokens(cache_write)}")
+            step_line = f"[dim]  turn: {'  '.join(parts)}  {ctx_bar}[/dim]"
+            # 会话累计
+            ses_parts = [
+                f"in={self._fmt_tokens(ses['in'])}",
+                f"out={self._fmt_tokens(ses['out'])}",
+            ]
+            if ses["cache_read"]:
+                ses_parts.append(f"cache↗{self._fmt_tokens(ses['cache_read'])}")
+            ses_line = f"[dim]  session: {'  '.join(ses_parts)}  [bold]{model}[/bold][/dim]"
+            self._append(Static(f"{step_line}\n{ses_line}", classes="usage"))
 
         elif t == "context.compacted":
             orig = event.get("original_tokens", 0)

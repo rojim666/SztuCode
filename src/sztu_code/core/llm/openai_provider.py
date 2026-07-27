@@ -293,6 +293,7 @@ class OpenAIProvider:
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=0,
                 context_pct=context_pct,
+                model=self._model,
                 ts=_now(),
             )
         )

@@ -65,6 +65,7 @@ class SztuCodeDesktop(tk.Tk):
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
         self._mode: str = "normal"  # 当前权限模式
+        self._session_tokens: dict[str, int] = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
 
         self._setup_ui()
         self._start_connection()
@@ -426,6 +427,7 @@ class SztuCodeDesktop(tk.Tk):
 
         elif kind == "session_ready":
             self._session_id = str(evt.data.get("session_id", ""))
+            self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
             self._input_text.config(state=tk.NORMAL)
 
         elif kind == "session_lost":
@@ -533,12 +535,47 @@ class SztuCodeDesktop(tk.Tk):
         row = self._add_agent_bubble(token)
         self._scroll_bottom()
 
+    @staticmethod
+    def _fmt_tokens(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}K"
+        return str(n)
+
     def _handle_usage(self, event: dict[str, Any]) -> None:
-        """LLM 用量统计"""
-        inp = event.get("input_tokens", 0)
-        out = event.get("output_tokens", 0)
-        model = event.get("model", "")
-        self._add_agent_bubble(f"📈 Tokens: {inp} in / {out} out  ({model})")
+        """LLM 用量统计 — 本轮 + 会话累计"""
+        inp = int(event.get("input_tokens") or 0)
+        out = int(event.get("output_tokens") or 0)
+        cache_read = int(event.get("cache_read_input_tokens") or 0)
+        cache_write = int(event.get("cache_creation_input_tokens") or 0)
+        model = str(event.get("model") or "")
+        pct = float(event.get("context_pct") or 0.0)
+        # 累加
+        ses = self._session_tokens
+        ses["in"] += inp
+        ses["out"] += out
+        ses["cache_read"] += cache_read
+        ses["cache_write"] += cache_write
+        # 本轮
+        turn = f"in={self._fmt_tokens(inp)}  out={self._fmt_tokens(out)}"
+        if cache_read:
+            turn += f"  cache↗{self._fmt_tokens(cache_read)}"
+        if cache_write:
+            turn += f"  cache↖{self._fmt_tokens(cache_write)}"
+        # 会话累计
+        s_sum = f"in={self._fmt_tokens(ses['in'])}  out={self._fmt_tokens(ses['out'])}"
+        if ses["cache_read"]:
+            s_sum += f"  cache↗{self._fmt_tokens(ses['cache_read'])}"
+        # context 水位条
+        filled = int(pct * 10)
+        bar = "█" * filled + "░" * (10 - filled)
+        ctx = f"ctx {pct * 100:.0f}%"
+        self._add_agent_bubble(
+            f"📊 turn: {turn}\n"
+            f"📁 session: {s_sum}  [{model}]\n"
+            f"📏 {ctx}  {bar}"
+        )
 
     def _handle_tool_started(self, event: dict[str, Any]) -> None:
         tool_name = event.get("tool_name", "unknown")

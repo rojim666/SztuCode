@@ -88,6 +88,7 @@ class LlmUsageEvent(BaseModel):
     cache_read_input_tokens: int
     cache_creation_input_tokens: int
     context_pct: float = 0.0
+    model: str = ""  # 当前使用的模型名
     ts: str
 
 
