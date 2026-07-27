@@ -40,6 +40,7 @@ from sztu_code.core.llm import create_provider
 from sztu_code.core.logging_setup import setup_logging
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.permissions.manager import PermissionManager
+from sztu_code.core.permissions.policy import PermissionMode
 from sztu_code.core.permissions.storage import load_policy_file
 from sztu_code.core.runner import AgentRunner
 from sztu_code.core.runs import events_file, new_run_id
@@ -140,7 +141,27 @@ class CoreApp:
         self._permission_manager.respond(cmd.tool_use_id, cmd.decision)
         return PermissionRespondResult()
 
-    # 手动压缩 session thread，将摘要持久化写入 thread.jsonl
+    # 接收客户端权限模式切换请求，设置 PermissionManager 模式并广播事件
+    async def _permission_set_mode_handler(self, params: dict[str, Any]) -> dict[str, Any]:
+        mode_str = str(params.get("mode", "normal"))
+        try:
+            new_mode = PermissionMode(mode_str)
+        except ValueError:
+            return {"ok": False, "error": f"invalid mode: {mode_str!r}"}
+        if self._permission_manager is None:
+            return {"ok": False, "error": "PermissionManager not initialized"}
+        old_mode = self._permission_manager.get_mode()
+        await self._permission_manager.set_mode(new_mode)
+        # 广播模式变更事件到所有订阅客户端
+        if self._bus is not None:
+            self._bus.publish(
+                "permission.mode_changed",
+                old_mode=old_mode.value,
+                new_mode=new_mode.value,
+                ts=datetime.datetime.now(UTC).isoformat(),
+            )
+        logger.info("permission mode: %s → %s", old_mode.value, new_mode.value)
+        return {"ok": True, "mode": new_mode.value}
     async def _session_compact_handler(self, params: dict[str, Any]) -> SessionCompactResult:
         assert self._sessions is not None
         cmd = SessionCompactCommand.model_validate(params)
@@ -267,6 +288,7 @@ class CoreApp:
         server.register("session.get_history", self._session_history_handler)
         server.register("session.close", self._session_close_handler)
         server.register("permission.respond", self._permission_respond_handler)
+        server.register("permission.set_mode", self._permission_set_mode_handler)
         server.register("session.compact", self._session_compact_handler)
 
         addr = await server.start()

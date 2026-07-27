@@ -467,6 +467,10 @@ class KamaTuiApp(App[None]):
     TITLE = "SztuCode"
     BINDINGS = [
         Binding("ctrl+q", "quit", "quit"),
+        Binding("ctrl+a", "mode_auto", "auto mode"),
+        Binding("ctrl+e", "mode_accept_edits", "accept edits"),
+        Binding("ctrl+p", "mode_plan", "plan mode"),
+        Binding("ctrl+n", "mode_normal", "normal mode"),
     ]
     CSS = """
     Screen { background: $background; }
@@ -517,6 +521,7 @@ class KamaTuiApp(App[None]):
         self._slash_items: list[tuple[str, str]] = []
         self._subagent_run_ids: dict[str, str] = {}  # child run_id -> description
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
+        self._mode: str = "normal"  # 当前权限模式
 
     def compose(self) -> ComposeResult:
         yield Label("[bold]SztuCode[/bold]  [dim]connecting...[/dim]", id="header")
@@ -609,6 +614,49 @@ class KamaTuiApp(App[None]):
             except (IpcError, RuntimeError, OSError):
                 self._append(Static("[yellow]warning: failed to close session[/yellow]"))
         self.exit()
+
+    # 切换到 Auto 模式：自动批准所有工具调用
+    async def action_mode_auto(self) -> None:
+        await self._set_mode("auto")
+
+    # 切换到 Accept Edits 模式：自动批准编辑类工具（write_file, note_save）
+    async def action_mode_accept_edits(self) -> None:
+        await self._set_mode("accept_edits")
+
+    # 切换到 Plan 模式：只允许只读工具，拒绝所有写入和执行
+    async def action_mode_plan(self) -> None:
+        await self._set_mode("plan")
+
+    # 切换回 Normal 模式：走完整权限检查流程
+    async def action_mode_normal(self) -> None:
+        await self._set_mode("normal")
+
+    # 向 daemon 发送模式切换命令并更新本地状态
+    async def _set_mode(self, mode: str) -> None:
+        if self._client is None:
+            self._append(Static("[yellow]not connected[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("permission.set_mode", {"mode": mode})
+            if result.get("ok"):
+                self._mode = mode
+                self._update_header("ready")
+                mode_labels = {
+                    "auto": "[bold cyan]Auto mode on[/bold cyan] — all tools auto-approved",
+                    "accept_edits": "[bold green]Accept edits on[/bold green] — edit tools auto-approved",
+                    "plan": "[bold yellow]Plan mode on[/bold yellow] — read-only, no writes or execution",
+                    "normal": "[dim]Normal mode[/dim] — full permission checks",
+                }
+                self._append(Static(
+                    mode_labels.get(mode, f"Mode: {mode}"), classes="log-line",
+                ))
+            else:
+                self._append(Static(
+                    f"[red]failed to set mode: {result.get('error', 'unknown')}[/red]",
+                    classes="log-line",
+                ))
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]mode switch error: {e}[/red]", classes="log-line"))
 
     # 将输入框提交内容发送给当前 chat session；用 worker 发送，避免 await 阻塞 App 消息泵
     async def on_chat_text_area_submitted(self, event: ChatTextArea.Submitted) -> None:
@@ -751,9 +799,18 @@ class KamaTuiApp(App[None]):
             "disconnected": "red",
             "connecting": "dim",
         }.get(state, "dim")
+        # 模式标识
+        mode_styles = {
+            "auto": ("[bold cyan]AUTO[/bold cyan]", "auto mode on"),
+            "accept_edits": ("[bold green]ACCEPT EDITS[/bold green]", "accept edits on"),
+            "plan": ("[bold yellow]PLAN[/bold yellow]", "plan mode on"),
+            "normal": ("", ""),
+        }
+        mode_display, _ = mode_styles.get(self._mode, ("", ""))
+        mode_str = f"  {mode_display}" if mode_display else ""
         header.update(
             f"[bold]SztuCode[/bold]  [dim]{self._host}:{self._port}[/dim]"
-            f"{session}  [{color}]{state}[/{color}]"
+            f"{session}  [{color}]{state}[/{color}]{mode_str}"
         )
 
     # 管理 SocketClient 生命周期：连接、订阅事件、断线重连
@@ -1044,6 +1101,11 @@ class KamaTuiApp(App[None]):
                         p.read_only = False
                         p.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
                         p.focus()
+
+        elif t == "permission.mode_changed":
+            new_mode = str(event.get("new_mode", "normal"))
+            self._mode = new_mode
+            self._update_header("ready")
 
         elif t == "log.line":
             level = event.get("level", "INFO")

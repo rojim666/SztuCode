@@ -189,6 +189,13 @@ class DenialInterventionEvent(BaseModel):
     ts: str
 
 
+class PermissionModeChangedEvent(BaseModel):
+    type: Literal["permission.mode_changed"] = "permission.mode_changed"
+    old_mode: str
+    new_mode: str
+    ts: str
+
+
 class SubagentStartedEvent(BaseModel):
     type: Literal["subagent.started"] = "subagent.started"
     run_id: str          # 子 agent run_id
@@ -239,6 +246,7 @@ Event = Annotated[
     | PermissionDeniedEvent
     | SubagentStartedEvent
     | SubagentFinishedEvent
-    | SkillInvokedEvent,
+    | SkillInvokedEvent
+    | PermissionModeChangedEvent,
     Discriminator("type"),
 ]

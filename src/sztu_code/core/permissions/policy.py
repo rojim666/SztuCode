@@ -12,6 +12,45 @@ class PermissionDecision(StrEnum):
     ASK = "ask"
 
 
+class PermissionMode(StrEnum):
+    """权限模式：控制工具调用的审批行为"""
+    NORMAL = "normal"           # 默认模式，走完整权限检查流程
+    AUTO = "auto"               # 自动批准所有工具调用
+    ACCEPT_EDITS = "accept_edits"  # 自动批准编辑操作，其他仍需审批
+    PLAN = "plan"               # 只允许只读工具，拒绝所有写入/执行
+
+
+# 编辑类工具（Accept Edits 模式下自动批准）
+_EDIT_TOOLS: set[str] = {"write_file", "note_save"}
+
+# 只读工具（Plan 模式下允许）
+_READONLY_TOOLS: set[str] = {
+    "read_file", "list_dir",
+    "task_get", "task_list",
+}
+
+# 写入/执行类工具（Plan 模式下拒绝）
+_WRITE_EXEC_TOOLS: set[str] = {
+    "write_file", "bash", "note_save",
+    "task_create", "task_update",
+}
+
+
+# 检查工具是否属于编辑类
+def is_edit_tool(tool_name: str) -> bool:
+    return tool_name in _EDIT_TOOLS
+
+
+# 检查工具是否属于只读类
+def is_readonly_tool(tool_name: str) -> bool:
+    return tool_name in _READONLY_TOOLS
+
+
+# 检查工具是否属于写入/执行类
+def is_write_exec_tool(tool_name: str) -> bool:
+    return tool_name in _WRITE_EXEC_TOOLS
+
+
 # 检测 bash 命令是否操作 cwd 之外路径的正则规则列表（强制触发 ASK，不可被 allow_patterns 绕过）
 OUTSIDE_CWD_HEURISTICS: list[str] = [
     r"(^|\s)/[^\s]",              # absolute path

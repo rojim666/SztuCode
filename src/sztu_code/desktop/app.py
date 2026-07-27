@@ -64,6 +64,7 @@ class SztuCodeDesktop(tk.Tk):
         self._ui_queue: queue.Queue[_UIEvent] = queue.Queue()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+        self._mode: str = "normal"  # 当前权限模式
 
         self._setup_ui()
         self._start_connection()
@@ -107,6 +108,28 @@ class SztuCodeDesktop(tk.Tk):
             fg=TEXT_MUTED, bg=SIDEBAR_BG, font=FONT_SMALL,
         )
         self._addr_label.pack(side=tk.LEFT)
+
+        # 模式切换按钮
+        self._mode_buttons = tk.Frame(self._header, bg=SIDEBAR_BG)
+        self._mode_buttons.pack(side=tk.RIGHT, padx=8)
+
+        for label, mode, color in [
+            ("N", "normal", "#6c7086"),
+            ("P", "plan", "#f9e2af"),
+            ("E", "accept_edits", "#a6e3a1"),
+            ("A", "auto", "#89b4fa"),
+        ]:
+            btn = tk.Button(
+                self._mode_buttons, text=label, font=("Segoe UI", 9, "bold"),
+                bg=color if label in ("N",) else SIDEBAR_BG,
+                fg=color, borderwidth=0, padx=8, pady=2,
+                cursor="hand2", relief=tk.FLAT,
+                activebackground=color, activeforeground=BG,
+                command=lambda m=mode: self._set_mode(m),
+            )
+            btn.pack(side=tk.RIGHT, padx=2)
+            self._mode_buttons._btns = getattr(self._mode_buttons, "_btns", {})  # type: ignore[attr-defined]
+            self._mode_buttons._btns[mode] = btn  # type: ignore[attr-defined]
 
         # 主聊天区域
         chat_frame = tk.Frame(self, bg=CHAT_BG)
@@ -157,6 +180,12 @@ class SztuCodeDesktop(tk.Tk):
             activebackground="#2563eb", activeforeground=TEXT_PRIMARY,
         )
         send_btn.pack(side=tk.RIGHT, padx=(0, 12), pady=10)
+
+        # 全局快捷键
+        self.bind("<Control-a>", lambda e: self._set_mode("auto"))
+        self.bind("<Control-e>", lambda e: self._set_mode("accept_edits"))
+        self.bind("<Control-p>", lambda e: self._set_mode("plan"))
+        self.bind("<Control-n>", lambda e: self._set_mode("normal"))
 
     def _on_canvas_resize(self, event: tk.Event) -> None:
         self._chat_canvas.itemconfig(self._chat_canvas_window, width=event.width)
@@ -287,6 +316,24 @@ class SztuCodeDesktop(tk.Tk):
             "session_id": self._session_id,
             "content": content,
         })
+
+    # ── 模式切换 ───────────────────────────────────────────────────────
+    def _set_mode(self, mode: str) -> None:
+        """发送模式切换命令到 daemon"""
+        self._run_async("permission.set_mode", {"mode": mode})
+        # 本地 UI 即时更新按钮状态
+        for m, btn in getattr(self._mode_buttons, "_btns", {}).items():
+            if m == mode:
+                btn.config(bg={
+                    "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                    "plan": "#f9e2af",
+                }.get(mode, "#6c7086"), fg=BG)
+            else:
+                btn.config(bg=SIDEBAR_BG, fg={
+                    "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                    "plan": "#f9e2af", "normal": "#6c7086",
+                }.get(m, "#6c7086"))
+        self._mode = mode
 
     # ── 连接管理 ───────────────────────────────────────────────────────
     def _start_connection(self) -> None:
@@ -439,6 +486,23 @@ class SztuCodeDesktop(tk.Tk):
 
         elif event_type == "permission.requested":
             self._handle_permission_request(event)
+
+        elif event_type == "permission.mode_changed":
+            new_mode = event.get("new_mode", "normal")
+            if new_mode in ("auto", "accept_edits", "plan", "normal"):
+                # 更新本地按钮状态
+                for m, btn in getattr(self._mode_buttons, "_btns", {}).items():
+                    if m == new_mode:
+                        btn.config(bg={
+                            "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                            "plan": "#f9e2af",
+                        }.get(new_mode, "#6c7086"), fg=BG)
+                    else:
+                        btn.config(bg=SIDEBAR_BG, fg={
+                            "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                            "plan": "#f9e2af", "normal": "#6c7086",
+                        }.get(m, "#6c7086"))
+                self._mode = new_mode
 
         elif event_type == "log.message":
             pass  # 日志消息静默忽略（不在 TUI 中显示）
