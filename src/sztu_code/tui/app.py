@@ -467,10 +467,10 @@ class KamaTuiApp(App[None]):
     TITLE = "SztuCode"
     BINDINGS = [
         Binding("ctrl+q", "quit", "quit"),
-        Binding("ctrl+a", "mode_auto", "auto mode"),
-        Binding("ctrl+e", "mode_accept_edits", "accept edits"),
-        Binding("ctrl+p", "mode_plan", "plan mode"),
-        Binding("ctrl+n", "mode_normal", "normal mode"),
+        Binding("ctrl+shift+a", "mode_auto", "auto mode"),
+        Binding("ctrl+shift+e", "mode_accept_edits", "accept edits"),
+        Binding("ctrl+shift+p", "mode_plan", "plan mode"),
+        Binding("ctrl+shift+n", "mode_normal", "normal mode"),
     ]
     CSS = """
     Screen { background: $background; }
@@ -668,6 +668,12 @@ class KamaTuiApp(App[None]):
             event.text_area.text = ""
             if self._client is not None and self._session_id is not None and not self._busy:
                 self.run_worker(self._do_compact(), name="compact", exclusive=False)
+            return
+        # 检测模式切换指令：/auto /edits /plan /normal
+        mode_map = {"/auto": "auto", "/edits": "accept_edits", "/plan": "plan", "/normal": "normal"}
+        if content in mode_map:
+            event.text_area.text = ""
+            self.run_worker(self._set_mode(mode_map[content]), name="set_mode", exclusive=False)
             return
         if self._client is None or self._session_id is None or self._busy:
             self._append(Static("[yellow]agent busy or disconnected[/yellow]", classes="log-line"))
