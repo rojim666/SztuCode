@@ -154,11 +154,13 @@ class CoreApp:
         await self._permission_manager.set_mode(new_mode)
         # 广播模式变更事件到所有订阅客户端
         if self._bus is not None:
+            from sztu_code.core.bus.events import PermissionModeChangedEvent
             self._bus.publish(
-                "permission.mode_changed",
-                old_mode=old_mode.value,
-                new_mode=new_mode.value,
-                ts=datetime.datetime.now(UTC).isoformat(),
+                PermissionModeChangedEvent(
+                    old_mode=old_mode.value,
+                    new_mode=new_mode.value,
+                    ts=datetime.datetime.now(UTC).isoformat(),
+                )
             )
         logger.info("permission mode: %s → %s", old_mode.value, new_mode.value)
         return {"ok": True, "mode": new_mode.value}
