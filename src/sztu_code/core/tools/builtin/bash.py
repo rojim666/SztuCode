@@ -24,8 +24,7 @@ _READ_ONLY_COMMANDS: set[str] = {
     "grep", "rg", "awk", "sed", "wc", "file", "stat",
     "find", "which", "whereis", "type", "echo", "printf",
     "date", "env", "printenv", "pwd", "whoami", "uname",
-    "git", "python", "python3", "node", "npm", "uv", "pip",
-    "cargo", "rustc", "go", "javac", "java",
+    "git", "python", "python3", "node",
 }
 
 # 危险路径模式 — 操作工作区外或提权的命令
