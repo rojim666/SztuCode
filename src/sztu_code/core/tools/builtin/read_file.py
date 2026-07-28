@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 
 _MAX_BYTES = 512 * 1024  # 512 KB
 
@@ -17,6 +18,8 @@ class ReadFileParams(BaseModel):
 class ReadFileTool(BaseTool):
     params_model = ReadFileParams
     name = "read_file"
+    required_permission = ToolPermission.READ_ONLY
+    aliases: ClassVar[list[str]] = ["read", "Read"]
     description = (
         "Read the text content of a file. "
         "Path must be relative to the current working directory. "

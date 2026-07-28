@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.session.store import SessionStore
-from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 
 
 class NoteSaveParams(BaseModel):
@@ -14,6 +14,8 @@ class NoteSaveParams(BaseModel):
 class NoteSaveTool(BaseTool):
     params_model = NoteSaveParams
     name = "note_save"
+    required_permission = ToolPermission.WORKSPACE_WRITE
+    aliases: ClassVar[list[str]] = []
     description = (
         "Save a concise fact or decision to this session's notes. "
         "These notes are visible in future turns of the same session."

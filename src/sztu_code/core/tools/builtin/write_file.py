@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 
 _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
 
@@ -18,6 +19,8 @@ class WriteFileParams(BaseModel):
 class WriteFileTool(BaseTool):
     params_model = WriteFileParams
     name = "write_file"
+    required_permission = ToolPermission.WORKSPACE_WRITE
+    aliases: ClassVar[list[str]] = ["write", "Write"]
     description = (
         "Write text content to a file, creating it (and any parent directories) if it "
         "does not exist, or overwriting it if it does. "

@@ -1,4 +1,5 @@
 from sztu_code.core.tools.builtin.bash import BashTool
+from sztu_code.core.tools.builtin.edit_file import EditFileTool
 from sztu_code.core.tools.builtin.list_dir import ListDirTool
 from sztu_code.core.tools.builtin.note_save import NoteSaveTool
 from sztu_code.core.tools.builtin.read_file import ReadFileTool
@@ -10,6 +11,7 @@ from sztu_code.core.tools.builtin.write_file import WriteFileTool
 
 __all__ = [
     "BashTool",
+    "EditFileTool",
     "ListDirTool",
     "NoteSaveTool",
     "ReadFileTool",

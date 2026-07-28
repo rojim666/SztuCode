@@ -95,21 +95,46 @@ class PermissionManager:
         self._mode_listeners.append(listener)
 
     # 根据当前模式评估工具权限，在进入完整 check 流程之前应用模式策略
-    def _evaluate_mode(self, tool_name: str) -> tuple[bool, str] | None:
-        """返回 (allowed, reason) 或 None 表示继续正常流程"""
+    def _evaluate_mode(
+        self, tool_name: str, tool_permission: Any | None = None,
+    ) -> tuple[bool, str] | None:
+        """返回 (allowed, reason) 或 None 表示继续正常流程。
+
+        tool_permission: 来自 ToolRegistry 的工具权限级别（ToolPermission enum），
+                         若为 None 则回退到静态分类。
+        """
+        # 从 ToolPermission 推导工具类别
+        from sztu_code.core.tools.base import ToolPermission
+        is_readonly = (
+            tool_permission == ToolPermission.READ_ONLY
+            if tool_permission is not None
+            else is_readonly_tool(tool_name)
+        )
+        is_edit = (
+            tool_permission in (ToolPermission.WORKSPACE_WRITE, ToolPermission.READ_ONLY)
+            if tool_permission is not None
+            else is_edit_tool(tool_name)
+        )
+        is_write = (
+            tool_permission in (ToolPermission.WORKSPACE_WRITE, ToolPermission.DANGER_FULL_ACCESS)
+            if tool_permission is not None
+            else is_write_exec_tool(tool_name)
+        )
+
         if self._mode == PermissionMode.AUTO:
             return True, "auto_mode"
         if self._mode == PermissionMode.ACCEPT_EDITS:
-            if is_edit_tool(tool_name):
+            if is_edit or tool_name in ("write_file", "edit_file", "note_save"):
                 return True, "accept_edits_mode"
-            return None  # 非编辑工具走正常流程
+            return None
         if self._mode == PermissionMode.PLAN:
-            if is_readonly_tool(tool_name):
+            if is_readonly or tool_name in ("read_file", "list_dir", "task_get", "task_list"):
                 return True, "plan_mode_readonly"
-            if is_write_exec_tool(tool_name):
+            if is_write or tool_name in ("write_file", "edit_file", "bash", "note_save",
+                                          "task_create", "task_update"):
                 return False, "plan_mode_blocked"
-            return None  # 未分类工具走正常流程
-        return None  # NORMAL 模式走正常流程
+            return None
+        return None
 
     # 检查权限；如需 ask 则向客户端发事件并等待响应；返回 (allowed, decision_str)
     async def check_and_wait(
@@ -119,14 +144,18 @@ class PermissionManager:
         params: dict[str, Any],
         session_id: str,
         event_emitter: Callable[[dict[str, Any]], Awaitable[None]],
+        *,
+        tool_permission: Any | None = None,
     ) -> tuple[bool, str]:
+        # 动态权限分级：若提供 registry，以此覆盖工具默认权限级别
+        actual_permission = tool_permission
         # 模式优先检查 — AUTO/ACCEPT_EDITS/PLAN 模式下跳过权限审批
-        mode_result = self._evaluate_mode(tool_name)
+        mode_result = self._evaluate_mode(tool_name, actual_permission)
         if mode_result is not None:
             allowed, reason = mode_result
             logger.debug(
-                "permission: mode=%s tool=%s allowed=%s reason=%s",
-                self._mode, tool_name, allowed, reason,
+                "permission: mode=%s tool=%s allowed=%s reason=%s permission=%s",
+                self._mode, tool_name, allowed, reason, actual_permission,
             )
             return allowed, reason
 

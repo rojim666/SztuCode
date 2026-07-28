@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 
 _MAX_DEPTH = 4
 _MAX_ENTRIES = 200
@@ -19,6 +20,8 @@ class ListDirParams(BaseModel):
 class ListDirTool(BaseTool):
     params_model = ListDirParams
     name = "list_dir"
+    required_permission = ToolPermission.READ_ONLY
+    aliases: ClassVar[list[str]] = ["ls", "List"]
     description = (
         "List the contents of a directory as a tree. "
         "Path must be relative to the current working directory. "

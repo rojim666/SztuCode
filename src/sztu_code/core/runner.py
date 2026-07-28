@@ -27,6 +27,7 @@ from sztu_code.core.subagent.tool import AgentResultTool, SpawnAgentTool
 from sztu_code.core.task.manager import TaskManager
 from sztu_code.core.tools.builtin import (
     BashTool,
+    EditFileTool,
     ListDirTool,
     NoteSaveTool,
     ReadFileTool,
@@ -97,7 +98,7 @@ class AgentRunner:
             return allowed is None or name in allowed
 
         registry = ToolRegistry()
-        for t in [ReadFileTool(), BashTool(), WriteFileTool(), ListDirTool()]:
+        for t in [ReadFileTool(), BashTool(), WriteFileTool(), EditFileTool(), ListDirTool()]:
             if _ok(t.name):
                 registry.register(t)
         for t in [

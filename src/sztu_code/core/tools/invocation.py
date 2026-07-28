@@ -106,12 +106,16 @@ async def invoke_tool(
         async def _emit_permission(raw: dict[str, Any]) -> None:
             await bus.publish(PermissionRequestedEvent(**raw, run_id=run_id))
 
+        # 获取工具的动态权限级别（bash 根据命令内容分级）
+        tool_permission = tool.classify_permission(dict(tool_call.input))
+
         allowed, decision = await permission_manager.check_and_wait(
             tool_use_id=tool_call.id,
             tool_name=tool_call.name,
             params=dict(tool_call.input),
             session_id=session_id,
             event_emitter=_emit_permission,
+            tool_permission=tool_permission,
         )
         if allowed:
             if decision not in ("auto_allow",):
