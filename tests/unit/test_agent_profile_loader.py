@@ -44,7 +44,7 @@ def test_toml_parsed(tmp_path: Path) -> None:
 description = "测试角色"
 system_prompt = "你是测试助手。"
 allowed_tools = ["read_file", "bash"]
-model = "claude-sonnet-4-6"
+model = "test-model-id"
 """
     p = tmp_path / "tester.toml"
     p.write_text(content, encoding="utf-8")
@@ -55,7 +55,7 @@ model = "claude-sonnet-4-6"
     assert profile.system_prompt == "你是测试助手。"
     assert "read_file" in profile.allowed_tools
     assert "bash" in profile.allowed_tools
-    assert profile.model == "claude-sonnet-4-6"
+    assert profile.model == "test-model-id"
 
 
 # 功能：项目本地角色配置应覆盖内建同名配置

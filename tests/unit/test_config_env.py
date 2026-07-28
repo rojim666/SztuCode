@@ -48,6 +48,49 @@ def test_missing_env_file_silent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert cfg.port == 7437
 
 
+def test_model_is_empty_when_no_model_environment_variable_is_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SZTU_CLIENT_SETTINGS", str(tmp_path / "missing-settings.json"))
+    monkeypatch.setenv("SZTU_CONFIG", str(tmp_path / "missing-config.toml"))
+    monkeypatch.delenv("SZTU_LLM_DEFAULT_MODEL", raising=False)
+    monkeypatch.delenv("KAMA_LLM_DEFAULT_MODEL", raising=False)
+
+    cfg = get_config()
+
+    assert cfg.llm.default_model == ""
+
+
+def test_legacy_kama_model_environment_variable_is_supported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_env(tmp_path / ".env", "KAMA_LLM_DEFAULT_MODEL=legacy-model\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SZTU_LLM_DEFAULT_MODEL", raising=False)
+    monkeypatch.delenv("KAMA_LLM_DEFAULT_MODEL", raising=False)
+
+    cfg = get_config()
+
+    assert cfg.llm.default_model == "legacy-model"
+
+
+def test_sztu_model_environment_variable_takes_priority_over_legacy_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_env(
+        tmp_path / ".env",
+        "KAMA_LLM_DEFAULT_MODEL=legacy-model\nSZTU_LLM_DEFAULT_MODEL=sztu-model\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("KAMA_LLM_DEFAULT_MODEL", raising=False)
+    monkeypatch.delenv("SZTU_LLM_DEFAULT_MODEL", raising=False)
+
+    cfg = get_config()
+
+    assert cfg.llm.default_model == "sztu-model"
+
+
 # 功能：验证 .env 中设置的 SZTU_CONFIG 能正确影响 TOML 配置文件的加载路径
 # 设计：.env 指向自定义 TOML 文件，TOML 中写入不同端口，确认 .env 在 TOML 加载前被读取（优先级链的正确顺序）
 def test_dotenv_before_toml_kama_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

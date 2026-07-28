@@ -14,14 +14,7 @@ from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmU
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
-_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "deepseek-chat": 128_000,
-    "deepseek-reasoner": 128_000,
-    "gpt-4o": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 8_192,
-    "gpt-3.5-turbo": 16_384,
-}
+_DEFAULT_CONTEXT_WINDOW = 128_000
 
 _MAX_STREAM_RETRIES = 3
 _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
@@ -29,9 +22,9 @@ _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
 log = logging.getLogger(__name__)
 
 
-# 返回指定模型的最大 context window token 数
-def _context_window(model: str) -> int:
-    return _MODEL_CONTEXT_WINDOWS.get(model, 128_000)
+# Return the conservative context window used for usage display.
+def _context_window() -> int:
+    return _DEFAULT_CONTEXT_WINDOW
 
 
 _SYSTEM_PROMPT = (
@@ -283,7 +276,7 @@ class OpenAIProvider:
             if prompt_details is not None:
                 cache_read = getattr(prompt_details, "cached_tokens", 0) or 0
 
-        context_pct = input_tokens / _context_window(self._model) if input_tokens > 0 else 0.0
+        context_pct = input_tokens / _context_window() if input_tokens > 0 else 0.0
 
         await bus.publish(
             LlmUsageEvent(

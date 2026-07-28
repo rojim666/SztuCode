@@ -13,11 +13,7 @@ from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmU
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
-_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5-20251001": 200_000,
-    "claude-opus-4-7": 200_000,
-}
+_DEFAULT_CONTEXT_WINDOW = 128_000
 
 _MAX_STREAM_RETRIES = 3
 _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
@@ -25,9 +21,9 @@ _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
 log = logging.getLogger(__name__)
 
 
-# 返回指定模型的最大 context window token 数
-def _context_window(model: str) -> int:
-    return _MODEL_CONTEXT_WINDOWS.get(model, 200_000)
+# Return the conservative context window used for usage display.
+def _context_window() -> int:
+    return _DEFAULT_CONTEXT_WINDOW
 
 
 _SYSTEM_PROMPT = (
@@ -50,7 +46,7 @@ class AnthropicProvider:
             if not api_key:
                 raise SystemExit("ANTHROPIC_API_KEY not set")
             base_url = os.environ.get("ANTHROPIC_BASE_URL")
-            kwargs: dict[str, str] = {"api_key": api_key}
+            kwargs: dict[str, Any] = {"api_key": api_key}
             if base_url:
                 kwargs["base_url"] = base_url
             self._client: Any = anthropic.AsyncAnthropic(**kwargs)
@@ -129,7 +125,7 @@ class AnthropicProvider:
         usage = final_message.usage
         cache_read: int = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_create: int = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        context_pct = usage.input_tokens / _context_window(self._model)
+        context_pct = usage.input_tokens / _context_window()
 
         await bus.publish(
             LlmUsageEvent(

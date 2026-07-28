@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 
 # 根据配置创建对应的 LLM provider 实例
 def create_provider(config: SztuConfig) -> LLMProvider:
+    if not config.llm.default_model.strip():
+        raise SystemExit(
+            "LLM model not configured. Set SZTU_LLM_DEFAULT_MODEL in .env."
+        )
     if config.llm.provider == "openai":
         return OpenAIProvider(config.llm.default_model)
     return AnthropicProvider(config.llm.default_model)

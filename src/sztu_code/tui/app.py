@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ from rich.markdown import Markdown
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widget import Widget
@@ -74,40 +75,6 @@ class LLMStreamBlock(Static):
         self._finalized = True
         if self._text.strip():
             self.update(Markdown(self._text, code_theme="monokai"))
-
-
-class TaskHistoryPanel(Static):
-    """左侧任务历史面板，展示可恢复 session 的最近活动。"""
-
-    DEFAULT_CSS = """
-    TaskHistoryPanel {
-        width: 30;
-        min-width: 24;
-        background: #181B1F;
-        border-right: solid #30353D;
-        padding: 1 1;
-        color: #F1F3F5;
-    }
-    """
-
-    # 将 session 摘要渲染为按活动时间排序的紧凑任务清单
-    def set_sessions(self, sessions: list[dict[str, Any]], active_session_id: str | None) -> None:
-        lines = [
-            "[bold #76D6C1]任务历史[/bold #76D6C1]",
-            "[dim]/new 新任务  ·  /tasks 刷新[/dim]",
-        ]
-        if not sessions:
-            lines.append("\n[dim]暂无历史任务[/dim]")
-        for session in sessions[:12]:
-            session_id = str(session.get("session_id", ""))
-            title = str(session.get("title") or "未命名任务")
-            status = str(session.get("status") or "")
-            marker = "[bold #76D6C1]▸[/bold #76D6C1]" if session_id == active_session_id else "[dim]·[/dim]"
-            state = "[#F2BB6C]运行中[/#F2BB6C]" if status == "active" else "[dim]就绪[/dim]"
-            short_id = session_id[-6:]
-            lines.append(f"\n{marker} {title[:24]}")
-            lines.append(f"  {state}  [dim]{short_id}[/dim]")
-        self.update("\n".join(lines))
 
 
 class ToolCallBlock(Widget):
@@ -184,16 +151,22 @@ class PermissionSelect(Static):
     DEFAULT_CSS = """
     PermissionSelect {
         height: auto;
-        padding: 0 2;
-        margin-bottom: 1;
+        margin: 0 3 1 3;
+        padding: 1 2;
+        color: #D7DCE1;
+        background: #181B1F;
+        border: tall #F2BB6C;
+    }
+    PermissionSelect:focus {
+        border: tall #F2BB6C;
     }
     """
 
     _CHOICES: tuple[tuple[str, str, str], ...] = (
-        ("allow_once",   "Allow once",   "y / 1"),
-        ("always_allow", "Always allow", "a / 2"),
-        ("deny_once",    "Deny",         "n / 3"),
-        ("always_deny",  "Always deny",  "d / 4"),
+        ("allow_once",   "Allow once",             "Y / 1"),
+        ("always_allow", "Always allow this tool", "A / 2"),
+        ("deny_once",    "Deny this time",         "N / 3"),
+        ("always_deny",  "Always deny this tool",  "D / 4"),
     )
     _KEY_MAP: dict[str, str] = {
         "y": "allow_once",  "1": "allow_once",
@@ -211,10 +184,12 @@ class PermissionSelect(Static):
             self.decision = decision
             super().__init__()
 
-    # 初始化控件，存储工具 ID（用于 IPC 回复）
-    def __init__(self, tool_use_id: str) -> None:
+    # 初始化控件，携带动作摘要，让底部授权单在不回看日志时也完整可读
+    def __init__(self, tool_use_id: str, tool_name: str, param_preview: str) -> None:
         super().__init__("")
         self._tool_use_id = tool_use_id
+        self._tool_name = tool_name
+        self._param_preview = param_preview
         self._cursor = 0
 
     def on_mount(self) -> None:
@@ -244,15 +219,27 @@ class PermissionSelect(Static):
     def on_blur(self, event: events.Blur) -> None:
         log.debug("PermissionSelect.on_blur  app.focused=%r", self.app.focused)
 
-    # 生成带光标高亮的选项列表文本
+    # 生成 Claude Code 风格的键盘优先授权单：上下文在上，决定项在下
     def _render_ui(self) -> str:
-        lines: list[str] = []
-        for i, (_, label, key_hint) in enumerate(self._CHOICES):
+        preview = _preview(self._param_preview.strip(), 116) if self._param_preview.strip() else "no parameters"
+        lines = [
+            f"[bold #F2BB6C]Permission required[/bold #F2BB6C]  [bold]{self._tool_name}[/bold]",
+            f"[dim]└─ {preview}[/dim]",
+            "",
+        ]
+        selected_styles = {
+            "allow_once": "bold #111315 on #76D6C1",
+            "always_allow": "bold #111315 on #84B8FF",
+            "deny_once": "bold #FFFFFF on #A84F55",
+            "always_deny": "bold #FFFFFF on #7A353A",
+        }
+        for i, (decision, label, key_hint) in enumerate(self._CHOICES):
             if i == self._cursor:
-                lines.append(f"  [bold cyan]❯ {label}[/bold cyan]  [dim]{key_hint}[/dim]")
+                style = selected_styles[decision]
+                lines.append(f"[dim]❯[/dim] [{style}] {i + 1}. {label} [/{style}]  [dim]{key_hint}[/dim]")
             else:
-                lines.append(f"    {label}  [dim]{key_hint}[/dim]")
-        lines.append("[dim]  ↑↓ navigate   enter confirm[/dim]")
+                lines.append(f"  {i + 1}. {label}  [dim]{key_hint}[/dim]")
+        lines.append("\n[dim]↑↓ / j k select  ·  Enter confirm  ·  Y A N D direct[/dim]")
         return "\n".join(lines)
 
     # 方向键导航；快捷键直接选择；enter 确认光标位置
@@ -283,7 +270,18 @@ class PermissionSelect(Static):
 
 
 class PermissionBlock(Static):
-    """日志里的权限审批摘要"""
+    """日志里的权限审批摘要：给出动作、目标与可恢复的最终决定。"""
+
+    DEFAULT_CSS = """
+    PermissionBlock {
+        height: auto;
+        margin: 1 2 0 2;
+        padding: 0 1 0 2;
+        background: #1C1A17;
+        border-left: solid #F2BB6C;
+        color: #D7DCE1;
+    }
+    """
 
     _LABEL_MAP: dict[str, str] = {
         "allow_once":   "allowed (once)",
@@ -293,6 +291,13 @@ class PermissionBlock(Static):
         "timeout":      "⏱ timed out",
     }
     LABEL_MAP = _LABEL_MAP
+    _ACTION_MAP: dict[str, tuple[str, str]] = {
+        "bash": ("Shell command", "Runs a command in the current project."),
+        "write_file": ("Write file", "Changes a file in the current project."),
+        "edit_file": ("Edit file", "Changes a file in the current project."),
+        "read_file": ("Read file", "Reads a file from the current project."),
+        "list_dir": ("List directory", "Reads the current project structure."),
+    }
 
     # 子类提交消息：用户作出权限决策时发布
     class Resolved(Message):
@@ -307,11 +312,18 @@ class PermissionBlock(Static):
         self._tool_name = tool_name
         self._param_preview = param_preview
         self._resolved = False
-        super().__init__(self._pending_text(), classes="log-line")
+        super().__init__(self._pending_text(), classes="permission-block")
 
     def _pending_text(self) -> str:
-        preview = f"  [dim]{self._param_preview}[/dim]" if self._param_preview else ""
-        return f"[bold red]? permission[/bold red]  [bold]{self._tool_name}[/bold]{preview}"
+        action, impact = self._ACTION_MAP.get(
+            self._tool_name, (self._tool_name.replace("_", " ").title(), "This action needs your approval.")
+        )
+        preview = _preview(self._param_preview.strip(), 140) if self._param_preview.strip() else "no parameters"
+        return (
+            f"[bold #F2BB6C]● Approval required[/bold #F2BB6C]  [bold]{action}[/bold]\n"
+            f"[dim]  {self._tool_name}  └─ {preview}[/dim]\n"
+            f"[dim]  {impact}[/dim]"
+        )
 
     # 将块收缩为单行摘要并发布 Resolved 消息
     def _resolve(self, decision: str) -> None:
@@ -321,9 +333,9 @@ class PermissionBlock(Static):
         allowed = decision in ("allow_once", "always_allow")
         icon = "[bold green]✓[/bold green]" if allowed else "[bold red]✗[/bold red]"
         label = self._LABEL_MAP.get(decision, decision)
-        preview = f"  [dim]{self._param_preview}[/dim]" if self._param_preview else ""
+        preview = f"  [dim]{_preview(self._param_preview.strip(), 96)}[/dim]" if self._param_preview.strip() else ""
         self.update(
-            f"{icon} permission  [bold]{self._tool_name}[/bold]{preview}  [dim]{label}[/dim]"
+            f"{icon} approval  [bold]{self._tool_name}[/bold]{preview}  [dim]{label}[/dim]"
         )
         self.post_message(self.Resolved(self, decision))
 
@@ -471,6 +483,13 @@ class ChatTextArea(TextArea):
             if not self.read_only:
                 self.insert("\n")
             return
+        # Tab：有弹窗时选中候选项；无弹窗时不交给 TextArea（避免插入 \t），让 App 层 Tab 绑定生效
+        if key == "tab":
+            event.stop()
+            event.prevent_default()
+            if popup is not None and popup.has_selection():
+                popup.select_current()
+            return
         if popup is not None:
             if key == "up":
                 event.stop()
@@ -481,11 +500,6 @@ class ChatTextArea(TextArea):
                 event.stop()
                 event.prevent_default()
                 popup.move_down()
-                return
-            elif key == "tab":
-                event.stop()
-                event.prevent_default()
-                popup.select_current()
                 return
             elif key == "escape":
                 event.stop()
@@ -498,14 +512,15 @@ class ChatTextArea(TextArea):
 class KamaTuiApp(App[None]):
     """SztuCode TUI：终端滚屏风格，实时展示 agent 执行过程。"""
 
-    TITLE = "SztuCode"
+    TITLE = "SZTUCODE"
     BINDINGS = [
         Binding("ctrl+q", "quit", "quit"),
         Binding("ctrl+shift+a", "mode_auto", "auto mode"),
         Binding("ctrl+shift+e", "mode_accept_edits", "accept edits"),
         Binding("ctrl+shift+p", "mode_plan", "plan mode"),
-        Binding("ctrl+shift+n", "mode_normal", "normal mode"),
+        Binding("tab", "cycle_mode", "switch mode", priority=True),
     ]
+    _MODE_CYCLE = ("auto", "accept_edits", "plan")
     CSS = """
     Screen { background: #111315; }
     #header {
@@ -514,20 +529,22 @@ class KamaTuiApp(App[None]):
         color: #F1F3F5;
         padding: 0 1;
     }
-    #workspace {
-        height: 1fr;
-    }
     #log-view {
+        height: 1fr;
         width: 1fr;
         background: #111315;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
     }
     #prompt {
+        width: 1fr;
         background: #181B1F;
         color: #F1F3F5;
         border: tall #30353D;
         margin: 0 1 1 1;
+    }
+    #prompt:focus {
+        border: tall #F2BB6C;
     }
     #banner { padding: 2 3 1 3; color: #F1F3F5; }
     Static.user-turn { color: $text; padding: 1 2 0 2; }
@@ -539,10 +556,15 @@ class KamaTuiApp(App[None]):
     Static.log-line { padding: 0 2; }
     """
 
-    _BANNER = (
-        "[bold #F1F3F5]准备一个可审阅的编码任务[/bold #F1F3F5]\n"
-        "[dim]先输入 /workspace <目录>，再描述目标。运行、工具、审批与变更会在这里留下可追溯记录。[/dim]"
-    )
+    _BANNER = r"""
+[bold #00E5E5] ███████╗███████╗████████╗██╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗
+ ██╔════╝╚══███╔╝╚══██╔══╝██║   ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝
+ ███████╗  ███╔╝    ██║   ██║   ██║██║     ██║   ██║██║  ██║█████╗
+ ╚════██║ ███╔╝     ██║   ██║   ██║██║     ██║   ██║██║  ██║██╔══╝
+ ███████║███████╗   ██║   ╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗
+ ╚══════╝╚══════╝   ╚═╝    ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold #00E5E5]
+[dim]  输入消息开始对话  ·  键入 / 触发 skill  ·  Ctrl+C 退出[/dim]
+""".strip()
 
     # 初始化连接参数和 TUI 内部状态
     def __init__(self, host: str, port: int, replay_run_id: str | None = None) -> None:
@@ -555,21 +577,20 @@ class KamaTuiApp(App[None]):
         self._pending_tool_blocks: dict[str, ToolCallBlock] = {}
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = None
-        self._session_summaries: list[dict[str, Any]] = []
         self._workspace: dict[str, Any] | None = None
+        self._project_path = str(Path.cwd())
+        self._model = "loading…"
         self._busy = False
         self._last_context_pct: float = 0.0
         self._session_tokens: dict[str, int] = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
         self._slash_items: list[tuple[str, str]] = []
         self._subagent_run_ids: dict[str, str] = {}  # child run_id -> description
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
-        self._mode: str = "normal"  # 当前权限模式
+        self._mode: str = "auto"  # 默认自动执行；Tab 在三种可见模式间循环
 
     def compose(self) -> ComposeResult:
-        yield Label("[bold]SztuCode[/bold]  [dim]connecting...[/dim]", id="header")
-        with Horizontal(id="workspace"):
-            yield TaskHistoryPanel(id="task-history")
-            yield VerticalScroll(id="log-view")
+        yield Label("[bold #76D6C1]SZTUCODE[/bold #76D6C1]  [dim]connecting...[/dim]", id="header")
+        yield VerticalScroll(id="log-view")
         yield ChatTextArea(id="prompt", show_line_numbers=False)
 
     def on_mount(self) -> None:
@@ -580,12 +601,19 @@ class KamaTuiApp(App[None]):
         prompt.disabled = True
         prompt.border_title = "connecting..."
 
+    # 返回当前模式的富文本标签，用于 header 栏显示
+    def _mode_label(self) -> str:
+        colors = {"auto": "#76D6C1", "accept_edits": "#84B8FF", "plan": "#F2BB6C"}
+        labels = {"auto": "AUTO", "accept_edits": "EDITS", "plan": "PLAN"}
+        color = colors.get(self._mode, "#76D6C1")
+        label = labels.get(self._mode, self._mode.upper())
+        return f"[bold #111315 on {color}] {label} [/bold #111315 on {color}]"
+
     # 构建斜杠命令候选列表：内建命令 + 所有已注册 skill
     def _build_slash_items(self) -> list[tuple[str, str]]:
         items: list[tuple[str, str]] = [
             ("compact", "compress context window"),
             ("new", "start a fresh task"),
-            ("tasks", "refresh task history"),
             ("workspace", "open a local repository"),
             ("files", "show workspace file tree"),
             ("search", "search files in the workspace"),
@@ -680,36 +708,45 @@ class KamaTuiApp(App[None]):
     async def action_mode_plan(self) -> None:
         await self._set_mode("plan")
 
-    # 切换回 Normal 模式：走完整权限检查流程
-    async def action_mode_normal(self) -> None:
-        await self._set_mode("normal")
+    # Tab 循环 Auto、Accept Edits、Plan；让模式选择不必离开输入框
+    async def action_cycle_mode(self) -> None:
+        try:
+            index = self._MODE_CYCLE.index(self._mode)
+        except ValueError:
+            index = -1
+        await self._set_mode(self._MODE_CYCLE[(index + 1) % len(self._MODE_CYCLE)])
 
     # 向 daemon 发送模式切换命令并更新本地状态
     async def _set_mode(self, mode: str) -> None:
         if self._client is None:
-            self._append(Static("[yellow]not connected[/yellow]", classes="log-line"))
+            log.debug("mode switch ignored while disconnected target=%s", mode)
             return
         try:
             result = await self._client.send_command("permission.set_mode", {"mode": mode})
             if result.get("ok"):
                 self._mode = mode
                 self._update_header("ready")
-                mode_labels = {
-                    "auto": "[bold cyan]Auto mode on[/bold cyan] — all tools auto-approved",
-                    "accept_edits": "[bold green]Accept edits on[/bold green] — edit tools auto-approved",
-                    "plan": "[bold yellow]Plan mode on[/bold yellow] — read-only, no writes or execution",
-                    "normal": "[dim]Normal mode[/dim] — full permission checks",
-                }
-                self._append(Static(
-                    mode_labels.get(mode, f"Mode: {mode}"), classes="log-line",
-                ))
+                self._update_header("ready")
             else:
-                self._append(Static(
-                    f"[red]failed to set mode: {result.get('error', 'unknown')}[/red]",
-                    classes="log-line",
-                ))
+                log.warning("mode switch rejected target=%s error=%s", mode, result.get("error", "unknown"))
         except (IpcError, RuntimeError, OSError) as e:
-            self._append(Static(f"[red]mode switch error: {e}[/red]", classes="log-line"))
+            log.warning("mode switch failed target=%s error=%s", mode, e)
+
+    # 从 daemon 读取保存的 Provider 配置；无论任务是否已运行，都能显示当前模型
+    async def _refresh_model_status(self) -> None:
+        if self._client is None:
+            return
+        try:
+            result = await self._client.send_command("provider.status", {})
+            model = str(result.get("model") or "")
+            if model:
+                self._model = model
+            else:
+                self._model = "not configured"
+            self._update_header("ready")
+        except (IpcError, RuntimeError, OSError):
+            self._model = "unavailable"
+            self._update_header("ready")
 
     # 将输入框提交内容发送给当前 chat session；用 worker 发送，避免 await 阻塞 App 消息泵
     async def on_chat_text_area_submitted(self, event: ChatTextArea.Submitted) -> None:
@@ -719,10 +756,6 @@ class KamaTuiApp(App[None]):
         if content == "/new":
             event.text_area.text = ""
             self.run_worker(self._create_new_session(), name="new_session", exclusive=False)
-            return
-        if content == "/tasks":
-            event.text_area.text = ""
-            self.run_worker(self._refresh_session_list(), name="list_sessions", exclusive=False)
             return
         if content.startswith("/workspace "):
             event.text_area.text = ""
@@ -762,8 +795,8 @@ class KamaTuiApp(App[None]):
             if self._client is not None and self._session_id is not None and not self._busy:
                 self.run_worker(self._do_compact(), name="compact", exclusive=False)
             return
-        # 检测模式切换指令：/auto /edits /plan /normal
-        mode_map = {"/auto": "auto", "/edits": "accept_edits", "/plan": "plan", "/normal": "normal"}
+        # 检测三种模式切换指令：/auto /edits /plan
+        mode_map = {"/auto": "auto", "/edits": "accept_edits", "/plan": "plan"}
         if content in mode_map:
             event.text_area.text = ""
             self.run_worker(self._set_mode(mode_map[content]), name="set_mode", exclusive=False)
@@ -802,7 +835,7 @@ class KamaTuiApp(App[None]):
         except (IpcError, RuntimeError, OSError) as e:
             self._append(Static(f"[red]compact error: {e}[/red]", classes="log-line"))
 
-    # 创建新的 chat session 并刷新任务历史面板
+    # 创建新的 chat session 并保留当前的单栏日志视图
     async def _create_new_session(self) -> None:
         if self._client is None:
             return
@@ -811,22 +844,9 @@ class KamaTuiApp(App[None]):
             self._session_id = str(created["session_id"])
             self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
             self._append(Static("[bold cyan]new task started[/bold cyan]", classes="log-line"))
-            await self._refresh_session_list()
             self._update_header("ready")
         except (IpcError, RuntimeError, OSError) as e:
             self._append(Static(f"[red]new task error: {e}[/red]", classes="log-line"))
-
-    # 拉取最新 session 摘要并刷新左侧任务历史面板
-    async def _refresh_session_list(self) -> None:
-        if self._client is None:
-            return
-        try:
-            result = await self._client.send_command("session.list", {"limit": 50})
-            self._session_summaries = list(result.get("sessions", []))
-            panel = self.query_one("#task-history", TaskHistoryPanel)
-            panel.set_sessions(self._session_summaries, self._session_id)
-        except (IpcError, RuntimeError, OSError) as e:
-            self._append(Static(f"[red]task list error: {e}[/red]", classes="log-line"))
 
     # 打开本地工作区并将其显示在状态栏，供后续文件浏览与搜索使用
     async def _open_workspace(self, path: str) -> None:
@@ -1035,28 +1055,20 @@ class KamaTuiApp(App[None]):
             header = self.query_one("#header", Label)
         except NoMatches:
             return
-        session = f"  [dim]{self._session_id}[/dim]" if self._session_id else ""
-        workspace = ""
+        project_path = self._project_path
         if self._workspace is not None:
-            workspace = f"  [cyan]{self._workspace.get('name', 'workspace')}[/cyan]"
+            project_path = str(self._workspace.get("path") or project_path)
+        workspace = f"  [dim]·[/dim] [#84B8FF]{project_path}[/#84B8FF]"
+        model = f"  [dim]model[/dim] [#D7DCE1]{self._model}[/#D7DCE1]"
         color = {
             "ready": "green",
             "running": "yellow",
             "disconnected": "red",
             "connecting": "dim",
         }.get(state, "dim")
-        # 模式标识
-        mode_styles = {
-            "auto": ("[bold cyan]AUTO[/bold cyan]", "auto mode on"),
-            "accept_edits": ("[bold green]ACCEPT EDITS[/bold green]", "accept edits on"),
-            "plan": ("[bold yellow]PLAN[/bold yellow]", "plan mode on"),
-            "normal": ("", ""),
-        }
-        mode_display, _ = mode_styles.get(self._mode, ("", ""))
-        mode_str = f"  {mode_display}" if mode_display else ""
         header.update(
-            f"[bold]SztuCode[/bold]  [dim]{self._host}:{self._port}[/dim]"
-            f"{workspace}{session}  [{color}]{state}[/{color}]{mode_str}"
+            f"[bold #76D6C1]SZTUCODE[/bold #76D6C1]  [dim]{self._host}:{self._port}[/dim]"
+            f"{model}{workspace}  {self._mode_label()}  [{color}]{state}[/{color}]"
         )
 
     # 管理 SocketClient 生命周期：连接、订阅事件、断线重连
@@ -1096,6 +1108,7 @@ class KamaTuiApp(App[None]):
                         "run.*",
                         "step.*",
                         "tool.*",
+                        "llm.model_selected",
                         "llm.token",
                         "llm.usage",
                         "log.*",
@@ -1116,7 +1129,8 @@ class KamaTuiApp(App[None]):
                     self._session_id = str(created["session_id"])
                 self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
                 log.info("session created session_id=%s", self._session_id)
-                await self._refresh_session_list()
+                await self._set_mode("auto")
+                await self._refresh_model_status()
                 prompt = self._prompt()
                 if prompt is not None:
                     prompt.disabled = False
@@ -1126,7 +1140,7 @@ class KamaTuiApp(App[None]):
                 self._update_header("ready")
                 await loop_task
             except IpcError as e:
-                header.update(f"[bold]SztuCode[/bold]  [red]subscribe error: {e}[/red]")
+                header.update(f"[bold #76D6C1]SZTUCODE[/bold #76D6C1]  [red]subscribe error: {e}[/red]")
             finally:
                 if not loop_task.done():
                     loop_task.cancel()
@@ -1168,6 +1182,13 @@ class KamaTuiApp(App[None]):
 
         self._break_llm()
 
+        if t == "llm.model_selected":
+            model = str(event.get("model") or "")
+            if model:
+                self._model = model
+                self._update_header("running")
+            return
+
         if t == "session.waiting_for_input":
             self._busy = False
             prompt = self._prompt()
@@ -1177,7 +1198,6 @@ class KamaTuiApp(App[None]):
                 prompt.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
                 prompt.focus()
             self._update_header("ready")
-            self.run_worker(self._refresh_session_list(), name="refresh_sessions", exclusive=False)
 
         elif t == "session.closed":
             self._busy = False
@@ -1352,7 +1372,7 @@ class KamaTuiApp(App[None]):
                 prompt.disabled = True
                 prompt.border_title = "permission required"
             self._append(perm_block)
-            select = PermissionSelect(tool_use_id)
+            select = PermissionSelect(tool_use_id, tool_name, param_preview)
             self._mount_permission_select(select)
             log.debug("PermissionSelect mounted before #prompt  pending=%d", len(self._pending_permission_blocks))
 
@@ -1379,6 +1399,7 @@ class KamaTuiApp(App[None]):
         elif t == "permission.mode_changed":
             new_mode = str(event.get("new_mode", "normal"))
             self._mode = new_mode
+            self._update_header("ready")
             self._update_header("ready")
 
         elif t == "log.line":
