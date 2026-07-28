@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sztu_code.core.bus.events import RunFinishedEvent, RunStartedEvent
+from sztu_code.core.bus.events import ChangeAppliedEvent, RunFinishedEvent, RunStartedEvent
+from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
 from sztu_code.core.config import SztuConfig
 from sztu_code.core.context import ExecutionContext
@@ -91,6 +92,7 @@ class AgentRunner:
         child_runs_dir: Path | None = None,
         session_id: str = "",
         tool_whitelist: list[str] | None = None,
+        workspace_root: Path | None = None,
     ) -> ToolRegistry:
         allowed: set[str] | None = set(tool_whitelist) if tool_whitelist else None
 
@@ -98,12 +100,15 @@ class AgentRunner:
             return allowed is None or name in allowed
 
         registry = ToolRegistry()
-        for t in [ReadFileTool(), BashTool(), WriteFileTool(), EditFileTool(), ListDirTool()]:
+        for t in [
+            ReadFileTool(workspace_root), BashTool(workspace_root), WriteFileTool(workspace_root),
+            EditFileTool(workspace_root), ListDirTool(workspace_root),
+        ]:
             if _ok(t.name):
                 registry.register(t)
         for t in [
-            TaskCreateTool(task_manager),
-            TaskUpdateTool(task_manager),
+            TaskCreateTool(task_manager, bus, run_id or "", session_id),
+            TaskUpdateTool(task_manager, bus, run_id or "", session_id),
             TaskListTool(task_manager),
             TaskGetTool(task_manager),
         ]:
@@ -127,6 +132,7 @@ class AgentRunner:
                         runs_dir=runs_dir,
                         session_id=session_id,
                         depth=0,
+                        workspace_root=workspace_root,
                     )
                 )
             if _ok("agent_result"):
@@ -151,6 +157,7 @@ class AgentRunner:
         store: SessionStore | None = None,
         system_prompt_override: str | None = None,
         tool_whitelist: list[str] | None = None,
+        workspace_root: Path | None = None,
     ) -> RunOutcome:
         run_id = run_id or new_run_id()
         if session is not None and store is not None:
@@ -164,9 +171,14 @@ class AgentRunner:
         run_path.mkdir(parents=True, exist_ok=True)
 
         global_ctx = load_context_file(Path("~/.sztu/context.md").expanduser())
-        project_ctx = load_context_file(Path(".sztu/context.md"))
+        project_ctx = load_context_file((workspace_root or Path.cwd()) / ".sztu/context.md")
 
         task_manager = TaskManager(run_path / ".tasks")
+        change_tracker: WorkspaceChangeTracker | None = None
+        change_workspace_root: Path | None = None
+        if workspace_root is not None:
+            change_workspace_root = workspace_root.resolve()
+            change_tracker = WorkspaceChangeTracker(change_workspace_root, run_path, run_id)
 
         bus = self._bus if self._bus is not None else EventBus()
         for h in self._extra_handlers:
@@ -190,7 +202,10 @@ class AgentRunner:
 
             cancelled = False
             try:
-                provider: LLMProvider = self._provider or create_provider(self._config)
+                try:
+                    provider: LLMProvider = self._provider or create_provider(self._config)
+                except SystemExit as error:
+                    raise RuntimeError(str(error)) from error
                 if self._trace is not None:
                     provider = TracingProvider(
                         provider,
@@ -213,6 +228,7 @@ class AgentRunner:
                     child_runs_dir=child_runs_dir,
                     session_id=session_id_str,
                     tool_whitelist=tool_whitelist,
+                    workspace_root=workspace_root,
                 )
                 session_dir = (
                     store.session_dir(session.id)
@@ -241,6 +257,17 @@ class AgentRunner:
                 if not context.is_done():
                     context.mark_failed("llm_error")
 
+            if change_tracker is not None:
+                changes = change_tracker.finalize()
+                if changes:
+                    await bus.publish(
+                        ChangeAppliedEvent(
+                            run_id=run_id,
+                            workspace_path=str(change_workspace_root),
+                            paths=[str(change["path"]) for change in changes],
+                            ts=_now(),
+                        )
+                    )
             await bus.publish(
                 RunFinishedEvent(
                     run_id=run_id,

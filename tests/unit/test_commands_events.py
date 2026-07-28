@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from sztu_code.core.bus.commands import PingCommand, PongResult
+from sztu_code.core.bus.commands import (
+    PermissionRespondCommand,
+    PingCommand,
+    PongResult,
+    SessionPinCommand,
+    SettingsUpdateCommand,
+)
 from sztu_code.core.bus.events import CoreStartedEvent
 
 
@@ -46,3 +52,33 @@ def test_core_started_event_roundtrip() -> None:
     evt2 = CoreStartedEvent.model_validate_json(evt.model_dump_json())
     assert evt2.listen_addr == "127.0.0.1:7437"
     assert evt2.type == "core.started"
+
+
+# 功能：验证权限响应只接受 daemon 支持的四种决策值。
+# 设计：直接以旧客户端曾发送的 approve 作为反例，确保协议边界在进入 PermissionManager 前拒绝无效决策。
+def test_permission_response_rejects_legacy_decision_name() -> None:
+    with pytest.raises(ValidationError):
+        PermissionRespondCommand.model_validate({
+            "tool_use_id": "tool-1",
+            "decision": "approve",
+        })
+
+
+def test_settings_update_accepts_only_the_exposed_runtime_fields() -> None:
+    command = SettingsUpdateCommand.model_validate(
+        {"provider": "openai", "model": "gpt-4o", "permission_mode": "plan"}
+    )
+    assert command.type == "settings.update"
+    assert command.provider == "openai"
+
+    with pytest.raises(ValidationError):
+        SettingsUpdateCommand.model_validate({"provider": "unsupported"})
+
+
+def test_session_pin_command_requires_an_explicit_boolean_state() -> None:
+    command = SessionPinCommand.model_validate({"session_id": "sess-1", "pinned": True})
+    assert command.type == "session.pin"
+    assert command.pinned is True
+
+    with pytest.raises(ValidationError):
+        SessionPinCommand.model_validate({"session_id": "sess-1"})

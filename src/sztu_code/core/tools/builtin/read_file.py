@@ -6,6 +6,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.workspace import resolve_workspace_path
 
 _MAX_BYTES = 512 * 1024  # 512 KB
 
@@ -36,6 +37,10 @@ class ReadFileTool(BaseTool):
         "required": ["path"],
     }
 
+    # 绑定可选工作区根目录，使文件读取不依赖 daemon 的进程目录
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
+
     # 读取文件内容；超 512KB 截断；禁止 .. 路径遍历
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         path_str = ReadFileParams.model_validate(params).path
@@ -43,7 +48,7 @@ class ReadFileTool(BaseTool):
         if ".." in Path(path_str).parts:
             raise PermissionError(f"path traversal not allowed: {path_str}")
 
-        path = Path(path_str)
+        path = resolve_workspace_path(self._workspace_root, path_str)
         raw = path.read_bytes()  # raises FileNotFoundError if absent
         truncated = len(raw) > _MAX_BYTES
         text = raw[:_MAX_BYTES].decode("utf-8", errors="replace")

@@ -6,6 +6,7 @@ from textual.widget import Widget
 from sztu_code.tui.app import (
     KamaTuiApp,
     LLMStreamBlock,
+    TaskHistoryPanel,
     ToolCallBlock,
     _param_summary,
     _preview,
@@ -25,6 +26,25 @@ def test_param_summary_prefers_key_fields() -> None:
     assert _param_summary("read_file", {"path": "README.md"}) == "path='README.md'"
     assert _param_summary("bash", {"command": "echo hi", "timeout": 1}) == "command='echo hi'"
     assert _param_summary("note_save", {"content": "Python 3.12"}) == "content='Python 3.12'"
+
+
+# 功能：验证任务历史面板突出当前任务，并同时展示任务标题、状态与快捷入口。
+# 设计：直接提供 daemon 返回的 session 摘要，断言渲染文本包含关键可恢复任务信息，不依赖实时 socket 或屏幕渲染时序。
+def test_task_history_panel_renders_active_session() -> None:
+    panel = TaskHistoryPanel()
+    panel.set_sessions(
+        [
+            {"session_id": "sess-current", "title": "修复客户端", "status": "active"},
+            {"session_id": "sess-old", "title": "历史任务", "status": "waiting_for_input"},
+        ],
+        "sess-current",
+    )
+
+    content = str(panel.content)
+    assert "任务历史" in content
+    assert "修复客户端" in content
+    assert "▸" in content
+    assert "/new" in content
 
 
 # 功能：验证 llm.token 事件累积到 LLMStreamBlock，不连续 token 各自新开一块

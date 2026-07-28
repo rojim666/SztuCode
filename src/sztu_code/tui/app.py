@@ -12,7 +12,7 @@ from rich.markdown import Markdown
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
 from textual.widget import Widget
@@ -74,6 +74,40 @@ class LLMStreamBlock(Static):
         self._finalized = True
         if self._text.strip():
             self.update(Markdown(self._text, code_theme="monokai"))
+
+
+class TaskHistoryPanel(Static):
+    """左侧任务历史面板，展示可恢复 session 的最近活动。"""
+
+    DEFAULT_CSS = """
+    TaskHistoryPanel {
+        width: 30;
+        min-width: 24;
+        background: #181B1F;
+        border-right: solid #30353D;
+        padding: 1 1;
+        color: #F1F3F5;
+    }
+    """
+
+    # 将 session 摘要渲染为按活动时间排序的紧凑任务清单
+    def set_sessions(self, sessions: list[dict[str, Any]], active_session_id: str | None) -> None:
+        lines = [
+            "[bold #76D6C1]任务历史[/bold #76D6C1]",
+            "[dim]/new 新任务  ·  /tasks 刷新[/dim]",
+        ]
+        if not sessions:
+            lines.append("\n[dim]暂无历史任务[/dim]")
+        for session in sessions[:12]:
+            session_id = str(session.get("session_id", ""))
+            title = str(session.get("title") or "未命名任务")
+            status = str(session.get("status") or "")
+            marker = "[bold #76D6C1]▸[/bold #76D6C1]" if session_id == active_session_id else "[dim]·[/dim]"
+            state = "[#F2BB6C]运行中[/#F2BB6C]" if status == "active" else "[dim]就绪[/dim]"
+            short_id = session_id[-6:]
+            lines.append(f"\n{marker} {title[:24]}")
+            lines.append(f"  {state}  [dim]{short_id}[/dim]")
+        self.update("\n".join(lines))
 
 
 class ToolCallBlock(Widget):
@@ -473,19 +507,29 @@ class KamaTuiApp(App[None]):
         Binding("ctrl+shift+n", "mode_normal", "normal mode"),
     ]
     CSS = """
-    Screen { background: $background; }
+    Screen { background: #111315; }
     #header {
         height: 1;
-        background: $surface;
-        color: $text;
+        background: #181B1F;
+        color: #F1F3F5;
         padding: 0 1;
     }
-    #log-view {
+    #workspace {
         height: 1fr;
+    }
+    #log-view {
+        width: 1fr;
+        background: #111315;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
     }
-    #banner { padding: 1 2 0 2; }
+    #prompt {
+        background: #181B1F;
+        color: #F1F3F5;
+        border: tall #30353D;
+        margin: 0 1 1 1;
+    }
+    #banner { padding: 2 3 1 3; color: #F1F3F5; }
     Static.user-turn { color: $text; padding: 1 2 0 2; }
     Static.run-header { color: $text-muted; padding: 1 2 0 2; }
     Static.step-divider { color: $text-muted; padding: 0 2; }
@@ -496,13 +540,8 @@ class KamaTuiApp(App[None]):
     """
 
     _BANNER = (
-        "[bold cyan]███████╗███████╗████████╗██╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗[/bold cyan]\n"
-        "[bold cyan]██╔════╝╚══███╔╝╚══██╔══╝██║   ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝[/bold cyan]\n"
-        "[bold cyan]███████╗  ███╔╝    ██║   ██║   ██║██║     ██║   ██║██║  ██║█████╗  [/bold cyan]\n"
-        "[bold cyan]╚════██║ ███╔╝     ██║   ██║   ██║██║     ██║   ██║██║  ██║██╔══╝  [/bold cyan]\n"
-        "[bold cyan]███████║███████╗   ██║   ╚██████╔╝╚██████╗╚██████╔╝██████╔╝███████╗[/bold cyan]\n"
-        "[bold cyan]╚══════╝╚══════╝   ╚═╝    ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝[/bold cyan]\n"
-        "[dim]  输入消息开始对话  ·  键入 / 触发 skill  ·  Ctrl+C 退出[/dim]"
+        "[bold #F1F3F5]准备一个可审阅的编码任务[/bold #F1F3F5]\n"
+        "[dim]先输入 /workspace <目录>，再描述目标。运行、工具、审批与变更会在这里留下可追溯记录。[/dim]"
     )
 
     # 初始化连接参数和 TUI 内部状态
@@ -516,6 +555,8 @@ class KamaTuiApp(App[None]):
         self._pending_tool_blocks: dict[str, ToolCallBlock] = {}
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = None
+        self._session_summaries: list[dict[str, Any]] = []
+        self._workspace: dict[str, Any] | None = None
         self._busy = False
         self._last_context_pct: float = 0.0
         self._session_tokens: dict[str, int] = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
@@ -526,7 +567,9 @@ class KamaTuiApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Label("[bold]SztuCode[/bold]  [dim]connecting...[/dim]", id="header")
-        yield VerticalScroll(id="log-view")
+        with Horizontal(id="workspace"):
+            yield TaskHistoryPanel(id="task-history")
+            yield VerticalScroll(id="log-view")
         yield ChatTextArea(id="prompt", show_line_numbers=False)
 
     def on_mount(self) -> None:
@@ -539,7 +582,16 @@ class KamaTuiApp(App[None]):
 
     # 构建斜杠命令候选列表：内建命令 + 所有已注册 skill
     def _build_slash_items(self) -> list[tuple[str, str]]:
-        items: list[tuple[str, str]] = [("compact", "compress context window")]
+        items: list[tuple[str, str]] = [
+            ("compact", "compress context window"),
+            ("new", "start a fresh task"),
+            ("tasks", "refresh task history"),
+            ("workspace", "open a local repository"),
+            ("files", "show workspace file tree"),
+            ("search", "search files in the workspace"),
+            ("changes", "show uncommitted changes"),
+            ("diff", "inspect a file diff"),
+        ]
         try:
             loader = SkillLoader()
             for skill in loader.list_all_skills():
@@ -664,6 +716,46 @@ class KamaTuiApp(App[None]):
         content = event.value.strip()
         if not content:
             return
+        if content == "/new":
+            event.text_area.text = ""
+            self.run_worker(self._create_new_session(), name="new_session", exclusive=False)
+            return
+        if content == "/tasks":
+            event.text_area.text = ""
+            self.run_worker(self._refresh_session_list(), name="list_sessions", exclusive=False)
+            return
+        if content.startswith("/workspace "):
+            event.text_area.text = ""
+            self.run_worker(
+                self._open_workspace(content.removeprefix("/workspace ").strip()),
+                name="open_workspace",
+                exclusive=False,
+            )
+            return
+        if content == "/files":
+            event.text_area.text = ""
+            self.run_worker(self._show_workspace_tree(), name="workspace_tree", exclusive=False)
+            return
+        if content.startswith("/search "):
+            event.text_area.text = ""
+            self.run_worker(
+                self._search_workspace(content.removeprefix("/search ").strip()),
+                name="workspace_search",
+                exclusive=False,
+            )
+            return
+        if content == "/changes":
+            event.text_area.text = ""
+            self.run_worker(self._show_changes(), name="change_list", exclusive=False)
+            return
+        if content.startswith("/diff "):
+            event.text_area.text = ""
+            self.run_worker(
+                self._show_diff(content.removeprefix("/diff ").strip()),
+                name="change_diff",
+                exclusive=False,
+            )
+            return
         # 检测 /compact 指令
         if content == "/compact":
             event.text_area.text = ""
@@ -709,6 +801,138 @@ class KamaTuiApp(App[None]):
             ))
         except (IpcError, RuntimeError, OSError) as e:
             self._append(Static(f"[red]compact error: {e}[/red]", classes="log-line"))
+
+    # 创建新的 chat session 并刷新任务历史面板
+    async def _create_new_session(self) -> None:
+        if self._client is None:
+            return
+        try:
+            created = await self._client.send_command("session.create", {"mode": "chat"})
+            self._session_id = str(created["session_id"])
+            self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
+            self._append(Static("[bold cyan]new task started[/bold cyan]", classes="log-line"))
+            await self._refresh_session_list()
+            self._update_header("ready")
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]new task error: {e}[/red]", classes="log-line"))
+
+    # 拉取最新 session 摘要并刷新左侧任务历史面板
+    async def _refresh_session_list(self) -> None:
+        if self._client is None:
+            return
+        try:
+            result = await self._client.send_command("session.list", {"limit": 50})
+            self._session_summaries = list(result.get("sessions", []))
+            panel = self.query_one("#task-history", TaskHistoryPanel)
+            panel.set_sessions(self._session_summaries, self._session_id)
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]task list error: {e}[/red]", classes="log-line"))
+
+    # 打开本地工作区并将其显示在状态栏，供后续文件浏览与搜索使用
+    async def _open_workspace(self, path: str) -> None:
+        if self._client is None:
+            return
+        if not path:
+            self._append(Static("[yellow]usage: /workspace <folder>[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("workspace.open", {"path": path})
+            self._workspace = dict(result["workspace"])
+            self._append(Static(
+                f"[bold cyan]workspace opened[/bold cyan]  "
+                f"[dim]{self._workspace['path']}[/dim]",
+                classes="log-line",
+            ))
+            self._update_header("ready")
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]workspace error: {e}[/red]", classes="log-line"))
+
+    # 展示当前工作区的顶层文件树，保留主任务时间线的阅读密度
+    async def _show_workspace_tree(self) -> None:
+        if self._client is None or self._workspace is None:
+            self._append(Static("[yellow]open a workspace first: /workspace <folder>[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("workspace.tree", {
+                "workspace_id": self._workspace["workspace_id"],
+                "max_depth": 2,
+            })
+            nodes = result.get("nodes", [])
+            labels = [str(node.get("path", "")) for node in nodes[:30]]
+            body = "\n".join(f"  {label}" for label in labels) or "  (empty)"
+            self._append(Static(
+                f"[bold cyan]files[/bold cyan]\n[dim]{body}[/dim]",
+                classes="log-line",
+            ))
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]file tree error: {e}[/red]", classes="log-line"))
+
+    # 搜索当前工作区并将命中行以可读摘要加入任务时间线
+    async def _search_workspace(self, query: str) -> None:
+        if self._client is None or self._workspace is None:
+            self._append(Static("[yellow]open a workspace first: /workspace <folder>[/yellow]", classes="log-line"))
+            return
+        if not query:
+            self._append(Static("[yellow]usage: /search <text>[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("file.search", {
+                "workspace_id": self._workspace["workspace_id"],
+                "query": query,
+            })
+            matches = result.get("matches", [])
+            body = "\n".join(
+                f"  {match.get('path')}:{match.get('line')}  {match.get('preview')}"
+                for match in matches[:20]
+            ) or "  (no matches)"
+            self._append(Static(
+                f"[bold cyan]search[/bold cyan] [dim]{query!r}[/dim]\n[dim]{body}[/dim]",
+                classes="log-line",
+            ))
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]search error: {e}[/red]", classes="log-line"))
+
+    # 展示当前工作区未提交变更的文件状态，便于在任务结束后快速审阅
+    async def _show_changes(self) -> None:
+        if self._client is None or self._workspace is None:
+            self._append(Static("[yellow]open a workspace first: /workspace <folder>[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("change.list", {
+                "workspace_id": self._workspace["workspace_id"],
+            })
+            changes = result.get("changes", [])
+            body = "\n".join(
+                f"  {change.get('index_status')}{change.get('worktree_status')}  {change.get('path')}"
+                for change in changes[:50]
+            ) or "  (clean working tree)"
+            self._append(Static(
+                f"[bold cyan]changes[/bold cyan]\n[dim]{body}[/dim]",
+                classes="log-line",
+            ))
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]changes error: {e}[/red]", classes="log-line"))
+
+    # 展示指定文件的 Git diff，原始 patch 保持可复制且不修改工作区
+    async def _show_diff(self, path: str) -> None:
+        if self._client is None or self._workspace is None:
+            self._append(Static("[yellow]open a workspace first: /workspace <folder>[/yellow]", classes="log-line"))
+            return
+        if not path:
+            self._append(Static("[yellow]usage: /diff <path>[/yellow]", classes="log-line"))
+            return
+        try:
+            result = await self._client.send_command("change.diff", {
+                "workspace_id": self._workspace["workspace_id"],
+                "path": path,
+            })
+            diff = str(result.get("diff") or "(no Git diff available)")
+            self._append(Static(
+                f"[bold cyan]diff[/bold cyan] [dim]{path}[/dim]\n{diff[:12_000]}",
+                classes="log-line",
+            ))
+        except (IpcError, RuntimeError, OSError) as e:
+            self._append(Static(f"[red]diff error: {e}[/red]", classes="log-line"))
 
     # 在 worker 中执行 IPC 发送，使 App 消息泵在 agent 运行期间仍能处理键盘/焦点等消息
     async def _do_send_message(self, content: str) -> None:
@@ -812,6 +1036,9 @@ class KamaTuiApp(App[None]):
         except NoMatches:
             return
         session = f"  [dim]{self._session_id}[/dim]" if self._session_id else ""
+        workspace = ""
+        if self._workspace is not None:
+            workspace = f"  [cyan]{self._workspace.get('name', 'workspace')}[/cyan]"
         color = {
             "ready": "green",
             "running": "yellow",
@@ -829,7 +1056,7 @@ class KamaTuiApp(App[None]):
         mode_str = f"  {mode_display}" if mode_display else ""
         header.update(
             f"[bold]SztuCode[/bold]  [dim]{self._host}:{self._port}[/dim]"
-            f"{session}  [{color}]{state}[/{color}]{mode_str}"
+            f"{workspace}{session}  [{color}]{state}[/{color}]{mode_str}"
         )
 
     # 管理 SocketClient 生命周期：连接、订阅事件、断线重连
@@ -882,10 +1109,14 @@ class KamaTuiApp(App[None]):
                 if self._replay_run_id is not None:
                     params["replay_from_run"] = self._replay_run_id
                 await client.send_command("event.subscribe", params)
-                created = await client.send_command("session.create", {"mode": "chat"})
-                self._session_id = str(created["session_id"])
+                if self._session_id is not None:
+                    await client.send_command("session.resume", {"session_id": self._session_id})
+                else:
+                    created = await client.send_command("session.create", {"mode": "chat"})
+                    self._session_id = str(created["session_id"])
                 self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
                 log.info("session created session_id=%s", self._session_id)
+                await self._refresh_session_list()
                 prompt = self._prompt()
                 if prompt is not None:
                     prompt.disabled = False
@@ -900,7 +1131,6 @@ class KamaTuiApp(App[None]):
                 if not loop_task.done():
                     loop_task.cancel()
                 self._client = None
-                self._session_id = None
                 prompt = self._prompt()
                 if prompt is not None:
                     prompt.disabled = True
@@ -923,6 +1153,10 @@ class KamaTuiApp(App[None]):
     def _handle_event_inner(self, event: dict[str, Any]) -> None:
         t = event.get("type", "")
 
+        session_id = event.get("session_id")
+        if session_id is not None and session_id != self._session_id:
+            return
+
         if t == "llm.token":
             token = event.get("token", "")
             if self._current_llm is None:
@@ -943,6 +1177,7 @@ class KamaTuiApp(App[None]):
                 prompt.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
                 prompt.focus()
             self._update_header("ready")
+            self.run_worker(self._refresh_session_list(), name="refresh_sessions", exclusive=False)
 
         elif t == "session.closed":
             self._busy = False

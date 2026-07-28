@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import ValidationError
 
@@ -11,6 +11,7 @@ from sztu_code.core.bus.events import (
     PermissionDeniedEvent,
     PermissionGrantedEvent,
     PermissionRequestedEvent,
+    TestResultEvent,
     ToolCallFailedEvent,
     ToolCallFinishedEvent,
     ToolCallStartedEvent,
@@ -32,6 +33,45 @@ _RETRYABLE: frozenset[str] = frozenset({"runtime_error", "rate_limited"})
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+# 判断 bash 调用是否为可汇总的常见测试命令
+def _is_test_command(tool_call: ToolCallBlock) -> bool:
+    if tool_call.name != "bash":
+        return False
+    command = str(tool_call.input.get("command", "")).lower()
+    markers = ("pytest", "vitest", "jest", "cargo test", "npm test", "pnpm test", "yarn test")
+    return any(marker in command for marker in markers)
+
+
+# 从测试输出中提取最有信息量的一行，避免将整段终端日志塞入事件流
+def _test_summary(command: str, output: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    markers = ("passed", "failed", "error", "tests")
+    candidates = [line for line in lines if any(token in line.lower() for token in markers)]
+    return (candidates[-1] if candidates else (lines[-1] if lines else command))[:300]
+
+
+# 为测试型 bash 调用发布可持久回放的验证结果事件
+async def _publish_test_result(
+    bus: EventBus,
+    run_id: str,
+    tool_call: ToolCallBlock,
+    status: Literal["passed", "failed"],
+    output: str,
+) -> None:
+    if not _is_test_command(tool_call):
+        return
+    command = str(tool_call.input.get("command", ""))
+    await bus.publish(
+        TestResultEvent(
+            run_id=run_id,
+            tool_use_id=tool_call.id,
+            status=status,
+            summary=_test_summary(command, output),
+            ts=_now(),
+        )
+    )
 
 
 # 发布 ToolCallFailedEvent 并返回对应 ToolResult
@@ -57,6 +97,7 @@ async def _fail(
             ts=_now(),
         )
     )
+    await _publish_test_result(bus, run_id, tool_call, "failed", error_message)
     return ToolResult(content=error_message, is_error=True, error_type=error_class)
 
 
@@ -169,6 +210,7 @@ async def invoke_tool(
                         ts=_now(),
                     )
                 )
+                await _publish_test_result(bus, run_id, tool_call, "passed", result.content)
                 return result
 
         except RateLimitedError as exc:

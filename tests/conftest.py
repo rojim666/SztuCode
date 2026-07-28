@@ -28,7 +28,7 @@ async def running_daemon(free_port: int) -> AsyncGenerator[subprocess.Popen[byte
 
     proc = subprocess.Popen([sys.executable, "-m", "sztu_code.core"], env=env)
 
-    deadline = time.monotonic() + 3.0
+    deadline = time.monotonic() + 8.0
     while time.monotonic() < deadline:
         await asyncio.sleep(0.05)
         try:

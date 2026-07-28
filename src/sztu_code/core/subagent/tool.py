@@ -93,6 +93,7 @@ class SpawnAgentTool(BaseTool):
         runs_dir: Path,
         session_id: str,
         depth: int = 0,
+        workspace_root: Path | None = None,
     ) -> None:
         self._provider = provider
         self._parent_bus = parent_bus
@@ -103,6 +104,7 @@ class SpawnAgentTool(BaseTool):
         self._runs_dir = runs_dir
         self._session_id = session_id
         self._depth = depth
+        self._workspace_root = workspace_root
 
     # 派生子 agent，前台时阻塞直到完成并返回结果，后台时立即返回 run_id
     async def invoke(self, params: dict[str, object]) -> ToolResult:
@@ -238,10 +240,10 @@ class SpawnAgentTool(BaseTool):
 
         registry = ToolRegistry()
         _all_tools = [
-            ReadFileTool(),
-            BashTool(),
-            WriteFileTool(),
-            ListDirTool(),
+            ReadFileTool(self._workspace_root),
+            BashTool(self._workspace_root),
+            WriteFileTool(self._workspace_root),
+            ListDirTool(self._workspace_root),
         ]
         for t in _all_tools:
             if _allowed(t.name):
@@ -249,8 +251,8 @@ class SpawnAgentTool(BaseTool):
 
         child_task_manager = TaskManager(self._runs_dir / child_run_id / ".tasks")
         for t in [
-            TaskCreateTool(child_task_manager),
-            TaskUpdateTool(child_task_manager),
+            TaskCreateTool(child_task_manager, child_bus, child_run_id, self._session_id),
+            TaskUpdateTool(child_task_manager, child_bus, child_run_id, self._session_id),
             TaskListTool(child_task_manager),
             TaskGetTool(child_task_manager),
         ]:
@@ -268,6 +270,7 @@ class SpawnAgentTool(BaseTool):
                 runs_dir=self._runs_dir,
                 session_id=self._session_id,
                 depth=self._depth + 1,
+                workspace_root=self._workspace_root,
             )
             if _allowed("spawn_agent"):
                 registry.register(nested)

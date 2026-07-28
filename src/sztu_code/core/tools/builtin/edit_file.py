@@ -7,6 +7,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.workspace import resolve_workspace_path
 
 _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
 
@@ -27,7 +28,8 @@ class EditFileTool(BaseTool):
     description = (
         "Perform exact string replacement in an existing file. "
         "When editing text, ensure you preserve the exact indentation (tabs/spaces) as it appears "
-        "before. ALWAYS prefer editing existing files in the codebase. NEVER write new files unless "
+        "before. ALWAYS prefer editing existing files in the codebase. "
+        "NEVER write new files unless "
         "explicitly required. Only use emojis if the user explicitly requests it. Avoid adding "
         "emojis to files unless asked. The edit will FAIL if old_string is not unique in the file. "
         "Either provide a larger string with more surrounding context to make it unique. "
@@ -56,6 +58,10 @@ class EditFileTool(BaseTool):
         "required": ["path", "old_string", "new_string"],
     }
 
+    # 绑定可选工作区根目录，使编辑不会落到 daemon 启动目录之外
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
+
     # 读取文件 → 精确替换 → 写回；old_string 必须唯一（除非 replace_all）
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         p = EditFileParams.model_validate(params)
@@ -70,7 +76,7 @@ class EditFileTool(BaseTool):
                 error_type="schema_error",
             )
 
-        path = Path(p.path)
+        path = resolve_workspace_path(self._workspace_root, p.path)
         if not path.is_file():
             return ToolResult(
                 content=f"file not found: {p.path}",

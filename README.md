@@ -86,6 +86,22 @@ uv run sztu run --goal "创建一个 hello.py 文件，打印 Hello World"
 uv run sztu-tui
 ```
 
+### 图形工作台（Tauri + React）
+
+`desktop/` 是面向日常开发的图形工作台：提供工作区选择、可恢复任务历史、实时运行时间线、权限审批、文件搜索与 Git 变更审阅。它与 Python daemon 复用同一套 JSON-RPC / EventBus 协议。
+
+```powershell
+# 一个终端
+uv run sztu-code
+
+# 另一个终端
+cd desktop
+npm install
+npm run tauri dev
+```
+
+旧的 `uv run sztu-desktop` Tkinter 客户端仅保留兼容性；新产品功能优先进入 `desktop/`。
+
 ### LLM Provider 选择
 
 项目支持两种 LLM 后端协议，通过 `SZTU_LLM_PROVIDER` 环境变量切换：
@@ -165,12 +181,13 @@ uv run python scripts/gen_protocol_doc.py
 
 ## 配置
 
-四级配置优先级（后者覆盖前者）：
+五级配置优先级（后者覆盖前者）：
 
 1. 内建默认值
 2. `~/.sztu/config.toml`（全局）
 3. `.sztu/config.toml`（项目本地）
-4. `.env` / 系统环境变量
+4. 桌面端保存的 `~/.sztu/client-settings.json`：仅提供 Provider、模型和权限模式，其中不保存 API Key。
+5. `.env` / 系统环境变量
 
 主要环境变量：
 

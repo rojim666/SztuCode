@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -87,6 +88,10 @@ class BashTool(BaseTool):
         "required": ["command"],
     }
 
+    # 绑定可选工作区根目录，使 shell 命令以任务工作区作为 cwd 执行
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
+
     # 在子进程中执行 shell 命令，合并 stdout/stderr，超时或非零退出码时返回错误
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         p = BashParams.model_validate(params)
@@ -98,6 +103,7 @@ class BashTool(BaseTool):
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                cwd=str(self._workspace_root) if self._workspace_root is not None else None,
             )
             try:
                 stdout_bytes, _ = await asyncio.wait_for(

@@ -10,21 +10,42 @@ from pathlib import Path
 from sztu_code.core.bus.commands import (
     AgentRunCommand,
     AgentRunResult,
+    ChangeListCommand,
+    ChangeListResult,
+    ChangeRevertCommand,
+    ChangeRevertResult,
     EventSubscribeCommand,
     EventSubscribeResult,
     PingCommand,
     PongResult,
+    ProviderStatusCommand,
+    ProviderStatusResult,
     SessionCloseCommand,
     SessionCloseResult,
     SessionCreateCommand,
     SessionCreateResult,
     SessionGetHistoryCommand,
     SessionGetHistoryResult,
+    SessionListCommand,
+    SessionListResult,
+    SessionPinCommand,
+    SessionPinResult,
+    SessionRenameCommand,
+    SessionRenameResult,
+    SessionArchiveCommand,
+    SessionArchiveResult,
+    SessionResumeCommand,
+    SessionResumeResult,
     SessionSendMessageCommand,
     SessionSendMessageResult,
+    SettingsGetCommand,
+    SettingsGetResult,
+    SettingsUpdateCommand,
+    SettingsUpdateResult,
 )
 from sztu_code.core.bus.envelope import EventPushEnvelope
 from sztu_code.core.bus.events import (
+    ChangeAppliedEvent,
     CoreStartedEvent,
     LlmModelSelectedEvent,
     LlmTokenEvent,
@@ -168,6 +189,26 @@ def generate() -> str:
         "\n",
         _model_section("AgentRunResult", AgentRunResult, agent_run_resp_example),
         "\n",
+        _model_section("ChangeListCommand", ChangeListCommand),
+        "\n",
+        _model_section("ChangeListResult", ChangeListResult),
+        "\n",
+        _model_section("ChangeRevertCommand", ChangeRevertCommand),
+        "\n",
+        _model_section("ChangeRevertResult", ChangeRevertResult),
+        "\n",
+        _model_section("SettingsGetCommand", SettingsGetCommand),
+        "\n",
+        _model_section("SettingsGetResult", SettingsGetResult),
+        "\n",
+        _model_section("SettingsUpdateCommand", SettingsUpdateCommand),
+        "\n",
+        _model_section("SettingsUpdateResult", SettingsUpdateResult),
+        "\n",
+        _model_section("ProviderStatusCommand", ProviderStatusCommand),
+        "\n",
+        _model_section("ProviderStatusResult", ProviderStatusResult),
+        "\n",
         _model_section("EventSubscribeCommand", EventSubscribeCommand, subscribe_req_example),
         "\n",
         _model_section("EventSubscribeResult", EventSubscribeResult, subscribe_resp_example),
@@ -175,6 +216,26 @@ def generate() -> str:
         _model_section("SessionCreateCommand", SessionCreateCommand, session_create_req_example),
         "\n",
         _model_section("SessionCreateResult", SessionCreateResult, session_create_resp_example),
+        "\n",
+        _model_section("SessionListCommand", SessionListCommand),
+        "\n",
+        _model_section("SessionListResult", SessionListResult),
+        "\n",
+        _model_section("SessionRenameCommand", SessionRenameCommand),
+        "\n",
+        _model_section("SessionRenameResult", SessionRenameResult),
+        "\n",
+        _model_section("SessionArchiveCommand", SessionArchiveCommand),
+        "\n",
+        _model_section("SessionArchiveResult", SessionArchiveResult),
+        "\n",
+        _model_section("SessionPinCommand", SessionPinCommand),
+        "\n",
+        _model_section("SessionPinResult", SessionPinResult),
+        "\n",
+        _model_section("SessionResumeCommand", SessionResumeCommand),
+        "\n",
+        _model_section("SessionResumeResult", SessionResumeResult),
         "\n",
         _model_section("SessionSendMessageCommand", SessionSendMessageCommand, session_send_req_example),
         "\n",
@@ -235,6 +296,10 @@ def generate() -> str:
         _model_section("LogLineEvent", LogLineEvent,
             {"type": "log.line", "run_id": run_id, "level": "INFO",
              "source": "sztu_code.core.loop", "message": "step 1 started", "ts": ts}),
+        "\n",
+        _model_section("ChangeAppliedEvent", ChangeAppliedEvent,
+            {"type": "change.applied", "run_id": run_id, "workspace_path": "/repo",
+             "paths": ["src/example.py"], "ts": ts}),
         "\n## Session Events\n\n",
         _model_section("SessionCreatedEvent", SessionCreatedEvent,
             {"type": "session.created", "session_id": session_id, "mode": "chat", "ts": ts}),
@@ -279,13 +344,13 @@ def main() -> None:
         if not output_path.exists():
             print(f"ERROR: {output_path} not found — run: make docs", file=sys.stderr)
             sys.exit(1)
-        if output_path.read_text() != content:
+        if output_path.read_text(encoding="utf-8") != content:
             print(f"ERROR: {output_path} out of sync with code — run: make docs", file=sys.stderr)
             sys.exit(1)
         print(f"OK: {output_path} is up to date.")
     else:
         output_path = Path(args.output)
-        output_path.write_text(content)
+        output_path.write_text(content, encoding="utf-8")
         print(f"Generated {output_path}")
 
 

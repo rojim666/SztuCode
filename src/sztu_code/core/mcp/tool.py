@@ -21,6 +21,10 @@ class McpTool(BaseTool):
             tool_def.input_schema or {"type": "object", "properties": {}}
         )
 
+    @property
+    def server_name(self) -> str:
+        return self._server_name
+
     # 调用 MCP server 上的工具，连接不可用或工具执行失败时返回 is_error=True
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         try:

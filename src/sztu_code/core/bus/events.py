@@ -221,6 +221,38 @@ class SkillInvokedEvent(BaseModel):
     ts: str
 
 
+class PlanItem(BaseModel):
+    id: int
+    subject: str
+    status: Literal["pending", "in_progress", "completed"]
+    blocked_by: list[int]
+
+
+class PlanUpdatedEvent(BaseModel):
+    type: Literal["plan.updated"] = "plan.updated"
+    run_id: str
+    session_id: str = ""
+    items: list[PlanItem]
+    ts: str
+
+
+class TestResultEvent(BaseModel):
+    type: Literal["test.result"] = "test.result"
+    run_id: str
+    tool_use_id: str
+    status: Literal["passed", "failed"]
+    summary: str
+    ts: str
+
+
+class ChangeAppliedEvent(BaseModel):
+    type: Literal["change.applied"] = "change.applied"
+    run_id: str
+    workspace_path: str
+    paths: list[str]
+    ts: str
+
+
 # 根据 type 字段决定事件类型的判别联合
 Event = Annotated[
     CoreStartedEvent
@@ -248,6 +280,9 @@ Event = Annotated[
     | SubagentStartedEvent
     | SubagentFinishedEvent
     | SkillInvokedEvent
+    | PlanUpdatedEvent
+    | TestResultEvent
+    | ChangeAppliedEvent
     | PermissionModeChangedEvent,
     Discriminator("type"),
 ]

@@ -6,6 +6,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.workspace import resolve_workspace_path
 
 _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
 
@@ -42,6 +43,10 @@ class WriteFileTool(BaseTool):
         "required": ["path", "content"],
     }
 
+    # 绑定可选工作区根目录，使写入目标始终受 session 工作区约束
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
+
     # 写入文件内容；超 1MB 拒绝；禁止 .. 路径遍历；自动创建父目录
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         p = WriteFileParams.model_validate(params)
@@ -59,7 +64,7 @@ class WriteFileTool(BaseTool):
                 error_type="runtime_error",
             )
 
-        path = Path(path_str)
+        path = resolve_workspace_path(self._workspace_root, path_str)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
