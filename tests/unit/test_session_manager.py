@@ -23,10 +23,12 @@ class _Runner:
         store: SessionStore | None = None,
         system_prompt_override: str | None = None,
         tool_whitelist: list[str] | None = None,
+        workspace_root: Path | None = None,
     ) -> RunOutcome:
         assert run_id is not None
         assert session is not None
         assert store is not None
+        self.workspace_root = workspace_root
         store.append_messages(
             session.id,
             [{"role": "assistant", "content": [{"type": "text", "text": f"done {goal}"}]}],
@@ -104,3 +106,66 @@ async def test_closed_session_rejects_message(tmp_path: Path) -> None:
     with pytest.raises(HandlerError) as exc:
         await manager.send_message(session.id, "again")
     assert exc.value.code == SESSION_CLOSED
+
+
+# 功能：验证重启后的 SessionManager 可列出持久化任务，并能归档、恢复已关闭的 chat session。
+# 设计：用两个 manager 实例模拟 daemon 重启，分别断言归档过滤、磁盘恢复和 resume 后的可输入状态，覆盖客户端恢复任务的完整路径。
+async def test_persisted_session_can_be_listed_archived_and_resumed(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    first_manager = SessionManager(store, lambda: _Runner(), EventBus())  # type: ignore[arg-type]
+    first = await first_manager.create("chat", "first")
+    second = await first_manager.create("chat", "second")
+    await first_manager.close(first.id)
+    await first_manager.archive(first.id)
+
+    restarted_manager = SessionManager(store, lambda: _Runner(), EventBus())  # type: ignore[arg-type]
+    visible, cursor = await restarted_manager.list_sessions(limit=1)
+    assert [session.id for session in visible] == [second.id]
+    assert cursor is None
+
+    all_sessions, _ = await restarted_manager.list_sessions(include_archived=True)
+    assert {session.id for session in all_sessions} == {first.id, second.id}
+    restored = await restarted_manager.resume(first.id)
+    assert restored.status == "waiting_for_input"
+    assert restored.archived is False
+    assert store.read_meta(first.id).status == "waiting_for_input"
+
+
+async def test_pinned_session_is_persisted_sorted_first_and_unpinned_when_archived(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    manager = SessionManager(store, lambda: _Runner(), EventBus())  # type: ignore[arg-type]
+    first = await manager.create("chat", "first")
+    second = await manager.create("chat", "second")
+
+    pinned = await manager.pin(first.id, True)
+    visible, _ = await manager.list_sessions()
+
+    assert pinned.pinned is True
+    assert [session.id for session in visible] == [first.id, second.id]
+    await manager.archive(first.id)
+    assert store.read_meta(first.id).pinned is False
+
+    restarted = SessionManager(store, lambda: _Runner(), EventBus())  # type: ignore[arg-type]
+    archived, _ = await restarted.list_sessions(include_archived=True)
+    assert next(session for session in archived if session.id == first.id).pinned is False
+
+
+# 功能：验证 session 可持久绑定工作区，并在 run 时将解析后的根目录传给 AgentRunner。
+# 设计：以可观察的 runner 替身捕获 workspace_root，同时重读 meta，覆盖会话持久化与实际执行上下文两层边界。
+async def test_session_workspace_is_persisted_and_passed_to_runner(tmp_path: Path) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    runner = _Runner()
+    store = SessionStore(tmp_path / "sessions")
+    manager = SessionManager(
+        store,
+        lambda: runner,  # type: ignore[arg-type]
+        EventBus(),
+        workspace_resolver=lambda workspace_id: workspace if workspace_id == "ws-project" else tmp_path,
+    )
+    session = await manager.create("chat", workspace_id="ws-project")
+
+    await manager.send_message(session.id, "inspect workspace")
+
+    assert runner.workspace_root == workspace
+    assert store.read_meta(session.id).workspace_id == "ws-project"

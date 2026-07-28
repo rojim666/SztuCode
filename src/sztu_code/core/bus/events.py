@@ -88,6 +88,7 @@ class LlmUsageEvent(BaseModel):
     cache_read_input_tokens: int
     cache_creation_input_tokens: int
     context_pct: float = 0.0
+    model: str = ""  # 当前使用的模型名
     ts: str
 
 
@@ -179,6 +180,23 @@ class PermissionDeniedEvent(BaseModel):
     ts: str
 
 
+class DenialInterventionEvent(BaseModel):
+    type: Literal["denial.intervention"] = "denial.intervention"
+    run_id: str
+    tool_name: str  # 触发熔断的工具名
+    consecutive_count: int
+    total_denials: int
+    message: str  # 注入给 LLM 的干预消息
+    ts: str
+
+
+class PermissionModeChangedEvent(BaseModel):
+    type: Literal["permission.mode_changed"] = "permission.mode_changed"
+    old_mode: str
+    new_mode: str
+    ts: str
+
+
 class SubagentStartedEvent(BaseModel):
     type: Literal["subagent.started"] = "subagent.started"
     run_id: str          # 子 agent run_id
@@ -203,6 +221,38 @@ class SkillInvokedEvent(BaseModel):
     ts: str
 
 
+class PlanItem(BaseModel):
+    id: int
+    subject: str
+    status: Literal["pending", "in_progress", "completed"]
+    blocked_by: list[int]
+
+
+class PlanUpdatedEvent(BaseModel):
+    type: Literal["plan.updated"] = "plan.updated"
+    run_id: str
+    session_id: str = ""
+    items: list[PlanItem]
+    ts: str
+
+
+class TestResultEvent(BaseModel):
+    type: Literal["test.result"] = "test.result"
+    run_id: str
+    tool_use_id: str
+    status: Literal["passed", "failed"]
+    summary: str
+    ts: str
+
+
+class ChangeAppliedEvent(BaseModel):
+    type: Literal["change.applied"] = "change.applied"
+    run_id: str
+    workspace_path: str
+    paths: list[str]
+    ts: str
+
+
 # 根据 type 字段决定事件类型的判别联合
 Event = Annotated[
     CoreStartedEvent
@@ -223,11 +273,16 @@ Event = Annotated[
     | SessionResumedEvent
     | SessionClosedEvent
     | ContextCompactedEvent
+    | DenialInterventionEvent
     | PermissionRequestedEvent
     | PermissionGrantedEvent
     | PermissionDeniedEvent
     | SubagentStartedEvent
     | SubagentFinishedEvent
-    | SkillInvokedEvent,
+    | SkillInvokedEvent
+    | PlanUpdatedEvent
+    | TestResultEvent
+    | ChangeAppliedEvent
+    | PermissionModeChangedEvent,
     Discriminator("type"),
 ]

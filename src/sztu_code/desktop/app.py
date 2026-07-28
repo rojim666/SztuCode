@@ -6,7 +6,8 @@ import json
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from functools import partial
+from tkinter import scrolledtext, ttk
 from typing import Any
 
 from sztu_code.core.transport.socket_client import IpcError, SocketClient
@@ -59,11 +60,20 @@ class SztuCodeDesktop(tk.Tk):
         self._host = host
         self._port = port
         self._session_id: str | None = None
+        self._last_run_id: str | None = None
         self._messages: list[_Message] = []
-        self._pending_tools: dict[str, _Message] = {}  # tool_use_id → tool msg
+        self._pending_tools: dict[str, tk.Frame] = {}  # tool_use_id → tool card
         self._ui_queue: queue.Queue[_UIEvent] = queue.Queue()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._client: SocketClient | None = None
         self._running = False
+        self._mode: str = "normal"  # 当前权限模式
+        self._session_tokens: dict[str, int] = {
+            "in": 0,
+            "out": 0,
+            "cache_read": 0,
+            "cache_write": 0,
+        }
 
         self._setup_ui()
         self._start_connection()
@@ -108,6 +118,28 @@ class SztuCodeDesktop(tk.Tk):
         )
         self._addr_label.pack(side=tk.LEFT)
 
+        # 模式切换按钮
+        self._mode_buttons = tk.Frame(self._header, bg=SIDEBAR_BG)
+        self._mode_buttons.pack(side=tk.RIGHT, padx=8)
+
+        for label, mode, color in [
+            ("N", "normal", "#6c7086"),
+            ("P", "plan", "#f9e2af"),
+            ("E", "accept_edits", "#a6e3a1"),
+            ("A", "auto", "#89b4fa"),
+        ]:
+            btn = tk.Button(
+                self._mode_buttons, text=label, font=("Segoe UI", 9, "bold"),
+                bg=color if label in ("N",) else SIDEBAR_BG,
+                fg=color, borderwidth=0, padx=8, pady=2,
+                cursor="hand2", relief=tk.FLAT,
+                activebackground=color, activeforeground=BG,
+                command=partial(self._set_mode, mode),
+            )
+            btn.pack(side=tk.RIGHT, padx=2)
+            self._mode_buttons._btns = getattr(self._mode_buttons, "_btns", {})  # type: ignore[attr-defined]
+            self._mode_buttons._btns[mode] = btn  # type: ignore[attr-defined]
+
         # 主聊天区域
         chat_frame = tk.Frame(self, bg=CHAT_BG)
         chat_frame.pack(fill=tk.BOTH, expand=True, side=tk.TOP)
@@ -118,9 +150,7 @@ class SztuCodeDesktop(tk.Tk):
         )
         self._chat_inner = tk.Frame(self._chat_canvas, bg=CHAT_BG)
 
-        self._chat_inner.bind("<Configure>", lambda e: self._chat_canvas.configure(
-            scrollregion=self._chat_canvas.bbox("all"),
-        ))
+        self._chat_inner.bind("<Configure>", self._update_chat_scroll_region)
         self._chat_canvas_window = self._chat_canvas.create_window(
             (0, 0), window=self._chat_inner, anchor="nw", tags="inner",
         )
@@ -158,8 +188,18 @@ class SztuCodeDesktop(tk.Tk):
         )
         send_btn.pack(side=tk.RIGHT, padx=(0, 12), pady=10)
 
+        # 全局快捷键
+        self.bind("<Control-a>", lambda e: self._set_mode("auto"))
+        self.bind("<Control-e>", lambda e: self._set_mode("accept_edits"))
+        self.bind("<Control-p>", lambda e: self._set_mode("plan"))
+        self.bind("<Control-n>", lambda e: self._set_mode("normal"))
+
     def _on_canvas_resize(self, event: tk.Event) -> None:
         self._chat_canvas.itemconfig(self._chat_canvas_window, width=event.width)
+
+    # 根据聊天内容尺寸更新 Canvas 的可滚动范围
+    def _update_chat_scroll_region(self, _event: tk.Event) -> None:
+        self._chat_canvas.configure(scrollregion=self._chat_canvas.bbox("all"))
 
     # ── 消息渲染 ───────────────────────────────────────────────────────
     def _add_user_bubble(self, text: str) -> None:
@@ -269,7 +309,7 @@ class SztuCodeDesktop(tk.Tk):
     # ── 输入处理 ───────────────────────────────────────────────────────
     def _on_enter(self, event: tk.Event) -> str:
         """Enter 发送消息，Shift+Enter 换行"""
-        if event.state & 0x0001:  # Shift
+        if int(event.state) & 0x0001:  # Shift
             return ""  # 允许默认换行
         self._send_message()
         return "break"  # 阻止默认换行
@@ -287,6 +327,24 @@ class SztuCodeDesktop(tk.Tk):
             "session_id": self._session_id,
             "content": content,
         })
+
+    # ── 模式切换 ───────────────────────────────────────────────────────
+    def _set_mode(self, mode: str) -> None:
+        """发送模式切换命令到 daemon"""
+        self._run_async("permission.set_mode", {"mode": mode})
+        # 本地 UI 即时更新按钮状态
+        for m, btn in getattr(self._mode_buttons, "_btns", {}).items():
+            if m == mode:
+                btn.config(bg={
+                    "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                    "plan": "#f9e2af",
+                }.get(mode, "#6c7086"), fg=BG)
+            else:
+                btn.config(bg=SIDEBAR_BG, fg={
+                    "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                    "plan": "#f9e2af", "normal": "#6c7086",
+                }.get(m, "#6c7086"))
+        self._mode = mode
 
     # ── 连接管理 ───────────────────────────────────────────────────────
     def _start_connection(self) -> None:
@@ -312,28 +370,49 @@ class SztuCodeDesktop(tk.Tk):
 
                 self._enqueue_ui("status", ("connecting",))
                 loop_task = asyncio.ensure_future(client.run_event_loop())
+                self._client = client
 
-                client.on_event(lambda ev: self._enqueue_ui("event", ev))
+                # 将后台 socket 事件转交 Tk 主线程渲染
+                async def on_event(event: dict[str, Any]) -> None:
+                    self._enqueue_ui("event", event)
+
+                client.on_event(on_event)
 
                 try:
-                    await client.send_command("event.subscribe", {
+                    subscription: dict[str, Any] = {
                         "topics": [
                             "session.*", "run.*", "step.*", "tool.*",
                             "llm.token", "llm.usage", "log.*",
                             "permission.*", "context.*", "subagent.*", "skill.*",
                         ],
                         "scope": "global",
-                    })
-                    created = await client.send_command("session.create", {"mode": "chat"})
-                    self._enqueue_ui("session_ready", created)
+                    }
+                    if self._last_run_id is not None:
+                        subscription["replay_from_run"] = self._last_run_id
+                    await client.send_command("event.subscribe", subscription)
+
+                    if self._session_id is not None:
+                        history = await client.send_command("session.get_history", {
+                            "session_id": self._session_id,
+                        })
+                        self._enqueue_ui("session_restored", {
+                            "session_id": self._session_id,
+                            "messages": history.get("messages", []),
+                        })
+                    else:
+                        created = await client.send_command("session.create", {"mode": "chat"})
+                        self._enqueue_ui("session_ready", created)
                     self._enqueue_ui("status", ("ready",))
                     await loop_task
                 except IpcError as e:
+                    if self._session_id is not None:
+                        self._enqueue_ui("session_lost", None)
                     self._enqueue_ui("status", ("error", str(e)))
                 finally:
                     if not loop_task.done():
                         loop_task.cancel()
-                    self._enqueue_ui("session_lost", None)
+                    self._client = None
+                    self._enqueue_ui("session_disconnected", None)
                     await client.close()
 
                 self._enqueue_ui("status", ("disconnected",))
@@ -342,16 +421,21 @@ class SztuCodeDesktop(tk.Tk):
         loop.run_until_complete(connect_loop())
 
     def _run_async(self, method: str, params: dict[str, Any]) -> None:
-        """从主线程向后台 asyncio 线程派发命令"""
+        """从主线程向已连接的后台客户端派发命令"""
         if self._loop is None:
             return
 
         async def do() -> None:
-            client = SocketClient(self._host, self._port)
+            client = self._client
+            if client is None:
+                self._enqueue_ui("error", "daemon is disconnected; retrying")
+                return
             try:
-                await client.connect()
-                await client.send_command(method, params)
-                await client.close()
+                result = await client.send_command(method, params)
+                if method == "session.send_message":
+                    run_id = str(result.get("run_id", ""))
+                    if run_id:
+                        self._last_run_id = run_id
             except (ConnectionRefusedError, OSError, IpcError) as e:
                 self._enqueue_ui("error", str(e))
 
@@ -379,11 +463,18 @@ class SztuCodeDesktop(tk.Tk):
 
         elif kind == "session_ready":
             self._session_id = str(evt.data.get("session_id", ""))
+            self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
             self._input_text.config(state=tk.NORMAL)
 
         elif kind == "session_lost":
             self._session_id = None
             self._input_text.config(state=tk.DISABLED)
+
+        elif kind == "session_disconnected":
+            self._input_text.config(state=tk.DISABLED)
+
+        elif kind == "session_restored":
+            self._input_text.config(state=tk.NORMAL)
 
         elif kind == "event":
             self._handle_event(evt.data)
@@ -410,17 +501,28 @@ class SztuCodeDesktop(tk.Tk):
     def _handle_event(self, event: dict[str, Any]) -> None:
         event_type = event.get("type", "")
 
+        session_id = event.get("session_id")
+        if session_id is not None and session_id != self._session_id:
+            return
+
         if event_type == "llm.token":
             self._handle_token(event)
 
         elif event_type == "llm.usage":
             self._handle_usage(event)
 
-        elif event_type == "tool.started":
+        elif event_type == "tool.call_started":
             self._handle_tool_started(event)
 
-        elif event_type == "tool.finished":
+        elif event_type == "tool.call_finished":
             self._handle_tool_finished(event)
+
+        elif event_type == "tool.call_failed":
+            self._handle_tool_finished({
+                **event,
+                "output": event.get("error_message", "Tool call failed"),
+                "is_error": True,
+            })
 
         elif event_type == "run.started":
             self._set_status("running")
@@ -428,19 +530,32 @@ class SztuCodeDesktop(tk.Tk):
 
         elif event_type == "run.finished":
             self._set_status("ready")
-
-        elif event_type == "run.failed":
-            self._set_status("ready")
-            self._add_agent_bubble(f"❌ Run failed: {event.get('error', 'unknown')}")
-
-        elif event_type == "context.watermark":
-            pct = event.get("pct", 0)
-            self._add_agent_bubble(f"📊 Context: {pct}% used")
+            if event.get("status") != "success":
+                self._add_agent_bubble(
+                    f"❌ Run failed: {event.get('reason') or 'unknown error'}"
+                )
 
         elif event_type == "permission.requested":
             self._handle_permission_request(event)
 
-        elif event_type == "log.message":
+        elif event_type == "permission.mode_changed":
+            new_mode = event.get("new_mode", "normal")
+            if new_mode in ("auto", "accept_edits", "plan", "normal"):
+                # 更新本地按钮状态
+                for m, btn in getattr(self._mode_buttons, "_btns", {}).items():
+                    if m == new_mode:
+                        btn.config(bg={
+                            "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                            "plan": "#f9e2af",
+                        }.get(new_mode, "#6c7086"), fg=BG)
+                    else:
+                        btn.config(bg=SIDEBAR_BG, fg={
+                            "auto": "#89b4fa", "accept_edits": "#a6e3a1",
+                            "plan": "#f9e2af", "normal": "#6c7086",
+                        }.get(m, "#6c7086"))
+                self._mode = new_mode
+
+        elif event_type == "log.line":
             pass  # 日志消息静默忽略（不在 TUI 中显示）
 
         else:
@@ -458,7 +573,12 @@ class SztuCodeDesktop(tk.Tk):
         for child in reversed(self._chat_inner.winfo_children()):
             if isinstance(child, tk.Frame):
                 for widget in child.winfo_children():
-                    if isinstance(widget, tk.Frame) and widget.cget("bg") != USER_BUBBLE and widget.cget("bg") != TOOL_CARD:
+                    is_agent_bubble = (
+                        isinstance(widget, tk.Frame)
+                        and widget.cget("bg") != USER_BUBBLE
+                        and widget.cget("bg") != TOOL_CARD
+                    )
+                    if is_agent_bubble:
                         for lbl in widget.winfo_children():
                             if isinstance(lbl, tk.Label):
                                 current = lbl.cget("text")
@@ -466,15 +586,50 @@ class SztuCodeDesktop(tk.Tk):
                                 self._scroll_bottom()
                                 return
         # 没有现有 bubble 则创建新的
-        row = self._add_agent_bubble(token)
+        self._add_agent_bubble(token)
         self._scroll_bottom()
 
+    @staticmethod
+    def _fmt_tokens(n: int) -> str:
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 1_000:
+            return f"{n / 1_000:.1f}K"
+        return str(n)
+
     def _handle_usage(self, event: dict[str, Any]) -> None:
-        """LLM 用量统计"""
-        inp = event.get("input_tokens", 0)
-        out = event.get("output_tokens", 0)
-        model = event.get("model", "")
-        self._add_agent_bubble(f"📈 Tokens: {inp} in / {out} out  ({model})")
+        """LLM 用量统计 — 本轮 + 会话累计"""
+        inp = int(event.get("input_tokens") or 0)
+        out = int(event.get("output_tokens") or 0)
+        cache_read = int(event.get("cache_read_input_tokens") or 0)
+        cache_write = int(event.get("cache_creation_input_tokens") or 0)
+        model = str(event.get("model") or "")
+        pct = float(event.get("context_pct") or 0.0)
+        # 累加
+        ses = self._session_tokens
+        ses["in"] += inp
+        ses["out"] += out
+        ses["cache_read"] += cache_read
+        ses["cache_write"] += cache_write
+        # 本轮
+        turn = f"in={self._fmt_tokens(inp)}  out={self._fmt_tokens(out)}"
+        if cache_read:
+            turn += f"  cache↗{self._fmt_tokens(cache_read)}"
+        if cache_write:
+            turn += f"  cache↖{self._fmt_tokens(cache_write)}"
+        # 会话累计
+        s_sum = f"in={self._fmt_tokens(ses['in'])}  out={self._fmt_tokens(ses['out'])}"
+        if ses["cache_read"]:
+            s_sum += f"  cache↗{self._fmt_tokens(ses['cache_read'])}"
+        # context 水位条
+        filled = int(pct * 10)
+        bar = "█" * filled + "░" * (10 - filled)
+        ctx = f"ctx {pct * 100:.0f}%"
+        self._add_agent_bubble(
+            f"📊 turn: {turn}\n"
+            f"📁 session: {s_sum}  [{model}]\n"
+            f"📏 {ctx}  {bar}"
+        )
 
     def _handle_tool_started(self, event: dict[str, Any]) -> None:
         tool_name = event.get("tool_name", "unknown")
@@ -532,9 +687,15 @@ class SztuCodeDesktop(tk.Tk):
         dialog.grab_set()
 
         tk.Label(
-            dialog, text=f"Tool: {tool_name}",
+            dialog, text=f"需要审批：{tool_name}",
             fg=ACCENT_YELLOW, bg=BG, font=FONT_BOLD,
         ).pack(padx=20, pady=(20, 10))
+
+        scope = f"会话：{event.get('session_id', '未知')}  运行：{event.get('run_id', '未知')}"
+        tk.Label(
+            dialog, text=scope,
+            fg=TEXT_SECONDARY, bg=BG, font=FONT_SMALL,
+        ).pack(padx=20, pady=(0, 10), anchor="w")
 
         param_text = scrolledtext.ScrolledText(
             dialog, bg=INPUT_BG, fg=TEXT_PRIMARY, font=FONT_MONO,
@@ -547,28 +708,33 @@ class SztuCodeDesktop(tk.Tk):
         btn_frame = tk.Frame(dialog, bg=BG)
         btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
 
-        def approve() -> None:
-            self._run_async("permission.decide", {
+        def respond(decision: str) -> None:
+            self._run_async("permission.respond", {
                 "tool_use_id": tool_use_id,
-                "decision": "approve",
-            })
-            dialog.destroy()
-
-        def deny() -> None:
-            self._run_async("permission.decide", {
-                "tool_use_id": tool_use_id,
-                "decision": "deny",
+                "decision": decision,
             })
             dialog.destroy()
 
         tk.Button(
-            btn_frame, text="Approve", command=approve,
+            btn_frame, text="允许一次", command=lambda: respond("allow_once"),
             bg=ACCENT_GREEN, fg=BG, font=FONT_BOLD,
             borderwidth=0, padx=16, pady=6, cursor="hand2",
         ).pack(side=tk.RIGHT, padx=(8, 0))
 
         tk.Button(
-            btn_frame, text="Deny", command=deny,
+            btn_frame, text="始终允许", command=lambda: respond("always_allow"),
+            bg=ACCENT_GREEN, fg=BG, font=FONT_BOLD,
+            borderwidth=0, padx=16, pady=6, cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(8, 0))
+
+        tk.Button(
+            btn_frame, text="拒绝一次", command=lambda: respond("deny_once"),
+            bg=ACCENT_RED, fg=TEXT_PRIMARY, font=FONT_BOLD,
+            borderwidth=0, padx=16, pady=6, cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(8, 0))
+
+        tk.Button(
+            btn_frame, text="始终拒绝", command=lambda: respond("always_deny"),
             bg=ACCENT_RED, fg=TEXT_PRIMARY, font=FONT_BOLD,
             borderwidth=0, padx=16, pady=6, cursor="hand2",
         ).pack(side=tk.RIGHT)

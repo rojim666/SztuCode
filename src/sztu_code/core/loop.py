@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -10,10 +11,10 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
 from sztu_code.core.tools.invocation import invoke_tool
 from sztu_code.core.tools.registry import ToolRegistry
-import logging
 
 if TYPE_CHECKING:
     from sztu_code.core.compact.compactor import Compactor
+    from sztu_code.core.permissions.denial_tracker import DenialTracker
     from sztu_code.core.permissions.manager import PermissionManager
 
 
@@ -24,7 +25,8 @@ def _now() -> str:
 
 
 class AgentLoop:
-    # 初始化循环所需依赖：LLM provider、工具注册表、事件总线，以及可选的权限管理器、压缩器和 session ID
+    # 初始化循环所需依赖：LLM provider、工具注册表、事件总线、
+    # 以及可选的权限管理器、拒绝追踪器、压缩器和 session ID
     def __init__(
         self,
         provider: LLMProvider,
@@ -32,6 +34,7 @@ class AgentLoop:
         bus: EventBus,
         *,
         permission_manager: PermissionManager | None = None,
+        denial_tracker: DenialTracker | None = None,
         compactor: Compactor | None = None,
         compact_threshold: float = 0.80,
         session_id: str = "",
@@ -40,6 +43,7 @@ class AgentLoop:
         self._registry = registry
         self._bus = bus
         self._permission_manager = permission_manager
+        self._denial_tracker = denial_tracker
         self._compactor = compactor
         self._compact_threshold = compact_threshold
         self._session_id = session_id
@@ -51,6 +55,31 @@ class AgentLoop:
             await self._bus.publish(
                 StepStartedEvent(run_id=context.run_id, step=context.step, ts=_now())
             )
+
+            # [intervene] 连续拒绝达到阈值时注入熔断消息，强制 LLM 换策略
+            if self._denial_tracker is not None and self._denial_tracker.should_intervene():
+                msg = self._denial_tracker.intervention_message()
+                context.messages.append({"role": "user", "content": msg})
+                # 发布熔断事件供 TUI 渲染
+                snap = self._denial_tracker.snapshot()
+                from sztu_code.core.bus.events import DenialInterventionEvent
+                if snap["consecutive"]:
+                    worst_tool = max(snap["consecutive"], key=snap["consecutive"].get)
+                    worst_count = snap["consecutive"][worst_tool]
+                else:
+                    worst_tool = "unknown"
+                    worst_count = 0
+                await self._bus.publish(
+                    DenialInterventionEvent(
+                        run_id=context.run_id,
+                        tool_name=str(worst_tool),
+                        consecutive_count=worst_count,
+                        total_denials=snap["total"],
+                        message=msg,
+                        ts=_now(),
+                    )
+                )
+                self._denial_tracker.reset_intervention()
 
             # [plan] call LLM — API errors terminate the run
             try:
@@ -97,6 +126,13 @@ class AgentLoop:
                         session_id=self._session_id,
                     )
                     context.add_tool_result(tc.id, result.content, is_error=result.is_error)
+
+                    # [track] 追踪权限拒绝，触发熔断干预
+                    if self._denial_tracker is not None:
+                        if result.error_type == "permission_denied":
+                            self._denial_tracker.record_denial(tc.name)
+                        elif not result.is_error:
+                            self._denial_tracker.record_success(tc.name)
             elif response.stop_reason == "max_tokens" and response.tool_calls:
                 # Output token limit hit mid-tool-call; input is incomplete.
                 # Add synthetic error results so the conversation stays balanced.

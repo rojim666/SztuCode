@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sztu_code.core.tools.base import BaseTool, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.workspace import resolve_workspace_path
 
 _MAX_DEPTH = 4
 _MAX_ENTRIES = 200
@@ -19,6 +21,8 @@ class ListDirParams(BaseModel):
 class ListDirTool(BaseTool):
     params_model = ListDirParams
     name = "list_dir"
+    required_permission = ToolPermission.READ_ONLY
+    aliases: ClassVar[list[str]] = ["ls", "List"]
     description = (
         "List the contents of a directory as a tree. "
         "Path must be relative to the current working directory. "
@@ -40,6 +44,10 @@ class ListDirTool(BaseTool):
         "required": [],
     }
 
+    # 绑定可选工作区根目录，使目录枚举与当前任务的仓库一致
+    def __init__(self, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
+
     # 以树状格式列出目录内容，深度和条数有上限
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         p = ListDirParams.model_validate(params)
@@ -49,7 +57,7 @@ class ListDirTool(BaseTool):
         if ".." in Path(path_str).parts:
             raise PermissionError(f"path traversal not allowed: {path_str}")
 
-        root = Path(path_str)
+        root = resolve_workspace_path(self._workspace_root, path_str)
         if not root.exists():
             raise FileNotFoundError(f"no such directory: {path_str}")
         if not root.is_dir():

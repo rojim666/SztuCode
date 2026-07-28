@@ -178,6 +178,551 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
 }
 ```
 
+### ChangeListCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `workspace_id` | `string` | yes |
+| `run_id` | `string | null` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "change.list",
+      "default": "change.list",
+      "title": "Type",
+      "type": "string"
+    },
+    "workspace_id": {
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "title": "ChangeListCommand",
+  "type": "object"
+}
+```
+
+### ChangeListResult
+
+| Field | Type | Required |
+|---|---|---|
+| `changes` | `array` | yes |
+
+```json
+{
+  "$defs": {
+    "ChangeSummary": {
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "index_status": {
+          "title": "Index Status",
+          "type": "string"
+        },
+        "worktree_status": {
+          "title": "Worktree Status",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "agent_owned": {
+          "default": false,
+          "title": "Agent Owned",
+          "type": "boolean"
+        },
+        "revertible": {
+          "default": false,
+          "title": "Revertible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "index_status",
+        "worktree_status"
+      ],
+      "title": "ChangeSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/ChangeSummary"
+      },
+      "title": "Changes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "changes"
+  ],
+  "title": "ChangeListResult",
+  "type": "object"
+}
+```
+
+### ChangeRevertCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `workspace_id` | `string` | yes |
+| `run_id` | `string` | yes |
+| `paths` | `array` | yes |
+| `confirm` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "change.revert",
+      "default": "change.revert",
+      "title": "Type",
+      "type": "string"
+    },
+    "workspace_id": {
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Paths",
+      "type": "array"
+    },
+    "confirm": {
+      "const": "revert",
+      "title": "Confirm",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "run_id",
+    "paths",
+    "confirm"
+  ],
+  "title": "ChangeRevertCommand",
+  "type": "object"
+}
+```
+
+### ChangeRevertResult
+
+| Field | Type | Required |
+|---|---|---|
+| `reverted_paths` | `array` | yes |
+| `blocked_paths` | `object` | yes |
+
+```json
+{
+  "properties": {
+    "reverted_paths": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reverted Paths",
+      "type": "array"
+    },
+    "blocked_paths": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Blocked Paths",
+      "type": "object"
+    }
+  },
+  "required": [
+    "reverted_paths",
+    "blocked_paths"
+  ],
+  "title": "ChangeRevertResult",
+  "type": "object"
+}
+```
+
+### SettingsGetCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "settings.get",
+      "default": "settings.get",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "title": "SettingsGetCommand",
+  "type": "object"
+}
+```
+
+### SettingsGetResult
+
+| Field | Type | Required |
+|---|---|---|
+| `settings` | `object` | yes |
+
+```json
+{
+  "$defs": {
+    "SettingsSnapshot": {
+      "properties": {
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "router": {
+          "title": "Router",
+          "type": "string"
+        },
+        "permission_mode": {
+          "enum": [
+            "normal",
+            "accept_edits",
+            "plan",
+            "auto"
+          ],
+          "title": "Permission Mode",
+          "type": "string"
+        },
+        "applies_at": {
+          "const": "next_run",
+          "default": "next_run",
+          "title": "Applies At",
+          "type": "string"
+        },
+        "persistent": {
+          "default": true,
+          "title": "Persistent",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "router",
+        "permission_mode"
+      ],
+      "title": "SettingsSnapshot",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "settings": {
+      "$ref": "#/$defs/SettingsSnapshot"
+    }
+  },
+  "required": [
+    "settings"
+  ],
+  "title": "SettingsGetResult",
+  "type": "object"
+}
+```
+
+### SettingsUpdateCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `provider` | `string | null` | no |
+| `model` | `string | null` | no |
+| `permission_mode` | `string | null` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "settings.update",
+      "default": "settings.update",
+      "title": "Type",
+      "type": "string"
+    },
+    "provider": {
+      "anyOf": [
+        {
+          "enum": [
+            "anthropic",
+            "openai"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "permission_mode": {
+      "anyOf": [
+        {
+          "enum": [
+            "normal",
+            "accept_edits",
+            "plan",
+            "auto"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Permission Mode"
+    }
+  },
+  "title": "SettingsUpdateCommand",
+  "type": "object"
+}
+```
+
+### SettingsUpdateResult
+
+| Field | Type | Required |
+|---|---|---|
+| `settings` | `object` | yes |
+| `updated` | `array` | yes |
+
+```json
+{
+  "$defs": {
+    "SettingsSnapshot": {
+      "properties": {
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "router": {
+          "title": "Router",
+          "type": "string"
+        },
+        "permission_mode": {
+          "enum": [
+            "normal",
+            "accept_edits",
+            "plan",
+            "auto"
+          ],
+          "title": "Permission Mode",
+          "type": "string"
+        },
+        "applies_at": {
+          "const": "next_run",
+          "default": "next_run",
+          "title": "Applies At",
+          "type": "string"
+        },
+        "persistent": {
+          "default": true,
+          "title": "Persistent",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "router",
+        "permission_mode"
+      ],
+      "title": "SettingsSnapshot",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "settings": {
+      "$ref": "#/$defs/SettingsSnapshot"
+    },
+    "updated": {
+      "items": {
+        "enum": [
+          "provider",
+          "model",
+          "permission_mode"
+        ],
+        "type": "string"
+      },
+      "title": "Updated",
+      "type": "array"
+    }
+  },
+  "required": [
+    "settings",
+    "updated"
+  ],
+  "title": "SettingsUpdateResult",
+  "type": "object"
+}
+```
+
+### ProviderStatusCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "provider.status",
+      "default": "provider.status",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "title": "ProviderStatusCommand",
+  "type": "object"
+}
+```
+
+### ProviderStatusResult
+
+| Field | Type | Required |
+|---|---|---|
+| `provider` | `string` | yes |
+| `model` | `string` | yes |
+| `api_key_configured` | `boolean` | yes |
+| `custom_endpoint_configured` | `boolean` | yes |
+| `ready_for_next_run` | `boolean` | yes |
+| `mcp_servers` | `array` | yes |
+| `skills` | `array` | yes |
+
+```json
+{
+  "properties": {
+    "provider": {
+      "enum": [
+        "anthropic",
+        "openai"
+      ],
+      "title": "Provider",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "api_key_configured": {
+      "title": "Api Key Configured",
+      "type": "boolean"
+    },
+    "custom_endpoint_configured": {
+      "title": "Custom Endpoint Configured",
+      "type": "boolean"
+    },
+    "ready_for_next_run": {
+      "title": "Ready For Next Run",
+      "type": "boolean"
+    },
+    "mcp_servers": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Mcp Servers",
+      "type": "array"
+    },
+    "skills": {
+      "items": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "title": "Skills",
+      "type": "array"
+    }
+  },
+  "required": [
+    "provider",
+    "model",
+    "api_key_configured",
+    "custom_endpoint_configured",
+    "ready_for_next_run",
+    "mcp_servers",
+    "skills"
+  ],
+  "title": "ProviderStatusResult",
+  "type": "object"
+}
+```
+
 ### EventSubscribeCommand
 
 | Field | Type | Required |
@@ -297,6 +842,7 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
 | `type` | `string` | no |
 | `mode` | `string` | no |
 | `title` | `string` | no |
+| `workspace_id` | `string | null` | no |
 
 ```json
 {
@@ -320,6 +866,18 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
       "default": "",
       "title": "Title",
       "type": "string"
+    },
+    "workspace_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace Id"
     }
   },
   "title": "SessionCreateCommand",
@@ -384,6 +942,719 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
     "session_id": "sess-abc123def456",
     "status": "active"
   }
+}
+```
+
+### SessionListCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `include_archived` | `boolean` | no |
+| `limit` | `integer` | no |
+| `cursor` | `string | null` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "session.list",
+      "default": "session.list",
+      "title": "Type",
+      "type": "string"
+    },
+    "include_archived": {
+      "default": false,
+      "title": "Include Archived",
+      "type": "boolean"
+    },
+    "limit": {
+      "default": 50,
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Limit",
+      "type": "integer"
+    },
+    "cursor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cursor"
+    }
+  },
+  "title": "SessionListCommand",
+  "type": "object"
+}
+```
+
+### SessionListResult
+
+| Field | Type | Required |
+|---|---|---|
+| `sessions` | `array` | yes |
+| `next_cursor` | `string | null` | no |
+
+```json
+{
+  "$defs": {
+    "SessionSummary": {
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "one_shot",
+            "chat"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "waiting_for_input",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "run_count": {
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Run Id"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "mode",
+        "status",
+        "updated_at",
+        "run_count"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "sessions": {
+      "items": {
+        "$ref": "#/$defs/SessionSummary"
+      },
+      "title": "Sessions",
+      "type": "array"
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Cursor"
+    }
+  },
+  "required": [
+    "sessions"
+  ],
+  "title": "SessionListResult",
+  "type": "object"
+}
+```
+
+### SessionRenameCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `session_id` | `string` | yes |
+| `title` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "session.rename",
+      "default": "session.rename",
+      "title": "Type",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "title"
+  ],
+  "title": "SessionRenameCommand",
+  "type": "object"
+}
+```
+
+### SessionRenameResult
+
+| Field | Type | Required |
+|---|---|---|
+| `session` | `object` | yes |
+
+```json
+{
+  "$defs": {
+    "SessionSummary": {
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "one_shot",
+            "chat"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "waiting_for_input",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "run_count": {
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Run Id"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "mode",
+        "status",
+        "updated_at",
+        "run_count"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "session": {
+      "$ref": "#/$defs/SessionSummary"
+    }
+  },
+  "required": [
+    "session"
+  ],
+  "title": "SessionRenameResult",
+  "type": "object"
+}
+```
+
+### SessionArchiveCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `session_id` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "session.archive",
+      "default": "session.archive",
+      "title": "Type",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "SessionArchiveCommand",
+  "type": "object"
+}
+```
+
+### SessionArchiveResult
+
+| Field | Type | Required |
+|---|---|---|
+| `session` | `object` | yes |
+
+```json
+{
+  "$defs": {
+    "SessionSummary": {
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "one_shot",
+            "chat"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "waiting_for_input",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "run_count": {
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Run Id"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "mode",
+        "status",
+        "updated_at",
+        "run_count"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "session": {
+      "$ref": "#/$defs/SessionSummary"
+    }
+  },
+  "required": [
+    "session"
+  ],
+  "title": "SessionArchiveResult",
+  "type": "object"
+}
+```
+
+### SessionPinCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `session_id` | `string` | yes |
+| `pinned` | `boolean` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "session.pin",
+      "default": "session.pin",
+      "title": "Type",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "pinned": {
+      "title": "Pinned",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "session_id",
+    "pinned"
+  ],
+  "title": "SessionPinCommand",
+  "type": "object"
+}
+```
+
+### SessionPinResult
+
+| Field | Type | Required |
+|---|---|---|
+| `session` | `object` | yes |
+
+```json
+{
+  "$defs": {
+    "SessionSummary": {
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "one_shot",
+            "chat"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "waiting_for_input",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "run_count": {
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Run Id"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "mode",
+        "status",
+        "updated_at",
+        "run_count"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "session": {
+      "$ref": "#/$defs/SessionSummary"
+    }
+  },
+  "required": [
+    "session"
+  ],
+  "title": "SessionPinResult",
+  "type": "object"
+}
+```
+
+### SessionResumeCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `session_id` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "session.resume",
+      "default": "session.resume",
+      "title": "Type",
+      "type": "string"
+    },
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id"
+  ],
+  "title": "SessionResumeCommand",
+  "type": "object"
+}
+```
+
+### SessionResumeResult
+
+| Field | Type | Required |
+|---|---|---|
+| `session` | `object` | yes |
+
+```json
+{
+  "$defs": {
+    "SessionSummary": {
+      "properties": {
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "one_shot",
+            "chat"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "waiting_for_input",
+            "closed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "run_count": {
+          "title": "Run Count",
+          "type": "integer"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
+          "type": "boolean"
+        },
+        "pinned": {
+          "default": false,
+          "title": "Pinned",
+          "type": "boolean"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workspace Id"
+        },
+        "latest_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Run Id"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "mode",
+        "status",
+        "updated_at",
+        "run_count"
+      ],
+      "title": "SessionSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "session": {
+      "$ref": "#/$defs/SessionSummary"
+    }
+  },
+  "required": [
+    "session"
+  ],
+  "title": "SessionResumeResult",
+  "type": "object"
 }
 ```
 
@@ -1182,7 +2453,7 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
 {
   "type": "llm.model_selected",
   "run_id": "20260516-100000-abc123",
-  "model": "claude-sonnet-4-6",
+  "model": "configured-model",
   "strategy": "static",
   "ts": "2026-05-16T10:00:00.001Z"
 }
@@ -1251,6 +2522,7 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
 | `cache_read_input_tokens` | `integer` | yes |
 | `cache_creation_input_tokens` | `integer` | yes |
 | `context_pct` | `number` | no |
+| `model` | `string` | no |
 | `ts` | `string` | yes |
 
 ```json
@@ -1286,6 +2558,11 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
       "default": 0.0,
       "title": "Context Pct",
       "type": "number"
+    },
+    "model": {
+      "default": "",
+      "title": "Model",
+      "type": "string"
     },
     "ts": {
       "title": "Ts",
@@ -1381,6 +2658,70 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
   "level": "INFO",
   "source": "sztu_code.core.loop",
   "message": "step 1 started",
+  "ts": "2026-05-16T10:00:00.001Z"
+}
+```
+
+### ChangeAppliedEvent
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `run_id` | `string` | yes |
+| `workspace_path` | `string` | yes |
+| `paths` | `array` | yes |
+| `ts` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "change.applied",
+      "default": "change.applied",
+      "title": "Type",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "workspace_path": {
+      "title": "Workspace Path",
+      "type": "string"
+    },
+    "paths": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Paths",
+      "type": "array"
+    },
+    "ts": {
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "workspace_path",
+    "paths",
+    "ts"
+  ],
+  "title": "ChangeAppliedEvent",
+  "type": "object"
+}
+```
+
+**Example:**
+
+```json
+{
+  "type": "change.applied",
+  "run_id": "20260516-100000-abc123",
+  "workspace_path": "/repo",
+  "paths": [
+    "src/example.py"
+  ],
   "ts": "2026-05-16T10:00:00.001Z"
 }
 ```

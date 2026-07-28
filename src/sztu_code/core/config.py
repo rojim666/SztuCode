@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -14,8 +15,8 @@ _DEFAULT_LOG_LEVEL = "INFO"
 _DEFAULT_LOG_FILE = "~/.sztu/logs/core.log"
 _DEFAULT_LOG_FORMAT = "text"
 _DEFAULT_CONFIG_PATH = "~/.sztu/config.toml"
+_DEFAULT_CLIENT_SETTINGS_PATH = "~/.sztu/client-settings.json"
 _DEFAULT_MAX_STEPS = 20
-_DEFAULT_MODEL = "claude-sonnet-4-6"
 _DEFAULT_TRACE_FILE = "~/.sztu/traces/daemon.jsonl"
 
 
@@ -33,7 +34,9 @@ class AgentConfig:
 
 @dataclass
 class LlmConfig:
-    default_model: str = _DEFAULT_MODEL
+    # A model must be supplied by configuration; never silently select a vendor model.
+    default_model: str = ""
+    provider: str = "anthropic"  # "anthropic" | "openai"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
 
 
@@ -47,6 +50,7 @@ class TraceConfig:
 @dataclass
 class PermissionConfig:
     timeout_s: float = 60.0  # 审批超时秒数；0 表示不超时
+    mode: str = "normal"
 
 
 @dataclass
@@ -90,7 +94,7 @@ def get_config() -> SztuConfig:
     config = SztuConfig()
 
     # .env 必须在读取 SZTU_CONFIG 之前加载，以便 .env 中的 SZTU_CONFIG 能影响 TOML 路径
-    load_dotenv(".env", override=True)
+    load_dotenv(".env", override=False)
 
     # 若显式指定 SZTU_CONFIG，只读该文件；否则按优先级叠加：全局 → 项目本地
     explicit = os.environ.get("SZTU_CONFIG")
@@ -111,8 +115,58 @@ def get_config() -> SztuConfig:
                 raise SystemExit(f"Config parse error ({config_path}): {e}") from e
             _apply_toml(config, data)
 
+    _apply_client_settings(config)
+
     _apply_env(config)
     return config
+
+
+def _client_settings_path() -> Path:
+    return Path(
+        os.environ.get("SZTU_CLIENT_SETTINGS", _DEFAULT_CLIENT_SETTINGS_PATH)
+    ).expanduser()
+
+
+def _apply_client_settings(config: SztuConfig) -> None:
+    path = _client_settings_path()
+    if not path.exists():
+        return
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return
+    if not isinstance(value, dict):
+        return
+    provider = value.get("provider")
+    model = value.get("model")
+    permission_mode = value.get("permission_mode")
+    if provider in {"anthropic", "openai"}:
+        config.llm.provider = str(provider)
+    if isinstance(model, str) and model:
+        config.llm.default_model = model
+    if permission_mode in {"normal", "accept_edits", "plan", "auto"}:
+        config.permission.mode = str(permission_mode)
+
+
+def save_client_settings(config: SztuConfig) -> Path:
+    """Persist only desktop-editable fields; credentials remain in environment storage."""
+    path = _client_settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "provider": config.llm.provider,
+                "model": config.llm.default_model,
+                "permission_mode": config.permission.mode,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+    return path
 
 
 # 将已解析的 TOML 根表写入 config；未知小节或类型错误时退出进程
@@ -170,7 +224,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         llm = data["llm"]
         if not isinstance(llm, dict):
             raise SystemExit("Config error: [llm] must be a table")
-        unknown_llm: set[str] = set(llm.keys()) - {"default_model", "router"}
+        unknown_llm: set[str] = set(llm.keys()) - {"default_model", "provider", "router"}
         if unknown_llm:
             raise SystemExit(f"Unknown [llm] keys: {', '.join(sorted(unknown_llm))}")
         if "default_model" in llm:
@@ -178,6 +232,13 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, str):
                 raise SystemExit("Config error: llm.default_model must be a string")
             config.llm.default_model = val
+        if "provider" in llm:
+            val = llm["provider"]
+            if not isinstance(val, str) or val not in ("anthropic", "openai"):
+                raise SystemExit(
+                    "Config error: llm.provider must be 'anthropic' or 'openai'"
+                )
+            config.llm.provider = val
         if "router" in llm:
             val = llm["router"]
             if not isinstance(val, str):
@@ -211,7 +272,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         perm = data["permission"]
         if not isinstance(perm, dict):
             raise SystemExit("Config error: [permission] must be a table")
-        unknown_perm: set[str] = set(perm.keys()) - {"timeout_s"}
+        unknown_perm: set[str] = set(perm.keys()) - {"timeout_s", "mode"}
         if unknown_perm:
             raise SystemExit(f"Unknown [permission] keys: {', '.join(sorted(unknown_perm))}")
         if "timeout_s" in perm:
@@ -219,6 +280,11 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, (int, float)) or val < 0:
                 raise SystemExit("Config error: permission.timeout_s must be a non-negative number")
             config.permission.timeout_s = float(val)
+        if "mode" in perm:
+            val = perm["mode"]
+            if val not in {"normal", "accept_edits", "plan", "auto"}:
+                raise SystemExit("Config error: permission.mode is invalid")
+            config.permission.mode = str(val)
 
     if "compaction" in data:
         comp = data["compaction"]
@@ -331,7 +397,20 @@ def _apply_env(config: SztuConfig) -> None:
                 f"Config error: SZTU_MAX_STEPS must be an integer, got: {max_steps_str!r}"
             )
 
-    default_model = os.environ.get("SZTU_LLM_DEFAULT_MODEL")
+    llm_provider = os.environ.get("SZTU_LLM_PROVIDER")
+    if llm_provider is not None:
+        if llm_provider not in ("anthropic", "openai"):
+            raise SystemExit(
+                    "Config error: SZTU_LLM_PROVIDER must be 'anthropic' or 'openai',"
+                    f" got: {llm_provider!r}"
+                )
+        config.llm.provider = llm_provider
+
+    # SZTU_* is the supported name. Keep the original KAMA name so existing
+    # project .env files remain valid while migrating to the SztuCode prefix.
+    default_model = os.environ.get(
+        "SZTU_LLM_DEFAULT_MODEL", os.environ.get("KAMA_LLM_DEFAULT_MODEL")
+    )
     if default_model is not None:
         config.llm.default_model = default_model
 
@@ -360,6 +439,12 @@ def _apply_env(config: SztuConfig) -> None:
             raise SystemExit(
                 f"Config error: SZTU_PERMISSION_TIMEOUT_S must be a number, got: {perm_timeout!r}"
             )
+
+    permission_mode = os.environ.get("SZTU_PERMISSION_MODE")
+    if permission_mode is not None:
+        if permission_mode not in {"normal", "accept_edits", "plan", "auto"}:
+            raise SystemExit(f"Config error: SZTU_PERMISSION_MODE is invalid: {permission_mode!r}")
+        config.permission.mode = permission_mode
 
     compact_threshold = os.environ.get("SZTU_COMPACT_THRESHOLD")
     if compact_threshold is not None:

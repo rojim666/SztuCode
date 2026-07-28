@@ -46,6 +46,20 @@ class SessionStore:
         data = json.loads((self.session_dir(sid) / "meta.json").read_text(encoding="utf-8"))
         return Session.from_dict(data)
 
+    # 读取磁盘中全部有效 session 元数据，并按最近更新时间稳定排序
+    def list_sessions(self, *, include_archived: bool = False) -> list[Session]:
+        sessions: list[Session] = []
+        for meta_path in self._root.glob("*/meta.json"):
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+                session = Session.from_dict(data)
+            except (OSError, ValueError, json.JSONDecodeError, KeyError, TypeError):
+                logger.warning("skip invalid session metadata path=%s", meta_path)
+                continue
+            if include_archived or not session.archived:
+                sessions.append(session)
+        return sorted(sessions, key=lambda session: (session.updated_at, session.id), reverse=True)
+
     # 追加一条 Anthropic API 消息到 thread.jsonl
     def append_message(
         self,

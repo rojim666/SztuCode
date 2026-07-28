@@ -41,7 +41,7 @@ sztu (CLI)   sztu-tui (TUI)
 | `core/bus/` | JSON-RPC 2.0 类型化协议（Pydantic v2 模型） |
 | `core/transport/` | TCP NDJSON 传输层、IPC 事件广播 |
 | `core/loop.py` | ReAct Agent Loop 主循环 |
-| `core/llm/` | LLM Provider 抽象层 |
+| `core/llm/` | LLM Provider 抽象层（Anthropic / OpenAI 双协议） |
 | `core/tools/` | 工具注册、调用、参数校验 |
 | `core/permissions/` | 权限管理器、审批策略 |
 | `core/session/` | Session 持久化与恢复 |
@@ -69,9 +69,9 @@ cd SztuCode
 # 安装依赖
 uv sync
 
-# 配置 LLM API Key
+# 配置 LLM
 cp .env.example .env
-# 编辑 .env，填入 ANTHROPIC_API_KEY
+# 编辑 .env，选择 LLM provider（见下方）
 
 # 启动 daemon（后台进程）
 uv run sztu-code
@@ -85,6 +85,47 @@ uv run sztu run --goal "创建一个 hello.py 文件，打印 Hello World"
 # 启动 TUI（终端 UI）
 uv run sztu-tui
 ```
+
+### 图形工作台（Tauri + React）
+
+`desktop/` 是面向日常开发的图形工作台：提供工作区选择、可恢复任务历史、实时运行时间线、权限审批、文件搜索与 Git 变更审阅。它与 Python daemon 复用同一套 JSON-RPC / EventBus 协议。
+
+```powershell
+# 一个终端
+uv run sztu-code
+
+# 另一个终端
+cd desktop
+npm install
+npm run tauri dev
+```
+
+旧的 `uv run sztu-desktop` Tkinter 客户端仅保留兼容性；新产品功能优先进入 `desktop/`。
+
+### LLM Provider 选择
+
+项目支持两种 LLM 后端协议，通过 `SZTU_LLM_PROVIDER` 环境变量切换：
+
+**Anthropic** — 在 `.env` 中填写服务商提供的模型 ID：
+
+```bash
+# .env
+ANTHROPIC_API_KEY=sk-ant-...
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
+# SZTU_LLM_PROVIDER 留空或设为 anthropic
+```
+
+**OpenAI 兼容（DeepSeek / GPT 等）** — 设置 `SZTU_LLM_PROVIDER=openai`：
+
+```bash
+# .env — OpenAI-compatible provider
+SZTU_LLM_PROVIDER=openai
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.example.com
+```
+
+Provider 在内部自动完成 Anthropic ↔ OpenAI 消息格式转换，上层 Agent Loop、工具调用、TUI 渲染均不受影响。
 
 ### 可用命令
 
@@ -133,22 +174,32 @@ uv run python scripts/gen_protocol_doc.py
 
 ## 配置
 
-四级配置优先级（后者覆盖前者）：
+五级配置优先级（后者覆盖前者）：
 
 1. 内建默认值
 2. `~/.sztu/config.toml`（全局）
 3. `.sztu/config.toml`（项目本地）
-4. `.env` / 系统环境变量
+4. 桌面端保存的 `~/.sztu/client-settings.json`：仅提供 Provider、模型和权限模式，其中不保存 API Key。
+5. `.env` / 系统环境变量
 
 主要环境变量：
 
 ```bash
+# Core
 SZTU_HOST=127.0.0.1
 SZTU_PORT=7437
 SZTU_LOG_LEVEL=INFO
-SZTU_LLM_DEFAULT_MODEL=claude-sonnet-4-6
+
+# LLM Provider（自动选择）
+SZTU_LLM_PROVIDER=anthropic        # anthropic | openai
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
+ANTHROPIC_API_KEY=sk-ant-...       # Anthropic 用户的 key
+ANTHROPIC_BASE_URL=...             # Anthropic 自定义 endpoint
+OPENAI_API_KEY=sk-...              # OpenAI / DeepSeek 用户的 key
+OPENAI_BASE_URL=...                # OpenAI 自定义 endpoint（如 api.deepseek.com）
+
+# Agent
 SZTU_MAX_STEPS=20
-ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## 协议

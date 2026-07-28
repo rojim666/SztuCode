@@ -6,6 +6,8 @@ from textual.widget import Widget
 from sztu_code.tui.app import (
     KamaTuiApp,
     LLMStreamBlock,
+    PermissionBlock,
+    PermissionSelect,
     ToolCallBlock,
     _param_summary,
     _preview,
@@ -25,6 +27,109 @@ def test_param_summary_prefers_key_fields() -> None:
     assert _param_summary("read_file", {"path": "README.md"}) == "path='README.md'"
     assert _param_summary("bash", {"command": "echo hi", "timeout": 1}) == "command='echo hi'"
     assert _param_summary("note_save", {"content": "Python 3.12"}) == "content='Python 3.12'"
+
+
+def test_tui_banner_keeps_the_large_sztucode_wordmark() -> None:
+    assert "███████╗" in KamaTuiApp._BANNER
+    assert "输入消息开始对话" in KamaTuiApp._BANNER
+
+
+def test_tui_uses_the_launch_directory_as_the_initial_project_path() -> None:
+    app = KamaTuiApp("127.0.0.1", 9999)
+    assert app._project_path
+
+
+def test_header_does_not_show_the_internal_conversation_id() -> None:
+    class _Header:
+        value = ""
+
+        def update(self, value: str) -> None:
+            self.value = value
+
+    app = KamaTuiApp("127.0.0.1", 9999)
+    app._session_id = "internal-session-id"
+    header = _Header()
+    app.query_one = lambda *_args, **_kwargs: header  # type: ignore[method-assign]
+
+    app._update_header("ready")
+
+    assert "internal-session-id" not in header.value
+
+
+async def test_tab_cycles_only_the_three_visible_permission_modes() -> None:
+    app = KamaTuiApp("127.0.0.1", 9999)
+    selected: list[str] = []
+
+    async def record(mode: str) -> None:
+        selected.append(mode)
+
+    app._set_mode = record  # type: ignore[method-assign]
+    await app.action_cycle_mode()
+
+    assert app._mode == "auto"
+    assert selected == ["accept_edits"]
+
+
+# 功能：验证模式标签仅显示当前模式，三合一紧凑设计
+# 设计：默认 auto 模式只显示 AUTO 富文本，不泄露其他两档；标签嵌入 header 栏不再单独占位
+def test_mode_switcher_keeps_controls_near_the_composer() -> None:
+    app = KamaTuiApp("127.0.0.1", 9999)
+
+    rendered = app._mode_label()
+
+    # 单档：只显示当前模式
+    assert "AUTO" in rendered
+    assert "EDITS" not in rendered
+    assert "PLAN" not in rendered
+    # 富文本格式：有一段着色标签
+    assert "on #" in rendered
+
+
+async def test_mode_changes_do_not_append_timeline_status() -> None:
+    class _Client:
+        async def send_command(self, method: str, params: dict) -> dict:
+            assert (method, params) == ("permission.set_mode", {"mode": "plan"})
+            return {"ok": True}
+
+    app = KamaTuiApp("127.0.0.1", 9999)
+    appended: list[Widget] = []
+    app._client = _Client()  # type: ignore[assignment]
+    app._append = lambda widget: appended.append(widget)  # type: ignore[method-assign]
+    app._update_header = lambda state: None  # type: ignore[method-assign]
+
+    await app._set_mode("plan")
+
+    assert app._mode == "plan"
+    assert appended == []
+
+
+async def test_provider_status_updates_the_current_model() -> None:
+    class _Client:
+        async def send_command(self, method: str, params: dict) -> dict:
+            assert method == "provider.status"
+            assert params == {}
+            return {"model": "configured-model"}
+
+    app = KamaTuiApp("127.0.0.1", 9999)
+    app._client = _Client()  # type: ignore[assignment]
+    app._update_header = lambda state: None  # type: ignore[method-assign]
+
+    await app._refresh_model_status()
+
+    assert app._model == "configured-model"
+
+
+def test_permission_prompt_explains_the_action_and_keyboard_choices() -> None:
+    block = PermissionBlock("tool-1", "bash", "command='git status'")
+    selector = PermissionSelect("tool-1", "bash", "command='git status'")
+
+    assert "Approval required" in block._pending_text()
+    assert "Shell command" in block._pending_text()
+    rendered = selector._render_ui()
+    assert "Permission required" in rendered
+    assert "Allow once" in rendered
+    assert "Always allow this tool" in rendered
+    assert "Y A N D direct" in rendered
 
 
 # 功能：验证 llm.token 事件累积到 LLMStreamBlock，不连续 token 各自新开一块

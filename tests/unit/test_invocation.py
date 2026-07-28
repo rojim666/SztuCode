@@ -50,6 +50,15 @@ class _BrokenTool(BaseTool):
         raise RuntimeError("boom")
 
 
+class _BashTestTool(BaseTool):
+    name = "bash"
+    description = "Returns a test command summary"
+    input_schema: dict[str, object] = {"type": "object", "properties": {}, "required": []}
+
+    async def invoke(self, params: dict[str, object]) -> ToolResult:
+        return ToolResult(content="3 passed in 0.12s")
+
+
 # --- helpers -----------------------------------------------------------------
 
 
@@ -143,3 +152,17 @@ async def test_runtime_exception_gives_runtime_error() -> None:
 async def test_started_event_always_first() -> None:
     result, events = await _run(ToolRegistry(), _call("nonexistent"))
     assert events[0].type == "tool.call_started"  # type: ignore[attr-defined]
+
+
+# 功能：验证常见测试命令成功后额外发布可回放的 test.result 事件。
+# 设计：以名为 bash 的替身返回 pytest 摘要，断言事件包含通过状态与浓缩输出，避免客户端只能从原始终端文本猜测验证结论。
+async def test_test_command_publishes_structured_result() -> None:
+    registry = ToolRegistry()
+    registry.register(_BashTestTool())
+
+    result, events = await _run(registry, _call("bash", {"command": "pytest -q"}, "test-1"))
+
+    assert result.is_error is False
+    test_event = next(event for event in events if event.type == "test.result")  # type: ignore[attr-defined]
+    assert test_event.status == "passed"  # type: ignore[attr-defined]
+    assert test_event.summary == "3 passed in 0.12s"  # type: ignore[attr-defined]

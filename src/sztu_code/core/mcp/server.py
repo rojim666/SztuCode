@@ -41,6 +41,18 @@ class McpServerManager:
     def get_tools(self) -> list[McpTool]:
         return list(self._tools)
 
+    def statuses(self, servers: list[McpServerConfig]) -> list[dict[str, object]]:
+        """Expose configured-versus-connected MCP state without leaking command environment."""
+        return [
+            {
+                "name": config.name,
+                "transport": config.transport,
+                "status": "connected" if config.name in self._clients else "unavailable",
+                "tool_count": sum(tool.server_name == config.name for tool in self._tools),
+            }
+            for config in servers
+        ]
+
     # 关闭所有 MCP 连接并终止 stdio 子进程
     async def stop_all(self) -> None:
         for name, client in list(self._clients.items()):
