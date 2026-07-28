@@ -16,4 +16,3 @@ system_prompt = """
 - 未完成的部分（如有）
 """
 allowed_tools = ["bash", "read_file", "write_file", "list_dir", "task_update", "task_list"]
-model = "claude-sonnet-4-6"

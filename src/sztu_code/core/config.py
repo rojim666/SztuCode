@@ -17,7 +17,6 @@ _DEFAULT_LOG_FORMAT = "text"
 _DEFAULT_CONFIG_PATH = "~/.sztu/config.toml"
 _DEFAULT_CLIENT_SETTINGS_PATH = "~/.sztu/client-settings.json"
 _DEFAULT_MAX_STEPS = 20
-_DEFAULT_MODEL = "claude-sonnet-4-6"
 _DEFAULT_TRACE_FILE = "~/.sztu/traces/daemon.jsonl"
 
 
@@ -35,7 +34,8 @@ class AgentConfig:
 
 @dataclass
 class LlmConfig:
-    default_model: str = _DEFAULT_MODEL
+    # A model must be supplied by configuration; never silently select a vendor model.
+    default_model: str = ""
     provider: str = "anthropic"  # "anthropic" | "openai"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
 
@@ -406,7 +406,11 @@ def _apply_env(config: SztuConfig) -> None:
                 )
         config.llm.provider = llm_provider
 
-    default_model = os.environ.get("SZTU_LLM_DEFAULT_MODEL")
+    # SZTU_* is the supported name. Keep the original KAMA name so existing
+    # project .env files remain valid while migrating to the SztuCode prefix.
+    default_model = os.environ.get(
+        "SZTU_LLM_DEFAULT_MODEL", os.environ.get("KAMA_LLM_DEFAULT_MODEL")
+    )
     if default_model is not None:
         config.llm.default_model = default_model
 

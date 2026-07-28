@@ -284,7 +284,7 @@ def generate() -> str:
         "\n",
         _model_section("LlmModelSelectedEvent", LlmModelSelectedEvent,
             {"type": "llm.model_selected", "run_id": run_id,
-             "model": "claude-sonnet-4-6", "strategy": "static", "ts": ts}),
+             "model": "configured-model", "strategy": "static", "ts": ts}),
         "\n",
         _model_section("LlmTokenEvent", LlmTokenEvent,
             {"type": "llm.token", "run_id": run_id, "token": "The ", "ts": ts}),

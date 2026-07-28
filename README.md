@@ -106,30 +106,23 @@ npm run tauri dev
 
 项目支持两种 LLM 后端协议，通过 `SZTU_LLM_PROVIDER` 环境变量切换：
 
-**Anthropic（默认）** — 无需额外配置，沿用原有设置：
+**Anthropic** — 在 `.env` 中填写服务商提供的模型 ID：
 
 ```bash
 # .env
 ANTHROPIC_API_KEY=sk-ant-...
-SZTU_LLM_DEFAULT_MODEL=claude-sonnet-4-6
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
 # SZTU_LLM_PROVIDER 留空或设为 anthropic
 ```
 
 **OpenAI 兼容（DeepSeek / GPT 等）** — 设置 `SZTU_LLM_PROVIDER=openai`：
 
 ```bash
-# .env — DeepSeek 示例
+# .env — OpenAI-compatible provider
 SZTU_LLM_PROVIDER=openai
-SZTU_LLM_DEFAULT_MODEL=deepseek-chat
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
 OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=https://api.deepseek.com
-```
-
-```bash
-# .env — OpenAI 官方示例
-SZTU_LLM_PROVIDER=openai
-SZTU_LLM_DEFAULT_MODEL=gpt-4o
-OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.example.com
 ```
 
 Provider 在内部自动完成 Anthropic ↔ OpenAI 消息格式转换，上层 Agent Loop、工具调用、TUI 渲染均不受影响。
@@ -198,8 +191,8 @@ SZTU_PORT=7437
 SZTU_LOG_LEVEL=INFO
 
 # LLM Provider（自动选择）
-SZTU_LLM_PROVIDER=anthropic        # anthropic（默认）| openai
-SZTU_LLM_DEFAULT_MODEL=claude-sonnet-4-6
+SZTU_LLM_PROVIDER=anthropic        # anthropic | openai
+SZTU_LLM_DEFAULT_MODEL=<your-provider-model-id>
 ANTHROPIC_API_KEY=sk-ant-...       # Anthropic 用户的 key
 ANTHROPIC_BASE_URL=...             # Anthropic 自定义 endpoint
 OPENAI_API_KEY=sk-...              # OpenAI / DeepSeek 用户的 key

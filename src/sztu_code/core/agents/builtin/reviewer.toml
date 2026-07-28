@@ -25,4 +25,3 @@ system_prompt = """
 （后续行动，如有）
 """
 allowed_tools = ["read_file", "list_dir", "bash"]
-model = "claude-sonnet-4-6"

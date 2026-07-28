@@ -15,4 +15,3 @@ system_prompt = """
 每步包含：做什么、为什么、成功标准是什么。
 """
 allowed_tools = ["read_file", "list_dir", "task_create", "task_update"]
-model = "claude-sonnet-4-6"

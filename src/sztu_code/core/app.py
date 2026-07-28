@@ -564,7 +564,11 @@ class CoreApp:
                 if self._config.llm.provider == "openai"
                 else "ANTHROPIC_API_KEY"
             )
-            provider = create_provider(self._config) if os.environ.get(key_name) else None
+            provider = (
+                create_provider(self._config)
+                if os.environ.get(key_name) and self._config.llm.default_model.strip()
+                else None
+            )
             self._sessions.set_provider(provider)
         return SettingsUpdateResult(settings=self._settings_snapshot(), updated=updated)
 
@@ -588,7 +592,9 @@ class CoreApp:
             model=self._config.llm.default_model,
             api_key_configured=bool(os.environ.get(api_key_name)),
             custom_endpoint_configured=bool(os.environ.get(endpoint_name)),
-            ready_for_next_run=bool(os.environ.get(api_key_name)),
+            ready_for_next_run=bool(
+                os.environ.get(api_key_name) and self._config.llm.default_model.strip()
+            ),
             mcp_servers=mcp_servers,
             skills=skills,
         )
@@ -701,7 +707,9 @@ class CoreApp:
             else "ANTHROPIC_API_KEY"
         )
         compact_provider = (
-            create_provider(self._config) if os.environ.get(provider_key_name) else None
+            create_provider(self._config)
+            if os.environ.get(provider_key_name) and self._config.llm.default_model.strip()
+            else None
         )
 
         self._mcp_manager = McpServerManager()

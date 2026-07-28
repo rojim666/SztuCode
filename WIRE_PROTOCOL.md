@@ -2453,7 +2453,7 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
 {
   "type": "llm.model_selected",
   "run_id": "20260516-100000-abc123",
-  "model": "claude-sonnet-4-6",
+  "model": "configured-model",
   "strategy": "static",
   "ts": "2026-05-16T10:00:00.001Z"
 }
