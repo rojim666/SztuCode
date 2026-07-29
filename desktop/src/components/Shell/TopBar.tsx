@@ -16,7 +16,7 @@ const connectionLabel: Record<ConnectionState, string> = {
 /** 顶部导航栏：品牌、路径面包屑、连接状态、移动端菜单按钮 */
 export function TopBar({ connection, workspace, onOpenSidebar }: TopBarProps) {
   return (
-    <header className="topbar">
+    <header className="topbar" data-tauri-drag-region>
       <div className="brand">
         <span className="brand-mark">S</span>
         <span>SztuCode</span>
