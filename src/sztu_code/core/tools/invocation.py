@@ -113,6 +113,9 @@ async def invoke_tool(
     session_id: str = "",
 ) -> ToolResult:
     t0 = time.monotonic()
+    tool_call.input = registry.enrich_tool_input(tool_call.name, tool_call.input)
+    runtime_params = dict(tool_call.input)
+    runtime_params.pop("description", None)
 
     await bus.publish(
         ToolCallStartedEvent(
@@ -136,7 +139,7 @@ async def invoke_tool(
 
     if tool.params_model is not None:
         try:
-            tool.params_model.model_validate(dict(tool_call.input))
+            tool.params_model.model_validate(runtime_params)
         except ValidationError as exc:
             return await _fail(
                 bus, run_id, tool_call,
@@ -148,7 +151,7 @@ async def invoke_tool(
             await bus.publish(PermissionRequestedEvent(**raw, run_id=run_id))
 
         # 获取工具的动态权限级别（bash 根据命令内容分级）
-        tool_permission = tool.classify_permission(dict(tool_call.input))
+        tool_permission = tool.classify_permission(runtime_params)
 
         allowed, decision = await permission_manager.check_and_wait(
             tool_use_id=tool_call.id,
@@ -192,7 +195,7 @@ async def invoke_tool(
 
         try:
             result = await asyncio.wait_for(
-                tool.invoke(dict(tool_call.input)), timeout=timeout
+                tool.invoke(runtime_params), timeout=timeout
             )
             ms = elapsed()
 

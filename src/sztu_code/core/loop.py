@@ -106,6 +106,10 @@ class AgentLoop:
                 context.mark_failed("llm_error")
                 break
 
+            # 在写入历史前补齐工具调用标题，确保回放与实时事件使用同一份参数
+            for tool_call in response.tool_calls:
+                tool_call.input = self._registry.enrich_tool_input(tool_call.name, tool_call.input)
+
             # [observe] append assistant content blocks to context
             # thinking blocks must come first and be preserved verbatim for extended thinking mode
             blocks: list[dict[str, object]] = list(response.thinking_blocks)

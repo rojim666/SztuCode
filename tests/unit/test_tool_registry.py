@@ -38,6 +38,9 @@ def test_tool_schemas_contains_name_description_input_schema() -> None:
     assert schemas[0]["name"] == "fake"
     assert schemas[0]["description"] == "A fake tool"
     assert "input_schema" in schemas[0]
+    input_schema = schemas[0]["input_schema"]
+    assert "description" in input_schema["properties"]  # type: ignore[index]
+    assert "description" in input_schema["required"]  # type: ignore[index]
 
 
 # 功能：验证多工具注册后 tool_schemas() 包含所有工具，不遗漏
@@ -75,3 +78,11 @@ def test_register_same_name_overwrites() -> None:
     found = registry.get("fake")
     assert found is not None
     assert found.description == "updated"
+
+# 功能：验证工具调用标题保留模型输入，并在缺失时按工具参数自动生成。
+# 设计：分别覆盖显式 description 与 bash/read_file 兜底，保证实时和历史标题稳定。
+def test_enrich_tool_input_adds_timeline_description() -> None:
+    registry = ToolRegistry()
+    assert registry.enrich_tool_input("bash", {"command": "pytest -q"})["description"] == "运行命令：pytest -q"
+    assert registry.enrich_tool_input("read_file", {"path": "README.md"})["description"] == "读取 README.md"
+    assert registry.enrich_tool_input("bash", {"command": "pwd", "description": "获取当前工作目录"})["description"] == "获取当前工作目录"

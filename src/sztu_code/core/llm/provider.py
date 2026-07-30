@@ -9,7 +9,7 @@ from typing import Any
 import anthropic
 import httpx
 
-from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmUsageEvent
+from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmThinkingEvent, LlmTokenEvent, LlmUsageEvent
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
@@ -151,6 +151,15 @@ class AnthropicProvider:
                 # thinking blocks must be passed back verbatim in subsequent requests
                 thinking_blocks.append({"type": "thinking", "thinking": block.thinking, "signature": block.signature})
 
+        if thinking_blocks:
+            await bus.publish(
+                LlmThinkingEvent(
+                    run_id=run_id,
+                    step=step,
+                    thinking="\n\n".join(str(block["thinking"]) for block in thinking_blocks),
+                    ts=_now(),
+                )
+            )
         return LlmResponse(
             stop_reason=final_message.stop_reason or "end_turn",
             tool_calls=tool_calls,

@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI
 
-from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmTokenEvent, LlmUsageEvent
+from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmThinkingEvent, LlmTokenEvent, LlmUsageEvent
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
@@ -217,6 +217,10 @@ class OpenAIProvider:
                     reasoning: str | None = getattr(delta, "reasoning_content", None)
                     if reasoning:
                         thinking_parts.append(reasoning)
+                        if attempt == 1:
+                            await bus.publish(
+                                LlmThinkingEvent(run_id=run_id, step=step, thinking=reasoning, ts=_now())
+                            )
                         continue
 
                     # 普通文本内容
