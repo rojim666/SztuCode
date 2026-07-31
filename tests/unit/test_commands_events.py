@@ -10,7 +10,7 @@ from sztu_code.core.bus.commands import (
     SessionPinCommand,
     SettingsUpdateCommand,
 )
-from sztu_code.core.bus.events import CoreStartedEvent
+from sztu_code.core.bus.events import CoreStartedEvent, LlmThinkingEvent
 
 
 # 功能：验证 PingCommand 序列化后再反序列化，client 和 type 字段完整保留
@@ -82,3 +82,15 @@ def test_session_pin_command_requires_an_explicit_boolean_state() -> None:
 
     with pytest.raises(ValidationError):
         SessionPinCommand.model_validate({"session_id": "sess-1"})
+
+# 功能：验证 llm.thinking 事件可经由 wire 格式完整往返。
+# 设计：思考文本会被桌面端用于增量时间线，必须保留 run、步骤与原始内容。
+def test_llm_thinking_event_roundtrip() -> None:
+    event = LlmThinkingEvent(
+        run_id="run-1", step=2, thinking="inspect context", ts="2026-07-30T00:00:00Z"
+    )
+    restored = LlmThinkingEvent.model_validate_json(event.model_dump_json())
+    assert restored.type == "llm.thinking"
+    assert restored.run_id == "run-1"
+    assert restored.step == 2
+    assert restored.thinking == "inspect context"

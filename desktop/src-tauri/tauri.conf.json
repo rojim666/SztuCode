@@ -1,30 +1,39 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "SztuCode",
-  "version": "0.1.0",
-  "identifier": "dev.sztucode.desktop",
-  "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:1420",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "SztuCode",
-        "width": 1440,
-        "height": 920,
-        "minWidth": 420,
-        "minHeight": 620,
-        "resizable": true
-      }
-    ],
-    "security": { "csp": null }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "windows": { "wix": { "language": "zh-CN" } }
-  }
+    "$schema":  "https://schema.tauri.app/config/2",
+    "productName":  "SztuCode",
+    "version":  "0.1.0",
+    "identifier":  "dev.sztucode.desktop",
+    "build":  {
+                  "beforeDevCommand":  "npm run dev",
+                  "beforeBuildCommand":  "npm run build",
+                  "devUrl":  "http://localhost:5173",
+                  "frontendDist":  "../dist"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "title":  "SztuCode",
+                                    "width":  1440,
+                                    "height":  920,
+                                    "minWidth":  420,
+                                    "minHeight":  620,
+                                    "resizable":  true,
+                                    "decorations":  false,
+                                    "shadow":  false,
+                                    "transparent":  true
+                                }
+                            ],
+                "security":  {
+                                 "csp":  null
+                             }
+            },
+    "bundle":  {
+                   "active":  true,
+                   "targets":  "all",
+                   "windows":  {
+                                   "wix":  {
+                                               "language":  "zh-CN"
+                                           }
+                               }
+               }
 }

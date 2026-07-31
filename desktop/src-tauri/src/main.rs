@@ -1,4 +1,11 @@
-use std::{path::PathBuf, process::Stdio, sync::Arc};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, OnceLock,
+    },
+};
 
 use serde::Serialize;
 use tauri::{Emitter, Manager, State, Window};
@@ -47,6 +54,135 @@ struct DaemonStartResult {
     detail: String,
 }
 
+#[derive(Serialize)]
+struct NativeSettingsResult {
+    autostart: bool,
+    stay_awake: bool,
+    supported: bool,
+}
+
+static STAY_AWAKE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(windows)]
+static WAKE_SENDER: OnceLock<mpsc::Sender<bool>> = OnceLock::new();
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+extern "system" {
+    fn SetThreadExecutionState(es_flags: u32) -> u32;
+}
+
+#[cfg(windows)]
+fn wake_sender() -> &'static mpsc::Sender<bool> {
+    WAKE_SENDER.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel::<bool>();
+        std::thread::spawn(move || {
+            const ES_CONTINUOUS: u32 = 0x8000_0000;
+            const ES_SYSTEM_REQUIRED: u32 = 0x0000_0001;
+            while let Ok(enabled) = receiver.recv() {
+                let flags = if enabled {
+                    ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+                } else {
+                    ES_CONTINUOUS
+                };
+                unsafe {
+                    SetThreadExecutionState(flags);
+                }
+            }
+        });
+        sender
+    })
+}
+
+#[cfg(windows)]
+fn autostart_enabled() -> bool {
+    std::process::Command::new("reg.exe")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "SztuCode",
+        ])
+        .creation_flags(0x0800_0000)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(not(windows))]
+fn autostart_enabled() -> bool {
+    false
+}
+
+#[cfg(windows)]
+fn update_autostart(enabled: bool) -> Result<(), String> {
+    let mut command = std::process::Command::new("reg.exe");
+    command.creation_flags(0x0800_0000);
+    if enabled {
+        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+        command.args([
+            "add",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "SztuCode",
+            "/t",
+            "REG_SZ",
+            "/d",
+            &format!(r#""{}""#, executable.display()),
+            "/f",
+        ]);
+    } else {
+        command.args([
+            "delete",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "SztuCode",
+            "/f",
+        ]);
+    }
+    let output = command.output().map_err(|error| error.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[cfg(not(windows))]
+fn update_autostart(_enabled: bool) -> Result<(), String> {
+    Err("autostart is currently supported on Windows only".into())
+}
+
+#[tauri::command]
+fn native_settings_get() -> NativeSettingsResult {
+    NativeSettingsResult {
+        autostart: autostart_enabled(),
+        stay_awake: STAY_AWAKE.load(Ordering::Relaxed),
+        supported: cfg!(windows),
+    }
+}
+
+#[tauri::command]
+fn native_settings_update(
+    autostart: Option<bool>,
+    stay_awake: Option<bool>,
+) -> Result<NativeSettingsResult, String> {
+    if let Some(enabled) = autostart {
+        update_autostart(enabled)?;
+    }
+    if let Some(enabled) = stay_awake {
+        #[cfg(windows)]
+        wake_sender()
+            .send(enabled)
+            .map_err(|error| format!("failed to update wake state: {error}"))?;
+        #[cfg(not(windows))]
+        if enabled {
+            return Err("keep-awake is currently supported on Windows only".into());
+        }
+        STAY_AWAKE.store(enabled, Ordering::Relaxed);
+    }
+    Ok(native_settings_get())
+}
+
 fn daemon_candidates() -> Vec<(PathBuf, Vec<String>, Option<PathBuf>)> {
     let mut candidates = Vec::new();
     if let Ok(executable) = std::env::var("SZTU_DAEMON_EXECUTABLE") {
@@ -86,7 +222,11 @@ async fn daemon_start(state: State<'_, DaemonProcess>) -> Result<DaemonStartResu
     {
         let mut active = state.child.lock().await;
         if let Some(child) = active.as_mut() {
-            if child.try_wait().map_err(|error| error.to_string())?.is_none() {
+            if child
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_none()
+            {
                 return Ok(DaemonStartResult {
                     status: "starting".into(),
                     detail: "本地服务正在启动".into(),
@@ -102,7 +242,11 @@ async fn daemon_start(state: State<'_, DaemonProcess>) -> Result<DaemonStartResu
             continue;
         }
         let mut command = Command::new(&executable);
-        command.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        command
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         if let Some(directory) = current_dir {
             command.current_dir(directory);
         }
@@ -209,7 +353,10 @@ async fn ipc_send(payload: String, state: State<'_, IpcConnection>) -> Result<()
     .await;
     if let Err(error) = result {
         let mut current = state.writer.lock().await;
-        if current.as_ref().is_some_and(|active| Arc::ptr_eq(active, &writer)) {
+        if current
+            .as_ref()
+            .is_some_and(|active| Arc::ptr_eq(active, &writer))
+        {
             *current = None;
         }
         return Err(format!("发送 IPC 请求失败：{error}"));
@@ -223,7 +370,13 @@ fn main() {
         .manage(IpcConnection::new())
         .manage(DaemonProcess::new())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![ipc_connect, ipc_send, daemon_start])
+        .invoke_handler(tauri::generate_handler![
+            ipc_connect,
+            ipc_send,
+            daemon_start,
+            native_settings_get,
+            native_settings_update
+        ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window exists");
             window.set_focus().expect("focus main window");

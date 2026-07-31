@@ -2235,7 +2235,8 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
   "tool_use_id": "toolu_01",
   "tool_name": "read_file",
   "params": {
-    "path": "README.md"
+    "path": "README.md",
+    "description": "Read README.md"
   },
   "ts": "2026-05-16T10:00:00.001Z"
 }
@@ -2507,6 +2508,65 @@ Events written to `runs/<run_id>/events.jsonl` and forwarded over IPC to subscri
   "type": "llm.token",
   "run_id": "20260516-100000-abc123",
   "token": "The ",
+  "ts": "2026-05-16T10:00:00.001Z"
+}
+```
+
+### LlmThinkingEvent
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `run_id` | `string` | yes |
+| `step` | `integer` | yes |
+| `thinking` | `string` | yes |
+| `ts` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "llm.thinking",
+      "default": "llm.thinking",
+      "title": "Type",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "step": {
+      "title": "Step",
+      "type": "integer"
+    },
+    "thinking": {
+      "title": "Thinking",
+      "type": "string"
+    },
+    "ts": {
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "step",
+    "thinking",
+    "ts"
+  ],
+  "title": "LlmThinkingEvent",
+  "type": "object"
+}
+```
+
+**Example:**
+
+```json
+{
+  "type": "llm.thinking",
+  "run_id": "20260516-100000-abc123",
+  "step": 1,
+  "thinking": "Inspecting the workspace",
   "ts": "2026-05-16T10:00:00.001Z"
 }
 ```

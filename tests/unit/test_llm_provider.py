@@ -201,3 +201,19 @@ async def test_no_tokens_when_response_is_empty() -> None:
     tokens = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
     assert tokens == []
     assert result.text == ""
+
+# 功能：验证 Anthropic 的最终 thinking block 会发布 llm.thinking 事件。
+# 设计：桌面端时间线需要以同一 run 和 step 关联思考内容，不能只写入最终历史。
+async def test_thinking_block_published_to_timeline() -> None:
+    thinking_block = MagicMock()
+    thinking_block.type = "thinking"
+    thinking_block.thinking = "inspect project structure"
+    thinking_block.signature = "signature-1"
+    provider, _ = _make_provider(content=[thinking_block])
+    result, events = await _chat(provider)
+    thinking_events = [event for event in events if event.type == "llm.thinking"]  # type: ignore[attr-defined]
+    assert len(thinking_events) == 1
+    assert thinking_events[0].run_id == "r1"  # type: ignore[attr-defined]
+    assert thinking_events[0].step == 0  # type: ignore[attr-defined]
+    assert thinking_events[0].thinking == "inspect project structure"  # type: ignore[attr-defined]
+    assert result.thinking_blocks[0]["thinking"] == "inspect project structure"

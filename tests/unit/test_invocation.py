@@ -166,3 +166,13 @@ async def test_test_command_publishes_structured_result() -> None:
     test_event = next(event for event in events if event.type == "test.result")  # type: ignore[attr-defined]
     assert test_event.status == "passed"  # type: ignore[attr-defined]
     assert test_event.summary == "3 passed in 0.12s"  # type: ignore[attr-defined]
+
+# 功能：验证 started 事件总是包含 description，且元数据不会传入实际工具参数。
+# 设计：检查事件参数与 echo 执行结果，确保标题补齐不会破坏已有 params_model。
+async def test_started_event_contains_generated_description() -> None:
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    result, events = await _run(registry, _call("echo", {"msg": "hello"}))
+    started = next(event for event in events if event.type == "tool.call_started")  # type: ignore[attr-defined]
+    assert started.params["description"] == "调用 echo"  # type: ignore[attr-defined]
+    assert result.content == "hello"

@@ -446,3 +446,18 @@ async def test_missing_api_key_raises_system_exit(monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(SystemExit):
         OpenAIProvider(model="any")
+
+# 功能：验证 OpenAI reasoning_content 会在流式到达时立刻发布 llm.thinking 事件。
+# 设计：这是深度思考面板的增量来源，顺序和碎片内容必须与上游流一致。
+async def test_reasoning_content_published_incrementally() -> None:
+    chunks = [
+        _make_chunk(reasoning="first analyze"),
+        _make_chunk(reasoning="then execute"),
+        _make_chunk(content="done"),
+        _make_chunk(finish_reason="stop"),
+    ]
+    provider, _ = _make_provider(chunks)
+    _, events = await _chat(provider)
+    thinking_events = [event for event in events if event.type == "llm.thinking"]  # type: ignore[attr-defined]
+    assert [event.thinking for event in thinking_events] == ["first analyze", "then execute"]  # type: ignore[attr-defined]
+    assert all(event.step == 0 for event in thinking_events)  # type: ignore[attr-defined]

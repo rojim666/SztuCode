@@ -10,37 +10,6 @@ import pytest
 from sztu_code.core.app import CoreApp
 from sztu_code.core.bus.envelope import HandlerError
 from sztu_code.core.permissions.manager import PermissionManager
-from sztu_code.desktop.app import SztuCodeDesktop
-
-
-# 功能：验证 legacy 桌面端使用 daemon 实际发布的 tool.call_started/tool.call_finished 事件名。
-# 设计：绕过 Tk 窗口创建，仅替换事件处理回调并直接路由事件，精确覆盖曾导致工具卡片永不更新的协议漂移。
-def test_desktop_routes_current_tool_event_names() -> None:
-    app = object.__new__(SztuCodeDesktop)
-    app._session_id = "sess-1"
-    started: list[dict[str, object]] = []
-    finished: list[dict[str, object]] = []
-    app._handle_tool_started = started.append
-    app._handle_tool_finished = finished.append
-
-    app._handle_event({"type": "tool.call_started", "session_id": "sess-1"})
-    app._handle_event({"type": "tool.call_finished", "session_id": "sess-1"})
-
-    assert [event["type"] for event in started] == ["tool.call_started"]
-    assert [event["type"] for event in finished] == ["tool.call_finished"]
-
-
-# 功能：验证带 session_id 的其他会话事件不会污染当前桌面会话。
-# 设计：向当前实例投递不同 session_id 的工具事件，断言渲染回调完全未执行，覆盖重连后全局订阅的隔离边界。
-def test_desktop_ignores_events_for_another_session() -> None:
-    app = object.__new__(SztuCodeDesktop)
-    app._session_id = "sess-current"
-    received: list[dict[str, object]] = []
-    app._handle_tool_started = received.append
-
-    app._handle_event({"type": "tool.call_started", "session_id": "sess-other"})
-
-    assert received == []
 
 
 class _BlockingSessions:

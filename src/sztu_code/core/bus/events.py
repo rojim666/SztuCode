@@ -80,6 +80,14 @@ class LlmTokenEvent(BaseModel):
     ts: str
 
 
+class LlmThinkingEvent(BaseModel):
+    type: Literal["llm.thinking"] = "llm.thinking"
+    run_id: str
+    step: int
+    thinking: str
+    ts: str
+
+
 class LlmUsageEvent(BaseModel):
     type: Literal["llm.usage"] = "llm.usage"
     run_id: str
@@ -264,6 +272,7 @@ Event = Annotated[
     | ToolCallFinishedEvent
     | ToolCallFailedEvent
     | LlmTokenEvent
+    | LlmThinkingEvent
     | LlmUsageEvent
     | LlmModelSelectedEvent
     | LogLineEvent
