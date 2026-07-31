@@ -8,20 +8,21 @@ import {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
+import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
-  connectRuntime, createSession, getProviderStatus, getRuntimeSettings, listSessions,
+  connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listSessions,
   listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
-  sendPrompt, sessionHistory, setRuntimeSettings,
+  sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
   type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
 type RuntimeEvent = Record<string, unknown>;
 const page = ref<Page>("work");
-const sidebarCollapsed = ref(false);
+const sidebarCollapsed = ref(window.innerWidth <= 620);
 const connected = ref(false);
 const loading = ref(true);
 const workspaces = ref<Workspace[]>([]);
@@ -37,8 +38,11 @@ const inspectorOpen = ref(true);
 const attachedFiles = ref<string[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
-const notifications = ref(true);
+const notifications = ref(localStorage.getItem("sztu.notifications") !== "false");
+const autostart = ref(false);
 const stayAwake = ref(false);
+const nativeSettingsAvailable = ref(false);
+const nativeSettingsError = ref("");
 const webBridgeAllowed = ref(false);
 const currentStepByRun = new Map<string, number>();
 
@@ -149,6 +153,7 @@ function hydrateTimeline(messages: unknown[]) {
   const runId = String(event.run_id ?? "");
   const relatedRunId = String(event.parent_run_id ?? runId);
   const timelineEvent = event.parent_run_id ? { ...event, run_id: relatedRunId } : event;
+  if (type === "run.started" && !activeRunId.value && sending.value) activeRunId.value = runId;
   if (type === "session.created" || type === "session.closed" || type === "session.waiting_for_input") {
     void refreshIndex();
     return;
@@ -296,6 +301,39 @@ async function selectAttachments() {
 }
 function chooseSkill(name: string) { prompt.value = "/" + name + " "; }
 function closeActiveSession() { activeId.value = null; timeline.value = new Map(); activeRunId.value = null; void refreshIndex(false); }
+async function loadNativeSettings() {
+  try {
+    const settings = await getNativeSettings();
+    autostart.value = settings.autostart;
+    stayAwake.value = settings.stay_awake;
+    nativeSettingsAvailable.value = settings.supported;
+    nativeSettingsError.value = "";
+  } catch {
+    nativeSettingsAvailable.value = false;
+  }
+}
+async function toggleAutostart(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked;
+  try {
+    const settings = await setNativeSettings({ autostart: enabled });
+    autostart.value = settings.autostart;
+    nativeSettingsError.value = "";
+  } catch (error) {
+    nativeSettingsError.value = error instanceof Error ? error.message : String(error);
+    (event.target as HTMLInputElement).checked = autostart.value;
+  }
+}
+async function toggleStayAwake(event: Event) {
+  const enabled = (event.target as HTMLInputElement).checked;
+  try {
+    const settings = await setNativeSettings({ stayAwake: enabled });
+    stayAwake.value = settings.stay_awake;
+    nativeSettingsError.value = "";
+  } catch (error) {
+    nativeSettingsError.value = error instanceof Error ? error.message : String(error);
+    (event.target as HTMLInputElement).checked = stayAwake.value;
+  }
+}
 async function choosePermissionMode(value: RuntimeSettings["permission_mode"]) { const result = await setRuntimeSettings({ permission_mode: value }); if (result) runtimeSettings.value = result; }
 async function chooseModel(event: Event) { const model = (event.target as HTMLInputElement).value.trim(); if (!model) return; const result = await setRuntimeSettings({ model }); if (result) runtimeSettings.value = result; }
 async function chooseProvider(event: Event) { const provider = (event.target as HTMLSelectElement).value as RuntimeSettings["provider"]; const result = await setRuntimeSettings({ provider }); if (result) runtimeSettings.value = result; }
@@ -312,6 +350,7 @@ let stopDisconnect: (() => void) | undefined;
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   stopDisconnect = onRuntimeDisconnect(() => { connected.value = false; });
+  void loadNativeSettings();
   void refreshIndex(true).then(() => { stopEvents = onRuntimeEvent(applyRuntimeEvent); });
 });
 onBeforeUnmount(() => {
@@ -320,6 +359,7 @@ onBeforeUnmount(() => {
   stopDisconnect?.();
 });
 watch(page, (next) => { if (next === "skills" || next === "settings") void refreshIndex(false); });
+watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", String(enabled)));
 </script>
 
 <template>
@@ -387,16 +427,19 @@ watch(page, (next) => { if (next === "skills" || next === "settings") void refre
           </header>
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }">
             <section class="task-canvas">
-              <div class="task-stream">
-                <div v-if="!orderedTimeline.length" class="task-intro"><span class="agent-orb"><Bot :size="20" /></span><p>任务已经创建。告诉 SztuCode 你希望完成什么，它会在这里展示计划、工具调用与最终结果。</p></div>
-                <ExecutionTimeline :steps="orderedTimeline" @decide="decidePermission" />
+              <div class="task-conversation">
+                <div class="task-stream">
+                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="agent-orb"><Bot :size="20" /></span><p>任务已经创建。告诉 SztuCode 你希望完成什么，它会在这里展示计划、工具调用与最终结果。</p></div>
+                  <ExecutionTimeline :steps="orderedTimeline" @decide="decidePermission" />
+                </div>
+                <form class="kimi-composer" @submit.prevent="submit">
+                  <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
+                  <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" />
+                  <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="file in attachedFiles" :key="file">{{ file.split(/[\\/]/).pop() }}</span></div>
+                  <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '标准审批' }}<ChevronDown :size="13" /></button><span class="model-label"><i :class="{ online: providerStatus?.ready_for_next_run }" />{{ runtimeSettings?.model || '未配置模型' }}</span><button class="send" type="submit" :disabled="!prompt.trim() || sending || active.archived || active.status === 'closed'">↑</button></div>
+                </form>
               </div>
-              <form class="kimi-composer" @submit.prevent="submit">
-                <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
-                <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" />
-                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="file in attachedFiles" :key="file">{{ file.split(/[\\/]/).pop() }}</span></div>
-                <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '标准审批' }}<ChevronDown :size="13" /></button><span class="model-label"><i :class="{ online: providerStatus?.ready_for_next_run }" />{{ runtimeSettings?.model || '未配置模型' }}</span><button class="send" type="submit" :disabled="!prompt.trim() || sending || active.archived || active.status === 'closed'">↑</button></div>
-              </form>
+              <WorkContextPanel :steps="orderedTimeline" :attachments="attachedFiles" :workspace-name="activeWorkspace?.name" :workspace-path="activeWorkspace?.path" />
             </section>
             <ProjectInspector v-if="inspectorOpen && activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :run-id="active.latest_run_id" />
           </div>
@@ -429,7 +472,7 @@ watch(page, (next) => { if (next === "skills" || next === "settings") void refre
 
       <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>WebBridge</h1><p>连接浏览器扩展，让 Agent 在授权范围内协助网页操作</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>浏览器连接</h2><p>当前未连接。此功能需要浏览器扩展和 daemon WebBridge 协议。</p></div><span class="status-pill">未连接</span></div></section>
 
-      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input type="checkbox" disabled /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input v-model="stayAwake" type="checkbox" /></label></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
+      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input :checked="autostart" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleAutostart" /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input :checked="stayAwake" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleStayAwake" /></label><p v-if="nativeSettingsError" class="native-settings-error">{{ nativeSettingsError }}</p></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
     </main>
   </div>
 </template>

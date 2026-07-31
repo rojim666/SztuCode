@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { IpcClient } from "../lib/ipc";
 
 export type Workspace = { workspace_id: string; name: string; path: string };
+export type NativeSettings = { autostart: boolean; stay_awake: boolean; supported: boolean };
 export type WorkspaceNode = { path: string; name: string; kind: "directory" | "file"; children?: WorkspaceNode[] };
 export type FileSearchMatch = { path: string; line: number; preview: string };
 export type ChangeSummary = {
@@ -16,9 +17,11 @@ export type RuntimeSettings = { provider: "anthropic" | "openai"; model: string;
 export type ProviderStatus = { api_key_configured: boolean; ready_for_next_run: boolean; skills: Array<{ name: string; description: string }>; mcp_servers: Array<{ name: string; status: string; tool_count?: number }> };
 
 const client = new IpcClient();
+let subscribed = false;
+client.onDisconnect(() => { subscribed = false; });
 const EVENT_TOPICS = [
   "session.*", "run.*", "step.*", "llm.*", "tool.*", "permission.*",
-  "plan.*", "test.*", "change.*", "log.*", "subagent.*", "skill.*", "context.*",
+  "plan.*", "test.*", "change.*", "log.*", "subagent.*", "skill.*", "context.*", "denial.*",
 ];
 
 async function waitForDaemon(): Promise<void> {
@@ -30,15 +33,30 @@ async function waitForDaemon(): Promise<void> {
   }
 }
 
+export async function getNativeSettings(): Promise<NativeSettings> {
+  return await invoke<NativeSettings>("native_settings_get");
+}
+
+export async function setNativeSettings(update: { autostart?: boolean; stayAwake?: boolean }): Promise<NativeSettings> {
+  return await invoke<NativeSettings>("native_settings_update", update);
+}
+
 export async function connectRuntime(): Promise<boolean> {
   await waitForDaemon();
-  try {
-    await client.connect("127.0.0.1", 7437);
-    await client.request("event.subscribe", { topics: EVENT_TOPICS, scope: "global" });
-    return true;
-  } catch {
-    return false;
+  const attempts = "__TAURI_INTERNALS__" in window ? 12 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await client.connect("127.0.0.1", 7437);
+      if (!subscribed) {
+        await client.request("event.subscribe", { topics: EVENT_TOPICS, scope: "global" });
+        subscribed = true;
+      }
+      return true;
+    } catch {
+      if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 250));
+    }
   }
+  return false;
 }
 
 export function onRuntimeEvent(handler: (event: Record<string, unknown>) => void): () => void {

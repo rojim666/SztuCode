@@ -3,5 +3,6 @@ import App from "./App.vue";
 import "./lilia.css";
 import "./kimi.css";
 import "./timeline.css";
+import "./workbench.css";
 
 createApp(App).mount("#app");
