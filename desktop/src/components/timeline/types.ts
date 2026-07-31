@@ -1,4 +1,4 @@
-﻿export type TimelineStatus = "thinking" | "acting" | "observing" | "done" | "failed";
+export type TimelineStatus = "thinking" | "acting" | "observing" | "done" | "failed";
 
 export type ToolCallEntry = {
   id: string;
@@ -9,6 +9,8 @@ export type ToolCallEntry = {
   error?: string;
   elapsedMs?: number;
 };
+
+export type PermissionDecision = "allow_once" | "always_allow" | "deny_once" | "always_deny";
 
 export type PermissionState = {
   toolUseId: string;
@@ -24,6 +26,19 @@ export type LlmUsage = {
   model: string;
 };
 
+export type PlanItem = {
+  id: number;
+  subject: string;
+  status: "pending" | "in_progress" | "completed";
+  blocked_by: number[];
+};
+
+export type TestEntry = { status: "passed" | "failed"; summary: string };
+export type ChangeEntry = { paths: string[]; workspacePath: string };
+export type LogEntry = { level: string; source: string; message: string };
+export type SubagentEntry = { runId: string; description: string; status: "running" | "success" | "failed" };
+export type SkillEntry = { name: string; arguments: string };
+
 export interface TimelineStep {
   step: number;
   status: TimelineStatus;
@@ -34,6 +49,12 @@ export interface TimelineStep {
   usage?: LlmUsage;
   userMessage?: string;
   finalText?: string;
+  plan?: PlanItem[];
+  tests?: TestEntry[];
+  changes?: ChangeEntry[];
+  logs?: LogEntry[];
+  subagents?: SubagentEntry[];
+  skills?: SkillEntry[];
 }
 
 export function toolSummary(params: Record<string, unknown>): string {

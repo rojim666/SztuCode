@@ -1,13 +1,14 @@
 <script setup lang="ts">
+import ActivityDetails from "./ActivityDetails.vue";
 import ThinkingPanel from "./ThinkingPanel.vue";
 import TokenStream from "./TokenStream.vue";
 import ToolCallGroup from "./ToolCallGroup.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import StepIndicator from "./StepIndicator.vue";
-import type { TimelineStep } from "./types";
+import type { PermissionDecision, TimelineStep } from "./types";
 
 defineProps<{ steps: TimelineStep[] }>();
-defineEmits<{ decide: [toolUseId: string, decision: "allow_once" | "deny_once"] }>();
+defineEmits<{ decide: [toolUseId: string, decision: PermissionDecision] }>();
 </script>
 
 <template>
@@ -18,6 +19,7 @@ defineEmits<{ decide: [toolUseId: string, decision: "allow_once" | "deny_once"] 
       <div class="timeline-step__content">
         <div v-if="item.userMessage" class="timeline-user-message">{{ item.userMessage }}</div>
         <ThinkingPanel :text="item.thinking" :completed="item.status === 'done'" />
+        <ActivityDetails :step="item" />
         <ToolCallGroup :calls="item.toolCalls" />
         <PermissionBadge v-if="item.permission" :permission="item.permission" @decide="$emit('decide', item.permission.toolUseId, $event)" />
         <TokenStream :tokens="item.tokens" :final-text="item.finalText" />

@@ -8,7 +8,7 @@ const props = defineProps<{ calls: ToolCallEntry[] }>();
 const open = ref(false);
 const toolCount = computed(() => new Set(props.calls.map((call) => call.name)).size);
 const running = computed(() => props.calls.some((call) => call.status === "running"));
-const summary = computed(() => `使用了 ${toolCount.value} 个工具，运行 ${props.calls.length} 个命令`);
+const summary = computed(() => "使用 " + toolCount.value + " 个工具，运行 " + props.calls.length + " 个命令");
 </script>
 
 <template>
