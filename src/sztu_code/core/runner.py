@@ -93,6 +93,7 @@ class AgentRunner:
         session_id: str = "",
         tool_whitelist: list[str] | None = None,
         workspace_root: Path | None = None,
+        parent_context: ExecutionContext | None = None,
     ) -> ToolRegistry:
         allowed: set[str] | None = set(tool_whitelist) if tool_whitelist else None
 
@@ -133,6 +134,9 @@ class AgentRunner:
                         session_id=session_id,
                         depth=0,
                         workspace_root=workspace_root,
+                        parent_context=parent_context,
+                        session=session,
+                        store=store,
                     )
                 )
             if _ok("agent_result"):
@@ -229,6 +233,7 @@ class AgentRunner:
                     session_id=session_id_str,
                     tool_whitelist=tool_whitelist,
                     workspace_root=workspace_root,
+                    parent_context=context,
                 )
                 session_dir = (
                     store.session_dir(session.id)
@@ -244,6 +249,7 @@ class AgentRunner:
                     compactor=compactor,
                     compact_threshold=self._config.compaction.auto_threshold,
                     session_id=session_id_str,
+                    task_registry=self._task_registry,
                 )
                 await loop.run(context)
             except asyncio.CancelledError:

@@ -11,8 +11,11 @@ build/
 .ruff_cache/
 .pytest_cache/
 .vscode/
+.codegraph/
 uv.lock
 .idea/
 .DS_Store
 *.log
 workspace/
+!src/sztu_code/core/workspace/
+!src/sztu_code/core/workspace/*.py

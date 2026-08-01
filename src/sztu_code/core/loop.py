@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sztu_code.core.compact.compactor import Compactor
     from sztu_code.core.permissions.denial_tracker import DenialTracker
     from sztu_code.core.permissions.manager import PermissionManager
+    from sztu_code.core.subagent.registry import BackgroundTaskRegistry
 
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class AgentLoop:
         compactor: Compactor | None = None,
         compact_threshold: float = 0.80,
         session_id: str = "",
+        task_registry: BackgroundTaskRegistry | None = None,
     ) -> None:
         self._provider = provider
         self._registry = registry
@@ -47,6 +49,7 @@ class AgentLoop:
         self._compactor = compactor
         self._compact_threshold = compact_threshold
         self._session_id = session_id
+        self._task_registry = task_registry
 
     # 驱动 plan→act→observe 循环直到上下文终止；CancelledError 向上传播
     async def run(self, context: ExecutionContext) -> None:
@@ -148,11 +151,24 @@ class AgentLoop:
                         is_error=True,
                     )
 
+            # 仅在真正终止的那一步（end_turn 或 max_steps 已到）才等待后台 subagent 落定，
+            # 避免中间 tool_use 步骤过早清空 pending 导致最终摘要丢失
+            pending_summaries: list[str] = []
+            if context.pending_background_run_ids and (
+                response.stop_reason == "end_turn" or context.step >= context.max_steps
+            ):
+                pending_summaries = await self._wait_for_background(context)
+
             # Termination check — end_turn wins over max_steps if both hit on same step
             if response.stop_reason == "end_turn":
-                context.result = response.text or ""
+                base = response.text or ""
+                if pending_summaries:
+                    base += "\n\n" + "\n".join(pending_summaries)
+                context.result = base
                 context.mark_success()
             elif context.step >= context.max_steps:
+                if pending_summaries:
+                    context.result = "\n".join(pending_summaries)
                 context.mark_failed("exceeded_max_steps")
 
             # 工具结果追加完毕（messages 末尾为 user）后检查压缩，仅在 run 继续时触发
@@ -170,3 +186,30 @@ class AgentLoop:
             await self._bus.publish(
                 StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())
             )
+
+    # 等待本 run 派生的后台 subagent 全部结束，返回每条的结果摘要
+    async def _wait_for_background(
+        self, context: ExecutionContext
+    ) -> list[str]:
+        if self._task_registry is None or not context.pending_background_run_ids:
+            return []
+        run_ids = sorted(context.pending_background_run_ids)
+        context.pending_background_run_ids.clear()
+        entries = [self._task_registry.get(rid) for rid in run_ids]
+        tasks = [e[0] for e in entries if e is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        summaries: list[str] = []
+        for rid, entry in zip(run_ids, entries):
+            if entry is None:
+                summaries.append(f"[subagent {rid}] status=unknown")
+                continue
+            task, child_ctx = entry
+            if task.cancelled():
+                summaries.append(f"[subagent {rid}] status=cancelled")
+            elif task.exception() is not None:
+                summaries.append(f"[subagent {rid}] status=error: {task.exception()!r}")
+            else:
+                text = (child_ctx.result or "").strip()[:200]
+                summaries.append(f"[subagent {rid}] status={child_ctx.status}: {text}")
+        return summaries

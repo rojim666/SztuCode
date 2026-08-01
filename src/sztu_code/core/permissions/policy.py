@@ -26,6 +26,7 @@ _EDIT_TOOLS: set[str] = {"write_file", "note_save"}
 # 只读工具（Plan 模式下允许）
 _READONLY_TOOLS: set[str] = {
     "read_file", "list_dir",
+    "grep_search", "glob_search",
     "task_get", "task_list",
 }
 
@@ -164,11 +165,13 @@ class ToolPolicy:
 
 
 DEFAULT_POLICIES: dict[str, ToolPolicy] = {
-    "bash":       ToolPolicy(default=PermissionDecision.ASK),
-    "write_file": ToolPolicy(default=PermissionDecision.ASK),
-    "read_file":  ToolPolicy(default=PermissionDecision.ALLOW),
-    "list_dir":   ToolPolicy(default=PermissionDecision.ALLOW),
-    "note_save":  ToolPolicy(default=PermissionDecision.ALLOW),
+    "bash":         ToolPolicy(default=PermissionDecision.ASK),
+    "write_file":   ToolPolicy(default=PermissionDecision.ASK),
+    "read_file":    ToolPolicy(default=PermissionDecision.ALLOW),
+    "list_dir":     ToolPolicy(default=PermissionDecision.ALLOW),
+    "grep_search":  ToolPolicy(default=PermissionDecision.ALLOW),
+    "glob_search":  ToolPolicy(default=PermissionDecision.ALLOW),
+    "note_save":    ToolPolicy(default=PermissionDecision.ALLOW),
 }
 
 # 未在 DEFAULT_POLICIES 中登记的工具的兜底策略
