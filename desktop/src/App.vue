@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  ArrowLeft, Bot, CalendarClock, ChevronDown, CirclePlus, CircleUserRound, Folder, FolderOpen,
+  ArrowLeft, Bot, CalendarClock, ChevronDown, ChevronRight, CirclePlus, CircleUserRound, Ellipsis, Folder, FolderOpen, FolderSearch,
   Globe2, LayoutDashboard, MessageCircle, Minimize2, Monitor, PanelLeftClose, PanelLeftOpen, Plug,
   Plus, Puzzle, Settings, ShieldCheck, Square, Wrench, X,
 } from "@lucide/vue";
@@ -34,6 +34,8 @@ const activeRunId = ref<string | null>(null);
 const prompt = ref("");
 const sending = ref(false);
 const projectMenuOpen = ref(false);
+const projectActionsOpen = ref<string | null>(null);
+const collapsedProjects = ref(new Set<string>());
 const inspectorOpen = ref(true);
 const attachedFiles = ref<string[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
@@ -284,6 +286,30 @@ async function chooseTask(id: string) {
   page.value = "work";
 }
 async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
+function isProjectCollapsed(workspaceId: string) { return collapsedProjects.value.has(workspaceId); }
+function toggleProject(workspaceId: string) {
+  const next = new Set(collapsedProjects.value);
+  if (next.has(workspaceId)) next.delete(workspaceId);
+  else next.add(workspaceId);
+  collapsedProjects.value = next;
+  projectActionsOpen.value = null;
+}
+async function createProjectTask(item: Workspace) {
+  projectActionsOpen.value = null;
+  await newTask(item, "");
+}
+async function showProjectFiles(item: Workspace) {
+  projectActionsOpen.value = null;
+  inspectorOpen.value = true;
+  workspace.value = item;
+  const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id);
+  if (matching) await chooseTask(matching.session_id);
+  else await newTask(item, "");
+}
+function handleSessionClosed(sessionId: string) {
+  if (sessionId === activeId.value) closeActiveSession();
+  else void refreshIndex(false);
+}
 async function submit() { const content = prompt.value.trim(); if (!content || !activeId.value || sending.value || active.value?.archived || active.value?.status === "closed") return; prompt.value = ""; addUserMessage(content); sending.value = true; try { activeRunId.value = await sendPrompt(activeId.value, content); } finally { sending.value = false; } }
 async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
 async function openLocalProject() {
@@ -397,14 +423,36 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
       <section class="side-section project-tree">
         <span class="side-label side-label--action">项目<button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="14" /></button></span>
         <div v-for="item in projects" :key="item.workspace_id" class="project-group">
-          <button class="project-row" :class="{ active: item.workspace_id === workspace?.workspace_id }" @click="chooseWorkspace(item)"><Folder :size="16" /><span>{{ item.name }}</span></button>
-          <button v-for="task in item.tasks" :key="task.session_id" class="project-task" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)">{{ task.title || 'Untitled task' }}</button>
+          <div class="project-row-shell" :class="{ active: item.workspace_id === workspace?.workspace_id }">
+            <button class="project-collapse" :title="isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目'" :aria-expanded="!isProjectCollapsed(item.workspace_id)" @click="toggleProject(item.workspace_id)">
+              <ChevronRight :size="13" :class="{ expanded: !isProjectCollapsed(item.workspace_id) }" />
+            </button>
+            <button class="project-row" @click="chooseWorkspace(item)"><Folder :size="16" /><span>{{ item.name }}</span></button>
+            <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" /></button>
+            <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
+              <button @click="createProjectTask(item)"><Plus :size="14" />新建任务</button>
+              <button @click="showProjectFiles(item)"><FolderSearch :size="14" />查看项目文件</button>
+              <button @click="toggleProject(item.workspace_id)"><ChevronRight :size="14" :class="{ expanded: !isProjectCollapsed(item.workspace_id) }" />{{ isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目' }}</button>
+            </div>
+          </div>
+          <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }">
+            <div class="project-task-list__inner">
+              <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session">
+                <button class="project-task" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)">{{ task.title || 'Untitled task' }}</button>
+                <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+              </div>
+              <p v-if="!item.tasks.length" class="project-empty">暂无任务</p>
+            </div>
+          </div>
         </div>
         <p v-if="!projects.length" class="side-empty">打开本地工作区后会显示在这里</p>
       </section>
       <section class="side-section conversations">
-        <span class="side-label">对话</span>
-        <button v-for="task in recentSessions" :key="task.session_id" class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><i :class="{ running: task.status === 'active' }" /><span>{{ task.title || 'Untitled task' }}</span></button>
+        <span class="side-label side-label--action">对话<button title="新建对话" aria-label="新建对话" @click="newTask(null, '')"><Plus :size="14" /></button></span>
+        <div v-for="task in recentSessions" :key="task.session_id" class="sidebar-session conversation-session">
+          <button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><i :class="{ running: task.status === 'active' }" /><span>{{ task.title || 'Untitled task' }}</span></button>
+          <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+        </div>
         <p v-if="!recentSessions.length" class="side-empty">历史对话会显示在这里</p>
       </section>
 

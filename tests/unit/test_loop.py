@@ -10,6 +10,7 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.permissions.denial_tracker import DenialTracker
+from sztu_code.core.subagent.registry import BackgroundTaskRegistry
 from sztu_code.core.tools.base import BaseTool, ToolResult
 from sztu_code.core.tools.registry import ToolRegistry
 
@@ -353,3 +354,98 @@ async def test_denial_tracker_publishes_intervention_event() -> None:
     evt = intervention_events[0]
     assert getattr(evt, "tool_name", "") == "deny_tool"
     assert getattr(evt, "total_denials", 0) >= 2
+
+
+# ── 后台 subagent 等待集成测试 ─────────────────────────────────────────────────
+
+
+# 功能：end_turn 前若有后台 subagent 未完成，loop 等待其落定后才标记 success
+# 设计：注册被 Event 阻塞的后台任务，run_task 异步跑 loop，断言等待期间 run_task 未完成，
+#       放行 Event 后 loop 才结束，且 result 含后台子 agent 的结果摘要
+async def test_loop_waits_for_background_before_end_turn() -> None:
+    gate = asyncio.Event()
+
+    async def _bg() -> None:
+        await gate.wait()
+
+    child_ctx = ExecutionContext(run_id="bg-1", goal="bg", max_steps=1, result="bg done")
+    registry = BackgroundTaskRegistry()
+    registry.register("bg-1", asyncio.create_task(_bg()), child_ctx)
+
+    ctx = _ctx()
+    ctx.pending_background_run_ids.add("bg-1")
+    provider = _MockProvider([LlmResponse(stop_reason="end_turn", text="done")])
+    loop = AgentLoop(provider, ToolRegistry(), EventBus(), task_registry=registry)
+
+    run_task = asyncio.create_task(loop.run(ctx))
+    await asyncio.sleep(0.05)
+    assert not run_task.done(), "loop must wait for the background task"
+
+    gate.set()
+    await asyncio.wait_for(run_task, 2.0)
+    assert ctx.status == "success"
+    assert "bg done" in ctx.result
+
+
+# 功能：已完成后台任务不阻塞，end_turn 后立即结束且摘要进入 result
+# 设计：预注册已完成的后台任务，断言 loop 不等待、状态为 success、结果含摘要
+async def test_loop_background_already_done() -> None:
+    async def _bg() -> None:
+        return None
+
+    child_ctx = ExecutionContext(run_id="bg-done", goal="bg", max_steps=1, result="already done")
+    task = asyncio.create_task(_bg())
+    await asyncio.sleep(0.01)  # 让后台任务先完成
+    registry = BackgroundTaskRegistry()
+    registry.register("bg-done", task, child_ctx)
+
+    ctx = _ctx()
+    ctx.pending_background_run_ids.add("bg-done")
+    provider = _MockProvider([LlmResponse(stop_reason="end_turn", text="done")])
+    loop = AgentLoop(provider, ToolRegistry(), EventBus(), task_registry=registry)
+
+    await asyncio.wait_for(loop.run(ctx), 2.0)
+    assert ctx.status == "success"
+    assert "already done" in ctx.result
+
+
+# 功能：max_steps 触发失败时同样等待后台任务落定
+# 设计：max_steps=1 + 阻塞后台任务，断言 loop 等后台结束才标记 exceeded_max_steps，摘要仍写入 result
+async def test_loop_max_steps_still_waits() -> None:
+    gate = asyncio.Event()
+
+    async def _bg() -> None:
+        await gate.wait()
+
+    child_ctx = ExecutionContext(run_id="bg-m", goal="bg", max_steps=1, result="bg result")
+    registry = BackgroundTaskRegistry()
+    registry.register("bg-m", asyncio.create_task(_bg()), child_ctx)
+
+    ctx = _ctx(max_steps=1)
+    ctx.pending_background_run_ids.add("bg-m")
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[_tc("unknown", {})]),
+    ])
+    loop = AgentLoop(provider, ToolRegistry(), EventBus(), task_registry=registry)
+
+    run_task = asyncio.create_task(loop.run(ctx))
+    await asyncio.sleep(0.05)
+    assert not run_task.done()
+
+    gate.set()
+    await asyncio.wait_for(run_task, 2.0)
+    assert ctx.status == "failed"
+    assert ctx.reason == "exceeded_max_steps"
+    assert "bg result" in ctx.result
+
+
+# 功能：未传入 task_registry 时 pending 集合被忽略，loop 不等待不报错
+# 设计：有 pending 但 task_registry=None，断言 loop 正常完成（旧构造点安全）
+async def test_loop_no_registry_no_wait() -> None:
+    ctx = _ctx()
+    ctx.pending_background_run_ids.add("bg-x")
+    provider = _MockProvider([LlmResponse(stop_reason="end_turn", text="done")])
+    loop = AgentLoop(provider, ToolRegistry(), EventBus())
+
+    await asyncio.wait_for(loop.run(ctx), 2.0)
+    assert ctx.status == "success"

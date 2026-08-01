@@ -14,10 +14,15 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.events.writer import EventWriter
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.runs import new_run_id
+from sztu_code.core.skills.loader import SkillLoader
 from sztu_code.core.subagent.registry import BackgroundTaskRegistry
 from sztu_code.core.tools.base import BaseTool, ToolResult
 from sztu_code.core.tools.builtin.bash import BashTool
+from sztu_code.core.tools.builtin.edit_file import EditFileTool
+from sztu_code.core.tools.builtin.glob_search import GlobSearchTool
+from sztu_code.core.tools.builtin.grep_search import GrepSearchTool
 from sztu_code.core.tools.builtin.list_dir import ListDirTool
+from sztu_code.core.tools.builtin.note_save import NoteSaveTool
 from sztu_code.core.tools.builtin.read_file import ReadFileTool
 from sztu_code.core.tools.builtin.task_create import TaskCreateTool
 from sztu_code.core.tools.builtin.task_get import TaskGetTool
@@ -29,8 +34,11 @@ from sztu_code.core.tools.registry import ToolRegistry
 if TYPE_CHECKING:
     from sztu_code.core.llm.base import LLMProvider
     from sztu_code.core.permissions.manager import PermissionManager
+    from sztu_code.core.session.model import Session
+    from sztu_code.core.session.store import SessionStore
 
 _profile_loader = AgentProfileLoader()
+_skill_loader = SkillLoader()
 
 
 def _now() -> str:
@@ -39,10 +47,12 @@ def _now() -> str:
 
 class SpawnAgentParams(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    description: str
+    # invoke_tool 会剥离时间线标题 description，故此处须有默认值否则经循环调用必报 schema_error
+    description: str = ""
     prompt: str
     run_in_background: bool = False
     subagent_type: str = ""
+    skill: str = ""
 
 
 # 在隔离的冷启动上下文中派生子 agent，支持前台阻塞和后台并行两种模式
@@ -74,7 +84,11 @@ class SpawnAgentTool(BaseTool):
             },
             "subagent_type": {
                 "type": "string",
-                "description": "Agent role profile (planner/executor/reviewer). Leave empty for default.",  # noqa: E501
+                "description": "Agent role profile (coder/explore/plan/planner/executor/reviewer). Leave empty for coder.",  # noqa: E501
+            },
+            "skill": {
+                "type": "string",
+                "description": "Optional Agent Skill name to apply to the sub-agent at spawn time.",
             },
         },
         "required": ["description", "prompt"],
@@ -94,6 +108,9 @@ class SpawnAgentTool(BaseTool):
         session_id: str,
         depth: int = 0,
         workspace_root: Path | None = None,
+        parent_context: ExecutionContext | None = None,
+        session: Session | None = None,
+        store: SessionStore | None = None,
     ) -> None:
         self._provider = provider
         self._parent_bus = parent_bus
@@ -105,6 +122,9 @@ class SpawnAgentTool(BaseTool):
         self._session_id = session_id
         self._depth = depth
         self._workspace_root = workspace_root
+        self._parent_context = parent_context
+        self._session = session
+        self._store = store
 
     # 派生子 agent，前台时阻塞直到完成并返回结果，后台时立即返回 run_id
     async def invoke(self, params: dict[str, object]) -> ToolResult:
@@ -117,16 +137,33 @@ class SpawnAgentTool(BaseTool):
                 error_type="runtime_error",
             )
 
-        profile: AgentProfile | None = None
-        if p.subagent_type:
-            profile = _profile_loader.load(p.subagent_type)
+        # 空 subagent_type 默认使用 coder 角色
+        subagent_type = p.subagent_type or "coder"
+        profile: AgentProfile | None = _profile_loader.load(subagent_type)
+
+        # 解析并合并 skill：角色白名单非空时 union，否则只合并系统提示不缩窄工具集
+        skill_name = (p.skill or (profile.skill if profile else "")).strip()
+        skill = _skill_loader.resolve(skill_name) if skill_name else None
+        system_prompt = (profile.system_prompt if profile else "").strip()
+        allowed_tools: set[str] | None = (
+            set(profile.allowed_tools) if profile and profile.allowed_tools else None
+        )
+        if skill is not None:
+            if allowed_tools is not None:
+                allowed_tools |= set(skill.allowed_tools)
+            skill_prompt = _skill_loader.render_prompt(skill, p.prompt).strip()
+            if skill_prompt:
+                system_prompt = (
+                    f"{system_prompt}\n\n{skill_prompt}" if system_prompt else skill_prompt
+                )
+        system_prompt_override = system_prompt or None
 
         child_run_id = new_run_id()
         child_context = ExecutionContext(
             run_id=child_run_id,
             goal=p.prompt,
             max_steps=self._max_steps,
-            system_prompt_override=profile.system_prompt if profile else None,
+            system_prompt_override=system_prompt_override,
         )
 
         child_bus = EventBus()
@@ -137,23 +174,38 @@ class SpawnAgentTool(BaseTool):
 
         child_bus.subscribe(_bridge)
 
-        child_registry = self._build_child_registry(child_bus, child_run_id, profile)
+        # 非 normal 权限模式使用独立 PermissionManager，避免污染父 session 缓存
+        child_permission_manager = self._permission_manager
+        if profile is not None and profile.permission_mode != "normal":
+            from sztu_code.core.permissions.manager import PermissionManager as ChildPM
+            from sztu_code.core.permissions.policy import PermissionMode
+            child_permission_manager = ChildPM(mode=PermissionMode(profile.permission_mode))
+
+        child_registry = self._build_child_registry(
+            child_bus,
+            child_run_id,
+            profile,
+            allowed_tools=allowed_tools,
+            child_context=child_context,
+            permission_manager=child_permission_manager,
+        )
         # 子 agent 使用独立的 DenialTracker，避免父子 agent 拒绝计数互相干扰
         from sztu_code.core.permissions.denial_tracker import DenialTracker
         child_loop = AgentLoop(
             self._provider,
             child_registry,
             child_bus,
-            permission_manager=self._permission_manager,
+            permission_manager=child_permission_manager,
             denial_tracker=DenialTracker(),
             session_id=self._session_id,
+            task_registry=self._task_registry,
         )
 
         await self._parent_bus.publish(
             SubagentStartedEvent(
                 run_id=child_run_id,
                 parent_run_id=self._parent_run_id,
-                description=p.description,
+                description=p.description or "Subagent task",
                 ts=_now(),
             )
         )
@@ -162,6 +214,9 @@ class SpawnAgentTool(BaseTool):
         child_run_path.mkdir(parents=True, exist_ok=True)
 
         if p.run_in_background:
+            # 登记到父 run 的 pending 集合，父 loop 结束回合前会等待其完成
+            if self._parent_context is not None:
+                self._parent_context.pending_background_run_ids.add(child_run_id)
             task: asyncio.Task[None] = asyncio.create_task(
                 self._run_background(
                     child_loop, child_context, child_bus, child_run_path, child_run_id
@@ -222,18 +277,20 @@ class SpawnAgentTool(BaseTool):
             )
         )
 
-    # 构造子 registry；基于角色配置过滤工具，深度允许时注册嵌套 SpawnAgentTool
+    # 构造子 registry；基于合并后的白名单过滤工具，深度允许时注册嵌套 SpawnAgentTool
     def _build_child_registry(
         self,
         child_bus: EventBus,
         child_run_id: str,
         profile: AgentProfile | None,
+        *,
+        allowed_tools: set[str] | None = None,
+        child_context: ExecutionContext | None = None,
+        permission_manager: PermissionManager | None = None,
     ) -> ToolRegistry:
         from sztu_code.core.task.manager import TaskManager
 
-        allowed: set[str] | None = (
-            set(profile.allowed_tools) if profile and profile.allowed_tools else None
-        )
+        allowed: set[str] | None = allowed_tools
 
         def _allowed(name: str) -> bool:
             return allowed is None or name in allowed
@@ -243,7 +300,10 @@ class SpawnAgentTool(BaseTool):
             ReadFileTool(self._workspace_root),
             BashTool(self._workspace_root),
             WriteFileTool(self._workspace_root),
+            EditFileTool(self._workspace_root),
             ListDirTool(self._workspace_root),
+            GrepSearchTool(self._workspace_root),
+            GlobSearchTool(self._workspace_root),
         ]
         for t in _all_tools:
             if _allowed(t.name):
@@ -259,18 +319,26 @@ class SpawnAgentTool(BaseTool):
             if _allowed(t.name):
                 registry.register(t)
 
+        if self._session is not None and self._store is not None:
+            note_tool = NoteSaveTool(self._store, self._session.id, child_run_id)
+            if _allowed(note_tool.name):
+                registry.register(note_tool)
+
         if self._depth < 1:
             nested = SpawnAgentTool(
                 provider=self._provider,
                 parent_bus=child_bus,
                 parent_run_id=child_run_id,
-                permission_manager=self._permission_manager,
+                permission_manager=permission_manager,
                 max_steps=self._max_steps,
                 task_registry=self._task_registry,
                 runs_dir=self._runs_dir,
                 session_id=self._session_id,
                 depth=self._depth + 1,
                 workspace_root=self._workspace_root,
+                parent_context=child_context,
+                session=self._session,
+                store=self._store,
             )
             if _allowed("spawn_agent"):
                 registry.register(nested)

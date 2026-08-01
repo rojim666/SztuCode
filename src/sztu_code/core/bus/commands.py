@@ -113,6 +113,11 @@ class FileReadCommand(BaseModel):
 
 class FileReadResult(BaseModel):
     content: str
+    encoding: str = "UTF-8"
+    binary: bool = False
+    truncated: bool = False
+    media_base64: str | None = None
+    mime_type: str | None = None
 
 
 class FileSearchCommand(BaseModel):

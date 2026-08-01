@@ -331,10 +331,17 @@ class CoreApp:
         assert self._workspaces is not None
         cmd = FileReadCommand.model_validate(params)
         try:
-            content = self._workspaces.read_file(cmd.workspace_id, cmd.path)
+            file_content = self._workspaces.read_file(cmd.workspace_id, cmd.path)
         except ValueError as error:
             raise HandlerError(-32602, str(error)) from error
-        return FileReadResult(content=content)
+        return FileReadResult(
+            content=file_content.content,
+            encoding=file_content.encoding,
+            binary=file_content.binary,
+            truncated=file_content.truncated,
+            media_base64=file_content.media_base64,
+            mime_type=file_content.mime_type,
+        )
 
     # 搜索工作区文本文件并返回受限数量的命中行
     async def _file_search_handler(self, params: dict[str, Any]) -> FileSearchResult:

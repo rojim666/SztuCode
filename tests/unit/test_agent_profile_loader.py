@@ -19,13 +19,22 @@ def test_builtin_planner_found() -> None:
 
 
 # 功能：内建三种角色均可加载
-# 设计：参数化测试所有内建角色名
-@pytest.mark.parametrize("role", ["planner", "executor", "reviewer"])
+# 设计：参数化测试所有内建角色名（coder 的 allowed_tools 为空代表不限，故单独测试）
+@pytest.mark.parametrize("role", ["planner", "executor", "reviewer", "explore", "plan"])
 def test_all_builtin_roles_found(role: str) -> None:
     loader = AgentProfileLoader()
     profile = loader.load(role)
     assert profile is not None, f"builtin role '{role}' not found"
     assert profile.allowed_tools  # 每个内建角色都有 allowed_tools
+
+
+# 功能：coder 角色可加载且 allowed_tools 为空（空 = 不限工具）
+# 设计：空列表是 coder 作为默认角色的关键语义，单独断言为空而非真值
+def test_coder_allowed_tools_empty() -> None:
+    loader = AgentProfileLoader()
+    profile = loader.load("coder")
+    assert profile is not None
+    assert profile.allowed_tools == []
 
 
 # 功能：未知角色名应返回 None
@@ -45,6 +54,8 @@ description = "测试角色"
 system_prompt = "你是测试助手。"
 allowed_tools = ["read_file", "bash"]
 model = "test-model-id"
+permission_mode = "plan"
+skill = "orchestrate"
 """
     p = tmp_path / "tester.toml"
     p.write_text(content, encoding="utf-8")
@@ -56,6 +67,8 @@ model = "test-model-id"
     assert "read_file" in profile.allowed_tools
     assert "bash" in profile.allowed_tools
     assert profile.model == "test-model-id"
+    assert profile.permission_mode == "plan"
+    assert profile.skill == "orchestrate"
 
 
 # 功能：项目本地角色配置应覆盖内建同名配置

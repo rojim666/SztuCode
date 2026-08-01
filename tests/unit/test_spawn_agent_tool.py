@@ -7,8 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
-from sztu_code.core.llm.types import LlmResponse, UsageStats
+from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.subagent.registry import BackgroundTaskRegistry
 from sztu_code.core.subagent.tool import AgentResultTool, SpawnAgentTool
 
@@ -36,6 +37,9 @@ def _make_tool(
     tmp_path: Path,
     provider: Any = None,
     depth: int = 0,
+    parent_context: ExecutionContext | None = None,
+    session: Any = None,
+    store: Any = None,
 ) -> tuple[SpawnAgentTool, BackgroundTaskRegistry, EventBus]:
     bus = EventBus()
     registry = BackgroundTaskRegistry()
@@ -49,6 +53,9 @@ def _make_tool(
         runs_dir=tmp_path,
         session_id="sess-test",
         depth=depth,
+        parent_context=parent_context,
+        session=session,
+        store=store,
     )
     return tool, registry, bus
 
@@ -189,3 +196,182 @@ async def test_foreground_publishes_started_event(tmp_path: Path) -> None:
     assert len(started) == 1
     assert started[0].parent_run_id == "parent-run-01"
     assert started[0].description == "test task"
+
+
+# 功能：空 subagent_type 默认使用 coder 角色，system prompt 含 coder 标记
+# 设计：捕获 provider.chat 的 system 参数，不带 subagent_type spawn，断言含 coder 系统提示关键词
+async def test_default_role_is_coder(tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    async def _chat(*args: Any, **kwargs: Any) -> LlmResponse:
+        captured["system"] = str(kwargs.get("system", ""))
+        return LlmResponse(
+            stop_reason="end_turn", tool_calls=[], text="ok",
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    provider = MagicMock()
+    provider.chat = _chat
+    tool, _, _ = _make_tool(tmp_path, provider)
+    result = await tool.invoke({"description": "任务", "prompt": "干活"})
+    assert not result.is_error
+    assert "通用软件工程" in captured["system"]
+
+
+# 功能：subagent_type 指定角色时 system prompt 使用该角色配置
+# 设计：subagent_type="explore"，断言 system 含 explore 的系统提示关键词
+async def test_explicit_role_uses_profile(tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    async def _chat(*args: Any, **kwargs: Any) -> LlmResponse:
+        captured["system"] = str(kwargs.get("system", ""))
+        return LlmResponse(
+            stop_reason="end_turn", tool_calls=[], text="ok",
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    provider = MagicMock()
+    provider.chat = _chat
+    tool, _, _ = _make_tool(tmp_path, provider)
+    result = await tool.invoke({"description": "任务", "prompt": "探索", "subagent_type": "explore"})
+    assert not result.is_error
+    assert "代码库探索专家" in captured["system"]
+
+
+# 功能：spawn 时应用 skill，skill 系统提示合并进子 agent 的 system prompt
+# 设计：skill="orchestrate"，断言 system 同时含 coder 与 orchestrate 的标记文本
+async def test_skill_merge(tmp_path: Path) -> None:
+    captured: dict[str, str] = {}
+
+    async def _chat(*args: Any, **kwargs: Any) -> LlmResponse:
+        captured["system"] = str(kwargs.get("system", ""))
+        return LlmResponse(
+            stop_reason="end_turn", tool_calls=[], text="ok",
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    provider = MagicMock()
+    provider.chat = _chat
+    tool, _, _ = _make_tool(tmp_path, provider)
+    result = await tool.invoke({"description": "任务", "prompt": "分析 X", "skill": "orchestrate"})
+    assert not result.is_error
+    assert "通用软件工程" in captured["system"]  # coder 基础提示
+    assert "Multi-agent 协调者" in captured["system"]  # orchestrate 技能提示
+
+
+# 功能：后台 spawn 会把 child_run_id 登记进父 context 的 pending 集合
+# 设计：传入 parent_context，后台 spawn 后断言 run_id 出现在 pending_background_run_ids
+async def test_background_tracks_pending_run_id(tmp_path: Path) -> None:
+    parent = ExecutionContext(run_id="parent-ctx", goal="g", max_steps=5)
+    tool, _, _ = _make_tool(tmp_path, parent_context=parent)
+    result = await tool.invoke({
+        "description": "后台任务",
+        "prompt": "做点事",
+        "run_in_background": True,
+    })
+    assert not result.is_error
+    run_id = result.content.split("run_id=")[1].split(".")[0]
+    assert run_id in parent.pending_background_run_ids
+
+
+# 功能：plan 角色（permission_mode=plan）对已注册的写工具自动拒绝且不弹权限请求
+# 设计：plan 白名单含 task_create，provider 先调用 task_create 再 end_turn；
+#       断言发出 error_class=permission_denied 的 ToolCallFailedEvent 且无 PermissionRequestedEvent
+async def test_plan_denies_write_tool(tmp_path: Path) -> None:
+    from sztu_code.core.bus.events import PermissionRequestedEvent, ToolCallFailedEvent
+
+    tc = ToolCallBlock(id="w1", name="task_create", input={"subject": "x", "description": "y"})
+    resp1 = LlmResponse(stop_reason="tool_use", tool_calls=[tc], text="",
+                        usage=UsageStats(0, 0, 0, 0, 0.0))
+    resp2 = LlmResponse(stop_reason="end_turn", text="done", tool_calls=[],
+                        usage=UsageStats(0, 0, 0, 0, 0.0))
+    provider = AsyncMock()
+    provider.chat = AsyncMock(side_effect=[resp1, resp2])
+
+    tool, _, bus = _make_tool(tmp_path, provider)
+    events: list[Any] = []
+
+    async def _collect(e: Any) -> None:
+        events.append(e)
+
+    bus.subscribe(_collect)
+
+    result = await tool.invoke({"description": "规划", "prompt": "做规划", "subagent_type": "plan"})
+    assert not result.is_error
+    denied = [e for e in events if isinstance(e, ToolCallFailedEvent)
+              and e.error_class == "permission_denied"]
+    assert len(denied) == 1, f"expected 1 permission_denied, got: {events}"
+    requested = [e for e in events if isinstance(e, PermissionRequestedEvent)]
+    assert len(requested) == 0
+
+
+# 功能：plan 角色对只读工具正常放行并成功执行
+# 设计：plan 白名单含 list_dir，provider 先调用 list_dir 再 end_turn；断言发出 ToolCallFinishedEvent
+async def test_plan_allows_read_tool(tmp_path: Path) -> None:
+    from sztu_code.core.bus.events import ToolCallFinishedEvent
+
+    tc = ToolCallBlock(id="r1", name="list_dir", input={"path": "."})
+    resp1 = LlmResponse(stop_reason="tool_use", tool_calls=[tc], text="",
+                        usage=UsageStats(0, 0, 0, 0, 0.0))
+    resp2 = LlmResponse(stop_reason="end_turn", text="done", tool_calls=[],
+                        usage=UsageStats(0, 0, 0, 0, 0.0))
+    provider = AsyncMock()
+    provider.chat = AsyncMock(side_effect=[resp1, resp2])
+
+    tool, _, bus = _make_tool(tmp_path, provider)
+    events: list[Any] = []
+
+    async def _collect(e: Any) -> None:
+        events.append(e)
+
+    bus.subscribe(_collect)
+
+    result = await tool.invoke({"description": "规划", "prompt": "做规划", "subagent_type": "plan"})
+    assert not result.is_error
+    finished = [e for e in events if isinstance(e, ToolCallFinishedEvent)]
+    assert any(e.tool_name == "list_dir" for e in finished), f"no list_dir finished: {events}"
+
+
+# 功能：coder 前台子 agent 派发后台孙 agent 时，子 run 会等孙 agent 落定后才回报完成
+# 设计：provider 按消息内容分流——child 第一步派发后台孙、第二步 end_turn、孙一步 end_turn；
+#       断言 invoke 返回结果含孙 agent 的结果摘要，验证 transitive 等待语义
+async def test_foreground_child_waits_for_grandchild(tmp_path: Path) -> None:
+    spawn_call = ToolCallBlock(
+        id="s1",
+        name="spawn_agent",
+        input={"description": "孙任务", "prompt": "grandchild work", "run_in_background": True},
+    )
+
+    def _end(text: str) -> LlmResponse:
+        return LlmResponse(
+            stop_reason="end_turn", text=text, tool_calls=[],
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    async def _chat(messages: list[dict[str, object]], **kwargs: Any) -> LlmResponse:
+        first_user = next(
+            (m["content"] for m in messages
+             if m["role"] == "user" and isinstance(m["content"], str)),
+            "",
+        )
+        if first_user == "grandchild work":
+            return _end("grandchild done")
+        if any(
+            m["role"] == "assistant"
+            and isinstance(m["content"], list)
+            and any(isinstance(b, dict) and b.get("name") == "spawn_agent" for b in m["content"])
+            for m in messages
+        ):
+            return _end("child final")
+        return LlmResponse(
+            stop_reason="tool_use", tool_calls=[spawn_call], text="",
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    provider = MagicMock()
+    provider.chat = _chat
+    tool, _, _ = _make_tool(tmp_path, provider)
+    result = await tool.invoke({"description": "子任务", "prompt": "child work"})
+    assert not result.is_error
+    assert "grandchild done" in result.content
+    assert "[subagent" in result.content

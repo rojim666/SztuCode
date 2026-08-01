@@ -12,6 +12,10 @@ class AgentProfile:
     system_prompt: str
     allowed_tools: list[str] = field(default_factory=list)
     model: str = ""
+    # 子 agent 权限模式：normal/plan/accept_edits/auto
+    permission_mode: str = "normal"
+    # 可选：spawn 时应用的 Agent Skill 名称
+    skill: str = ""
 
 
 # 按两级优先级（项目本地 > 用户全局 > 内建）查找并解析角色配置
@@ -46,4 +50,6 @@ class AgentProfileLoader:
             system_prompt=agent.get("system_prompt", "").strip(),
             allowed_tools=agent.get("allowed_tools", []),
             model=agent.get("model", ""),
+            permission_mode=agent.get("permission_mode", "normal"),
+            skill=agent.get("skill", ""),
         )
