@@ -38,6 +38,7 @@ class LlmConfig:
     default_model: str = ""
     provider: str = "anthropic"  # "anthropic" | "openai"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
+    context_window: int = 0  # 0 = use provider's model-aware default
 
 
 @dataclass
@@ -55,9 +56,9 @@ class PermissionConfig:
 
 @dataclass
 class CompactionConfig:
-    auto_threshold: float = 0.0    # context_pct 触发自动压缩的阈值（0 表示禁用，推荐用手动 /compact）
-    tool_result_limit: int = 8_000  # tool_result 截断触发字符数
-    tool_result_keep: int = 4_000   # 截断后保留的前缀字符数
+    auto_threshold: float = 0.0  # 0 disables auto compaction; manual /compact remains available
+    tool_result_limit: int = 8_000
+    tool_result_keep: int = 4_000
 
 
 @dataclass
@@ -171,7 +172,16 @@ def save_client_settings(config: SztuConfig) -> Path:
 
 # 将已解析的 TOML 根表写入 config；未知小节或类型错误时退出进程
 def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
-    unknown = set(data.keys()) - {"core", "logging", "agent", "llm", "trace", "permission", "compaction", "mcp"}
+    unknown = set(data.keys()) - {
+        "core",
+        "logging",
+        "agent",
+        "llm",
+        "trace",
+        "permission",
+        "compaction",
+        "mcp",
+    }
     if unknown:
         raise SystemExit(f"Unknown top-level config keys: {', '.join(sorted(unknown))}")
 
@@ -224,7 +234,12 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         llm = data["llm"]
         if not isinstance(llm, dict):
             raise SystemExit("Config error: [llm] must be a table")
-        unknown_llm: set[str] = set(llm.keys()) - {"default_model", "provider", "router"}
+        unknown_llm: set[str] = set(llm.keys()) - {
+            "default_model",
+            "provider",
+            "router",
+            "context_window",
+        }
         if unknown_llm:
             raise SystemExit(f"Unknown [llm] keys: {', '.join(sorted(unknown_llm))}")
         if "default_model" in llm:
@@ -244,6 +259,11 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, str):
                 raise SystemExit("Config error: llm.router must be a string")
             config.llm.router = val
+        if "context_window" in llm:
+            val = llm["context_window"]
+            if not isinstance(val, int) or val <= 0:
+                raise SystemExit("Config error: llm.context_window must be a positive integer")
+            config.llm.context_window = val
 
     if "trace" in data:
         trace = data["trace"]
@@ -290,7 +310,11 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         comp = data["compaction"]
         if not isinstance(comp, dict):
             raise SystemExit("Config error: [compaction] must be a table")
-        unknown_comp: set[str] = set(comp.keys()) - {"auto_threshold", "tool_result_limit", "tool_result_keep"}
+        unknown_comp: set[str] = set(comp.keys()) - {
+            "auto_threshold",
+            "tool_result_limit",
+            "tool_result_keep",
+        }
         if unknown_comp:
             raise SystemExit(f"Unknown [compaction] keys: {', '.join(sorted(unknown_comp))}")
         if "auto_threshold" in comp:
@@ -301,12 +325,16 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         if "tool_result_limit" in comp:
             val = comp["tool_result_limit"]
             if not isinstance(val, int) or val <= 0:
-                raise SystemExit("Config error: compaction.tool_result_limit must be a positive integer")
+                raise SystemExit(
+                    "Config error: compaction.tool_result_limit must be a positive integer"
+                )
             config.compaction.tool_result_limit = val
         if "tool_result_keep" in comp:
             val = comp["tool_result_keep"]
             if not isinstance(val, int) or val <= 0:
-                raise SystemExit("Config error: compaction.tool_result_keep must be a positive integer")
+                raise SystemExit(
+                    "Config error: compaction.tool_result_keep must be a positive integer"
+                )
             config.compaction.tool_result_keep = val
 
     if "mcp" in data:
@@ -327,7 +355,9 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
                 raise SystemExit(f"Config error: mcp.servers[{i}].name must be a non-empty string")
             transport = srv.get("transport", "stdio")
             if transport not in ("stdio", "tcp"):
-                raise SystemExit(f"Config error: mcp.servers[{i}].transport must be 'stdio' or 'tcp'")
+                raise SystemExit(
+                    f"Config error: mcp.servers[{i}].transport must be 'stdio' or 'tcp'"
+                )
             s = McpServerConfig(name=name, transport=transport)
             if "command" in srv:
                 val = srv["command"]
@@ -446,18 +476,36 @@ def _apply_env(config: SztuConfig) -> None:
             raise SystemExit(f"Config error: SZTU_PERMISSION_MODE is invalid: {permission_mode!r}")
         config.permission.mode = permission_mode
 
+    llm_context_window = os.environ.get("SZTU_LLM_CONTEXT_WINDOW")
+    if llm_context_window is not None:
+        try:
+            llm_context_window_val = int(llm_context_window)
+            if llm_context_window_val <= 0:
+                raise SystemExit(
+                    "Config error: SZTU_LLM_CONTEXT_WINDOW must be a positive "
+                    f"integer, got: {llm_context_window!r}"
+                )
+            config.llm.context_window = llm_context_window_val
+        except ValueError:
+            raise SystemExit(
+                "Config error: SZTU_LLM_CONTEXT_WINDOW must be an integer, "
+                f"got: {llm_context_window!r}"
+            )
+
     compact_threshold = os.environ.get("SZTU_COMPACT_THRESHOLD")
     if compact_threshold is not None:
         try:
             compact_threshold_val = float(compact_threshold)
             if not (0.0 <= compact_threshold_val <= 1.0):
                 raise SystemExit(
-                    f"Config error: SZTU_COMPACT_THRESHOLD must be between 0 and 1, got: {compact_threshold!r}"
+                    "Config error: SZTU_COMPACT_THRESHOLD must be between 0 and 1, "
+                    f"got: {compact_threshold!r}"
                 )
             config.compaction.auto_threshold = compact_threshold_val
         except ValueError:
             raise SystemExit(
-                f"Config error: SZTU_COMPACT_THRESHOLD must be a number, got: {compact_threshold!r}"
+                "Config error: SZTU_COMPACT_THRESHOLD must be a number, "
+                f"got: {compact_threshold!r}"
             )
 
     compact_tool_limit = os.environ.get("SZTU_COMPACT_TOOL_LIMIT")
@@ -466,12 +514,14 @@ def _apply_env(config: SztuConfig) -> None:
             compact_tool_limit_val = int(compact_tool_limit)
             if compact_tool_limit_val <= 0:
                 raise SystemExit(
-                    f"Config error: SZTU_COMPACT_TOOL_LIMIT must be a positive integer, got: {compact_tool_limit!r}"
+                    "Config error: SZTU_COMPACT_TOOL_LIMIT must be a positive integer, "
+                    f"got: {compact_tool_limit!r}"
                 )
             config.compaction.tool_result_limit = compact_tool_limit_val
         except ValueError:
             raise SystemExit(
-                f"Config error: SZTU_COMPACT_TOOL_LIMIT must be an integer, got: {compact_tool_limit!r}"
+                "Config error: SZTU_COMPACT_TOOL_LIMIT must be an integer, "
+                f"got: {compact_tool_limit!r}"
             )
 
     compact_tool_keep = os.environ.get("SZTU_COMPACT_TOOL_KEEP")
@@ -480,10 +530,12 @@ def _apply_env(config: SztuConfig) -> None:
             compact_tool_keep_val = int(compact_tool_keep)
             if compact_tool_keep_val <= 0:
                 raise SystemExit(
-                    f"Config error: SZTU_COMPACT_TOOL_KEEP must be a positive integer, got: {compact_tool_keep!r}"
+                    "Config error: SZTU_COMPACT_TOOL_KEEP must be a positive integer, "
+                    f"got: {compact_tool_keep!r}"
                 )
             config.compaction.tool_result_keep = compact_tool_keep_val
         except ValueError:
             raise SystemExit(
-                f"Config error: SZTU_COMPACT_TOOL_KEEP must be an integer, got: {compact_tool_keep!r}"
+                "Config error: SZTU_COMPACT_TOOL_KEEP must be an integer, "
+                f"got: {compact_tool_keep!r}"
             )

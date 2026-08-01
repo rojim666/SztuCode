@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sztu_code.core.bus.events import ContextCompactedEvent
+from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent
 from sztu_code.core.events.bus import EventBus
 
 if TYPE_CHECKING:
@@ -46,6 +48,13 @@ Be concise. Omit reasoning steps and intermediate attempts. Keep conclusions.\
 
 
 # 返回当前 UTC 时间的简短时间戳字符串（用于文件名）
+def _summary_is_well_formed(summary: str) -> bool:
+    return bool(
+        re.search(r"^##\s*1\.\s*Original Goal", summary, re.MULTILINE)
+        and summary.count("## ") >= 2
+    )
+
+
 def _ts_compact() -> str:
     return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
@@ -76,6 +85,7 @@ class Compactor:
         provider: LLMProvider,
         focus: str = "",
     ) -> CompactionResult | None:
+        await self.notify_compacting(context.run_id)
         result = await self.compact_messages(context.messages, provider, focus=focus)
         if result is None:
             return None
@@ -84,22 +94,35 @@ class Compactor:
             {"role": "user", "content": result.summary_text},
             {"role": "assistant", "content": "Understood, I'll continue from this summary."},
         ]
-        self._write_summary(result.summary_text)
-        await self._bus.publish(
-            ContextCompactedEvent(
-                session_id=self._session_id,
-                run_id=context.run_id,
-                original_tokens=result.original_token_estimate,
-                summary_tokens=result.summary_tokens,
-                ts=_now(),
-            )
-        )
+        context.compacted = True
+        await self.record_compaction(context.run_id, result)
         logger.info(
             "context compacted session=%s run=%s original≈%d summary=%d tokens",
             self._session_id, context.run_id,
             result.original_token_estimate, result.summary_tokens,
         )
         return result
+
+    async def notify_compacting(self, run_id: str) -> None:
+        await self._bus.publish(
+            ContextCompactingEvent(
+                session_id=self._session_id,
+                run_id=run_id,
+                ts=_now(),
+            )
+        )
+
+    async def record_compaction(self, run_id: str, result: CompactionResult) -> None:
+        self._write_summary(result.summary_text)
+        await self._bus.publish(
+            ContextCompactedEvent(
+                session_id=self._session_id,
+                run_id=run_id,
+                original_tokens=result.original_token_estimate,
+                summary_tokens=result.summary_tokens,
+                ts=_now(),
+            )
+        )
 
     # 纯函数式压缩：接收消息列表，返回 CompactionResult；失败时返回 None
     async def compact_messages(
@@ -110,11 +133,8 @@ class Compactor:
     ) -> CompactionResult | None:
         from sztu_code.core.events.bus import EventBus as _Bus
 
-        original_estimate = sum(
-            len(str(m.get("content", ""))) for m in messages
-        ) // 4  # 粗略 token 估算（字符数 / 4）
-
         history_text = _messages_to_text(messages)
+        original_estimate = max(1, len(history_text) // 4)
         prompt = _COMPACT_PROMPT
         if focus.strip():
             prompt += f"\n\nIMPORTANT: Pay special attention to: {focus.strip()}"
@@ -137,12 +157,23 @@ class Compactor:
             logger.exception("compactor: LLM call failed, skipping compaction")
             return None
 
+        if response.stop_reason == "max_tokens":
+            logger.warning("compactor: summary response truncated, skipping compaction")
+            return None
+
         summary_text = response.text.strip()
-        if not summary_text:
-            logger.warning("compactor: LLM returned empty summary, skipping compaction")
+        if not summary_text or not _summary_is_well_formed(summary_text):
+            logger.warning("compactor: LLM returned invalid summary, skipping compaction")
             return None
 
         summary_tokens = response.usage.output_tokens if response.usage else len(summary_text) // 4
+        if summary_tokens >= original_estimate:
+            logger.warning(
+                "compactor: summary not beneficial original=%d summary=%d, skipping compaction",
+                original_estimate,
+                summary_tokens,
+            )
+            return None
 
         return CompactionResult(
             summary_text=summary_text,
@@ -154,7 +185,7 @@ class Compactor:
     def _write_summary(self, text: str) -> None:
         try:
             self._session_dir.mkdir(parents=True, exist_ok=True)
-            path = self._session_dir / f"summary_{_ts_compact()}.md"
+            path = self._session_dir / f"summary_{_ts_compact()}_{uuid.uuid4().hex[:8]}.md"
             path.write_text(text, encoding="utf-8")
         except Exception:
             logger.exception("compactor: failed to write summary file")
@@ -180,9 +211,12 @@ def _messages_to_text(messages: list[dict[str, Any]]) -> str:
                         f"{block.get('input', {})}\n</tool_call>"
                     )
                 elif btype == "tool_result":
+                    error_prefix = "[ERROR] " if block.get("is_error") else ""
                     blocks.append(
                         f"<tool_result id={block.get('tool_use_id')}>\n"
-                        f"{block.get('content', '')}\n</tool_result>"
+                        f"{error_prefix}{block.get('content', '')}\n</tool_result>"
                     )
+                elif btype == "thinking":
+                    blocks.append(f"<thinking>\n{block.get('thinking', '')}\n</thinking>")
             parts.append(f"[{role}]\n" + "\n".join(blocks))
     return "\n\n".join(parts)

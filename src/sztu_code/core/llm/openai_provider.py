@@ -10,11 +10,28 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI
 
-from sztu_code.core.bus.events import LlmModelSelectedEvent, LlmThinkingEvent, LlmTokenEvent, LlmUsageEvent
+from sztu_code.core.bus.events import (
+    LlmModelSelectedEvent,
+    LlmThinkingEvent,
+    LlmTokenEvent,
+    LlmUsageEvent,
+)
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 
 _DEFAULT_CONTEXT_WINDOW = 128_000
+
+_KNOWN_CONTEXT_WINDOWS: list[tuple[str, int]] = [
+    ("gpt-4.1-mini", 1_000_000),
+    ("gpt-4.1-nano", 1_000_000),
+    ("gpt-4.1", 1_000_000),
+    ("gpt-4o", 128_000),
+    ("gpt-4", 128_000),
+    ("o1", 200_000),
+    ("o3", 200_000),
+    ("deepseek-reasoner", 64_000),
+    ("deepseek-chat", 64_000),
+]
 
 _MAX_STREAM_RETRIES = 3
 _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
@@ -22,8 +39,14 @@ _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
 log = logging.getLogger(__name__)
 
 
-# Return the conservative context window used for usage display.
-def _context_window() -> int:
+# Return the context window used for usage display and compaction thresholds.
+def _context_window(model: str, override: int = 0) -> int:
+    if override > 0:
+        return override
+    normalized = model.lower()
+    for prefix, window in _KNOWN_CONTEXT_WINDOWS:
+        if normalized.startswith(prefix):
+            return window
     return _DEFAULT_CONTEXT_WINDOW
 
 
@@ -145,7 +168,7 @@ def _map_finish_reason(finish_reason: str | None) -> str:
 
 class OpenAIProvider:
     # 初始化 OpenAI 客户端；client 可在测试时注入以跳过 API key 检查
-    def __init__(self, model: str, client: Any = None) -> None:
+    def __init__(self, model: str, client: Any = None, *, context_window: int = 0) -> None:
         if client is None:
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
@@ -158,6 +181,7 @@ class OpenAIProvider:
         else:
             self._client = client
         self._model = model
+        self._context_window_override = context_window
 
     # 流式调用 OpenAI 兼容 API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试
     async def chat(
@@ -219,7 +243,12 @@ class OpenAIProvider:
                         thinking_parts.append(reasoning)
                         if attempt == 1:
                             await bus.publish(
-                                LlmThinkingEvent(run_id=run_id, step=step, thinking=reasoning, ts=_now())
+                                LlmThinkingEvent(
+                                    run_id=run_id,
+                                    step=step,
+                                    thinking=reasoning,
+                                    ts=_now(),
+                                )
                             )
                         continue
 
@@ -280,7 +309,11 @@ class OpenAIProvider:
             if prompt_details is not None:
                 cache_read = getattr(prompt_details, "cached_tokens", 0) or 0
 
-        context_pct = input_tokens / _context_window() if input_tokens > 0 else 0.0
+        context_pct = (
+            input_tokens / _context_window(self._model, self._context_window_override)
+            if input_tokens > 0
+            else 0.0
+        )
 
         await bus.publish(
             LlmUsageEvent(

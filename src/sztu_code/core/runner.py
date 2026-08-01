@@ -248,6 +248,8 @@ class AgentRunner:
                     denial_tracker=denial_tracker,
                     compactor=compactor,
                     compact_threshold=self._config.compaction.auto_threshold,
+                    tool_result_limit=self._config.compaction.tool_result_limit,
+                    tool_result_keep=self._config.compaction.tool_result_keep,
                     session_id=session_id_str,
                     task_registry=self._task_registry,
                 )
@@ -285,7 +287,10 @@ class AgentRunner:
             )
 
         if session is not None and store is not None:
-            store.append_messages(session.id, context.messages[prefill_len:], run_id=run_id)
+            if context.compacted:
+                store.write_compacted(session.id, context.messages)
+            else:
+                store.append_messages(session.id, context.messages[prefill_len:], run_id=run_id)
 
         if cancelled:
             raise asyncio.CancelledError()

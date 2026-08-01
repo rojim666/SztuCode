@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,8 +22,16 @@ def _now() -> str:
 
 class SessionStore:
     # 初始化 session 文件存储根目录
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        tool_result_limit: int = 8_000,
+        tool_result_keep: int = 4_000,
+    ) -> None:
         self._root = root.expanduser()
+        self._tool_result_limit = tool_result_limit
+        self._tool_result_keep = tool_result_keep
         self._root.mkdir(parents=True, exist_ok=True)
 
     # 返回指定 session 的目录路径
@@ -45,6 +55,18 @@ class SessionStore:
     def read_meta(self, sid: str) -> Session:
         data = json.loads((self.session_dir(sid) / "meta.json").read_text(encoding="utf-8"))
         return Session.from_dict(data)
+
+    def delete(self, sid: str) -> None:
+        path = self.session_dir(sid).resolve()
+        root = self._root.resolve()
+        if path == root:
+            raise ValueError("invalid session id")
+        try:
+            path.relative_to(root)
+        except ValueError:
+            raise ValueError("invalid session id") from None
+        if path.exists():
+            shutil.rmtree(path)
 
     # 读取磁盘中全部有效 session 元数据，并按最近更新时间稳定排序
     def list_sessions(self, *, include_archived: bool = False) -> list[Session]:
@@ -119,7 +141,11 @@ class SessionStore:
 
         messages = self._trim_orphan_tool_use(messages)
         from sztu_code.core.compact.budget import truncate_tool_results
-        return truncate_tool_results(messages)
+        return truncate_tool_results(
+            messages,
+            limit=self._tool_result_limit,
+            keep=self._tool_result_keep,
+        )
 
     # 裁掉尾部未配对 tool_use 以及其后的消息，避免 Anthropic messages.invalid
     def _trim_orphan_tool_use(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -147,13 +173,22 @@ class SessionStore:
     def write_compacted(self, sid: str, messages: list[dict[str, Any]]) -> None:
         path = self.session_dir(sid) / "thread.jsonl"
         ts_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        bak = self.session_dir(sid) / f"thread_{ts_str}.jsonl.bak"
+        bak = self.session_dir(sid) / f"thread_{ts_str}_{uuid.uuid4().hex[:8]}.jsonl.bak"
         if path.exists():
             path.rename(bak)
-        with path.open("w", encoding="utf-8") as f:
-            for msg in messages:
-                row: dict[str, Any] = {"ts": _now(), "role": msg["role"], "content": msg["content"]}
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        try:
+            with path.open("w", encoding="utf-8") as f:
+                for msg in messages:
+                    row: dict[str, Any] = {
+                        "ts": _now(),
+                        "role": msg["role"],
+                        "content": msg["content"],
+                    }
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        except Exception:
+            if not path.exists() and bak.exists():
+                bak.rename(path)
+            raise
 
     # 读取 notes.md 全文，文件不存在时返回空字符串
     def read_notes(self, sid: str) -> str:

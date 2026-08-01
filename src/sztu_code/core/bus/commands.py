@@ -62,6 +62,7 @@ class WorkspaceSummary(BaseModel):
     workspace_id: str
     path: str
     name: str
+    archived: bool = False
 
 
 class WorkspaceOpenCommand(BaseModel):
@@ -79,6 +80,24 @@ class WorkspaceListCommand(BaseModel):
 
 class WorkspaceListResult(BaseModel):
     workspaces: list[WorkspaceSummary]
+
+
+class WorkspaceArchiveCommand(BaseModel):
+    type: Literal["workspace.archive"] = "workspace.archive"
+    workspace_id: str
+
+
+class WorkspaceArchiveResult(BaseModel):
+    workspace: WorkspaceSummary
+
+
+class WorkspaceResumeCommand(BaseModel):
+    type: Literal["workspace.resume"] = "workspace.resume"
+    workspace_id: str
+
+
+class WorkspaceResumeResult(BaseModel):
+    workspace: WorkspaceSummary
 
 
 class WorkspaceStatusCommand(BaseModel):
@@ -288,6 +307,16 @@ class SessionCloseResult(BaseModel):
     status: SessionStatus
 
 
+class SessionDeleteCommand(BaseModel):
+    type: Literal["session.delete"] = "session.delete"
+    session_id: str
+
+
+class SessionDeleteResult(BaseModel):
+    session_id: str
+    deleted: bool = True
+
+
 class PermissionRespondCommand(BaseModel):
     type: Literal["permission.respond"] = "permission.respond"
     tool_use_id: str
@@ -372,6 +401,8 @@ Command = Annotated[
     | RunReplayCommand
     | WorkspaceOpenCommand
     | WorkspaceListCommand
+    | WorkspaceArchiveCommand
+    | WorkspaceResumeCommand
     | WorkspaceStatusCommand
     | WorkspaceTreeCommand
     | FileReadCommand
@@ -389,6 +420,7 @@ Command = Annotated[
     | SessionSendMessageCommand
     | SessionGetHistoryCommand
     | SessionCloseCommand
+    | SessionDeleteCommand
     | PermissionRespondCommand
     | PermissionSetModeCommand
     | SettingsGetCommand

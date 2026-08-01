@@ -139,6 +139,24 @@ async def test_workspace_file_commands_over_ipc(
     workspace_id = workspace["workspace_id"]
     assert workspace["name"] == "workspace"
 
+    archived = await _send_recv(
+        reader,
+        writer,
+        "workspace.archive",
+        {"workspace_id": workspace_id},
+        req_id="archive-workspace",
+    )
+    assert archived["result"]["workspace"]["archived"] is True
+
+    resumed = await _send_recv(
+        reader,
+        writer,
+        "workspace.resume",
+        {"workspace_id": workspace_id},
+        req_id="resume-workspace",
+    )
+    assert resumed["result"]["workspace"]["archived"] is False
+
     tree = await _send_recv(
         reader,
         writer,

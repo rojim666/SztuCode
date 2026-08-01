@@ -34,6 +34,32 @@ def test_workspace_open_persists_tree_and_search(tmp_path: Path) -> None:
     restored = WorkspaceManager(recent_file)
     assert restored.list_recent() == [workspace]
 
+def test_workspace_archive_resume_persists(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    recent_file = tmp_path / "state" / "workspaces.json"
+
+    manager = WorkspaceManager(recent_file)
+    active = manager.open(str(first))
+    archived = manager.open(str(second))
+
+    archived = manager.archive(archived.id)
+
+    assert archived.archived is True
+    assert [item.id for item in manager.list_recent(include_archived=False)] == [active.id]
+
+    restored = WorkspaceManager(recent_file)
+    assert restored.get(archived.id).archived is True
+
+    resumed = restored.resume(archived.id)
+    assert resumed.archived is False
+    assert [item.id for item in restored.list_recent(include_archived=False)] == [
+        active.id,
+        archived.id,
+    ]
+
 
 # 功能：验证工作区文件读取拒绝目录穿越及不存在目录，避免客户端借 IPC 读取任意本地文件。
 # 设计：对已打开临时工作区传入 ../ 路径和无效 open 路径，分别断言 ValueError，覆盖路径边界与输入验证。

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { IpcClient } from "../lib/ipc";
 
-export type Workspace = { workspace_id: string; name: string; path: string };
+export type Workspace = { workspace_id: string; name: string; path: string; archived: boolean };
 export type NativeSettings = { autostart: boolean; stay_awake: boolean; supported: boolean };
 export type WorkspaceNode = { path: string; name: string; kind: "directory" | "file"; children?: WorkspaceNode[] };
 export type FileSearchMatch = { path: string; line: number; preview: string };
@@ -81,6 +81,16 @@ export async function listSessions(includeArchived = true): Promise<Session[]> {
   return (result.sessions as Session[] | undefined) ?? [];
 }
 
+export async function archiveWorkspace(workspaceId: string): Promise<Workspace> {
+  const result = await client.request("workspace.archive", { workspace_id: workspaceId });
+  return result.workspace as Workspace;
+}
+
+export async function resumeWorkspace(workspaceId: string): Promise<Workspace> {
+  const result = await client.request("workspace.resume", { workspace_id: workspaceId });
+  return result.workspace as Workspace;
+}
+
 export async function createSession(workspace: Workspace | null): Promise<string> {
   const result = await client.request("session.create", { mode: "chat", workspace_id: workspace?.workspace_id });
   return String(result.session_id);
@@ -118,6 +128,10 @@ export async function resumeSession(sessionId: string): Promise<Session> {
 
 export async function closeSession(sessionId: string): Promise<void> {
   await client.request("session.close", { session_id: sessionId });
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await client.request("session.delete", { session_id: sessionId });
 }
 
 export async function compactSession(sessionId: string, focus = ""): Promise<{ summary_tokens: number; saved_tokens: number }> {

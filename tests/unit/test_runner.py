@@ -7,8 +7,10 @@ from pydantic import BaseModel
 
 from sztu_code.core.config import SztuConfig
 from sztu_code.core.events.bus import EventBus
-from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
+from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.runner import AgentRunner
+from sztu_code.core.session.model import Session
+from sztu_code.core.session.store import SessionStore
 
 # --- mock provider -----------------------------------------------------------
 
@@ -71,6 +73,60 @@ class _CapturingProvider:
         self.messages = [dict(m) for m in messages]
         self.system = system
         return self.response
+
+
+class _SessionCompactingProvider:
+    """High-water tool_use, then a compact summary, then end_turn."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+        self._summary = """\
+## 1. Original Goal
+new goal
+## 2. Completed Steps
+- inspected state
+## 3. Key Constraints & Discoveries
+- none
+## 4. Current File State
+- none
+## 5. Remaining TODOs
+- finish
+## 6. Critical Data
+- none
+"""
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+    ) -> LlmResponse:
+        self._calls += 1
+        if self._calls == 1:
+            return LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[ToolCallBlock(id="t1", name="unknown_tool", input={})],
+                usage=UsageStats(
+                    input_tokens=100_000,
+                    output_tokens=10,
+                    context_pct=0.9,
+                ),
+            )
+        if run_id == "compact":
+            return LlmResponse(
+                stop_reason="end_turn",
+                text=self._summary,
+                usage=UsageStats(input_tokens=100_000, output_tokens=10),
+            )
+        return LlmResponse(
+            stop_reason="end_turn",
+            text="done",
+            usage=UsageStats(input_tokens=200, output_tokens=10),
+        )
 
 
 # --- helpers -----------------------------------------------------------------
@@ -256,6 +312,42 @@ async def test_session_history_and_notes_injected(tmp_path: Path) -> None:
     assert "Python 3.12" in provider.system
     assert (store.runs_dir("sess-1") / "run-new" / "events.jsonl").exists()
     assert not (tmp_path / "runs" / "run-new").exists()
+
+
+# 功能：验证自动压缩后摘要会覆盖写入 thread，而不是按旧 prefill 长度切片丢弃
+# 设计：历史超过两条时触发压缩，运行结束应能在 thread 中读到摘要和后续消息
+async def test_auto_compact_writes_summary_to_thread(tmp_path: Path) -> None:
+    cfg = _config()
+    cfg.compaction.auto_threshold = 0.8
+    store = SessionStore(tmp_path / "sessions")
+    session = Session(
+        id="sess-1",
+        mode="chat",
+        status="active",
+        title="",
+        created_at="t",
+        updated_at="t",
+    )
+    store.write_meta(session)
+    store.append_message("sess-1", "user", "old goal")
+    store.append_message("sess-1", "user", "new goal with enough history")
+
+    runner = AgentRunner(
+        cfg,
+        provider=_SessionCompactingProvider(),  # type: ignore[arg-type]
+        runs_dir=tmp_path / "runs",
+    )
+    await runner.run_and_capture(
+        "new goal",
+        run_id="run-compact",
+        session=session,
+        store=store,
+    )
+
+    messages = store.read_messages("sess-1")
+    assert messages[0]["role"] == "user"
+    assert "Original Goal" in messages[0]["content"]
+    assert messages[1]["role"] == "assistant"
 
 
 # 功能：验证 session run 中注册了 note_save，工具调用会写入 notes.md

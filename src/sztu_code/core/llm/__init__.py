@@ -18,8 +18,14 @@ def create_provider(config: SztuConfig) -> LLMProvider:
             "LLM model not configured. Set SZTU_LLM_DEFAULT_MODEL in .env."
         )
     if config.llm.provider == "openai":
-        return OpenAIProvider(config.llm.default_model)
-    return AnthropicProvider(config.llm.default_model)
+        return OpenAIProvider(
+            config.llm.default_model,
+            context_window=config.llm.context_window,
+        )
+    return AnthropicProvider(
+        config.llm.default_model,
+        context_window=config.llm.context_window,
+    )
 
 
 __all__ = [

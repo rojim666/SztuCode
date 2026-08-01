@@ -6,6 +6,7 @@ import pytest
 
 from sztu_code.core.bus.envelope import HandlerError
 from sztu_code.core.events.bus import EventBus
+from sztu_code.core.llm.types import LlmResponse, UsageStats
 from sztu_code.core.runner import RunOutcome
 from sztu_code.core.session.manager import SESSION_CLOSED, SESSION_NOT_FOUND, SessionManager
 from sztu_code.core.session.model import Session
@@ -35,6 +36,37 @@ class _Runner:
             run_id,
         )
         return RunOutcome(status="success", result="done", reason=None)
+
+
+class _SummaryProvider:
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+    ) -> LlmResponse:
+        return LlmResponse(
+            stop_reason="end_turn",
+            text="""\
+## 1. Original Goal
+manual compact
+## 2. Completed Steps
+- step
+## 3. Key Constraints & Discoveries
+- none
+## 4. Current File State
+- none
+## 5. Remaining TODOs
+- continue
+## 6. Critical Data
+- none
+""",
+            usage=UsageStats(input_tokens=100, output_tokens=10),
+        )
 
 
 # 功能：验证 create 会创建 active session、写入 meta 并发布 session.created 事件
@@ -106,6 +138,50 @@ async def test_closed_session_rejects_message(tmp_path: Path) -> None:
     with pytest.raises(HandlerError) as exc:
         await manager.send_message(session.id, "again")
     assert exc.value.code == SESSION_CLOSED
+
+
+async def test_delete_removes_session_from_memory_and_disk(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    manager = SessionManager(store, lambda: _Runner(), EventBus())  # type: ignore[arg-type]
+    session = await manager.create("chat", "delete me")
+    await manager.send_message(session.id, "hello")
+
+    await manager.delete(session.id)
+
+    assert not store.session_dir(session.id).exists()
+    listed, _ = await manager.list_sessions(include_archived=True)
+    assert listed == []
+
+
+# 功能：验证手动 compact 会发布 context.compacted、写 summary 文件并覆盖 thread
+async def test_manual_compact_writes_summary_event_and_file(tmp_path: Path) -> None:
+    events: list[object] = []
+    bus = EventBus()
+
+    async def collect(event: object) -> None:
+        events.append(event)
+
+    bus.subscribe(collect)
+    store = SessionStore(tmp_path)
+    manager = SessionManager(
+        store,
+        lambda: _Runner(),  # type: ignore[arg-type]
+        bus,
+        provider=_SummaryProvider(),  # type: ignore[arg-type]
+    )
+    session = await manager.create("chat")
+    store.append_message(session.id, "user", "a" * 200)
+    store.append_message(session.id, "assistant", "b" * 200)
+
+    result = await manager.compact(session.id)
+
+    assert result.saved_tokens > 0
+    assert "context.compacting" in [getattr(e, "type", None) for e in events]
+    assert "context.compacted" in [getattr(e, "type", None) for e in events]
+    assert len(list(store.session_dir(session.id).glob("summary_*.md"))) == 1
+    messages = store.read_messages(session.id)
+    assert messages[0]["role"] == "user"
+    assert "Original Goal" in messages[0]["content"]
 
 
 # 功能：验证重启后的 SessionManager 可列出持久化任务，并能归档、恢复已关闭的 chat session。

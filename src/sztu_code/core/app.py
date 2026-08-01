@@ -53,6 +53,8 @@ from sztu_code.core.bus.commands import (
     SessionCompactResult,
     SessionCreateCommand,
     SessionCreateResult,
+    SessionDeleteCommand,
+    SessionDeleteResult,
     SessionGetHistoryCommand,
     SessionGetHistoryResult,
     SessionListCommand,
@@ -71,10 +73,14 @@ from sztu_code.core.bus.commands import (
     SettingsSnapshot,
     SettingsUpdateCommand,
     SettingsUpdateResult,
+    WorkspaceArchiveCommand,
+    WorkspaceArchiveResult,
     WorkspaceListCommand,
     WorkspaceListResult,
     WorkspaceOpenCommand,
     WorkspaceOpenResult,
+    WorkspaceResumeCommand,
+    WorkspaceResumeResult,
     WorkspaceStatusCommand,
     WorkspaceStatusResult,
     WorkspaceSummary,
@@ -154,6 +160,7 @@ class CoreApp:
             workspace_id=workspace.id,
             path=workspace.path,
             name=workspace.name,
+            archived=workspace.archived,
         )
 
     # 跟踪后台 run 任务，以支持客户端查询与安全取消
@@ -291,6 +298,26 @@ class CoreApp:
         return WorkspaceListResult(
             workspaces=[self._workspace_summary(workspace) for workspace in workspaces]
         )
+
+    # 归档本地项目，保持会话数据完整但不再显示在活跃项目列表中
+    async def _workspace_archive_handler(self, params: dict[str, Any]) -> WorkspaceArchiveResult:
+        assert self._workspaces is not None
+        cmd = WorkspaceArchiveCommand.model_validate(params)
+        try:
+            workspace = self._workspaces.archive(cmd.workspace_id)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspaceArchiveResult(workspace=self._workspace_summary(workspace))
+
+    # 恢复已归档项目，使其重新出现在项目侧栏
+    async def _workspace_resume_handler(self, params: dict[str, Any]) -> WorkspaceResumeResult:
+        assert self._workspaces is not None
+        cmd = WorkspaceResumeCommand.model_validate(params)
+        try:
+            workspace = self._workspaces.resume(cmd.workspace_id)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspaceResumeResult(workspace=self._workspace_summary(workspace))
 
     # 返回工作区 Git 分支与未提交修改摘要
     async def _workspace_status_handler(self, params: dict[str, Any]) -> WorkspaceStatusResult:
@@ -619,6 +646,12 @@ class CoreApp:
         await self._sessions.close(cmd.session_id)
         return SessionCloseResult(status="closed")
 
+    async def _session_delete_handler(self, params: dict[str, Any]) -> SessionDeleteResult:
+        assert self._sessions is not None
+        cmd = SessionDeleteCommand.model_validate(params)
+        await self._sessions.delete(cmd.session_id)
+        return SessionDeleteResult(session_id=cmd.session_id, deleted=True)
+
     # 注册客户端事件订阅，可选先回放 events.jsonl 历史再接收实时流
     async def _subscribe_handler(self, params: dict[str, Any]) -> EventSubscribeResult:
         cmd = EventSubscribeCommand.model_validate(params)
@@ -705,7 +738,11 @@ class CoreApp:
         self._broadcaster = IpcEventBroadcaster(trace=self._trace)
         self._bus.subscribe(self._broadcaster.handle)
         sessions_root = Path("~/.sztu/sessions").expanduser()
-        store = SessionStore(sessions_root)
+        store = SessionStore(
+            sessions_root,
+            tool_result_limit=self._config.compaction.tool_result_limit,
+            tool_result_keep=self._config.compaction.tool_result_keep,
+        )
         self._workspaces = WorkspaceManager(Path("~/.sztu/workspaces.json"))
         assert self._config is not None
         provider_key_name = (
@@ -753,6 +790,8 @@ class CoreApp:
         server.register("run.replay", self._run_replay_handler)
         server.register("workspace.open", self._workspace_open_handler)
         server.register("workspace.list", self._workspace_list_handler)
+        server.register("workspace.archive", self._workspace_archive_handler)
+        server.register("workspace.resume", self._workspace_resume_handler)
         server.register("workspace.status", self._workspace_status_handler)
         server.register("workspace.tree", self._workspace_tree_handler)
         server.register("file.read", self._file_read_handler)
@@ -770,6 +809,7 @@ class CoreApp:
         server.register("session.send_message", self._session_send_handler)
         server.register("session.get_history", self._session_history_handler)
         server.register("session.close", self._session_close_handler)
+        server.register("session.delete", self._session_delete_handler)
         server.register("permission.respond", self._permission_respond_handler)
         server.register("permission.set_mode", self._permission_set_mode_handler)
         server.register("settings.get", self._settings_get_handler)

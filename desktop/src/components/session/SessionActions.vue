@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Archive, Ellipsis, Pin, PinOff, RotateCcw, Shrink, XCircle } from "@lucide/vue";
-import { archiveSession, closeSession, compactSession, pinSession, renameSession, resumeSession, type Session } from "../../services/sztu-runtime";
+import { Archive, Ellipsis, Pin, PinOff, RotateCcw, Shrink, Trash2, XCircle } from "@lucide/vue";
+import { archiveSession, closeSession, compactSession, deleteSession, pinSession, renameSession, resumeSession, type Session } from "../../services/sztu-runtime";
 
 const props = defineProps<{ session: Session }>();
 const emit = defineEmits<{ changed: []; closed: [] }>();
@@ -80,6 +80,11 @@ async function close() {
   await run(() => closeSession(props.session.session_id), true);
 }
 
+async function remove() {
+  if (!window.confirm("删除后会话和运行记录无法恢复。确定删除？")) return;
+  await run(() => deleteSession(props.session.session_id), true);
+}
+
 function closeOnViewportChange() { if (open.value) closeMenu(); }
 
 watch(() => props.session.title, (value) => { if (!renaming.value) title.value = value; });
@@ -108,6 +113,7 @@ onBeforeUnmount(() => {
           <button v-else @click="run(() => archiveSession(session.session_id), true)"><Archive :size="14" />归档</button>
           <button @click="compact"><Shrink :size="14" />压缩上下文</button>
           <button class="danger" @click="close"><XCircle :size="14" />关闭会话</button>
+          <button class="danger" @click="remove"><Trash2 :size="14" />删除会话</button>
         </template>
         <p v-if="notice">{{ notice }}</p>
       </div>

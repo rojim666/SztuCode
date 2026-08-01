@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sztu_code.core.bus.events import StepFinishedEvent, StepStartedEvent
+from sztu_code.core.compact.budget import truncate_tool_results
 from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
@@ -38,6 +39,8 @@ class AgentLoop:
         denial_tracker: DenialTracker | None = None,
         compactor: Compactor | None = None,
         compact_threshold: float = 0.80,
+        tool_result_limit: int = 8_000,
+        tool_result_keep: int = 4_000,
         session_id: str = "",
         task_registry: BackgroundTaskRegistry | None = None,
     ) -> None:
@@ -48,6 +51,8 @@ class AgentLoop:
         self._denial_tracker = denial_tracker
         self._compactor = compactor
         self._compact_threshold = compact_threshold
+        self._tool_result_limit = tool_result_limit
+        self._tool_result_keep = tool_result_keep
         self._session_id = session_id
         self._task_registry = task_registry
 
@@ -87,7 +92,11 @@ class AgentLoop:
             # [plan] call LLM — API errors terminate the run
             try:
                 response = await self._provider.chat(
-                    messages=context.messages,
+                    messages=truncate_tool_results(
+                        context.messages,
+                        limit=self._tool_result_limit,
+                        keep=self._tool_result_keep,
+                    ),
                     tool_schemas=self._registry.tool_schemas(),
                     bus=self._bus,
                     run_id=context.run_id,
@@ -125,6 +134,7 @@ class AgentLoop:
             context.add_assistant_message(blocks)
 
             # [act] execute each requested tool; errors become tool results so loop continues
+            added_estimate = 0
             if response.stop_reason == "tool_use":
                 for tc in response.tool_calls:
                     result = await invoke_tool(
@@ -132,6 +142,7 @@ class AgentLoop:
                         permission_manager=self._permission_manager,
                         session_id=self._session_id,
                     )
+                    added_estimate += max(1, len(str(result.content)) // 4)
                     context.add_tool_result(tc.id, result.content, is_error=result.is_error)
 
                     # [track] 追踪权限拒绝，触发熔断干预
@@ -144,10 +155,15 @@ class AgentLoop:
                 # Output token limit hit mid-tool-call; input is incomplete.
                 # Add synthetic error results so the conversation stays balanced.
                 for tc in response.tool_calls:
+                    error_text = (
+                        "Error: output token limit reached before this tool call "
+                        "could be completed. Please break the task into smaller "
+                        "steps and try again."
+                    )
+                    added_estimate += max(1, len(error_text) // 4)
                     context.add_tool_result(
                         tc.id,
-                        "Error: output token limit reached before this tool call could be completed. "
-                        "Please break the task into smaller steps and try again.",
+                        error_text,
                         is_error=True,
                     )
 
@@ -175,13 +191,20 @@ class AgentLoop:
             # 此时压缩结果 [user_summary, assistant_ack] 对下一次 LLM 调用是合法输入
             if (
                 not context.is_done()
-                and response.stop_reason == "tool_use"
+                and response.stop_reason != "end_turn"
                 and self._compactor is not None
                 and self._compact_threshold > 0
                 and response.usage is not None
-                and response.usage.context_pct >= self._compact_threshold
             ):
-                await self._compactor.compact(context, self._provider)
+                trigger_pct = response.usage.context_pct
+                if response.usage.input_tokens > 0 and added_estimate:
+                    trigger_pct = (
+                        response.usage.context_pct
+                        * (response.usage.input_tokens + added_estimate)
+                        / response.usage.input_tokens
+                    )
+                if trigger_pct >= self._compact_threshold:
+                    await self._compactor.compact(context, self._provider)
 
             await self._bus.publish(
                 StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())

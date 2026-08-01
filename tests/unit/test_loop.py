@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
+from sztu_code.core.compact.compactor import Compactor
 from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
-from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
+from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.permissions.denial_tracker import DenialTracker
 from sztu_code.core.subagent.registry import BackgroundTaskRegistry
@@ -43,6 +45,56 @@ class _MockProvider:
         return next(self._responses)
 
 
+class _CompactingProvider:
+    """Returns a high-water tool_use/max_tokens call, a summary call, then end_turn."""
+
+    def __init__(
+        self,
+        summary_text: str,
+        first_stop_reason: str = "tool_use",
+        with_tool_call: bool = True,
+    ) -> None:
+        self._summary_text = summary_text
+        self._first_stop_reason = first_stop_reason
+        self._with_tool_call = with_tool_call
+        self._calls = 0
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+    ) -> LlmResponse:
+        self._calls += 1
+        if self._calls == 1:
+            tool_calls = [_tc(inp={"msg": "hi"})] if self._with_tool_call else []
+            return LlmResponse(
+                stop_reason=self._first_stop_reason,
+                tool_calls=tool_calls,
+                text="" if tool_calls else "partial",
+                usage=UsageStats(
+                    input_tokens=100_000,
+                    output_tokens=10,
+                    context_pct=0.9,
+                ),
+            )
+        if run_id == "compact":
+            return LlmResponse(
+                stop_reason="end_turn",
+                text=self._summary_text,
+                usage=UsageStats(input_tokens=100_000, output_tokens=2),
+            )
+        return LlmResponse(
+            stop_reason="end_turn",
+            text="done",
+            usage=UsageStats(input_tokens=200, output_tokens=10),
+        )
+
+
 class _EchoTool(BaseTool):
     name = "echo"
     description = "Echoes msg"
@@ -74,6 +126,22 @@ def _ctx(max_steps: int = 5) -> ExecutionContext:
 
 def _tc(name: str = "echo", inp: dict[str, object] | None = None, uid: str = "t1") -> ToolCallBlock:
     return ToolCallBlock(id=uid, name=name, input=inp or {"msg": "hi"})
+
+
+_SUMMARY = """\
+## 1. Original Goal
+test goal
+## 2. Completed Steps
+- echo tool called
+## 3. Key Constraints & Discoveries
+- none
+## 4. Current File State
+- none
+## 5. Remaining TODOs
+- finish
+## 6. Critical Data
+- none
+"""
 
 
 def _make_loop(
@@ -189,6 +257,57 @@ async def test_tool_failure_result_is_error_in_context() -> None:
     tool_result_msg = ctx.messages[2]
     block = tool_result_msg["content"][0]  # type: ignore[index]
     assert block.get("is_error") is True
+
+
+# 功能：验证高水位 tool_use 会触发自动压缩，并将 context 标记为已压缩
+# 设计：真实 Compactor + mock provider 返回工具调用和摘要，检查消息被摘要替换且事件发布
+async def test_loop_auto_compacts_on_high_water_tool_use(tmp_path: Path) -> None:
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    bus = EventBus()
+    events = await _events(bus)
+    provider = _CompactingProvider(_SUMMARY)
+    compactor = Compactor(bus, tmp_path, "sess-1")
+    loop = AgentLoop(
+        provider,
+        registry,
+        bus,
+        compactor=compactor,
+        compact_threshold=0.8,
+    )
+    ctx = _ctx(max_steps=5)
+
+    await loop.run(ctx)
+
+    assert ctx.compacted is True
+    assert ctx.messages[0]["role"] == "user"
+    assert "Original Goal" in ctx.messages[0]["content"]
+    assert "context.compacting" in [e.type for e in events]  # type: ignore[attr-defined]
+    assert "context.compacted" in [e.type for e in events]  # type: ignore[attr-defined]
+
+
+# 功能：验证非 tool_use 的继续状态（max_tokens）也会触发压缩
+async def test_loop_auto_compacts_on_max_tokens(tmp_path: Path) -> None:
+    bus = EventBus()
+    provider = _CompactingProvider(
+        _SUMMARY,
+        first_stop_reason="max_tokens",
+        with_tool_call=False,
+    )
+    compactor = Compactor(bus, tmp_path, "sess-1")
+    loop = AgentLoop(
+        provider,
+        ToolRegistry(),
+        bus,
+        compactor=compactor,
+        compact_threshold=0.8,
+    )
+    ctx = _ctx(max_steps=5)
+
+    await loop.run(ctx)
+
+    assert ctx.compacted is True
+    assert ctx.status == "success"
 
 
 # 功能：验证收到 CancelledError 时 loop 将 context 标记为 cancelled 后继续上抛 CancelledError
