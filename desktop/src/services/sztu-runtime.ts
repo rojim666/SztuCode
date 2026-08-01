@@ -5,6 +5,10 @@ export type Workspace = { workspace_id: string; name: string; path: string };
 export type NativeSettings = { autostart: boolean; stay_awake: boolean; supported: boolean };
 export type WorkspaceNode = { path: string; name: string; kind: "directory" | "file"; children?: WorkspaceNode[] };
 export type FileSearchMatch = { path: string; line: number; preview: string };
+export type FileReadResult = {
+  content: string; encoding: string; binary: boolean; truncated: boolean;
+  media_base64?: string | null; mime_type?: string | null;
+};
 export type ChangeSummary = {
   path: string; index_status: string; worktree_status: string;
   run_id?: string | null; agent_owned?: boolean; revertible?: boolean;
@@ -130,8 +134,8 @@ export async function openWorkspace(path: string): Promise<Workspace> {
   return result.workspace as Workspace;
 }
 
-export async function workspaceTree(workspaceId: string): Promise<WorkspaceNode[]> {
-  const result = await client.request("workspace.tree", { workspace_id: workspaceId, path: "", max_depth: 6, max_entries: 1_000 });
+export async function workspaceTree(workspaceId: string, path = "", maxDepth = 1): Promise<WorkspaceNode[]> {
+  const result = await client.request("workspace.tree", { workspace_id: workspaceId, path, max_depth: maxDepth, max_entries: 1_000 });
   return (result.nodes as WorkspaceNode[] | undefined) ?? [];
 }
 
@@ -140,9 +144,16 @@ export async function searchFiles(workspaceId: string, query: string): Promise<F
   return (result.matches as FileSearchMatch[] | undefined) ?? [];
 }
 
-export async function readFile(workspaceId: string, path: string): Promise<string> {
+export async function readFile(workspaceId: string, path: string): Promise<FileReadResult> {
   const result = await client.request("file.read", { workspace_id: workspaceId, path });
-  return String(result.content ?? "");
+  return {
+    content: String(result.content ?? ""),
+    encoding: String(result.encoding ?? "UTF-8"),
+    binary: Boolean(result.binary),
+    truncated: Boolean(result.truncated),
+    media_base64: typeof result.media_base64 === "string" ? result.media_base64 : null,
+    mime_type: typeof result.mime_type === "string" ? result.mime_type : null,
+  };
 }
 
 export async function listChanges(workspaceId: string, runId?: string | null): Promise<ChangeSummary[]> {
