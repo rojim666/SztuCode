@@ -159,6 +159,13 @@ class ContextCompactedEvent(BaseModel):
     ts: str
 
 
+class ContextCompactingEvent(BaseModel):
+    type: Literal["context.compacting"] = "context.compacting"
+    session_id: str
+    run_id: str
+    ts: str
+
+
 class PermissionRequestedEvent(BaseModel):
     type: Literal["permission.requested"] = "permission.requested"
     run_id: str
@@ -281,6 +288,7 @@ Event = Annotated[
     | SessionWaitingForInputEvent
     | SessionResumedEvent
     | SessionClosedEvent
+    | ContextCompactingEvent
     | ContextCompactedEvent
     | DenialInterventionEvent
     | PermissionRequestedEvent

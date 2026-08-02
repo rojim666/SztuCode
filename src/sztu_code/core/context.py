@@ -22,6 +22,7 @@ class ExecutionContext:
     system_prompt_override: str | None = None
     # 本 run 派生的后台 subagent run_id 集合，结束回合前等待其全部落定
     pending_background_run_ids: set[str] = field(default_factory=set)
+    compacted: bool = False
 
     # 初始化消息历史，优先使用 session 完整回放内容
     def __post_init__(self) -> None:

@@ -198,6 +198,17 @@ class SessionManager:
             self._store.write_meta(session)
             await self._bus.publish(SessionClosedEvent(session_id=sid, ts=session.updated_at))
 
+    # 从内存索引和磁盘完整删除指定 session
+    async def delete(self, sid: str) -> None:
+        self._get_session(sid)
+        lock = self._locks[sid]
+        if lock.locked():
+            raise HandlerError(SESSION_BUSY, "session busy")
+        async with lock:
+            self._store.delete(sid)
+            self._sessions.pop(sid, None)
+            self._locks.pop(sid, None)
+
     # 手动压缩指定 session 的 thread，将摘要持久化写入 thread.jsonl
     async def compact(self, sid: str, focus: str = "") -> Any:
         self._get_session(sid)
@@ -212,6 +223,7 @@ class SessionManager:
             messages = self._store.read_messages(sid)
             session_dir = self._store.session_dir(sid)
             compactor = Compactor(self._bus, session_dir, sid)
+            await compactor.notify_compacting("")
             result = await compactor.compact_messages(messages, self._provider, focus=focus)
             if result is None:
                 raise HandlerError(-32021, "compaction failed or not beneficial")
@@ -219,6 +231,7 @@ class SessionManager:
                 {"role": "user", "content": result.summary_text},
                 {"role": "assistant", "content": "Understood, I'll continue from this summary."},
             ])
+            await compactor.record_compaction(run_id="", result=result)
             return SessionCompactResult(
                 summary_tokens=result.summary_tokens,
                 saved_tokens=max(0, result.original_token_estimate - result.summary_tokens),

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
-import base64
 import mimetypes
 import os
 import subprocess
 from codecs import BOM_UTF8, BOM_UTF16_BE, BOM_UTF16_LE
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -16,6 +16,7 @@ class Workspace:
     id: str
     path: str
     name: str
+    archived: bool = False
 
 
 @dataclass(frozen=True)
@@ -54,14 +55,33 @@ class WorkspaceManager:
         resolved = Path(path).expanduser().resolve()
         if not resolved.is_dir():
             raise ValueError("workspace path must be an existing directory")
-        workspace = self._make_workspace(resolved)
+        workspace = self._make_workspace(resolved, archived=False)
         self._workspaces[workspace.id] = workspace
         self._save_recent()
         return workspace
 
     # 返回最近工作区，最近打开的目录排在最前面
-    def list_recent(self) -> list[Workspace]:
-        return list(self._workspaces.values())
+    def list_recent(self, *, include_archived: bool = True) -> list[Workspace]:
+        return [
+            workspace
+            for workspace in self._workspaces.values()
+            if include_archived or not workspace.archived
+        ]
+
+    def archive(self, workspace_id: str) -> Workspace:
+        return self._set_archived(workspace_id, True)
+
+    def resume(self, workspace_id: str) -> Workspace:
+        return self._set_archived(workspace_id, False)
+
+    def _set_archived(self, workspace_id: str, archived: bool) -> Workspace:
+        current = self.get(workspace_id)
+        if current.archived == archived:
+            return current
+        updated = replace(current, archived=archived)
+        self._workspaces[workspace_id] = updated
+        self._save_recent()
+        return updated
 
     # 返回工作区的 Git 分支和未提交文件摘要
     def status(self, workspace_id: str) -> dict[str, object]:
@@ -267,16 +287,25 @@ class WorkspaceManager:
             return
         for value in paths:
             if not isinstance(value, str):
-                continue
-            path = Path(value).expanduser()
+                if isinstance(value, dict) and isinstance(value.get("path"), str):
+                    path = Path(value["path"]).expanduser()
+                    archived = bool(value.get("archived", False))
+                else:
+                    continue
+            else:
+                path = Path(value).expanduser()
+                archived = False
             if path.is_dir():
-                workspace = self._make_workspace(path.resolve())
+                workspace = self._make_workspace(path.resolve(), archived=archived)
                 self._workspaces[workspace.id] = workspace
 
     # 将当前工作区目录写入最近记录文件
     def _save_recent(self) -> None:
         self._recent_file.parent.mkdir(parents=True, exist_ok=True)
-        paths = [workspace.path for workspace in self._workspaces.values()]
+        paths = [
+            {"path": workspace.path, "archived": workspace.archived}
+            for workspace in self._workspaces.values()
+        ]
         self._recent_file.write_text(
             json.dumps(paths, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
@@ -284,9 +313,14 @@ class WorkspaceManager:
 
     # 从目录绝对路径生成稳定且不可歧义的工作区标识
     @staticmethod
-    def _make_workspace(path: Path) -> Workspace:
+    def _make_workspace(path: Path, *, archived: bool = False) -> Workspace:
         workspace_id = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
-        return Workspace(id=f"ws-{workspace_id}", path=str(path), name=path.name or str(path))
+        return Workspace(
+            id=f"ws-{workspace_id}",
+            path=str(path),
+            name=path.name or str(path),
+            archived=archived,
+        )
 
     # 执行只读 Git 命令；非 Git 目录或 Git 不存在时返回空字符串
     @staticmethod

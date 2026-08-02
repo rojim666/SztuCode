@@ -1343,6 +1343,9 @@ class KamaTuiApp(App[None]):
             ses_line = f"[dim]  session: {'  '.join(ses_parts)}  [bold]{model}[/bold][/dim]"
             self._append(Static(f"{step_line}\n{ses_line}", classes="usage"))
 
+        elif t == "context.compacting":
+            self._append(Static("[dim]compacting context...[/dim]", classes="log-line"))
+
         elif t == "context.compacted":
             orig = event.get("original_tokens", 0)
             summary = event.get("summary_tokens", 0)

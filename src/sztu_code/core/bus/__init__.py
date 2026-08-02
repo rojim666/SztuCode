@@ -12,6 +12,7 @@ from sztu_code.core.bus.envelope import (
     make_error,
 )
 from sztu_code.core.bus.events import (
+    ContextCompactingEvent,
     CoreStartedEvent,
     Event,
     LlmModelSelectedEvent,
@@ -29,6 +30,7 @@ from sztu_code.core.bus.events import (
 
 __all__ = [
     "Command",
+    "ContextCompactingEvent",
     "CoreStartedEvent",
     "Event",
     "LogLineEvent",

@@ -1,27 +1,29 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  ArrowLeft, Bot, CalendarClock, ChevronDown, ChevronRight, CirclePlus, CircleUserRound, Ellipsis, Folder, FolderOpen, FolderSearch,
+  Archive, ArrowLeft, Bot, CalendarClock, ChevronDown, ChevronRight, CirclePlus, CircleUserRound, Ellipsis, Folder, FolderOpen, FolderSearch,
   Globe2, LayoutDashboard, MessageCircle, Minimize2, Monitor, PanelLeftClose, PanelLeftOpen, Plug,
-  Plus, Puzzle, Settings, ShieldCheck, Square, Wrench, X,
+  Plus, Puzzle, RotateCcw, Settings, ShieldCheck, Square, Wrench, X,
 } from "@lucide/vue";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
 import SessionActions from "./components/session/SessionActions.vue";
+import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
-  connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listSessions,
+  archiveWorkspace, connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listSessions,
   listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
-  sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
+  resumeWorkspace, sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
   type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
 type RuntimeEvent = Record<string, unknown>;
 const page = ref<Page>("work");
+const chatView = ref<ChatView>("home");
 const sidebarCollapsed = ref(window.innerWidth <= 620);
 const connected = ref(false);
 const loading = ref(true);
@@ -50,10 +52,12 @@ const currentStepByRun = new Map<string, number>();
 
 const active = computed(() => sessions.value.find((item) => item.session_id === activeId.value) ?? null);
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
+const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.archived));
+const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
-const projects = computed(() => workspaces.value.map((item) => ({ ...item, tasks: liveSessions.value.filter((task) => task.workspace_id === item.workspace_id).slice(0, 5) })));
+const projects = computed(() => activeWorkspaces.value.map((item) => ({ ...item, tasks: liveSessions.value.filter((task) => task.workspace_id === item.workspace_id).slice(0, 5) })));
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
 const skillSuggestions = computed(() => {
   const match = prompt.value.match(/^\/([^\s]*)$/);
@@ -264,14 +268,39 @@ async function refreshIndex(loadHistory = false) {
   if (loadHistory && activeId.value) hydrateTimeline(await sessionHistory(activeId.value));
   loading.value = false;
 }
-async function newTask(project = workspace.value, initialPrompt = prompt.value.trim()) {
+function beginTask(project: Workspace | null = workspace.value) {
   if (!connected.value || sending.value) return;
+  projectActionsOpen.value = null;
+  workspace.value = project;
+  activeId.value = null;
+  currentStepByRun.clear();
+  timeline.value = new Map();
+  activeRunId.value = null;
+  page.value = "work";
+  prompt.value = "";
+}
+async function submitTask(content: string, project: Workspace | null = workspace.value) {
+  const trimmed = content.trim();
+  if (!trimmed || !connected.value || sending.value) return;
   sending.value = true;
   try {
-    const sessionId = await createSession(project);
-    activeId.value = sessionId; timeline.value = new Map(); activeRunId.value = null; page.value = "work";
-    if (initialPrompt) { prompt.value = ""; addUserMessage(initialPrompt); activeRunId.value = await sendPrompt(sessionId, initialPrompt); }
-    await refreshIndex(false);
+    if (!activeId.value) {
+      const sessionId = await createSession(project);
+      activeId.value = sessionId;
+      currentStepByRun.clear();
+      timeline.value = new Map();
+      activeRunId.value = null;
+      page.value = "work";
+      prompt.value = "";
+      addUserMessage(trimmed);
+      activeRunId.value = await sendPrompt(sessionId, trimmed);
+      await refreshIndex(false);
+    } else {
+      if (active.value?.archived || active.value?.status === "closed") return;
+      prompt.value = "";
+      addUserMessage(trimmed);
+      activeRunId.value = await sendPrompt(activeId.value, trimmed);
+    }
   } finally { sending.value = false; }
 }
 async function chooseTask(id: string) {
@@ -296,7 +325,7 @@ function toggleProject(workspaceId: string) {
 }
 async function createProjectTask(item: Workspace) {
   projectActionsOpen.value = null;
-  await newTask(item, "");
+  beginTask(item);
 }
 async function showProjectFiles(item: Workspace) {
   projectActionsOpen.value = null;
@@ -304,20 +333,44 @@ async function showProjectFiles(item: Workspace) {
   workspace.value = item;
   const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id);
   if (matching) await chooseTask(matching.session_id);
-  else await newTask(item, "");
+  else beginTask(item);
+}
+async function archiveProject(item: Workspace) {
+  projectActionsOpen.value = null;
+  const archived = await archiveWorkspace(item.workspace_id);
+  workspaces.value = workspaces.value.map((entry) => entry.workspace_id === archived.workspace_id ? archived : entry);
+  if (workspace.value?.workspace_id === item.workspace_id) workspace.value = archived;
+}
+async function resumeProject(item: Workspace) {
+  projectActionsOpen.value = null;
+  const resumed = await resumeWorkspace(item.workspace_id);
+  workspaces.value = workspaces.value.map((entry) => entry.workspace_id === resumed.workspace_id ? resumed : entry);
+  workspace.value = resumed;
 }
 function handleSessionClosed(sessionId: string) {
   if (sessionId === activeId.value) closeActiveSession();
   else void refreshIndex(false);
 }
-async function submit() { const content = prompt.value.trim(); if (!content || !activeId.value || sending.value || active.value?.archived || active.value?.status === "closed") return; prompt.value = ""; addUserMessage(content); sending.value = true; try { activeRunId.value = await sendPrompt(activeId.value, content); } finally { sending.value = false; } }
+async function submit() {
+  const content = prompt.value.trim();
+  if (!content || sending.value) return;
+  if (activeId.value && (active.value?.archived || active.value?.status === "closed")) return;
+  await submitTask(content, workspace.value);
+}
+// 回车直接发送；Ctrl/Shift/Alt + 回车保留默认换行行为，且忽略中文输入法候选确认
+function onComposerKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || event.isComposing) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault();
+  void submit();
+}
 async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
 async function openLocalProject() {
   const selected = await openDialog({ directory: true, multiple: false, title: "打开本地项目" });
   if (typeof selected !== "string") return;
   workspace.value = await openWorkspace(selected);
   await refreshIndex(false);
-  await newTask(workspace.value, "");
+  beginTask(workspace.value);
 }
 async function selectAttachments() {
   const selected = await openDialog({ directory: false, multiple: true, title: "添加附件" });
@@ -363,7 +416,8 @@ async function toggleStayAwake(event: Event) {
 async function choosePermissionMode(value: RuntimeSettings["permission_mode"]) { const result = await setRuntimeSettings({ permission_mode: value }); if (result) runtimeSettings.value = result; }
 async function chooseModel(event: Event) { const model = (event.target as HTMLInputElement).value.trim(); if (!model) return; const result = await setRuntimeSettings({ model }); if (result) runtimeSettings.value = result; }
 async function chooseProvider(event: Event) { const provider = (event.target as HTMLSelectElement).value as RuntimeSettings["provider"]; const result = await setRuntimeSettings({ provider }); if (result) runtimeSettings.value = result; }
-function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; }
+function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; if (next === "chat") chatView.value = "home"; }
+async function submitChat(content: string) { await submitTask(content, null); page.value = "chat"; chatView.value = "home"; }
 async function minimizeWindow() { await getCurrentWindow().minimize(); }
 async function toggleMaximizeWindow() { await getCurrentWindow().toggleMaximize(); }
 async function closeWindow() { await getCurrentWindow().close(); }
@@ -406,14 +460,30 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
       </div>
     </header>
 
-    <aside id="primary-navigation" class="kimi-sidebar">
+    <aside id="primary-navigation" class="kimi-sidebar" :class="{ 'chat-sidebar': page === 'chat' }">
       <div class="mode-switch" role="tablist" aria-label="工作模式">
         <button :class="{ active: page !== 'chat' }" @click="openPage('work')"><Monitor :size="15" />Work</button>
         <button :class="{ active: page === 'chat' }" @click="openPage('chat')"><MessageCircle :size="15" />Chat</button>
       </div>
 
-      <nav class="primary-nav" aria-label="Primary navigation">
-        <button :class="{ active: page === 'work' }" @click="newTask()"><CirclePlus :size="18" />新建任务 <kbd>Ctrl</kbd><kbd>K</kbd></button>
+      <template v-if="page === 'chat'">
+        <nav class="primary-nav" aria-label="Chat navigation">
+          <button :class="{ active: chatView === 'home' }" @click="chatView = 'home'"><CirclePlus :size="18" />新建会话 <kbd>Ctrl</kbd><kbd>K</kbd></button>
+          <button :class="{ active: chatView === 'plugins' }" @click="chatView = 'plugins'"><Plug :size="17" />插件</button>
+          <button :class="{ active: chatView === 'automations' }" @click="chatView = 'automations'"><CalendarClock :size="17" />定时任务</button>
+          <button :class="{ active: chatView === 'ppt' }" @click="chatView = 'ppt'"><LayoutDashboard :size="17" />PPT</button>
+          <button :class="{ active: chatView === 'cluster' }" @click="chatView = 'cluster'"><Bot :size="17" />集群</button>
+          <button :class="{ active: chatView === 'research' }" @click="chatView = 'research'"><FolderSearch :size="17" />深度研究</button>
+          <button :class="{ active: chatView === 'document' }" @click="chatView = 'document'"><Folder :size="17" />文档</button>
+          <button :class="{ active: chatView === 'website' }" @click="chatView = 'website'"><Globe2 :size="17" />网站</button>
+          <button :class="{ active: chatView === 'sheet' }" @click="chatView = 'sheet'"><LayoutDashboard :size="17" />表格</button>
+          <button @click="chatView = 'plugins'"><Ellipsis :size="17" />更多</button>
+        </nav>
+        <section class="side-section chat-project-new"><span class="side-label">项目</span><button class="project-row" @click="chatView = 'project'"><Plus :size="17" />新建项目</button></section>
+        <section class="side-section conversations"><span class="side-label">对话</span><div v-for="task in recentSessions" :key="task.session_id" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><i :class="{ running: task.status === 'active' }" /><span>{{ task.title || 'Untitled task' }}</span></button></div><p v-if="!recentSessions.length" class="side-empty">历史对话会显示在这里</p></section>
+      </template>
+      <template v-else><nav class="primary-nav" aria-label="Primary navigation">
+        <button :class="{ active: page === 'work' }" @click="beginTask()"><CirclePlus :size="18" />新建任务 <kbd>Ctrl</kbd><kbd>K</kbd></button>
         <button :class="{ active: page === 'board' }" @click="openPage('board')"><LayoutDashboard :size="17" />看板</button>
         <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><Plug :size="17" />插件</button>
         <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><CalendarClock :size="17" />定时任务</button>
@@ -432,6 +502,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
             <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
               <button @click="createProjectTask(item)"><Plus :size="14" />新建任务</button>
               <button @click="showProjectFiles(item)"><FolderSearch :size="14" />查看项目文件</button>
+              <button @click="archiveProject(item)"><Archive :size="14" />归档项目</button>
               <button @click="toggleProject(item.workspace_id)"><ChevronRight :size="14" :class="{ expanded: !isProjectCollapsed(item.workspace_id) }" />{{ isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目' }}</button>
             </div>
           </div>
@@ -447,8 +518,20 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
         </div>
         <p v-if="!projects.length" class="side-empty">打开本地工作区后会显示在这里</p>
       </section>
+      <section v-if="archivedProjects.length" class="side-section project-tree archived-projects">
+        <span class="side-label">已归档项目</span>
+        <div v-for="item in archivedProjects" :key="item.workspace_id" class="project-group">
+          <div class="project-row-shell">
+            <button class="project-row archived-project-row" title="恢复项目" aria-label="恢复项目" @click="resumeProject(item)"><Archive :size="16" /><span>{{ item.name }}</span></button>
+            <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" /></button>
+            <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
+              <button @click="resumeProject(item)"><RotateCcw :size="14" />恢复项目</button>
+            </div>
+          </div>
+        </div>
+      </section>
       <section class="side-section conversations">
-        <span class="side-label side-label--action">对话<button title="新建对话" aria-label="新建对话" @click="newTask(null, '')"><Plus :size="14" /></button></span>
+        <span class="side-label side-label--action">对话<button title="新建对话" aria-label="新建对话" @click="beginTask(null)"><Plus :size="14" /></button></span>
         <div v-for="task in recentSessions" :key="task.session_id" class="sidebar-session conversation-session">
           <button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><i :class="{ running: task.status === 'active' }" /><span>{{ task.title || 'Untitled task' }}</span></button>
           <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
@@ -456,18 +539,20 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
         <p v-if="!recentSessions.length" class="side-empty">历史对话会显示在这里</p>
       </section>
 
+      </template>
+
       <footer class="sidebar-footer">
         <button class="account"><CircleUserRound :size="23" /><span><b>SztuCode</b><small>{{ connected ? 'Connected' : 'Offline' }}</small></span></button>
         <button class="settings-link" @click="openPage('settings')"><Settings :size="16" /></button>
       </footer>
     </aside>
 
-    <main class="kimi-main">
+    <main class="kimi-main" :class="{ 'chat-main': page === 'chat' }">
       <template v-if="page === 'work'">
         <section v-if="active" class="work-page">
           <header class="work-header">
             <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || '未选择项目' }}</span><ChevronDown :size="14" /></button>
-            <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in workspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
+            <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
             <div class="work-header__tools">
               <SessionActions :session="active" @changed="refreshIndex(false)" @closed="closeActiveSession" />
               <button title="项目文件" :class="{ active: inspectorOpen }" @click="inspectorOpen = !inspectorOpen"><Folder :size="18" /></button>
@@ -482,7 +567,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
                 </div>
                 <form class="kimi-composer" @submit.prevent="submit">
                   <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
-                  <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" />
+                  <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" @keydown="onComposerKeydown" />
                   <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="file in attachedFiles" :key="file">{{ file.split(/[\\/]/).pop() }}</span></div>
                   <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '标准审批' }}<ChevronDown :size="13" /></button><span class="model-label"><i :class="{ online: providerStatus?.ready_for_next_run }" />{{ runtimeSettings?.model || '未配置模型' }}</span><button class="send" type="submit" :disabled="!prompt.trim() || sending || active.archived || active.status === 'closed'">↑</button></div>
                 </form>
@@ -494,16 +579,16 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
         </section>
         <section v-else class="landing-page">
           <div class="kimi-hero"><span class="mascot"><Bot :size="32" /></span><div><h1>让 SztuCode 帮你完成任务</h1><a>本地开发版</a></div></div>
-          <form class="kimi-composer landing-composer" @submit.prevent="newTask()">
+          <form class="kimi-composer landing-composer" @submit.prevent="submit()">
             <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
-            <textarea v-model="prompt" placeholder="输入消息，键入 / 调用技能" rows="3" />
+            <textarea v-model="prompt" placeholder="输入消息，键入 / 调用技能" rows="3" @keydown="onComposerKeydown" />
             <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission"><ShieldCheck :size="15" />标准审批<ChevronDown :size="13" /></button><span /><button class="send" type="submit" :disabled="!connected">↑</button></div>
             <button type="button" class="composer-project" @click="openLocalProject"><FolderOpen :size="15" />打开本地目录作为项目</button>
           </form>
         </section>
       </template>
 
-      <section v-else-if="page === 'chat'" class="landing-page chat-landing"><div class="kimi-hero"><span class="mascot"><MessageCircle :size="31" /></span><div><h1>与 SztuCode 对话</h1><p>发起不关联项目的本地 AI 对话</p></div></div><form class="kimi-composer landing-composer" @submit.prevent="newTask(null)"><textarea v-model="prompt" placeholder="输入消息" rows="3" /><div class="composer-toolbar"><button type="button" class="round"><Plus :size="18" /></button><button type="button" class="permission"><ShieldCheck :size="15" />标准审批<ChevronDown :size="13" /></button><span /><button class="send" type="submit" :disabled="!connected">↑</button></div></form></section>
+      <section v-else-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>会话</h1><p>管理本地任务、归档与已关闭会话</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>

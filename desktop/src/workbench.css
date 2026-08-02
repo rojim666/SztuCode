@@ -234,6 +234,16 @@
 
 .project-action-menu button:hover { color: #176fd1; background: #eef5fd; }
 
+.archived-projects {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid #e6e8ea;
+}
+
+.archived-project-row { color: #8b9097; }
+.archived-project-row svg { color: #9aa0a7; }
+.archived-project-row:hover { color: #5e636a; }
+
 .project-task-list {
   display: grid;
   grid-template-rows: 1fr;

@@ -17,6 +17,10 @@ function hasAssistantActivity(item: TimelineStep) {
     item.subagents?.length || item.skills?.length,
   );
 }
+// 思考中且尚未产出任何可见内容时，展示加载提示
+function isThinkingUnanswered(item: TimelineStep) {
+  return item.status === "thinking" && !item.tokens.length && !item.finalText;
+}
 </script>
 
 <template>
@@ -31,6 +35,7 @@ function hasAssistantActivity(item: TimelineStep) {
           <ToolCallGroup :calls="item.toolCalls" />
           <PermissionBadge v-if="item.permission" :permission="item.permission" @decide="$emit('decide', item.permission.toolUseId, $event)" />
           <TokenStream :tokens="item.tokens" :final-text="item.finalText" />
+          <div v-if="isThinkingUnanswered(item)" class="thinking-loading" aria-live="polite"><span class="typing-dots"><i /><i /><i /></span><span>思考中…</span></div>
         </div>
       </div>
     </article>
