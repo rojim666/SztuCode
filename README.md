@@ -36,21 +36,21 @@ sztu (CLI)   sztu-tui (TUI)
 
 核心模块：
 
-| 模块 | 职责 |
-| --- | --- |
-| `core/bus/` | JSON-RPC 2.0 类型化协议（Pydantic v2 模型） |
-| `core/transport/` | TCP NDJSON 传输层、IPC 事件广播 |
-| `core/loop.py` | ReAct Agent Loop 主循环 |
-| `core/llm/` | LLM Provider 抽象层（Anthropic / OpenAI 双协议） |
-| `core/tools/` | 工具注册、调用、参数校验 |
-| `core/permissions/` | 权限管理器、审批策略 |
-| `core/session/` | Session 持久化与恢复 |
-| `core/compact/` | 上下文压缩 |
-| `core/skills/` | Skill 加载与匹配 |
-| `core/subagent/` | 子 Agent 派生与调度 |
-| `core/mcp/` | MCP 外部工具协议 |
-| `core/trace/` | 三层 trace（IPC / EventBus / LLM） |
-| `tui/` | Textual 终端 UI |
+| 模块                  | 职责                                             |
+| --------------------- | ------------------------------------------------ |
+| `core/bus/`         | JSON-RPC 2.0 类型化协议（Pydantic v2 模型）      |
+| `core/transport/`   | TCP NDJSON 传输层、IPC 事件广播                  |
+| `core/loop.py`      | ReAct Agent Loop 主循环                          |
+| `core/llm/`         | LLM Provider 抽象层（Anthropic / OpenAI 双协议） |
+| `core/tools/`       | 工具注册、调用、参数校验                         |
+| `core/permissions/` | 权限管理器、审批策略                             |
+| `core/session/`     | Session 持久化与恢复                             |
+| `core/compact/`     | 上下文压缩                                       |
+| `core/skills/`      | Skill 加载与匹配                                 |
+| `core/subagent/`    | 子 Agent 派生与调度                              |
+| `core/mcp/`         | MCP 外部工具协议                                 |
+| `core/trace/`       | 三层 trace（IPC / EventBus / LLM）               |
+| `tui/`              | Textual 终端 UI                                  |
 
 ## 快速开始
 
@@ -60,6 +60,8 @@ sztu (CLI)   sztu-tui (TUI)
 - [uv](https://docs.astral.sh/uv/) 包管理器
 
 ### 安装与运行
+
+### 图形工作台（Tauri + React）
 
 ```bash
 # 克隆仓库
@@ -86,9 +88,9 @@ uv run sztu run --goal "创建一个 hello.py 文件，打印 Hello World"
 uv run sztu-tui
 ```
 
-### 图形工作台（Tauri + React）
-
 `desktop/` 是面向日常开发的图形工作台：提供工作区选择、可恢复任务历史、实时运行时间线、权限审批、文件搜索与 Git 变更审阅。它与 Python daemon 复用同一套 JSON-RPC / EventBus 协议。
+
+旧的 `uv run sztu-desktop` Tkinter 客户端仅保留兼容性；新产品功能优先进入 `desktop/`。
 
 ```powershell
 # 一个终端
@@ -99,8 +101,6 @@ cd desktop
 npm install
 npm run tauri dev
 ```
-
-旧的 `uv run sztu-desktop` Tkinter 客户端仅保留兼容性；新产品功能优先进入 `desktop/`。
 
 ### LLM Provider 选择
 
@@ -160,17 +160,17 @@ uv run python scripts/gen_protocol_doc.py
 
 项目分 8 个阶段，每个阶段解决一个真实的 Agent 工程问题：
 
-| 阶段 | 主题 | 解决的问题 |
-| --- | --- | --- |
-| **S0** | 骨架与协议契约 | CLI ↔ daemon 通过 TCP NDJSON + JSON-RPC 2.0 完成 IPC 通信 |
-| **S1** | Agent 最小闭环 | goal → ReAct Loop → LLM → 工具调用 → 事件文件，完整跑通 |
-| **S2** | 事件流外化 | AgentRunner 迁入 daemon，CLI/TUI 通过 IPC 订阅事件流 |
-| **S3** | 自主规划与 TUI | Agent 用任务工具拆解复杂目标，TUI 实时展示执行过程 |
-| **Trace** | 系统级时间线 | IPC / EventBus / LLM 三层数据流可追踪、可回放 |
-| **S4** | 会话与记忆 | 多轮 run 共享 session，thread + notes 分层记忆 |
-| **S5** | 工具安全 | 参数校验 → 权限审批 → 失败分类 → 自动重试 |
-| **S6** | 上下文治理 | 水位检测、tool_result 截断、自动/手动 compact |
-| **S7** | 扩展边界 | Skills 工作流、Subagents 派生、MCP 外部工具接入 |
+| 阶段            | 主题           | 解决的问题                                                  |
+| --------------- | -------------- | ----------------------------------------------------------- |
+| **S0**    | 骨架与协议契约 | CLI ↔ daemon 通过 TCP NDJSON + JSON-RPC 2.0 完成 IPC 通信  |
+| **S1**    | Agent 最小闭环 | goal → ReAct Loop → LLM → 工具调用 → 事件文件，完整跑通 |
+| **S2**    | 事件流外化     | AgentRunner 迁入 daemon，CLI/TUI 通过 IPC 订阅事件流        |
+| **S3**    | 自主规划与 TUI | Agent 用任务工具拆解复杂目标，TUI 实时展示执行过程          |
+| **Trace** | 系统级时间线   | IPC / EventBus / LLM 三层数据流可追踪、可回放               |
+| **S4**    | 会话与记忆     | 多轮 run 共享 session，thread + notes 分层记忆              |
+| **S5**    | 工具安全       | 参数校验 → 权限审批 → 失败分类 → 自动重试                |
+| **S6**    | 上下文治理     | 水位检测、tool_result 截断、自动/手动 compact               |
+| **S7**    | 扩展边界       | Skills 工作流、Subagents 派生、MCP 外部工具接入             |
 
 ## 配置
 
@@ -207,6 +207,7 @@ SZTU_MAX_STEPS=20
 所有 IPC 消息使用 Pydantic v2 模型，基于 `type` 字段做**可区分联合**。详见 [`WIRE_PROTOCOL.md`](WIRE_PROTOCOL.md)。
 
 添加新命令/事件只需：
+
 1. 在 `commands.py` 或 `events.py` 中新增模型类
 2. 扩展 `Command` / `Event` 联合类型
 3. 运行 `scripts/gen_protocol_doc.py` 重新生成协议文档

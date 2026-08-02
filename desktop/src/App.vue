@@ -10,6 +10,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
 import SessionActions from "./components/session/SessionActions.vue";
+import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
@@ -22,6 +23,7 @@ import {
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
 type RuntimeEvent = Record<string, unknown>;
 const page = ref<Page>("work");
+const chatView = ref<ChatView>("home");
 const sidebarCollapsed = ref(window.innerWidth <= 620);
 const connected = ref(false);
 const loading = ref(true);
@@ -355,6 +357,13 @@ async function submit() {
   if (activeId.value && (active.value?.archived || active.value?.status === "closed")) return;
   await submitTask(content, workspace.value);
 }
+// 回车直接发送；Ctrl/Shift/Alt + 回车保留默认换行行为，且忽略中文输入法候选确认
+function onComposerKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || event.isComposing) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault();
+  void submit();
+}
 async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
 async function openLocalProject() {
   const selected = await openDialog({ directory: true, multiple: false, title: "打开本地项目" });
@@ -407,7 +416,8 @@ async function toggleStayAwake(event: Event) {
 async function choosePermissionMode(value: RuntimeSettings["permission_mode"]) { const result = await setRuntimeSettings({ permission_mode: value }); if (result) runtimeSettings.value = result; }
 async function chooseModel(event: Event) { const model = (event.target as HTMLInputElement).value.trim(); if (!model) return; const result = await setRuntimeSettings({ model }); if (result) runtimeSettings.value = result; }
 async function chooseProvider(event: Event) { const provider = (event.target as HTMLSelectElement).value as RuntimeSettings["provider"]; const result = await setRuntimeSettings({ provider }); if (result) runtimeSettings.value = result; }
-function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; }
+function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; if (next === "chat") chatView.value = "home"; }
+async function submitChat(content: string) { await submitTask(content, null); page.value = "chat"; chatView.value = "home"; }
 async function minimizeWindow() { await getCurrentWindow().minimize(); }
 async function toggleMaximizeWindow() { await getCurrentWindow().toggleMaximize(); }
 async function closeWindow() { await getCurrentWindow().close(); }
@@ -450,13 +460,29 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
       </div>
     </header>
 
-    <aside id="primary-navigation" class="kimi-sidebar">
+    <aside id="primary-navigation" class="kimi-sidebar" :class="{ 'chat-sidebar': page === 'chat' }">
       <div class="mode-switch" role="tablist" aria-label="工作模式">
         <button :class="{ active: page !== 'chat' }" @click="openPage('work')"><Monitor :size="15" />Work</button>
         <button :class="{ active: page === 'chat' }" @click="openPage('chat')"><MessageCircle :size="15" />Chat</button>
       </div>
 
-      <nav class="primary-nav" aria-label="Primary navigation">
+      <template v-if="page === 'chat'">
+        <nav class="primary-nav" aria-label="Chat navigation">
+          <button :class="{ active: chatView === 'home' }" @click="chatView = 'home'"><CirclePlus :size="18" />新建会话 <kbd>Ctrl</kbd><kbd>K</kbd></button>
+          <button :class="{ active: chatView === 'plugins' }" @click="chatView = 'plugins'"><Plug :size="17" />插件</button>
+          <button :class="{ active: chatView === 'automations' }" @click="chatView = 'automations'"><CalendarClock :size="17" />定时任务</button>
+          <button :class="{ active: chatView === 'ppt' }" @click="chatView = 'ppt'"><LayoutDashboard :size="17" />PPT</button>
+          <button :class="{ active: chatView === 'cluster' }" @click="chatView = 'cluster'"><Bot :size="17" />集群</button>
+          <button :class="{ active: chatView === 'research' }" @click="chatView = 'research'"><FolderSearch :size="17" />深度研究</button>
+          <button :class="{ active: chatView === 'document' }" @click="chatView = 'document'"><Folder :size="17" />文档</button>
+          <button :class="{ active: chatView === 'website' }" @click="chatView = 'website'"><Globe2 :size="17" />网站</button>
+          <button :class="{ active: chatView === 'sheet' }" @click="chatView = 'sheet'"><LayoutDashboard :size="17" />表格</button>
+          <button @click="chatView = 'plugins'"><Ellipsis :size="17" />更多</button>
+        </nav>
+        <section class="side-section chat-project-new"><span class="side-label">项目</span><button class="project-row" @click="chatView = 'project'"><Plus :size="17" />新建项目</button></section>
+        <section class="side-section conversations"><span class="side-label">对话</span><div v-for="task in recentSessions" :key="task.session_id" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><i :class="{ running: task.status === 'active' }" /><span>{{ task.title || 'Untitled task' }}</span></button></div><p v-if="!recentSessions.length" class="side-empty">历史对话会显示在这里</p></section>
+      </template>
+      <template v-else><nav class="primary-nav" aria-label="Primary navigation">
         <button :class="{ active: page === 'work' }" @click="beginTask()"><CirclePlus :size="18" />新建任务 <kbd>Ctrl</kbd><kbd>K</kbd></button>
         <button :class="{ active: page === 'board' }" @click="openPage('board')"><LayoutDashboard :size="17" />看板</button>
         <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><Plug :size="17" />插件</button>
@@ -513,13 +539,15 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
         <p v-if="!recentSessions.length" class="side-empty">历史对话会显示在这里</p>
       </section>
 
+      </template>
+
       <footer class="sidebar-footer">
         <button class="account"><CircleUserRound :size="23" /><span><b>SztuCode</b><small>{{ connected ? 'Connected' : 'Offline' }}</small></span></button>
         <button class="settings-link" @click="openPage('settings')"><Settings :size="16" /></button>
       </footer>
     </aside>
 
-    <main class="kimi-main">
+    <main class="kimi-main" :class="{ 'chat-main': page === 'chat' }">
       <template v-if="page === 'work'">
         <section v-if="active" class="work-page">
           <header class="work-header">
@@ -539,7 +567,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
                 </div>
                 <form class="kimi-composer" @submit.prevent="submit">
                   <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
-                  <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" />
+                  <textarea v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复会话后继续' : '输入消息，键入 / 调用技能'" rows="3" @keydown="onComposerKeydown" />
                   <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="file in attachedFiles" :key="file">{{ file.split(/[\\/]/).pop() }}</span></div>
                   <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '标准审批' }}<ChevronDown :size="13" /></button><span class="model-label"><i :class="{ online: providerStatus?.ready_for_next_run }" />{{ runtimeSettings?.model || '未配置模型' }}</span><button class="send" type="submit" :disabled="!prompt.trim() || sending || active.archived || active.status === 'closed'">↑</button></div>
                 </form>
@@ -553,14 +581,14 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
           <div class="kimi-hero"><span class="mascot"><Bot :size="32" /></span><div><h1>让 SztuCode 帮你完成任务</h1><a>本地开发版</a></div></div>
           <form class="kimi-composer landing-composer" @submit.prevent="submit()">
             <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
-            <textarea v-model="prompt" placeholder="输入消息，键入 / 调用技能" rows="3" />
+            <textarea v-model="prompt" placeholder="输入消息，键入 / 调用技能" rows="3" @keydown="onComposerKeydown" />
             <div class="composer-toolbar"><button type="button" class="round" title="添加附件" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission"><ShieldCheck :size="15" />标准审批<ChevronDown :size="13" /></button><span /><button class="send" type="submit" :disabled="!connected">↑</button></div>
             <button type="button" class="composer-project" @click="openLocalProject"><FolderOpen :size="15" />打开本地目录作为项目</button>
           </form>
         </section>
       </template>
 
-      <section v-else-if="page === 'chat'" class="landing-page chat-landing"><div class="kimi-hero"><span class="mascot"><MessageCircle :size="31" /></span><div><h1>与 SztuCode 对话</h1><p>发起不关联项目的本地 AI 对话</p></div></div><form class="kimi-composer landing-composer" @submit.prevent="submitTask(prompt.value, null)"><textarea v-model="prompt" placeholder="输入消息" rows="3" /><div class="composer-toolbar"><button type="button" class="round"><Plus :size="18" /></button><button type="button" class="permission"><ShieldCheck :size="15" />标准审批<ChevronDown :size="13" /></button><span /><button class="send" type="submit" :disabled="!connected">↑</button></div></form></section>
+      <section v-else-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>会话</h1><p>管理本地任务、归档与已关闭会话</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>
