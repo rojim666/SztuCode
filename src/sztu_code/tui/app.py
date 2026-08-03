@@ -579,8 +579,7 @@ class TrustScreen(Screen[str]):
             "[dim](Like your own code, a well-known open source project, or work from your team).",
             "[dim]If not, take a moment to review what's in this folder first.[/dim]",
             "",
-            "[#F1F3F5]SztuCode'll be able to [bold]read, edit, and execute[/bold] "
-            "files here.[/#F1F3F5]",
+            "[#F1F3F5]SztuCode will be able to [bold]read, edit, and execute[/bold] "
             "",
             "[dim]Security guide — review the folder contents before trusting[/dim]",
             "",
