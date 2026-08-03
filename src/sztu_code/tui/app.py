@@ -529,6 +529,7 @@ class RunBlock(Widget):
         self._run_id = run_id
         self._goal = goal
 
+    # 生成 run 块标题行
     def compose(self) -> ComposeResult:
         yield Static(
             f"[dim]run[/dim]  [cyan]{self._run_id[:8]}[/cyan]  "
