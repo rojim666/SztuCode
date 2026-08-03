@@ -188,6 +188,12 @@ class AgentRunner:
         for h in self._extra_handlers:
             bus.subscribe(h)
 
+        base_prompt = ""
+        if not system_prompt_override:
+            from sztu_code.core.prompts import build_system_prompt
+
+            base_prompt = build_system_prompt(workspace_root=workspace_root)
+
         context = ExecutionContext(
             run_id=run_id,
             goal=goal,
@@ -196,6 +202,7 @@ class AgentRunner:
             session_notes=notes,
             global_context=global_ctx,
             project_context=project_ctx,
+            base_system_prompt=base_prompt,
             system_prompt_override=system_prompt_override,
         )
         prefill_len = len(history)

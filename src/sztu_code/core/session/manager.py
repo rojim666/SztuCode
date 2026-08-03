@@ -219,7 +219,7 @@ class SessionManager:
             raise HandlerError(-32020, "provider not available for compaction")
         async with lock:
             from sztu_code.core.bus.commands import SessionCompactResult
-            from sztu_code.core.compact.compactor import Compactor
+            from sztu_code.core.compact.compactor import Compactor, _continuation_message
             messages = self._store.read_messages(sid)
             session_dir = self._store.session_dir(sid)
             compactor = Compactor(self._bus, session_dir, sid)
@@ -228,7 +228,7 @@ class SessionManager:
             if result is None:
                 raise HandlerError(-32021, "compaction failed or not beneficial")
             self._store.write_compacted(sid, [
-                {"role": "user", "content": result.summary_text},
+                {"role": "user", "content": _continuation_message(result.summary_text)},
                 {"role": "assistant", "content": "Understood, I'll continue from this summary."},
             ])
             await compactor.record_compaction(run_id="", result=result)

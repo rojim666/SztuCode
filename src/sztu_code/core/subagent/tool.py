@@ -144,18 +144,26 @@ class SpawnAgentTool(BaseTool):
         # 解析并合并 skill：角色白名单非空时 union，否则只合并系统提示不缩窄工具集
         skill_name = (p.skill or (profile.skill if profile else "")).strip()
         skill = _skill_loader.resolve(skill_name) if skill_name else None
-        system_prompt = (profile.system_prompt if profile else "").strip()
+        role_prompt = (profile.system_prompt if profile else "").strip()
         allowed_tools: set[str] | None = (
             set(profile.allowed_tools) if profile and profile.allowed_tools else None
         )
+        skill_prompt = ""
         if skill is not None:
             if allowed_tools is not None:
                 allowed_tools |= set(skill.allowed_tools)
             skill_prompt = _skill_loader.render_prompt(skill, p.prompt).strip()
-            if skill_prompt:
-                system_prompt = (
-                    f"{system_prompt}\n\n{skill_prompt}" if system_prompt else skill_prompt
-                )
+        # 子代理继承静态基础规则 + 角色提示 + 技能 + 后台身份段
+        from sztu_code.core.prompts.system_prompt import build_static_base
+
+        identity = (
+            f"You are a background sub-agent of type `{subagent_type}`. Work only on the "
+            "delegated task, use only the tools available to you, do not ask the user questions, "
+            "and finish with a concise result."
+        )
+        system_prompt = "\n\n".join(
+            part for part in (build_static_base(), role_prompt, skill_prompt, identity) if part
+        )
         system_prompt_override = system_prompt or None
 
         child_run_id = new_run_id()
