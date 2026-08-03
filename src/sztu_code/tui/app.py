@@ -566,8 +566,16 @@ class KamaTuiApp(App[None]):
 [dim]  输入消息开始对话  ·  键入 / 触发 skill  ·  Ctrl+C 退出[/dim]
 """.strip()
 
-    # 初始化连接参数和 TUI 内部状态
-    def __init__(self, host: str, port: int, replay_run_id: str | None = None) -> None:
+    # 初始化连接参数、项目目录与只读状态
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        project_path: str | None = None,
+        read_only: bool = False,
+        replay_run_id: str | None = None,
+    ) -> None:
         super().__init__()
         self._host = host
         self._port = port
@@ -578,7 +586,8 @@ class KamaTuiApp(App[None]):
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = None
         self._workspace: dict[str, Any] | None = None
-        self._project_path = str(Path.cwd())
+        self._project_path = str(Path(project_path or Path.cwd()).resolve())
+        self._read_only = read_only
         self._model = "loading…"
         self._busy = False
         self._last_context_pct: float = 0.0
@@ -586,7 +595,7 @@ class KamaTuiApp(App[None]):
         self._slash_items: list[tuple[str, str]] = []
         self._subagent_run_ids: dict[str, str] = {}  # child run_id -> description
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
-        self._mode: str = "auto"  # 默认自动执行；Tab 在三种可见模式间循环
+        self._mode: str = "plan" if read_only else "auto"  # 只读模式锁定 plan
 
     def compose(self) -> ComposeResult:
         yield Label("[bold #76D6C1]SZTUCODE[/bold #76D6C1]  [dim]connecting...[/dim]", id="header")
@@ -603,6 +612,8 @@ class KamaTuiApp(App[None]):
 
     # 返回当前模式的富文本标签，用于 header 栏显示
     def _mode_label(self) -> str:
+        if self._read_only:
+            return "[bold #111315 on #F2BB6C] READONLY [/bold #111315 on #F2BB6C]"
         colors = {"auto": "#76D6C1", "accept_edits": "#84B8FF", "plan": "#F2BB6C"}
         labels = {"auto": "AUTO", "accept_edits": "EDITS", "plan": "PLAN"}
         color = colors.get(self._mode, "#76D6C1")
@@ -718,6 +729,9 @@ class KamaTuiApp(App[None]):
 
     # 向 daemon 发送模式切换命令并更新本地状态
     async def _set_mode(self, mode: str) -> None:
+        if self._read_only and mode != "plan":
+            log.debug("mode switch blocked in read-only target=%s", mode)
+            return
         if self._client is None:
             log.debug("mode switch ignored while disconnected target=%s", mode)
             return
@@ -1129,8 +1143,10 @@ class KamaTuiApp(App[None]):
                     self._session_id = str(created["session_id"])
                 self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
                 log.info("session created session_id=%s", self._session_id)
-                await self._set_mode("auto")
+                await self._set_mode("plan" if self._read_only else "auto")
                 await self._refresh_model_status()
+                if self._workspace is None:
+                    await self._open_workspace(self._project_path)
                 prompt = self._prompt()
                 if prompt is not None:
                     prompt.disabled = False

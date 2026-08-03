@@ -14,10 +14,10 @@ import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
-  archiveWorkspace, connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listSessions,
+  applyCcswitchProvider, archiveWorkspace, connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listCcswitchProviders, listSessions,
   listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
   resumeWorkspace, sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
-  type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
+  type CcswitchProvider, type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
@@ -49,6 +49,11 @@ const nativeSettingsAvailable = ref(false);
 const nativeSettingsError = ref("");
 const webBridgeAllowed = ref(false);
 const currentStepByRun = new Map<string, number>();
+const ccswitchOpen = ref(false);
+const ccswitchLoading = ref(false);
+const ccswitchApplying = ref<string | null>(null);
+const ccswitchError = ref("");
+const ccswitchProviders = ref<CcswitchProvider[]>([]);
 
 const active = computed(() => sessions.value.find((item) => item.session_id === activeId.value) ?? null);
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
@@ -416,6 +421,33 @@ async function toggleStayAwake(event: Event) {
 async function choosePermissionMode(value: RuntimeSettings["permission_mode"]) { const result = await setRuntimeSettings({ permission_mode: value }); if (result) runtimeSettings.value = result; }
 async function chooseModel(event: Event) { const model = (event.target as HTMLInputElement).value.trim(); if (!model) return; const result = await setRuntimeSettings({ model }); if (result) runtimeSettings.value = result; }
 async function chooseProvider(event: Event) { const provider = (event.target as HTMLSelectElement).value as RuntimeSettings["provider"]; const result = await setRuntimeSettings({ provider }); if (result) runtimeSettings.value = result; }
+// 加载本机 cc-switch 中可导入的供应商列表并展开面板
+async function loadCcswitchProviders() {
+  ccswitchLoading.value = true;
+  ccswitchError.value = "";
+  try {
+    ccswitchProviders.value = await listCcswitchProviders();
+    ccswitchOpen.value = true;
+  } catch (error) {
+    ccswitchError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    ccswitchLoading.value = false;
+  }
+}
+// 应用选中的 cc-switch 供应商并刷新运行时设置与状态
+async function useCcswitchProvider(providerId: string) {
+  ccswitchApplying.value = providerId;
+  ccswitchError.value = "";
+  try {
+    const settings = await applyCcswitchProvider(providerId);
+    if (settings) runtimeSettings.value = settings;
+    providerStatus.value = await getProviderStatus();
+  } catch (error) {
+    ccswitchError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    ccswitchApplying.value = null;
+  }
+}
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; if (next === "chat") chatView.value = "home"; }
 async function submitChat(content: string) { await submitTask(content, null); page.value = "chat"; chatView.value = "home"; }
 async function minimizeWindow() { await getCurrentWindow().minimize(); }
@@ -605,7 +637,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
 
       <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>WebBridge</h1><p>连接浏览器扩展，让 Agent 在授权范围内协助网页操作</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>浏览器连接</h2><p>当前未连接。此功能需要浏览器扩展和 daemon WebBridge 协议。</p></div><span class="status-pill">未连接</span></div></section>
 
-      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input :checked="autostart" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleAutostart" /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input :checked="stayAwake" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleStayAwake" /></label><p v-if="nativeSettingsError" class="native-settings-error">{{ nativeSettingsError }}</p></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
+      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input :checked="autostart" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleAutostart" /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input :checked="stayAwake" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleStayAwake" /></label><p v-if="nativeSettingsError" class="native-settings-error">{{ nativeSettingsError }}</p></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">模型管理</span><div class="setting-group ccswitch-mgr"><div class="ccswitch-current-row"><div><b>当前模型</b><p>{{ runtimeSettings?.model || '未配置模型' }}<template v-if="runtimeSettings?.base_url"><br />{{ runtimeSettings.base_url }}</template></p></div><button type="button" class="ccswitch-import-btn" :disabled="ccswitchLoading" @click="ccswitchOpen ? (ccswitchOpen = false) : loadCcswitchProviders()">{{ ccswitchLoading ? '加载中…' : (ccswitchOpen ? '收起' : '从 cc-switch 导入') }}</button></div><div v-if="ccswitchOpen" class="ccswitch-list"><div v-for="item in ccswitchProviders" :key="item.id" class="ccswitch-card"><span class="ccswitch-card__dot" :class="{ has: item.has_api_key }" /><div class="ccswitch-card__info"><b>{{ item.name }}<em v-if="item.is_current">当前</em></b><span>{{ item.base_url }}</span><small>{{ item.model }}</small></div><button type="button" :disabled="ccswitchApplying === item.id" @click="useCcswitchProvider(item.id)">{{ ccswitchApplying === item.id ? '应用中…' : '使用此配置' }}</button></div><p v-if="!ccswitchProviders.length && !ccswitchLoading" class="ccswitch-empty">本机未发现可导入的 cc-switch 供应商，请确认已安装 CC Switch</p></div><p v-if="ccswitchError" class="native-settings-error">{{ ccswitchError }}</p></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
     </main>
   </div>
 </template>

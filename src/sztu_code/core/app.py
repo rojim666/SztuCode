@@ -19,6 +19,7 @@ import sztu_code
 from sztu_code.core.bus.commands import (
     AgentRunCommand,
     AgentRunResult,
+    CcswitchProviderSummary,
     ChangeDiffCommand,
     ChangeDiffResult,
     ChangeListCommand,
@@ -37,6 +38,10 @@ from sztu_code.core.bus.commands import (
     PermissionSetModeCommand,
     PermissionSetModeResult,
     PongResult,
+    ProviderCcswitchApplyCommand,
+    ProviderCcswitchApplyResult,
+    ProviderCcswitchListCommand,
+    ProviderCcswitchListResult,
     ProviderStatusCommand,
     ProviderStatusResult,
     RunCancelCommand,
@@ -96,6 +101,7 @@ from sztu_code.core.changes import (
 from sztu_code.core.config import SztuConfig, get_config, save_client_settings
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm import create_provider
+from sztu_code.core.llm.ccswitch import get_ccswitch_provider, list_ccswitch_providers
 from sztu_code.core.logging_setup import setup_logging
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.permissions.manager import PermissionManager
@@ -557,6 +563,7 @@ class CoreApp:
             model=self._config.llm.default_model,
             router=self._config.llm.router,
             permission_mode=self._permission_manager.get_mode().value,
+            base_url=self._config.llm.base_url,
         )
 
     async def _settings_get_handler(self, params: dict[str, Any]) -> SettingsGetResult:
@@ -631,6 +638,45 @@ class CoreApp:
             ),
             mcp_servers=mcp_servers,
             skills=skills,
+        )
+
+    # 返回本机 cc-switch 中可导入的 Anthropic 兼容供应商（掩码凭证）
+    async def _provider_ccswitch_list_handler(
+        self, params: dict[str, Any]
+    ) -> ProviderCcswitchListResult:
+        ProviderCcswitchListCommand.model_validate(params)
+        return ProviderCcswitchListResult(
+            providers=[
+                CcswitchProviderSummary(
+                    id=item.id,
+                    name=item.name,
+                    base_url=item.base_url,
+                    model=item.model,
+                    has_api_key=bool(item.api_key),
+                    is_current=item.is_current,
+                )
+                for item in list_ccswitch_providers()
+            ]
+        )
+
+    # 将选中的 cc-switch 供应商应用到当前配置并重建 provider
+    async def _provider_ccswitch_apply_handler(
+        self, params: dict[str, Any]
+    ) -> ProviderCcswitchApplyResult:
+        assert self._config is not None
+        cmd = ProviderCcswitchApplyCommand.model_validate(params)
+        provider = get_ccswitch_provider(cmd.provider_id)
+        if provider is None:
+            raise HandlerError(-32602, f"cc-switch provider not found: {cmd.provider_id}")
+        self._config.llm.provider = "anthropic"
+        self._config.llm.default_model = provider.model
+        self._config.llm.base_url = provider.base_url
+        self._config.llm.api_key = provider.api_key
+        save_client_settings(self._config)
+        if self._sessions is not None:
+            self._sessions.set_provider(create_provider(self._config))
+        return ProviderCcswitchApplyResult(
+            settings=self._settings_snapshot(), updated=["provider", "model", "base_url"]
         )
 
     async def _session_compact_handler(self, params: dict[str, Any]) -> SessionCompactResult:
@@ -815,6 +861,8 @@ class CoreApp:
         server.register("settings.get", self._settings_get_handler)
         server.register("settings.update", self._settings_update_handler)
         server.register("provider.status", self._provider_status_handler)
+        server.register("provider.ccswitch_list", self._provider_ccswitch_list_handler)
+        server.register("provider.ccswitch_apply", self._provider_ccswitch_apply_handler)
         server.register("session.compact", self._session_compact_handler)
 
         addr = await server.start()
@@ -849,3 +897,8 @@ class CoreApp:
 # 同步入口：启动 CoreApp 事件循环
 def run() -> None:
     asyncio.run(CoreApp().run())
+
+
+# 支持 python -m sztu_code.core.app 直接拉起 daemon（sztucode 自动启动用）
+if __name__ == "__main__":
+    run()

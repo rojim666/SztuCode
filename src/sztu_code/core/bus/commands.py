@@ -343,6 +343,7 @@ class SettingsSnapshot(BaseModel):
     model: str
     router: str
     permission_mode: Literal["normal", "accept_edits", "plan", "auto"]
+    base_url: str = ""  # 自定义端点（不含凭证），供客户端展示当前生效地址
     applies_at: Literal["next_run"] = "next_run"
     persistent: bool = True
 
@@ -379,6 +380,33 @@ class ProviderStatusResult(BaseModel):
     ready_for_next_run: bool
     mcp_servers: list[dict[str, Any]]
     skills: list[dict[str, str]]
+
+
+class CcswitchProviderSummary(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    model: str
+    has_api_key: bool
+    is_current: bool
+
+
+class ProviderCcswitchListCommand(BaseModel):
+    type: Literal["provider.ccswitch_list"] = "provider.ccswitch_list"
+
+
+class ProviderCcswitchListResult(BaseModel):
+    providers: list[CcswitchProviderSummary]
+
+
+class ProviderCcswitchApplyCommand(BaseModel):
+    type: Literal["provider.ccswitch_apply"] = "provider.ccswitch_apply"
+    provider_id: str = Field(min_length=1, max_length=200)
+
+
+class ProviderCcswitchApplyResult(BaseModel):
+    settings: SettingsSnapshot
+    updated: list[Literal["provider", "model", "base_url"]]
 
 
 class SessionCompactCommand(BaseModel):
@@ -426,6 +454,8 @@ Command = Annotated[
     | SettingsGetCommand
     | SettingsUpdateCommand
     | ProviderStatusCommand
+    | ProviderCcswitchListCommand
+    | ProviderCcswitchApplyCommand
     | SessionCompactCommand,
     Discriminator("type"),
 ]

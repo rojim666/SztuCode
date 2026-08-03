@@ -39,6 +39,8 @@ class LlmConfig:
     provider: str = "anthropic"  # "anthropic" | "openai"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
     context_window: int = 0  # 0 = use provider's model-aware default
+    base_url: str = ""  # 自定义端点，空表示使用官方默认地址
+    api_key: str = ""  # 导入的凭证，优先于 .env 注入 provider 环境
 
 
 @dataclass
@@ -145,12 +147,18 @@ def _apply_client_settings(config: SztuConfig) -> None:
         config.llm.provider = str(provider)
     if isinstance(model, str) and model:
         config.llm.default_model = model
+        # 让客户端显式保存的模型优先于 .env 里的 KAMA_LLM_DEFAULT_MODEL 默认值
+        os.environ["SZTU_LLM_DEFAULT_MODEL"] = model
     if permission_mode in {"normal", "accept_edits", "plan", "auto"}:
         config.permission.mode = str(permission_mode)
+    if isinstance(value.get("base_url"), str):
+        config.llm.base_url = value["base_url"]
+    if isinstance(value.get("api_key"), str):
+        config.llm.api_key = value["api_key"]
 
 
 def save_client_settings(config: SztuConfig) -> Path:
-    """Persist only desktop-editable fields; credentials remain in environment storage."""
+    """持久化桌面可编辑字段；base_url/api_key 为导入的本地凭证（与 cc-switch 同级明文存储）"""
     path = _client_settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -160,6 +168,8 @@ def save_client_settings(config: SztuConfig) -> Path:
                 "provider": config.llm.provider,
                 "model": config.llm.default_model,
                 "permission_mode": config.permission.mode,
+                "base_url": config.llm.base_url,
+                "api_key": config.llm.api_key,
             },
             ensure_ascii=False,
             indent=2,
