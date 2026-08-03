@@ -148,7 +148,7 @@ function addUserMessage(content: string) {
   setStep(step, (current) => ({ ...current, status: "thinking", userMessage: content }));
   return step;
 }
-function hydrateTimeline(messages: unknown[]) {
+function hydrateTimeline(messages: unknown[], runId?: string | null) {
   const next = new Map<number, TimelineStep>();
   let step = 0;
   for (const message of messages) {
@@ -163,12 +163,12 @@ function hydrateTimeline(messages: unknown[]) {
         const result = toolResults.find((item) => String(item.tool_use_id) === call.id);
         return result ? { ...call, status: result.is_error ? "failed" as const : "done" as const, output: blockOutput(result), error: result.is_error ? blockOutput(result) : undefined } : call;
       });
-      next.set(step, { ...current, status: "done", toolCalls: completed });
+      next.set(step, { ...current, status: "done", runId: runId ?? current.runId, toolCalls: completed });
       continue;
     }
     if (role === "user") {
       step += 1;
-      next.set(step, { ...emptyStep(step), status: "done", userMessage: text });
+      next.set(step, { ...emptyStep(step), status: "done", runId: runId ?? undefined, userMessage: text });
       continue;
     }
     if (!step) step = 1;
@@ -183,6 +183,7 @@ function hydrateTimeline(messages: unknown[]) {
     next.set(step, {
       ...current,
       status: "done",
+      runId: runId ?? current.runId,
       thinking: [current.thinking, thinking].filter(Boolean).join("\n\n") || undefined,
       finalText: [current.finalText, text].filter(Boolean).join("\n\n") || undefined,
       toolCalls: [...current.toolCalls, ...calls],
@@ -300,7 +301,10 @@ async function refreshIndex(loadHistory = false) {
   workspaces.value = nextWorkspaces; sessions.value = nextSessions; runtimeSettings.value = nextSettings; providerStatus.value = nextProvider;
   workspace.value ??= nextWorkspaces[0] ?? null;
   activeId.value ??= nextSessions.find((item) => !item.archived)?.session_id ?? null;
-  if (loadHistory && activeId.value) hydrateTimeline(await sessionHistory(activeId.value));
+  if (loadHistory && activeId.value) {
+    const latestRunId = sessions.value.find((item) => item.session_id === activeId.value)?.latest_run_id ?? null;
+    hydrateTimeline(await sessionHistory(activeId.value), latestRunId);
+  }
   loading.value = false;
 }
 function beginTask(project: Workspace | null = workspace.value) {
@@ -341,12 +345,11 @@ async function submitTask(content: string, project: Workspace | null = workspace
 async function chooseTask(id: string) {
   activeId.value = id;
   currentStepByRun.clear();
-  hydrateTimeline(await sessionHistory(id));
-  const runId = sessions.value.find((item) => item.session_id === id)?.latest_run_id ?? null;
-  activeRunId.value = runId;
-  if (runId) {
-    for (const event of await replayRun(runId)) applyRuntimeEvent(event);
-  }
+  runStepBase.clear();
+  // 完整历史已含各轮内容，直接 hydrate 展示；replay 会与各 run 的 step 编号冲突导致旧日志混排
+  const latestRunId = sessions.value.find((item) => item.session_id === id)?.latest_run_id ?? null;
+  hydrateTimeline(await sessionHistory(id), latestRunId);
+  activeRunId.value = latestRunId;
   page.value = "work";
 }
 async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
