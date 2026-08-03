@@ -576,7 +576,7 @@ class TrustScreen(Screen[str]):
             "",
             "[bold #F1F3F5]Quick safety check:[/bold #F1F3F5] "
             "Is this a project you created or one you trust?",
-            "[dim](Like your own code, a well-known open source project, or work from your team).",
+            "[dim](Like your own code, a well-known open source project, or work from your team).[/dim]",
             "[dim]If not, take a moment to review what's in this folder first.[/dim]",
             "",
             "[#F1F3F5]SztuCode will be able to [bold]read, edit, and execute[/bold] "
