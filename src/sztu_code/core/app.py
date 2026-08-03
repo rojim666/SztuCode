@@ -80,6 +80,8 @@ from sztu_code.core.bus.commands import (
     SettingsUpdateResult,
     WorkspaceArchiveCommand,
     WorkspaceArchiveResult,
+    WorkspaceDeleteCommand,
+    WorkspaceDeleteResult,
     WorkspaceListCommand,
     WorkspaceListResult,
     WorkspaceOpenCommand,
@@ -324,6 +326,23 @@ class CoreApp:
         except ValueError as error:
             raise HandlerError(-32602, str(error)) from error
         return WorkspaceResumeResult(workspace=self._workspace_summary(workspace))
+
+    # 删除项目：校验 confirm 后删除绑定会话并从项目列表与磁盘移除（不可恢复）
+    async def _workspace_delete_handler(self, params: dict[str, Any]) -> WorkspaceDeleteResult:
+        assert self._workspaces is not None
+        cmd = WorkspaceDeleteCommand.model_validate(params)
+        if cmd.confirm != "delete":
+            raise HandlerError(-32602, "workspace.delete requires confirm='delete'")
+        if self._sessions is not None:
+            sessions, _ = await self._sessions.list_sessions(include_archived=True)
+            for session in sessions:
+                if session.workspace_id == cmd.workspace_id:
+                    await self._sessions.delete(session.id)
+        try:
+            self._workspaces.delete(cmd.workspace_id)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspaceDeleteResult(workspace_id=cmd.workspace_id)
 
     # 返回工作区 Git 分支与未提交修改摘要
     async def _workspace_status_handler(self, params: dict[str, Any]) -> WorkspaceStatusResult:
@@ -838,6 +857,7 @@ class CoreApp:
         server.register("workspace.list", self._workspace_list_handler)
         server.register("workspace.archive", self._workspace_archive_handler)
         server.register("workspace.resume", self._workspace_resume_handler)
+        server.register("workspace.delete", self._workspace_delete_handler)
         server.register("workspace.status", self._workspace_status_handler)
         server.register("workspace.tree", self._workspace_tree_handler)
         server.register("file.read", self._file_read_handler)

@@ -100,6 +100,17 @@ class WorkspaceResumeResult(BaseModel):
     workspace: WorkspaceSummary
 
 
+class WorkspaceDeleteCommand(BaseModel):
+    type: Literal["workspace.delete"] = "workspace.delete"
+    workspace_id: str
+    confirm: Literal["delete"] = "delete"  # 必须显式传 delete，防止误删
+
+
+class WorkspaceDeleteResult(BaseModel):
+    workspace_id: str
+    deleted: bool = True
+
+
 class WorkspaceStatusCommand(BaseModel):
     type: Literal["workspace.status"] = "workspace.status"
     workspace_id: str
@@ -431,6 +442,7 @@ Command = Annotated[
     | WorkspaceListCommand
     | WorkspaceArchiveCommand
     | WorkspaceResumeCommand
+    | WorkspaceDeleteCommand
     | WorkspaceStatusCommand
     | WorkspaceTreeCommand
     | FileReadCommand

@@ -36,30 +36,6 @@ def _setup_logging(level: str) -> None:
     root.addHandler(handler)
 
 
-# 纯决策函数：根据信任状态与用户输入返回 (mode, 是否需要记录信任)
-# mode ∈ {"trust", "read_only", "abort"}；read_only 不记录信任
-def classify_launch(
-    already_trusted: bool,
-    *,
-    want_trust: bool = False,
-    want_read_only: bool = False,
-    answer: str | None = None,
-) -> tuple[str, bool]:
-    if already_trusted or want_trust:
-        return ("trust", want_trust and not already_trusted)
-    if want_read_only:
-        return ("read_only", False)
-    if answer is not None:
-        choice = answer.strip().lower()
-        if choice in ("t", "y", "trust", "yes"):
-            return ("trust", True)
-        if choice in ("r", "read", "read_only", "readonly"):
-            return ("read_only", False)
-        if choice in ("n", "no", "abort"):
-            return ("abort", False)
-    return ("abort", False)
-
-
 # 探测 daemon 端口是否可连接
 def _port_open(host: str, port: int, timeout: float = 0.5) -> bool:
     try:
@@ -99,7 +75,7 @@ def ensure_daemon(host: str, port: int, *, timeout: float = 5.0) -> bool:
     return False
 
 
-# sztucode 入口：信任确认后确保 daemon 运行并启动 TUI
+# sztucode 入口：确保 daemon 运行并启动 TUI（信任确认在 TUI 内完成）
 def main() -> None:
     parser = argparse.ArgumentParser(prog="sztucode", description="在项目目录打开 SztuCode TUI")
     parser.add_argument("dir", nargs="?", default=".", help="项目目录（默认当前目录）")
@@ -113,34 +89,6 @@ def main() -> None:
         print(f"error: not a directory: {target}", file=sys.stderr)
         sys.exit(1)
 
-    already_trusted = is_trusted(target)
-    answer: str | None = None
-    if not already_trusted and not args.trust and not args.read_only and sys.stdin.isatty():
-        print(f"SztuCode 将打开: {target}")
-        print("该文件夹尚未被信任，Agent 将可读取和修改其中的文件。")
-        try:
-            answer = input("[T]rust  [r]ead-only  [n]o: ").strip()
-        except EOFError:
-            answer = None
-
-    mode, should_record = classify_launch(
-        already_trusted,
-        want_trust=args.trust,
-        want_read_only=args.read_only,
-        answer=answer,
-    )
-    if mode == "abort":
-        if answer is None and not args.trust and not args.read_only:
-            print(
-                "error: 文件夹未受信任；请加 --trust 或 --read-only，或在交互式终端运行",
-                file=sys.stderr,
-            )
-        else:
-            print("已放弃：文件夹未受信任。", file=sys.stderr)
-        sys.exit(1)
-    if should_record:
-        add_trusted(target)
-
     config = get_config()
     _setup_logging(config.logging.level)
     if not ensure_daemon(config.host, config.port):
@@ -148,11 +96,14 @@ def main() -> None:
             "warning: daemon 未能启动，TUI 将保持重连；可手动运行 sztu-code",
             file=sys.stderr,
         )
+    if args.trust and not is_trusted(target):
+        add_trusted(target)
     app = KamaTuiApp(
         config.host,
         config.port,
         project_path=str(target),
-        read_only=(mode == "read_only"),
+        read_only=args.read_only,
+        trust=args.trust,
         replay_run_id=args.replay,
     )
     app.run()

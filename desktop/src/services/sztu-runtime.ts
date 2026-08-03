@@ -91,6 +91,10 @@ export async function resumeWorkspace(workspaceId: string): Promise<Workspace> {
   return result.workspace as Workspace;
 }
 
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  await client.request("workspace.delete", { workspace_id: workspaceId, confirm: "delete" });
+}
+
 export async function createSession(workspace: Workspace | null): Promise<string> {
   const result = await client.request("session.create", { mode: "chat", workspace_id: workspace?.workspace_id });
   return String(result.session_id);

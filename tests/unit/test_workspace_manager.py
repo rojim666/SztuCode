@@ -189,3 +189,34 @@ def test_git_output_uses_replacement_decoding(monkeypatch: pytest.MonkeyPatch) -
     assert captured["encoding"] == "utf-8"
     assert captured["errors"] == "replace"
     assert "\ufffd" in result
+
+
+# \u529f\u80fd\uff1a\u9a8c\u8bc1\u5220\u9664\u5de5\u4f5c\u533a\u53ea\u4ece\u5217\u8868\u79fb\u9664\u767b\u8bb0\u8bb0\u5f55\uff0c\u78c1\u76d8\u6587\u4ef6\u4fdd\u7559
+# \u8bbe\u8ba1\uff1a\u6253\u5f00\u4e34\u65f6\u9879\u76ee\u540e delete\uff0c\u65ad\u8a00\u5217\u8868\u4e3a\u7a7a\u3001\u78c1\u76d8\u76ee\u5f55\u4e0e\u6587\u4ef6\u4ecd\u5728\u3001\u91cd\u5efa manager \u540e\u8bb0\u5f55\u4e5f\u4e3a\u7a7a
+def test_workspace_delete_removes_list_but_keeps_directory(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "file.txt").write_text("x", encoding="utf-8")
+    recent_file = tmp_path / "state" / "workspaces.json"
+    manager = WorkspaceManager(recent_file)
+    workspace = manager.open(str(root))
+
+    manager.delete(workspace.id)
+
+    assert root.exists()
+    assert (root / "file.txt").read_text(encoding="utf-8") == "x"
+    assert manager.list_recent() == []
+    restored = WorkspaceManager(recent_file)
+    assert restored.list_recent() == []
+
+
+# \u529f\u80fd\uff1a\u9a8c\u8bc1\u5220\u9664\u672a\u767b\u8bb0\u7684\u5de5\u4f5c\u533a\u629b\u51fa ValueError \u4e14\u4e0d\u4ea7\u751f\u526f\u4f5c\u7528
+# \u8bbe\u8ba1\uff1a\u76f4\u63a5 delete \u4e00\u4e2a\u4e0d\u5b58\u5728\u7684 id\uff0c\u65ad\u8a00\u629b\u9519\uff0c\u6700\u8fd1\u5217\u8868\u4fdd\u6301\u4e3a\u7a7a
+def test_workspace_delete_missing_raises(tmp_path: Path) -> None:
+    recent_file = tmp_path / "state" / "workspaces.json"
+    manager = WorkspaceManager(recent_file)
+
+    with pytest.raises(ValueError):
+        manager.delete("ws-nonexistent")
+
+    assert manager.list_recent() == []

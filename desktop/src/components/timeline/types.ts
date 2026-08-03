@@ -41,6 +41,7 @@ export type SkillEntry = { name: string; arguments: string };
 
 export interface TimelineStep {
   step: number;
+  runId?: string;  // 所属 run 的全局唯一 ID，标识一轮思考生命周期
   status: TimelineStatus;
   thinking?: string;
   tokens: string[];

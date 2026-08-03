@@ -3,9 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Archive, ArrowLeft, Bot, CalendarClock, ChevronDown, ChevronRight, CirclePlus, CircleUserRound, Ellipsis, Folder, FolderOpen, FolderSearch,
   Globe2, LayoutDashboard, MessageCircle, Minimize2, Monitor, PanelLeftClose, PanelLeftOpen, Plug,
-  Plus, Puzzle, RotateCcw, Settings, ShieldCheck, Square, Wrench, X,
+  Plus, Puzzle, RotateCcw, Settings, ShieldCheck, Square, Trash2, Wrench, X,
 } from "@lucide/vue";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
@@ -14,7 +14,7 @@ import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
-  applyCcswitchProvider, archiveWorkspace, connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listCcswitchProviders, listSessions,
+  applyCcswitchProvider, connectRuntime, createSession, deleteWorkspace, getNativeSettings, getProviderStatus, getRuntimeSettings, listCcswitchProviders, listSessions,
   listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
   resumeWorkspace, sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
   type CcswitchProvider, type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
@@ -174,7 +174,7 @@ function hydrateTimeline(messages: unknown[]) {
   if (type === "step.started") {
     const step = Number(event.step);
     currentStepByRun.set(runId, step);
-    setStep(step, (current) => ({ ...current, status: "thinking" }));
+    setStep(step, (current) => ({ ...current, status: "thinking", runId }));
     return;
   }
   if (type === "llm.token") {
@@ -340,11 +340,24 @@ async function showProjectFiles(item: Workspace) {
   if (matching) await chooseTask(matching.session_id);
   else beginTask(item);
 }
-async function archiveProject(item: Workspace) {
+async function deleteProject(item: Workspace) {
   projectActionsOpen.value = null;
-  const archived = await archiveWorkspace(item.workspace_id);
-  workspaces.value = workspaces.value.map((entry) => entry.workspace_id === archived.workspace_id ? archived : entry);
-  if (workspace.value?.workspace_id === item.workspace_id) workspace.value = archived;
+  const ok = await confirm(`删除项目「${item.name}」？将同时删除该项目的会话与上下文，磁盘文件保留。`, { title: "删除项目", kind: "warning" });
+  if (!ok) return;
+  try {
+    await deleteWorkspace(item.workspace_id);
+  } catch (error) {
+    // 删除失败（如命中安全护栏）时保留列表并提示
+    window.alert(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  workspaces.value = workspaces.value.filter((entry) => entry.workspace_id !== item.workspace_id);
+  if (workspace.value?.workspace_id === item.workspace_id) {
+    workspace.value = workspaces.value[0] ?? null;
+    activeId.value = null;
+    timeline.value = new Map();
+  }
+  await refreshIndex(false);
 }
 async function resumeProject(item: Workspace) {
   projectActionsOpen.value = null;
@@ -534,7 +547,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
             <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
               <button @click="createProjectTask(item)"><Plus :size="14" />新建任务</button>
               <button @click="showProjectFiles(item)"><FolderSearch :size="14" />查看项目文件</button>
-              <button @click="archiveProject(item)"><Archive :size="14" />归档项目</button>
+              <button @click="deleteProject(item)"><Trash2 :size="14" />删除项目</button>
               <button @click="toggleProject(item.workspace_id)"><ChevronRight :size="14" :class="{ expanded: !isProjectCollapsed(item.workspace_id) }" />{{ isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目' }}</button>
             </div>
           </div>
@@ -558,6 +571,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
             <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" /></button>
             <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
               <button @click="resumeProject(item)"><RotateCcw :size="14" />恢复项目</button>
+              <button @click="deleteProject(item)"><Trash2 :size="14" />删除项目</button>
             </div>
           </div>
         </div>

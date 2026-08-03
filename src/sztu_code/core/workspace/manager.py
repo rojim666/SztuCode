@@ -83,6 +83,12 @@ class WorkspaceManager:
         self._save_recent()
         return updated
 
+    # 从项目列表删除工作区（保留磁盘文件），仅移除登记记录
+    def delete(self, workspace_id: str) -> None:
+        self.get(workspace_id)  # 不存在时抛错
+        del self._workspaces[workspace_id]
+        self._save_recent()
+
     # 返回工作区的 Git 分支和未提交文件摘要
     def status(self, workspace_id: str) -> dict[str, object]:
         workspace = self.get(workspace_id)

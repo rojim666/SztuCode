@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from rich.markdown import Markdown
 from textual.widget import Widget
 
@@ -8,6 +10,7 @@ from sztu_code.tui.app import (
     LLMStreamBlock,
     PermissionBlock,
     PermissionSelect,
+    RunBlock,
     ToolCallBlock,
     _param_summary,
     _preview,
@@ -173,54 +176,72 @@ def test_llm_block_resets_after_non_token_event() -> None:
     assert llm_blocks[0]._finalized  # type: ignore[attr-defined]
 
 
-# 功能：验证 run.started 事件追加 Static widget 且包含 run_id 和 goal
-# 设计：monkey-patch _append，断言追加的 widget 的 renderable 包含关键字段
-def test_run_started_appends_widget_with_content() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
-    appended: list[Widget] = []
-    app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
-
-    app._handle_event({
-        "type": "run.started", "run_id": "run-abc", "goal": "do the thing", "ts": "t"
-    })
-
-    assert len(appended) == 1
-    rendered = appended[0].content
-    assert "run-abc" in rendered
-    assert "do the thing" in rendered
-
-
-# 功能：验证 run.finished success 追加包含 "completed" 的 widget
-# 设计：monkey-patch _append，检查 rendered 内容包含 completed 和 green
-def test_run_finished_success_shows_completed() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
-    appended: list[Widget] = []
-    app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
-
-    app._handle_event({
-        "type": "run.finished", "run_id": "r", "status": "success", "steps": 3, "ts": "t"
-    })
-
-    rendered = appended[0].content
-    assert "completed" in rendered
-    assert "green" in rendered
+# 功能：验证 run.started 创建单个 RunBlock 输出块并记录为活动块
+# 设计：run_test 挂载真实 DOM，断言只有一个块且标题包含 run_id 与 goal
+async def test_run_started_creates_run_block_with_content(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
+    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
+    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    async with app.run_test() as pilot:
+        app._handle_event({
+            "type": "run.started", "run_id": "run-abc", "goal": "do the thing", "ts": "t"
+        })
+        await pilot.pause()
+        blocks = app.query(RunBlock)
+        assert len(blocks) == 1
+        title = blocks[0].children[0].content
+        assert "run-abc" in title
+        assert "do the thing" in title
+        assert app._run_block is blocks[0]  # type: ignore[attr-defined]
 
 
-# 功能：验证 run.finished failed 追加包含 "failed" 和 red 的 widget
-# 设计：与 success 对称，检查颜色标记差异
-def test_run_finished_failed_shows_red() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
-    appended: list[Widget] = []
-    app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
+# 功能：验证 run.finished success 在活动块内追加 completed 并关闭块
+# 设计：先 feed run.started 建块，再 feed run.finished，断言块末子项是完成状态
+async def test_run_finished_success_shows_completed(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
+    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
+    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    async with app.run_test() as pilot:
+        app._handle_event({"type": "run.started", "run_id": "r", "goal": "g", "ts": "t"})
+        await pilot.pause()  # 等待 RunBlock compose（标题）先挂载
+        app._handle_event({
+            "type": "run.finished", "run_id": "r", "status": "success", "steps": 3, "ts": "t"
+        })
+        await pilot.pause()
+        blocks = app.query(RunBlock)
+        assert len(blocks) == 1
+        footer = blocks[0].children[-1].content
+        assert "completed" in footer
+        assert "green" in footer
+        assert app._run_block is None  # type: ignore[attr-defined]
 
-    app._handle_event({
-        "type": "run.finished", "run_id": "r", "status": "failed",
-        "steps": 1, "reason": "llm_error", "ts": "t"
-    })
 
-    rendered = appended[0].content
-    assert "failed" in rendered
-    assert "red" in rendered
+# 功能：验证 run.finished failed 在活动块内追加 failed 并关闭块
+# 设计：与 success 对称，检查红色标记差异
+async def test_run_finished_failed_shows_red(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
+    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
+    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    async with app.run_test() as pilot:
+        app._handle_event({"type": "run.started", "run_id": "r", "goal": "g", "ts": "t"})
+        await pilot.pause()  # 等待 RunBlock compose（标题）先挂载
+        app._handle_event({
+            "type": "run.finished", "run_id": "r", "status": "failed",
+            "steps": 1, "reason": "llm_error", "ts": "t"
+        })
+        await pilot.pause()
+        blocks = app.query(RunBlock)
+        assert len(blocks) == 1
+        footer = blocks[0].children[-1].content
+        assert "failed" in footer
+        assert "red" in footer
+        assert app._run_block is None  # type: ignore[attr-defined]
 
 
 # 功能：验证 tool.call_started 追加 ToolCallBlock，call_finished 更新其结果

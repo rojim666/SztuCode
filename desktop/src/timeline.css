@@ -36,6 +36,7 @@
 .tool-call-event__details { margin: 1px 0 10px; }
 .tool-call-event__details > b { display: block; margin: 10px 0 6px 18px; color: #25282d; font-size: 12px; }
 .tool-call-event__details pre { max-height: 220px; margin: 0 0 0 18px; padding: 12px; overflow: auto; color: #343940; background: #f5f5f5; border: 0; border-radius: 10px; font: 12px/1.7 Consolas, "Microsoft YaHei", monospace; white-space: pre-wrap; }
+.thinking-collapse { margin: 0 0 8px; overflow: hidden; border: 1px solid #e3e6ea; border-radius: 8px; background: #fafbfc; }.thinking-collapse summary { display: flex; align-items: center; gap: 6px; padding: 8px 10px; color: #57729c; list-style: none; cursor: pointer; font-size: 12px; user-select: none; }.thinking-collapse summary::-webkit-details-marker { display: none; }.thinking-collapse summary svg:last-child { margin-left: auto; transition: transform .18s; }.thinking-collapse[open] summary svg:last-child { transform: rotate(180deg); }.thinking-collapse__body { padding: 4px 10px 10px; border-top: 1px solid #edf0f2; }
 .thinking-loading { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; color: #8a9099; font-size: 13px; }
 .thinking-loading .typing-dots { display: inline-flex; align-items: center; gap: 4px; }
 .thinking-loading .typing-dots i { width: 6px; height: 6px; background: #9aa3ad; border-radius: 50%; animation: typing-bounce 1.2s ease-in-out infinite; }

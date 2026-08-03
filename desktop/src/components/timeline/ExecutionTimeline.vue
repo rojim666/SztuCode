@@ -1,41 +1,122 @@
 <script setup lang="ts">
+import { computed } from "vue";
+import { BrainCircuit, ChevronDown, Sparkles } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ThinkingPanel from "./ThinkingPanel.vue";
 import TokenStream from "./TokenStream.vue";
 import ToolCallGroup from "./ToolCallGroup.vue";
 import PermissionBadge from "./PermissionBadge.vue";
-import { Sparkles } from "@lucide/vue";
-import type { PermissionDecision, TimelineStep } from "./types";
+import type { PermissionDecision, PermissionState, TimelineStep, ToolCallEntry } from "./types";
 
-defineProps<{ steps: TimelineStep[] }>();
+const props = defineProps<{ steps: TimelineStep[] }>();
 defineEmits<{ decide: [toolUseId: string, decision: PermissionDecision] }>();
 
-function hasAssistantActivity(item: TimelineStep) {
-  return item.status !== "done" || Boolean(
-    item.thinking || item.tokens.length || item.finalText || item.toolCalls.length || item.permission ||
-    item.plan?.length || item.tests?.length || item.changes?.length || item.logs?.length ||
-    item.subagents?.length || item.skills?.length,
-  );
+type TurnView = {
+  key: string | number;  // 一轮思考生命周期的全局唯一 ID（优先 runId）
+  userMessage?: string;
+  steps: TimelineStep[];
+  hasContent: boolean;
+  hasActivity: boolean;
+  pending?: PermissionState;
+  text: string;
+  thinking: boolean;
+  thinkingText: string;
+  allToolCalls: ToolCallEntry[];
+  aggregatedStep: TimelineStep;
+};
+
+// 汇总一轮内所有 step 的思考文本（按内容去重，避免逐 step 堆叠重复标签）
+function thinkingTextOf(steps: TimelineStep[]): string {
+  return [...new Set(steps.map((step) => step.thinking).filter(Boolean))].join("\n\n");
 }
-// 思考中且尚未产出任何可见内容时，展示加载提示
-function isThinkingUnanswered(item: TimelineStep) {
-  return item.status === "thinking" && !item.tokens.length && !item.finalText;
+
+// 汇总一轮内所有 step 的工具调用（按 tool_use_id 去重）
+function toolCallsOf(steps: TimelineStep[]): ToolCallEntry[] {
+  return [...new Map(steps.flatMap((step) => step.toolCalls).map((call) => [call.id, call])).values()];
 }
+
+// 把一轮内多个 step 的活动字段合并成一个伪 step，供 ActivityDetails 一次性渲染
+function aggregateStep(steps: TimelineStep[]): TimelineStep {
+  return {
+    step: steps[0]?.step ?? 0,
+    status: "done",
+    tokens: [],
+    toolCalls: [],
+    thinking: "",
+    plan: steps.flatMap((step) => step.plan ?? []),
+    tests: steps.flatMap((step) => step.tests ?? []),
+    changes: steps.flatMap((step) => step.changes ?? []),
+    subagents: steps.flatMap((step) => step.subagents ?? []),
+    skills: steps.flatMap((step) => step.skills ?? []),
+    logs: steps.flatMap((step) => step.logs ?? []),
+  };
+}
+
+// 将按 step 平铺的时间线按"用户消息为一轮"分组，合并同一轮内的连续 AI step
+const turns = computed<TurnView[]>(() => {
+  const groups: { userMessage?: string; steps: TimelineStep[] }[] = [];
+  for (const item of props.steps) {
+    if (item.userMessage) {
+      groups.push({ userMessage: item.userMessage, steps: [] });
+    } else {
+      if (!groups.length) groups.push({ steps: [] });
+      groups[groups.length - 1].steps.push(item);
+    }
+  }
+  return groups.map((group, index) => {
+    const steps = group.steps;
+    const last = steps[steps.length - 1];
+    const text = steps
+      .map((step) => step.finalText || step.tokens.join(""))
+      .filter(Boolean)
+      .join("\n\n");
+    const allToolCalls = toolCallsOf(steps);
+    const thinkingText = thinkingTextOf(steps);
+    const aggregatedStep = aggregateStep(steps);
+    const hasActivity = Boolean(
+      allToolCalls.length || thinkingText || aggregatedStep.plan?.length || aggregatedStep.tests?.length ||
+      aggregatedStep.changes?.length || aggregatedStep.subagents?.length || aggregatedStep.skills?.length ||
+      aggregatedStep.logs?.length,
+    );
+    const pending = steps.find((step) => step.permission?.status === "pending")?.permission;
+    const thinking = Boolean(
+      last && last.status === "thinking" && !last.tokens.length && !last.finalText,
+    );
+    return {
+      key: steps.find((step) => step.runId)?.runId ?? `turn-${index}`,
+      userMessage: group.userMessage,
+      steps,
+      hasActivity,
+      pending,
+      text,
+      thinking,
+      thinkingText,
+      allToolCalls,
+      aggregatedStep,
+      hasContent: Boolean(text || hasActivity || pending || thinking),
+    };
+  });
+});
 </script>
 
 <template>
   <section class="execution-timeline" aria-live="polite">
-    <article v-for="item in steps" :key="item.step" class="timeline-step">
-      <div v-if="item.userMessage" class="timeline-user-message">{{ item.userMessage }}</div>
-      <div v-if="hasAssistantActivity(item)" class="timeline-assistant">
+    <article v-for="turn in turns" :key="turn.key" class="timeline-step">
+      <div v-if="turn.userMessage" class="timeline-user-message">{{ turn.userMessage }}</div>
+      <div v-if="turn.hasContent" class="timeline-assistant">
         <span class="assistant-avatar" aria-label="SztuCode AI"><Sparkles :size="15" :stroke-width="2" /></span>
         <div class="timeline-step__content">
-          <ThinkingPanel :text="item.thinking" :completed="item.status === 'done'" />
-          <ActivityDetails :step="item" />
-          <ToolCallGroup :calls="item.toolCalls" />
-          <PermissionBadge v-if="item.permission" :permission="item.permission" @decide="$emit('decide', item.permission.toolUseId, $event)" />
-          <TokenStream :tokens="item.tokens" :final-text="item.finalText" />
-          <div v-if="isThinkingUnanswered(item)" class="thinking-loading" aria-live="polite"><span class="typing-dots"><i /><i /><i /></span><span>思考中…</span></div>
+          <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
+          <details v-if="turn.hasActivity" class="thinking-collapse">
+            <summary><BrainCircuit :size="14" />思考过程<ChevronDown :size="14" /></summary>
+            <div class="thinking-collapse__body">
+              <ThinkingPanel v-if="turn.thinkingText" :text="turn.thinkingText" :completed="true" />
+              <ToolCallGroup v-if="turn.allToolCalls.length" :calls="turn.allToolCalls" />
+              <ActivityDetails :step="turn.aggregatedStep" />
+            </div>
+          </details>
+          <TokenStream :tokens="[]" :final-text="turn.text" />
+          <div v-if="turn.thinking" class="thinking-loading" aria-live="polite"><span class="typing-dots"><i /><i /><i /></span><span>思考中…</span></div>
         </div>
       </div>
     </article>
