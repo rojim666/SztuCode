@@ -13,6 +13,7 @@ class ExecutionContext:
     session_notes: str = ""
     global_context: str = ""
     project_context: str = ""
+    base_system_prompt: str = ""  # 分层基础提示词（runner 构建），空则回退默认
     messages: list[dict[str, Any]] = field(default_factory=list)
     step: int = 0
     status: str = "running"  # "running" | "success" | "failed"

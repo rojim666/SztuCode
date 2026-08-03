@@ -17,6 +17,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+# 构造压缩续接 user 消息：说明会话续接并附摘要，要求直接续接不寒暄
+def _continuation_message(summary_text: str) -> str:
+    return (
+        "This session is being continued from a previous conversation that ran out of "
+        "context. The summary below covers the earlier portion of the conversation.\n\n"
+        "Summary:\n"
+        f"{summary_text}\n\n"
+        "Continue the conversation from where it left off without asking the user any "
+        "further questions. Resume directly — do not acknowledge the summary, do not "
+        "recap what was happening, and do not preface with continuation text."
+    )
+
+
 _COMPACT_PROMPT = """\
 You are compressing an agent conversation into a handoff summary.
 Another LLM instance will continue this task from your summary alone — make it complete.
@@ -91,7 +105,7 @@ class Compactor:
             return None
 
         context.messages = [
-            {"role": "user", "content": result.summary_text},
+            {"role": "user", "content": _continuation_message(result.summary_text)},
             {"role": "assistant", "content": "Understood, I'll continue from this summary."},
         ]
         context.compacted = True

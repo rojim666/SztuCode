@@ -789,6 +789,11 @@ class KamaTuiApp(App[None]):
                 exclusive=False,
             )
             return
+        # 检测 /system-prompt 指令
+        if content == "/system-prompt":
+            event.text_area.text = ""
+            self.run_worker(self._show_system_prompt(), name="system_prompt", exclusive=False)
+            return
         # 检测 /compact 指令
         if content == "/compact":
             event.text_area.text = ""
@@ -815,6 +820,22 @@ class KamaTuiApp(App[None]):
         self.run_worker(self._do_send_message(content), name="send_message", exclusive=False)
 
     # 在 worker 中执行手动压缩命令，完成后显示结果横幅
+    # 打印当前分层系统提示词（静态段 + 边界 + 发现的指令文件预览）
+    async def _show_system_prompt(self) -> None:
+        from sztu_code.core.prompts.system_prompt import (
+            DYNAMIC_BOUNDARY,
+            build_static_base,
+            discover_instruction_files,
+        )
+
+        body = build_static_base() + f"\n\n{DYNAMIC_BOUNDARY}"
+        if self._workspace is not None:
+            entries = discover_instruction_files(Path(self._workspace["path"]))
+            body += f"\n\n# Project instructions ({len(entries)} files)"
+            for label, content in entries:
+                body += f"\n## {label}\n{content[:800]}"
+        self._append(Static(f"[bold cyan]/system-prompt[/bold cyan]\n{body}", classes="log-line"))
+
     async def _do_compact(self) -> None:
         if self._client is None or self._session_id is None:
             return
