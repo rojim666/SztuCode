@@ -329,8 +329,7 @@ class CoreApp:
             raise HandlerError(-32602, str(error)) from error
         return WorkspaceResumeResult(workspace=self._workspace_summary(workspace))
 
-    # 删除项目：校验 confirm 后删除绑定会话并从项目列表与磁盘移除（不可恢复）
-    async def _workspace_delete_handler(self, params: dict[str, Any]) -> WorkspaceDeleteResult:
+    # 删除项目：校验 confirm 后删除绑定会话并从项目列表移除（保留磁盘文件）
         assert self._workspaces is not None
         cmd = WorkspaceDeleteCommand.model_validate(params)
         if cmd.confirm != "delete":
