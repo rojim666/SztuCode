@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,7 +43,10 @@ def _parse_skill_file(path: Path) -> Skill:
                     fold = val == ">"
                     parts: list[str] = []
                     i += 1
-                    while i < len(lines) and (lines[i].startswith(" ") or lines[i].startswith("\t")):
+                    while i < len(lines) and (
+                        lines[i].startswith(" ") or lines[i].startswith("\t")
+                    ):
+
                         parts.append(lines[i].strip())
                         i += 1
                     description = (" ".join(parts) if fold else "\n".join(parts)).strip()
@@ -66,6 +70,9 @@ def _parse_skill_file(path: Path) -> Skill:
 # 按三级优先级（项目本地 > 用户全局 > 内建）查找并解析 skill
 class SkillLoader:
     _BUILTIN_DIR = Path(__file__).parent / "builtin"
+    _CACHE_TTL = 5.0  # 秒；provider.status 频繁调用时避免反复扫描磁盘
+    _cache: list[Skill] | None = None
+    _cache_ts: float = 0.0
 
     # 按优先级查找 skill 文件；未找到返回 None
     def resolve(self, name: str) -> Skill | None:
@@ -107,6 +114,9 @@ class SkillLoader:
 
     # 列出所有可用 Skill 对象（含描述），项目本地覆盖同名内建
     def list_all_skills(self) -> list[Skill]:
+        now = time.monotonic()
+        if self._cache is not None and now - self._cache_ts < self._CACHE_TTL:
+            return self._cache
         seen: dict[str, Skill] = {}
         for d in [
             self._BUILTIN_DIR,
@@ -126,7 +136,10 @@ class SkillLoader:
                         seen[skill.name] = skill
                     except Exception:
                         pass
-        return list(seen.values())
+        result = list(seen.values())
+        self._cache = result
+        self._cache_ts = time.monotonic()
+        return result
 
     # 将 $ARGUMENTS 替换为用户传入的参数字符串
     def render_prompt(self, skill: Skill, arguments: str) -> str:

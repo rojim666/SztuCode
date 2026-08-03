@@ -120,7 +120,7 @@ async function expandAll() {
   menuOpen.value = false;
   loading.value = true;
   try {
-    nodes.value = await workspaceTree(props.workspaceId, "", 6);
+    nodes.value = await workspaceTree(props.workspaceId, "", 3);
     collapsedPaths.value = new Set();
   } finally {
     loading.value = false;

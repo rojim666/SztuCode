@@ -1,7 +1,14 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <rect width="512" height="512" rx="104" fill="#111315"/>
-  <rect x="80" y="80" width="352" height="352" rx="54" fill="#181B1F" stroke="#30353D" stroke-width="12"/>
-  <path d="M170 176L112 256L170 336" fill="none" stroke="#76D6C1" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M342 176L400 256L342 336" fill="none" stroke="#76D6C1" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M218 350L294 162" fill="none" stroke="#F1F3F5" stroke-width="26" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a9dff"/>
+      <stop offset="0.55" stop-color="#6a5bff"/>
+      <stop offset="1" stop-color="#2b6ce8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M130 176 L214 256 L130 336"/>
+    <path d="M248 330 L358 330"/>
+  </g>
 </svg>
