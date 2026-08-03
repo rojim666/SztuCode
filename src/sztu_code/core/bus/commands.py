@@ -103,8 +103,7 @@ class WorkspaceResumeResult(BaseModel):
 class WorkspaceDeleteCommand(BaseModel):
     type: Literal["workspace.delete"] = "workspace.delete"
     workspace_id: str
-    confirm: Literal["delete"] = "delete"  # 必须显式传 delete，防止误删
-
+    confirm: Literal["delete"]  # 必须显式传 delete，防止误删
 
 class WorkspaceDeleteResult(BaseModel):
     workspace_id: str
