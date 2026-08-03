@@ -67,6 +67,8 @@ def test_legacy_kama_model_environment_variable_is_supported(
 ) -> None:
     _write_env(tmp_path / ".env", "KAMA_LLM_DEFAULT_MODEL=legacy-model\n")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SZTU_CLIENT_SETTINGS", str(tmp_path / "missing-settings.json"))
+    monkeypatch.setenv("SZTU_CONFIG", str(tmp_path / "missing-config.toml"))
     monkeypatch.delenv("SZTU_LLM_DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("KAMA_LLM_DEFAULT_MODEL", raising=False)
 
@@ -83,6 +85,8 @@ def test_sztu_model_environment_variable_takes_priority_over_legacy_name(
         "KAMA_LLM_DEFAULT_MODEL=legacy-model\nSZTU_LLM_DEFAULT_MODEL=sztu-model\n",
     )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SZTU_CLIENT_SETTINGS", str(tmp_path / "missing-settings.json"))
+    monkeypatch.setenv("SZTU_CONFIG", str(tmp_path / "missing-config.toml"))
     monkeypatch.delenv("KAMA_LLM_DEFAULT_MODEL", raising=False)
     monkeypatch.delenv("SZTU_LLM_DEFAULT_MODEL", raising=False)
 

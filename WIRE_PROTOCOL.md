@@ -264,6 +264,16 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
           "default": false,
           "title": "Revertible",
           "type": "boolean"
+        },
+        "additions": {
+          "default": 0,
+          "title": "Additions",
+          "type": "integer"
+        },
+        "deletions": {
+          "default": 0,
+          "title": "Deletions",
+          "type": "integer"
         }
       },
       "required": [
@@ -437,6 +447,11 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
           "title": "Permission Mode",
           "type": "string"
         },
+        "base_url": {
+          "default": "",
+          "title": "Base Url",
+          "type": "string"
+        },
         "applies_at": {
           "const": "next_run",
           "default": "next_run",
@@ -582,6 +597,11 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
           "title": "Permission Mode",
           "type": "string"
         },
+        "base_url": {
+          "default": "",
+          "title": "Base Url",
+          "type": "string"
+        },
         "applies_at": {
           "const": "next_run",
           "default": "next_run",
@@ -719,6 +739,214 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
     "skills"
   ],
   "title": "ProviderStatusResult",
+  "type": "object"
+}
+```
+
+### ProviderCcswitchListCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "provider.ccswitch_list",
+      "default": "provider.ccswitch_list",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "title": "ProviderCcswitchListCommand",
+  "type": "object"
+}
+```
+
+### ProviderCcswitchListResult
+
+| Field | Type | Required |
+|---|---|---|
+| `providers` | `array` | yes |
+
+```json
+{
+  "$defs": {
+    "CcswitchProviderSummary": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "base_url": {
+          "title": "Base Url",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "has_api_key": {
+          "title": "Has Api Key",
+          "type": "boolean"
+        },
+        "is_current": {
+          "title": "Is Current",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "base_url",
+        "model",
+        "has_api_key",
+        "is_current"
+      ],
+      "title": "CcswitchProviderSummary",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "providers": {
+      "items": {
+        "$ref": "#/$defs/CcswitchProviderSummary"
+      },
+      "title": "Providers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "providers"
+  ],
+  "title": "ProviderCcswitchListResult",
+  "type": "object"
+}
+```
+
+### ProviderCcswitchApplyCommand
+
+| Field | Type | Required |
+|---|---|---|
+| `type` | `string` | no |
+| `provider_id` | `string` | yes |
+
+```json
+{
+  "properties": {
+    "type": {
+      "const": "provider.ccswitch_apply",
+      "default": "provider.ccswitch_apply",
+      "title": "Type",
+      "type": "string"
+    },
+    "provider_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Provider Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider_id"
+  ],
+  "title": "ProviderCcswitchApplyCommand",
+  "type": "object"
+}
+```
+
+### ProviderCcswitchApplyResult
+
+| Field | Type | Required |
+|---|---|---|
+| `settings` | `object` | yes |
+| `updated` | `array` | yes |
+
+```json
+{
+  "$defs": {
+    "SettingsSnapshot": {
+      "properties": {
+        "provider": {
+          "enum": [
+            "anthropic",
+            "openai"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "router": {
+          "title": "Router",
+          "type": "string"
+        },
+        "permission_mode": {
+          "enum": [
+            "normal",
+            "accept_edits",
+            "plan",
+            "auto"
+          ],
+          "title": "Permission Mode",
+          "type": "string"
+        },
+        "base_url": {
+          "default": "",
+          "title": "Base Url",
+          "type": "string"
+        },
+        "applies_at": {
+          "const": "next_run",
+          "default": "next_run",
+          "title": "Applies At",
+          "type": "string"
+        },
+        "persistent": {
+          "default": true,
+          "title": "Persistent",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "router",
+        "permission_mode"
+      ],
+      "title": "SettingsSnapshot",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "settings": {
+      "$ref": "#/$defs/SettingsSnapshot"
+    },
+    "updated": {
+      "items": {
+        "enum": [
+          "provider",
+          "model",
+          "base_url"
+        ],
+        "type": "string"
+      },
+      "title": "Updated",
+      "type": "array"
+    }
+  },
+  "required": [
+    "settings",
+    "updated"
+  ],
+  "title": "ProviderCcswitchApplyResult",
   "type": "object"
 }
 ```

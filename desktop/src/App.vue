@@ -3,24 +3,26 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   Archive, ArrowLeft, Bot, CalendarClock, ChevronDown, ChevronRight, CirclePlus, CircleUserRound, Ellipsis, Folder, FolderOpen, FolderSearch,
   Globe2, LayoutDashboard, MessageCircle, Minimize2, Monitor, PanelLeftClose, PanelLeftOpen, Plug,
-  Plus, Puzzle, RotateCcw, Settings, ShieldCheck, Square, Wrench, X,
+  Plus, Puzzle, RotateCcw, Settings, ShieldCheck, Square, Trash2, Wrench, X,
 } from "@lucide/vue";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
+import DiffReview from "./components/Diff/DiffReview.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
-  archiveWorkspace, connectRuntime, createSession, getNativeSettings, getProviderStatus, getRuntimeSettings, listSessions,
+  applyCcswitchProvider, connectRuntime, createSession, deleteWorkspace, getNativeSettings, getProviderStatus, getRuntimeSettings, listCcswitchProviders, listSessions,
   listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
   resumeWorkspace, sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
-  type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
+  type CcswitchProvider, type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
 
-type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
+type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings" | "diff";
+type ReviewContext = { workspaceId: string; runId: string; paths: string[] };
 type RuntimeEvent = Record<string, unknown>;
 const page = ref<Page>("work");
 const chatView = ref<ChatView>("home");
@@ -39,6 +41,7 @@ const projectMenuOpen = ref(false);
 const projectActionsOpen = ref<string | null>(null);
 const collapsedProjects = ref(new Set<string>());
 const inspectorOpen = ref(true);
+const inspectorWidth = ref(Math.min(720, Math.max(280, Number(localStorage.getItem("sztu.inspectorWidth")) || 355)));
 const attachedFiles = ref<string[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
@@ -49,6 +52,12 @@ const nativeSettingsAvailable = ref(false);
 const nativeSettingsError = ref("");
 const webBridgeAllowed = ref(false);
 const currentStepByRun = new Map<string, number>();
+const reviewCtx = ref<ReviewContext | null>(null);
+const ccswitchOpen = ref(false);
+const ccswitchLoading = ref(false);
+const ccswitchApplying = ref<string | null>(null);
+const ccswitchError = ref("");
+const ccswitchProviders = ref<CcswitchProvider[]>([]);
 
 const active = computed(() => sessions.value.find((item) => item.session_id === activeId.value) ?? null);
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
@@ -59,6 +68,32 @@ const archivedSessions = computed(() => sessions.value.filter((item) => item.arc
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const projects = computed(() => activeWorkspaces.value.map((item) => ({ ...item, tasks: liveSessions.value.filter((task) => task.workspace_id === item.workspace_id).slice(0, 5) })));
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
+// 工作区布局：右侧文件面板宽度走可拖拽的 CSS 变量，收起时退化为单列
+const workLayoutStyle = computed(() => {
+  if (!inspectorOpen.value || !activeWorkspace.value) return { gridTemplateColumns: "minmax(0, 1fr)" };
+  return { gridTemplateColumns: `minmax(0, 1fr) 6px ${inspectorWidth.value}px` };
+});
+// 拖拽分割线调整左右面板宽度比，并限制最小/最大宽度
+function startDividerDrag(event: MouseEvent) {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = inspectorWidth.value;
+  const container = (event.currentTarget as HTMLElement).parentElement;
+  const maxWidth = Math.max(280, (container?.clientWidth ?? 1200) - 320); // 左侧对话区至少保留 320
+  const minWidth = 280;
+  function onMove(ev: MouseEvent) {
+    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, startWidth + (startX - ev.clientX)));
+  }
+  function onUp() {
+    localStorage.setItem("sztu.inspectorWidth", String(inspectorWidth.value));
+    document.body.style.cursor = "";
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  }
+  document.body.style.cursor = "col-resize";
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
 const skillSuggestions = computed(() => {
   const match = prompt.value.match(/^\/([^\s]*)$/);
   if (!match) return [];
@@ -169,7 +204,7 @@ function hydrateTimeline(messages: unknown[]) {
   if (type === "step.started") {
     const step = Number(event.step);
     currentStepByRun.set(runId, step);
-    setStep(step, (current) => ({ ...current, status: "thinking" }));
+    setStep(step, (current) => ({ ...current, status: "thinking", runId }));
     return;
   }
   if (type === "llm.token") {
@@ -335,11 +370,24 @@ async function showProjectFiles(item: Workspace) {
   if (matching) await chooseTask(matching.session_id);
   else beginTask(item);
 }
-async function archiveProject(item: Workspace) {
+async function deleteProject(item: Workspace) {
   projectActionsOpen.value = null;
-  const archived = await archiveWorkspace(item.workspace_id);
-  workspaces.value = workspaces.value.map((entry) => entry.workspace_id === archived.workspace_id ? archived : entry);
-  if (workspace.value?.workspace_id === item.workspace_id) workspace.value = archived;
+  const ok = await confirm(`删除项目「${item.name}」？将同时删除该项目的会话与上下文，磁盘文件保留。`, { title: "删除项目", kind: "warning" });
+  if (!ok) return;
+  try {
+    await deleteWorkspace(item.workspace_id);
+  } catch (error) {
+    // 删除失败（如命中安全护栏）时保留列表并提示
+    window.alert(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  workspaces.value = workspaces.value.filter((entry) => entry.workspace_id !== item.workspace_id);
+  if (workspace.value?.workspace_id === item.workspace_id) {
+    workspace.value = workspaces.value[0] ?? null;
+    activeId.value = null;
+    timeline.value = new Map();
+  }
+  await refreshIndex(false);
 }
 async function resumeProject(item: Workspace) {
   projectActionsOpen.value = null;
@@ -365,6 +413,25 @@ function onComposerKeydown(event: KeyboardEvent) {
   void submit();
 }
 async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
+// 撤销后清除该 run 的全部改动，使变更卡片随之消失
+function handleReverted(runId: string) {
+  const next = new Map(timeline.value);
+  for (const [step, item] of next) {
+    if (item.runId === runId) next.set(step, { ...item, changes: [] });
+  }
+  timeline.value = next;
+  void refreshIndex(false);
+}
+// 进入代码变更审核页
+function handleReview(ctx: ReviewContext) {
+  reviewCtx.value = ctx;
+  page.value = "diff";
+}
+function closeReview() {
+  reviewCtx.value = null;
+  page.value = "work";
+  void refreshIndex(false);
+}
 async function openLocalProject() {
   const selected = await openDialog({ directory: true, multiple: false, title: "打开本地项目" });
   if (typeof selected !== "string") return;
@@ -416,6 +483,33 @@ async function toggleStayAwake(event: Event) {
 async function choosePermissionMode(value: RuntimeSettings["permission_mode"]) { const result = await setRuntimeSettings({ permission_mode: value }); if (result) runtimeSettings.value = result; }
 async function chooseModel(event: Event) { const model = (event.target as HTMLInputElement).value.trim(); if (!model) return; const result = await setRuntimeSettings({ model }); if (result) runtimeSettings.value = result; }
 async function chooseProvider(event: Event) { const provider = (event.target as HTMLSelectElement).value as RuntimeSettings["provider"]; const result = await setRuntimeSettings({ provider }); if (result) runtimeSettings.value = result; }
+// 加载本机 cc-switch 中可导入的供应商列表并展开面板
+async function loadCcswitchProviders() {
+  ccswitchLoading.value = true;
+  ccswitchError.value = "";
+  try {
+    ccswitchProviders.value = await listCcswitchProviders();
+    ccswitchOpen.value = true;
+  } catch (error) {
+    ccswitchError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    ccswitchLoading.value = false;
+  }
+}
+// 应用选中的 cc-switch 供应商并刷新运行时设置与状态
+async function useCcswitchProvider(providerId: string) {
+  ccswitchApplying.value = providerId;
+  ccswitchError.value = "";
+  try {
+    const settings = await applyCcswitchProvider(providerId);
+    if (settings) runtimeSettings.value = settings;
+    providerStatus.value = await getProviderStatus();
+  } catch (error) {
+    ccswitchError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    ccswitchApplying.value = null;
+  }
+}
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; if (next === "chat") chatView.value = "home"; }
 async function submitChat(content: string) { await submitTask(content, null); page.value = "chat"; chatView.value = "home"; }
 async function minimizeWindow() { await getCurrentWindow().minimize(); }
@@ -502,7 +596,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
             <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
               <button @click="createProjectTask(item)"><Plus :size="14" />新建任务</button>
               <button @click="showProjectFiles(item)"><FolderSearch :size="14" />查看项目文件</button>
-              <button @click="archiveProject(item)"><Archive :size="14" />归档项目</button>
+              <button @click="deleteProject(item)"><Trash2 :size="14" />删除项目</button>
               <button @click="toggleProject(item.workspace_id)"><ChevronRight :size="14" :class="{ expanded: !isProjectCollapsed(item.workspace_id) }" />{{ isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目' }}</button>
             </div>
           </div>
@@ -526,6 +620,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
             <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" /></button>
             <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
               <button @click="resumeProject(item)"><RotateCcw :size="14" />恢复项目</button>
+              <button @click="deleteProject(item)"><Trash2 :size="14" />删除项目</button>
             </div>
           </div>
         </div>
@@ -558,12 +653,12 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
               <button title="项目文件" :class="{ active: inspectorOpen }" @click="inspectorOpen = !inspectorOpen"><Folder :size="18" /></button>
             </div>
           </header>
-          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }">
+          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div class="task-conversation">
                 <div class="task-stream">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="agent-orb"><Bot :size="20" /></span><p>任务已经创建。告诉 SztuCode 你希望完成什么，它会在这里展示计划、工具调用与最终结果。</p></div>
-                  <ExecutionTimeline :steps="orderedTimeline" @decide="decidePermission" />
+                  <ExecutionTimeline :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" />
                 </div>
                 <form class="kimi-composer" @submit.prevent="submit">
                   <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
@@ -574,7 +669,10 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
               </div>
               <WorkContextPanel :steps="orderedTimeline" :attachments="attachedFiles" :workspace-name="activeWorkspace?.name" :workspace-path="activeWorkspace?.path" />
             </section>
-            <ProjectInspector v-if="inspectorOpen && activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :run-id="active.latest_run_id" />
+            <template v-if="inspectorOpen && activeWorkspace">
+              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
+              <ProjectInspector :workspace-id="activeWorkspace.workspace_id" :run-id="active.latest_run_id" />
+            </template>
           </div>
         </section>
         <section v-else class="landing-page">
@@ -589,6 +687,8 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
       </template>
 
       <section v-else-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
+
+      <section v-else-if="page === 'diff'" class="diff-page"><DiffReview v-if="reviewCtx" :workspace-id="reviewCtx.workspaceId" :run-id="reviewCtx.runId" :paths="reviewCtx.paths" @close="closeReview" @changed="refreshIndex(false)" /></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>会话</h1><p>管理本地任务、归档与已关闭会话</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>
@@ -605,7 +705,7 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
 
       <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>WebBridge</h1><p>连接浏览器扩展，让 Agent 在授权范围内协助网页操作</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>浏览器连接</h2><p>当前未连接。此功能需要浏览器扩展和 daemon WebBridge 协议。</p></div><span class="status-pill">未连接</span></div></section>
 
-      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input :checked="autostart" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleAutostart" /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input :checked="stayAwake" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleStayAwake" /></label><p v-if="nativeSettingsError" class="native-settings-error">{{ nativeSettingsError }}</p></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
+      <section v-else class="settings-screen"><header class="settings-top"><button title="返回工作区" aria-label="返回工作区" @click="openPage('work')"><ArrowLeft :size="19" /></button><h1>设置</h1></header><div class="settings-layout"><aside><span>SztuCode</span><button class="active">SztuCode Work</button></aside><main><section><span class="settings-section-label">系统设置</span><div class="setting-group"><label><div><b>开机自启动</b><p>登录系统时自动启动 SztuCode。</p></div><input :checked="autostart" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleAutostart" /></label><label><div><b>系统通知</b><p>允许 SztuCode 发送任务结果与重要提醒。</p></div><input v-model="notifications" type="checkbox" /></label><label><div><b>保持电脑唤醒</b><p>任务运行期间阻止电脑进入睡眠。</p></div><input :checked="stayAwake" type="checkbox" :disabled="!nativeSettingsAvailable" @change="toggleStayAwake" /></label><p v-if="nativeSettingsError" class="native-settings-error">{{ nativeSettingsError }}</p></div></section><section><span class="settings-section-label">模型与审批</span><div class="setting-group"><label class="stack"><b>Provider</b><select :value="runtimeSettings?.provider" @change="chooseProvider"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option></select></label><label class="stack"><b>模型</b><input :value="runtimeSettings?.model" placeholder="模型名称" @change="chooseModel" /></label><label class="stack"><b>权限模式</b><select :value="runtimeSettings?.permission_mode" @change="choosePermissionMode(($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label></div></section><section><span class="settings-section-label">模型管理</span><div class="setting-group ccswitch-mgr"><div class="ccswitch-current-row"><div><b>当前模型</b><p>{{ runtimeSettings?.model || '未配置模型' }}<template v-if="runtimeSettings?.base_url"><br />{{ runtimeSettings.base_url }}</template></p></div><button type="button" class="ccswitch-import-btn" :disabled="ccswitchLoading" @click="ccswitchOpen ? (ccswitchOpen = false) : loadCcswitchProviders()">{{ ccswitchLoading ? '加载中…' : (ccswitchOpen ? '收起' : '从 cc-switch 导入') }}</button></div><div v-if="ccswitchOpen" class="ccswitch-list"><div v-for="item in ccswitchProviders" :key="item.id" class="ccswitch-card"><span class="ccswitch-card__dot" :class="{ has: item.has_api_key }" /><div class="ccswitch-card__info"><b>{{ item.name }}<em v-if="item.is_current">当前</em></b><span>{{ item.base_url }}</span><small>{{ item.model }}</small></div><button type="button" :disabled="ccswitchApplying === item.id" @click="useCcswitchProvider(item.id)">{{ ccswitchApplying === item.id ? '应用中…' : '使用此配置' }}</button></div><p v-if="!ccswitchProviders.length && !ccswitchLoading" class="ccswitch-empty">本机未发现可导入的 cc-switch 供应商，请确认已安装 CC Switch</p></div><p v-if="ccswitchError" class="native-settings-error">{{ ccswitchError }}</p></div></section><section><span class="settings-section-label">WebBridge</span><div class="setting-group"><label><div><b>允许网站所有操作</b><p>允许 Agent 在浏览器中执行已授权的网页动作。</p></div><input v-model="webBridgeAllowed" type="checkbox" disabled /></label><label><div><b>浏览器连接</b><p>显示 SztuCode 与本地浏览器扩展的连接状态。</p></div><em>未连接</em></label></div></section></main></div></section>
     </main>
   </div>
 </template>

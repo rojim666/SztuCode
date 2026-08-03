@@ -7,8 +7,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger(__name__)
-
 from rich.markdown import Markdown
 from textual import events
 from textual.app import App, ComposeResult
@@ -16,12 +14,16 @@ from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.css.query import NoMatches
 from textual.message import Message
+from textual.screen import Screen
 from textual.widget import Widget
 from textual.widgets import Label, Static, TextArea
 
 from sztu_code.core.config import SztuConfig
 from sztu_code.core.skills.loader import SkillLoader
 from sztu_code.core.transport.socket_client import IpcError, SocketClient
+from sztu_code.core.trust import add_trusted, is_trusted
+
+log = logging.getLogger(__name__)
 
 
 def _preview(s: str, n: int) -> str:
@@ -509,6 +511,111 @@ class ChatTextArea(TextArea):
         await super()._on_key(event)
 
 
+class RunBlock(Widget):
+    """一次 run 的输出容器：标题、步骤、回复、用量与完成状态装进一个带边框的块里。"""
+
+    DEFAULT_CSS = """
+    RunBlock {
+        height: auto;
+        margin: 1 2 1 2;
+        padding: 0 0 1 0;
+        border: round #30353D;
+    }
+    """
+
+    # 初始化一次 run 的输出块
+    def __init__(self, run_id: str, goal: str) -> None:
+        super().__init__()
+        self._run_id = run_id
+        self._goal = goal
+
+    # 生成 run 块标题行
+    def compose(self) -> ComposeResult:
+        yield Static(
+            f"[dim]run[/dim]  [cyan]{self._run_id[:8]}[/cyan]  "
+            f"[dim]{_preview(self._goal, 96)}[/dim]",
+            classes="run-header",
+        )
+
+
+class TrustScreen(Screen[str]):
+    """Claude Code 风格的文件夹信任确认屏，Enter 确认 / Esc 取消。"""
+
+    DEFAULT_CSS = """
+    TrustScreen { align: center middle; }
+    .trust-panel { width: 74; padding: 1 2; background: #181B1F; border: round #30353D; }
+    """
+
+    _OPTIONS: tuple[tuple[str, str], ...] = (
+        ("1. Yes, I trust this folder", "trust"),
+        ("2. Open read-only", "read_only"),
+        ("3. No, exit", "abort"),
+    )
+
+    # 初始化信任屏，记录待确认的项目路径
+    def __init__(self, project_path: str) -> None:
+        super().__init__()
+        self._path = project_path
+        self._cursor = 0
+
+    def compose(self) -> ComposeResult:
+        yield Static(self._build_text(), classes="trust-panel")
+
+    # 挂载后重绘当前选中项
+    def on_mount(self) -> None:
+        self._redraw()
+
+    # 更新面板中的文本以反映光标位置
+    def _redraw(self) -> None:
+        self.query_one(Static).update(self._build_text())
+
+    # 生成安全提示文本与选项列表（当前项高亮）
+    def _build_text(self) -> str:
+        lines = [
+            "[bold #E8EAED]Accessing workspace:[/bold #E8EAED]",
+            f"[dim]  {self._path}[/dim]",
+            "",
+            "[bold #F1F3F5]Quick safety check:[/bold #F1F3F5] "
+            "Is this a project you created or one you trust?",
+            "[dim](Like your own code, a well-known open source project, or work from your team).[/dim]",
+            "[dim]If not, take a moment to review what's in this folder first.[/dim]",
+            "",
+            "[#F1F3F5]SztuCode will be able to [bold]read, edit, and execute[/bold] "
+            "",
+            "[dim]Security guide — review the folder contents before trusting[/dim]",
+            "",
+        ]
+        for i, (label, _decision) in enumerate(self._OPTIONS):
+            if i == self._cursor:
+                lines.append(f"[bold #111315 on #84B8FF]  {label}  [/bold #111315 on #84B8FF]")
+            else:
+                lines.append(f"  {label}")
+        lines.append("")
+        lines.append("[dim]Enter to confirm · Esc to cancel · ↑/↓ to select[/dim]")
+        return "\n".join(lines)
+
+    # 键盘导航：↑↓ 选择、Enter 确认、Esc 取消、数字键直达
+    def on_key(self, event: events.Key) -> None:
+        key = event.key
+        if key in ("up", "k"):
+            event.stop()
+            self._cursor = (self._cursor - 1) % len(self._OPTIONS)
+            self._redraw()
+        elif key in ("down", "j"):
+            event.stop()
+            self._cursor = (self._cursor + 1) % len(self._OPTIONS)
+            self._redraw()
+        elif key == "enter":
+            event.stop()
+            self.dismiss(self._OPTIONS[self._cursor][1])
+        elif key in ("1", "2", "3"):
+            event.stop()
+            self.dismiss(self._OPTIONS[int(key) - 1][1])
+        elif key == "escape":
+            event.stop()
+            self.dismiss("abort")
+
+
 class KamaTuiApp(App[None]):
     """SztuCode TUI：终端滚屏风格，实时展示 agent 执行过程。"""
 
@@ -566,8 +673,17 @@ class KamaTuiApp(App[None]):
 [dim]  输入消息开始对话  ·  键入 / 触发 skill  ·  Ctrl+C 退出[/dim]
 """.strip()
 
-    # 初始化连接参数和 TUI 内部状态
-    def __init__(self, host: str, port: int, replay_run_id: str | None = None) -> None:
+    # 初始化连接参数、项目目录与只读状态
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        project_path: str | None = None,
+        read_only: bool = False,
+        trust: bool = False,
+        replay_run_id: str | None = None,
+    ) -> None:
         super().__init__()
         self._host = host
         self._port = port
@@ -578,7 +694,9 @@ class KamaTuiApp(App[None]):
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = None
         self._workspace: dict[str, Any] | None = None
-        self._project_path = str(Path.cwd())
+        self._project_path = str(Path(project_path or Path.cwd()).resolve())
+        self._read_only = read_only
+        self._force_trust = trust
         self._model = "loading…"
         self._busy = False
         self._last_context_pct: float = 0.0
@@ -586,7 +704,8 @@ class KamaTuiApp(App[None]):
         self._slash_items: list[tuple[str, str]] = []
         self._subagent_run_ids: dict[str, str] = {}  # child run_id -> description
         self._subagent_start_times: dict[str, float] = {}  # child run_id -> start time
-        self._mode: str = "auto"  # 默认自动执行；Tab 在三种可见模式间循环
+        self._run_block: RunBlock | None = None  # 当前活动 run 的输出块
+        self._mode: str = "plan" if read_only else "auto"  # 只读模式锁定 plan
 
     def compose(self) -> ComposeResult:
         yield Label("[bold #76D6C1]SZTUCODE[/bold #76D6C1]  [dim]connecting...[/dim]", id="header")
@@ -596,13 +715,37 @@ class KamaTuiApp(App[None]):
     def on_mount(self) -> None:
         self._slash_items = self._build_slash_items()
         self._append(Static(self._BANNER, id="banner"))
-        self.run_worker(self._socket_loop(), exclusive=True, name="socket")
         prompt = self.query_one("#prompt", ChatTextArea)
         prompt.disabled = True
         prompt.border_title = "connecting..."
+        if self._needs_trust_check():
+            self.push_screen(TrustScreen(self._project_path), self._on_trust_result)
+        else:
+            self._start_socket_loop()
+
+    # 是否需要在启动前做文件夹信任确认
+    def _needs_trust_check(self) -> bool:
+        return not self._read_only and not self._force_trust and not is_trusted(self._project_path)
+
+    # 启动 socket 连接循环（信任确认后或无需确认时调用）
+    def _start_socket_loop(self) -> None:
+        self.run_worker(self._socket_loop(), exclusive=True, name="socket")
+
+    # 信任确认结果回调：信任则记录，只读则切换模式，拒绝则退出
+    def _on_trust_result(self, decision: str | None) -> None:
+        if decision == "abort" or decision is None:
+            self.exit()
+            return
+        if decision == "trust":
+            add_trusted(self._project_path)
+        elif decision == "read_only":
+            self._read_only = True
+        self._start_socket_loop()
 
     # 返回当前模式的富文本标签，用于 header 栏显示
     def _mode_label(self) -> str:
+        if self._read_only:
+            return "[bold #111315 on #F2BB6C] READONLY [/bold #111315 on #F2BB6C]"
         colors = {"auto": "#76D6C1", "accept_edits": "#84B8FF", "plan": "#F2BB6C"}
         labels = {"auto": "AUTO", "accept_edits": "EDITS", "plan": "PLAN"}
         color = colors.get(self._mode, "#76D6C1")
@@ -718,6 +861,9 @@ class KamaTuiApp(App[None]):
 
     # 向 daemon 发送模式切换命令并更新本地状态
     async def _set_mode(self, mode: str) -> None:
+        if self._read_only and mode != "plan":
+            log.debug("mode switch blocked in read-only target=%s", mode)
+            return
         if self._client is None:
             log.debug("mode switch ignored while disconnected target=%s", mode)
             return
@@ -840,7 +986,10 @@ class KamaTuiApp(App[None]):
         if self._client is None:
             return
         try:
-            created = await self._client.send_command("session.create", {"mode": "chat"})
+            create_params: dict[str, Any] = {"mode": "chat"}
+            if self._workspace is not None:
+                create_params["workspace_id"] = self._workspace["workspace_id"]
+            created = await self._client.send_command("session.create", create_params)
             self._session_id = str(created["session_id"])
             self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
             self._append(Static("[bold cyan]new task started[/bold cyan]", classes="log-line"))
@@ -1001,10 +1150,13 @@ class KamaTuiApp(App[None]):
         except Exception:
             log.exception("on_permission_select_decided failed tool_use_id=%s", tool_use_id)
 
-    # 向日志视图追加一个 widget 并滚动到底部
+    # 向日志视图追加 widget：有活动 run 块时装入块内，否则直接追加到日志流
     def _append(self, widget: Widget) -> None:
         log_view = self.query_one("#log-view", VerticalScroll)
-        log_view.mount(widget)
+        if self._run_block is not None:
+            self._run_block.mount(widget)
+        else:
+            log_view.mount(widget)
         log_view.scroll_end(animate=False)
 
     # 结束当前 LLM 流式块（下一个 token 将开启新块）
@@ -1122,14 +1274,20 @@ class KamaTuiApp(App[None]):
                 if self._replay_run_id is not None:
                     params["replay_from_run"] = self._replay_run_id
                 await client.send_command("event.subscribe", params)
+                # 先打开工作区，再用其 workspace_id 创建 session，使 agent 的读写绑定到当前项目
+                if self._workspace is None:
+                    await self._open_workspace(self._project_path)
                 if self._session_id is not None:
                     await client.send_command("session.resume", {"session_id": self._session_id})
                 else:
-                    created = await client.send_command("session.create", {"mode": "chat"})
+                    create_params: dict[str, Any] = {"mode": "chat"}
+                    if self._workspace is not None:
+                        create_params["workspace_id"] = self._workspace["workspace_id"]
+                    created = await client.send_command("session.create", create_params)
                     self._session_id = str(created["session_id"])
                 self._session_tokens = {"in": 0, "out": 0, "cache_read": 0, "cache_write": 0}
                 log.info("session created session_id=%s", self._session_id)
-                await self._set_mode("auto")
+                await self._set_mode("plan" if self._read_only else "auto")
                 await self._refresh_model_status()
                 prompt = self._prompt()
                 if prompt is not None:
@@ -1211,10 +1369,9 @@ class KamaTuiApp(App[None]):
         elif t == "run.started":
             run_id = event.get("run_id", "")
             goal = event.get("goal", "")
-            self._append(Static(
-                f"[dim]run[/dim]  [cyan]{run_id}[/cyan]  [dim]{_preview(goal, 96)}[/dim]",
-                classes="run-header",
-            ))
+            block = RunBlock(run_id, goal)
+            self._append(block)
+            self._run_block = block
 
         elif t == "skill.invoked":
             skill_name = event.get("skill_name", "")
@@ -1296,17 +1453,19 @@ class KamaTuiApp(App[None]):
             status = event.get("status", "")
             steps = event.get("steps", 0)
             reason = event.get("reason") or ""
-            if status == "success":
-                self._append(Static(
-                    f"[bold green]✓ completed[/bold green]  [dim]{steps} steps[/dim]",
-                    classes="run-ok",
-                ))
-            else:
-                detail = f"  [dim]{reason}[/dim]" if reason else ""
-                self._append(Static(
-                    f"[bold red]✗ failed[/bold red]{detail}  [dim]{steps} steps[/dim]",
-                    classes="run-err",
-                ))
+            if self._run_block is not None:
+                if status == "success":
+                    self._run_block.mount(Static(
+                        f"[bold green]✓ completed[/bold green]  [dim]{steps} steps[/dim]",
+                        classes="run-ok",
+                    ))
+                else:
+                    detail = f"  [dim]{reason}[/dim]" if reason else ""
+                    self._run_block.mount(Static(
+                        f"[bold red]✗ failed[/bold red]{detail}  [dim]{steps} steps[/dim]",
+                        classes="run-err",
+                    ))
+            self._run_block = None
 
         elif t == "llm.usage":
             run_id = event.get("run_id", "")

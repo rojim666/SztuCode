@@ -19,12 +19,15 @@ import sztu_code
 from sztu_code.core.bus.commands import (
     AgentRunCommand,
     AgentRunResult,
+    CcswitchProviderSummary,
     ChangeDiffCommand,
     ChangeDiffResult,
     ChangeListCommand,
     ChangeListResult,
     ChangeRevertCommand,
     ChangeRevertResult,
+    ChangeStageCommand,
+    ChangeStageResult,
     ChangeSummary,
     EventSubscribeCommand,
     EventSubscribeResult,
@@ -37,6 +40,10 @@ from sztu_code.core.bus.commands import (
     PermissionSetModeCommand,
     PermissionSetModeResult,
     PongResult,
+    ProviderCcswitchApplyCommand,
+    ProviderCcswitchApplyResult,
+    ProviderCcswitchListCommand,
+    ProviderCcswitchListResult,
     ProviderStatusCommand,
     ProviderStatusResult,
     RunCancelCommand,
@@ -75,6 +82,8 @@ from sztu_code.core.bus.commands import (
     SettingsUpdateResult,
     WorkspaceArchiveCommand,
     WorkspaceArchiveResult,
+    WorkspaceDeleteCommand,
+    WorkspaceDeleteResult,
     WorkspaceListCommand,
     WorkspaceListResult,
     WorkspaceOpenCommand,
@@ -96,6 +105,7 @@ from sztu_code.core.changes import (
 from sztu_code.core.config import SztuConfig, get_config, save_client_settings
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm import create_provider
+from sztu_code.core.llm.ccswitch import get_ccswitch_provider, list_ccswitch_providers
 from sztu_code.core.logging_setup import setup_logging
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.permissions.manager import PermissionManager
@@ -319,6 +329,22 @@ class CoreApp:
             raise HandlerError(-32602, str(error)) from error
         return WorkspaceResumeResult(workspace=self._workspace_summary(workspace))
 
+    # 删除项目：校验 confirm 后删除绑定会话并从项目列表移除（保留磁盘文件）
+        assert self._workspaces is not None
+        cmd = WorkspaceDeleteCommand.model_validate(params)
+        if cmd.confirm != "delete":
+            raise HandlerError(-32602, "workspace.delete requires confirm='delete'")
+        if self._sessions is not None:
+            sessions, _ = await self._sessions.list_sessions(include_archived=True)
+            for session in sessions:
+                if session.workspace_id == cmd.workspace_id:
+                    await self._sessions.delete(session.id)
+        try:
+            self._workspaces.delete(cmd.workspace_id)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspaceDeleteResult(workspace_id=cmd.workspace_id)
+
     # 返回工作区 Git 分支与未提交修改摘要
     async def _workspace_status_handler(self, params: dict[str, Any]) -> WorkspaceStatusResult:
         assert self._workspaces is not None
@@ -426,6 +452,16 @@ class CoreApp:
             raise HandlerError(-32602, str(error)) from error
         return ChangeRevertResult(reverted_paths=reverted, blocked_paths=blocked)
 
+    # 将指定文件加入 git 暂存区（审核"接受"）
+    async def _change_stage_handler(self, params: dict[str, Any]) -> ChangeStageResult:
+        assert self._workspaces is not None
+        cmd = ChangeStageCommand.model_validate(params)
+        try:
+            staged = self._workspaces.stage(cmd.workspace_id, cmd.paths)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return ChangeStageResult(staged_paths=staged)
+
     def _agent_change_summaries(
         self, workspace_id: str, run_id: str | None
     ) -> list[ChangeSummary]:
@@ -438,6 +474,13 @@ class CoreApp:
         if manifest is None or manifest.get("workspace_path") != workspace_path:
             return []
         changes = active_manifest_changes(manifest, Path(workspace.path))
+        valid = [
+            change
+            for change in changes
+            if isinstance(change, dict) and isinstance(change.get("path"), str)
+        ]
+        paths = [str(change["path"]) for change in valid]
+        numstat = self._workspaces.diff_numstat(workspace_id, paths) if paths else {}
         return [
             ChangeSummary(
                 path=str(change.get("path", "")),
@@ -446,9 +489,10 @@ class CoreApp:
                 run_id=run_id,
                 agent_owned=True,
                 revertible=bool(change.get("revertible", False)),
+                additions=numstat.get(str(change.get("path", "")), (0, 0))[0],
+                deletions=numstat.get(str(change.get("path", "")), (0, 0))[1],
             )
-            for change in changes
-            if isinstance(change, dict) and isinstance(change.get("path"), str)
+            for change in valid
         ]
 
     @staticmethod
@@ -557,6 +601,7 @@ class CoreApp:
             model=self._config.llm.default_model,
             router=self._config.llm.router,
             permission_mode=self._permission_manager.get_mode().value,
+            base_url=self._config.llm.base_url,
         )
 
     async def _settings_get_handler(self, params: dict[str, Any]) -> SettingsGetResult:
@@ -631,6 +676,45 @@ class CoreApp:
             ),
             mcp_servers=mcp_servers,
             skills=skills,
+        )
+
+    # 返回本机 cc-switch 中可导入的 Anthropic 兼容供应商（掩码凭证）
+    async def _provider_ccswitch_list_handler(
+        self, params: dict[str, Any]
+    ) -> ProviderCcswitchListResult:
+        ProviderCcswitchListCommand.model_validate(params)
+        return ProviderCcswitchListResult(
+            providers=[
+                CcswitchProviderSummary(
+                    id=item.id,
+                    name=item.name,
+                    base_url=item.base_url,
+                    model=item.model,
+                    has_api_key=bool(item.api_key),
+                    is_current=item.is_current,
+                )
+                for item in list_ccswitch_providers()
+            ]
+        )
+
+    # 将选中的 cc-switch 供应商应用到当前配置并重建 provider
+    async def _provider_ccswitch_apply_handler(
+        self, params: dict[str, Any]
+    ) -> ProviderCcswitchApplyResult:
+        assert self._config is not None
+        cmd = ProviderCcswitchApplyCommand.model_validate(params)
+        provider = get_ccswitch_provider(cmd.provider_id)
+        if provider is None:
+            raise HandlerError(-32602, f"cc-switch provider not found: {cmd.provider_id}")
+        self._config.llm.provider = "anthropic"
+        self._config.llm.default_model = provider.model
+        self._config.llm.base_url = provider.base_url
+        self._config.llm.api_key = provider.api_key
+        save_client_settings(self._config)
+        if self._sessions is not None:
+            self._sessions.set_provider(create_provider(self._config))
+        return ProviderCcswitchApplyResult(
+            settings=self._settings_snapshot(), updated=["provider", "model", "base_url"]
         )
 
     async def _session_compact_handler(self, params: dict[str, Any]) -> SessionCompactResult:
@@ -792,6 +876,7 @@ class CoreApp:
         server.register("workspace.list", self._workspace_list_handler)
         server.register("workspace.archive", self._workspace_archive_handler)
         server.register("workspace.resume", self._workspace_resume_handler)
+        server.register("workspace.delete", self._workspace_delete_handler)
         server.register("workspace.status", self._workspace_status_handler)
         server.register("workspace.tree", self._workspace_tree_handler)
         server.register("file.read", self._file_read_handler)
@@ -799,6 +884,7 @@ class CoreApp:
         server.register("change.list", self._change_list_handler)
         server.register("change.diff", self._change_diff_handler)
         server.register("change.revert", self._change_revert_handler)
+        server.register("change.stage", self._change_stage_handler)
         server.register("event.subscribe", self._subscribe_handler)
         server.register("session.create", self._session_create_handler)
         server.register("session.list", self._session_list_handler)
@@ -815,6 +901,8 @@ class CoreApp:
         server.register("settings.get", self._settings_get_handler)
         server.register("settings.update", self._settings_update_handler)
         server.register("provider.status", self._provider_status_handler)
+        server.register("provider.ccswitch_list", self._provider_ccswitch_list_handler)
+        server.register("provider.ccswitch_apply", self._provider_ccswitch_apply_handler)
         server.register("session.compact", self._session_compact_handler)
 
         addr = await server.start()
@@ -849,3 +937,8 @@ class CoreApp:
 # 同步入口：启动 CoreApp 事件循环
 def run() -> None:
     asyncio.run(CoreApp().run())
+
+
+# 支持 python -m sztu_code.core.app 直接拉起 daemon（sztucode 自动启动用）
+if __name__ == "__main__":
+    run()

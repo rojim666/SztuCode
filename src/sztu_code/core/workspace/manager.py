@@ -60,12 +60,13 @@ class WorkspaceManager:
         self._save_recent()
         return workspace
 
-    # 返回最近工作区，最近打开的目录排在最前面
+    # 返回最近工作区，最近打开的目录排在最前面；目录已不存在的悬挂条目自动过滤
     def list_recent(self, *, include_archived: bool = True) -> list[Workspace]:
         return [
             workspace
             for workspace in self._workspaces.values()
-            if include_archived or not workspace.archived
+            if (include_archived or not workspace.archived)
+            and Path(workspace.path).is_dir()
         ]
 
     def archive(self, workspace_id: str) -> Workspace:
@@ -82,6 +83,12 @@ class WorkspaceManager:
         self._workspaces[workspace_id] = updated
         self._save_recent()
         return updated
+
+    # 从项目列表删除工作区（保留磁盘文件），仅移除登记记录
+    def delete(self, workspace_id: str) -> None:
+        self.get(workspace_id)  # 不存在时抛错
+        del self._workspaces[workspace_id]
+        self._save_recent()
 
     # 返回工作区的 Git 分支和未提交文件摘要
     def status(self, workspace_id: str) -> dict[str, object]:
@@ -257,6 +264,47 @@ class WorkspaceManager:
                     success_codes=(0, 1),
                 )
         return diff
+
+    # 将指定文件加入 git 暂存区（审核"接受" = 暂存待提交）
+    def stage(self, workspace_id: str, paths: list[str]) -> list[str]:
+        workspace = self.get(workspace_id)
+        root = Path(workspace.path)
+        git_paths: list[str] = []
+        for relative_path in paths:
+            self._resolve_in_workspace(workspace_id, relative_path)
+            git_paths.append(relative_path.replace("\\", "/"))
+        self._git(root, ["add", "--", *git_paths])
+        return paths
+
+    # 统计指定文件的新增/删除行数；未跟踪/二进制文件把行数计为新增，删除文件取 git numstat
+    def diff_numstat(self, workspace_id: str, paths: list[str]) -> dict[str, tuple[int, int]]:
+        workspace = self.get(workspace_id)
+        root = Path(workspace.path)
+        stats: dict[str, tuple[int, int]] = {}
+        for relative_path in paths:
+            self._resolve_in_workspace(workspace_id, relative_path)
+            git_path = relative_path.replace("\\", "/")
+            raw = self._git(root, ["diff", "--numstat", "--", git_path]).strip()
+            if raw:
+                parts = raw.split()
+                if len(parts) >= 2 and parts[0] != "-" and parts[1] != "-":
+                    try:
+                        stats[relative_path] = (int(parts[0]), int(parts[1]))
+                        continue
+                    except ValueError:
+                        pass
+            file_path = root / relative_path
+            if file_path.is_file():
+                try:
+                    line_count = len(
+                        file_path.read_text(encoding="utf-8", errors="replace").splitlines()
+                    )
+                except OSError:
+                    line_count = 0
+                stats[relative_path] = (line_count, 0)
+            else:
+                stats[relative_path] = (0, 0)
+        return stats
 
     # 根据稳定 workspace_id 取回已登记的工作区，不存在时拒绝请求
     def get(self, workspace_id: str) -> Workspace:

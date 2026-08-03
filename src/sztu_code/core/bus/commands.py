@@ -100,6 +100,16 @@ class WorkspaceResumeResult(BaseModel):
     workspace: WorkspaceSummary
 
 
+class WorkspaceDeleteCommand(BaseModel):
+    type: Literal["workspace.delete"] = "workspace.delete"
+    workspace_id: str
+    confirm: Literal["delete"]  # 必须显式传 delete，防止误删
+
+class WorkspaceDeleteResult(BaseModel):
+    workspace_id: str
+    deleted: bool = True
+
+
 class WorkspaceStatusCommand(BaseModel):
     type: Literal["workspace.status"] = "workspace.status"
     workspace_id: str
@@ -157,6 +167,8 @@ class ChangeSummary(BaseModel):
     run_id: str | None = None
     agent_owned: bool = False
     revertible: bool = False
+    additions: int = 0  # 该文件新增行数
+    deletions: int = 0  # 该文件删除行数
 
 
 class ChangeListCommand(BaseModel):
@@ -186,6 +198,16 @@ class ChangeRevertCommand(BaseModel):
 class ChangeRevertResult(BaseModel):
     reverted_paths: list[str]
     blocked_paths: dict[str, str]
+
+
+class ChangeStageCommand(BaseModel):
+    type: Literal["change.stage"] = "change.stage"
+    workspace_id: str
+    paths: list[str] = Field(min_length=1, max_length=200)
+
+
+class ChangeStageResult(BaseModel):
+    staged_paths: list[str]
 
 
 class ChangeDiffResult(BaseModel):
@@ -343,6 +365,7 @@ class SettingsSnapshot(BaseModel):
     model: str
     router: str
     permission_mode: Literal["normal", "accept_edits", "plan", "auto"]
+    base_url: str = ""  # 自定义端点（不含凭证），供客户端展示当前生效地址
     applies_at: Literal["next_run"] = "next_run"
     persistent: bool = True
 
@@ -381,6 +404,33 @@ class ProviderStatusResult(BaseModel):
     skills: list[dict[str, str]]
 
 
+class CcswitchProviderSummary(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    model: str
+    has_api_key: bool
+    is_current: bool
+
+
+class ProviderCcswitchListCommand(BaseModel):
+    type: Literal["provider.ccswitch_list"] = "provider.ccswitch_list"
+
+
+class ProviderCcswitchListResult(BaseModel):
+    providers: list[CcswitchProviderSummary]
+
+
+class ProviderCcswitchApplyCommand(BaseModel):
+    type: Literal["provider.ccswitch_apply"] = "provider.ccswitch_apply"
+    provider_id: str = Field(min_length=1, max_length=200)
+
+
+class ProviderCcswitchApplyResult(BaseModel):
+    settings: SettingsSnapshot
+    updated: list[Literal["provider", "model", "base_url"]]
+
+
 class SessionCompactCommand(BaseModel):
     type: Literal["session.compact"] = "session.compact"
     session_id: str
@@ -403,6 +453,7 @@ Command = Annotated[
     | WorkspaceListCommand
     | WorkspaceArchiveCommand
     | WorkspaceResumeCommand
+    | WorkspaceDeleteCommand
     | WorkspaceStatusCommand
     | WorkspaceTreeCommand
     | FileReadCommand
@@ -410,6 +461,7 @@ Command = Annotated[
     | ChangeListCommand
     | ChangeDiffCommand
     | ChangeRevertCommand
+    | ChangeStageCommand
     | EventSubscribeCommand
     | SessionCreateCommand
     | SessionListCommand
@@ -426,6 +478,8 @@ Command = Annotated[
     | SettingsGetCommand
     | SettingsUpdateCommand
     | ProviderStatusCommand
+    | ProviderCcswitchListCommand
+    | ProviderCcswitchApplyCommand
     | SessionCompactCommand,
     Discriminator("type"),
 ]

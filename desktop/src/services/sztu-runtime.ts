@@ -12,12 +12,13 @@ export type FileReadResult = {
 export type ChangeSummary = {
   path: string; index_status: string; worktree_status: string;
   run_id?: string | null; agent_owned?: boolean; revertible?: boolean;
+  additions?: number; deletions?: number;
 };
 export type Session = {
   session_id: string; title: string; status: string; updated_at: string;
   archived: boolean; pinned: boolean; workspace_id: string | null; latest_run_id?: string | null;
 };
-export type RuntimeSettings = { provider: "anthropic" | "openai"; model: string; permission_mode: "normal" | "accept_edits" | "plan" | "auto" };
+export type RuntimeSettings = { provider: "anthropic" | "openai"; model: string; permission_mode: "normal" | "accept_edits" | "plan" | "auto"; base_url?: string };
 export type ProviderStatus = { api_key_configured: boolean; ready_for_next_run: boolean; skills: Array<{ name: string; description: string }>; mcp_servers: Array<{ name: string; status: string; tool_count?: number }> };
 
 const client = new IpcClient();
@@ -89,6 +90,10 @@ export async function archiveWorkspace(workspaceId: string): Promise<Workspace> 
 export async function resumeWorkspace(workspaceId: string): Promise<Workspace> {
   const result = await client.request("workspace.resume", { workspace_id: workspaceId });
   return result.workspace as Workspace;
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  await client.request("workspace.delete", { workspace_id: workspaceId, confirm: "delete" });
 }
 
 export async function createSession(workspace: Workspace | null): Promise<string> {
@@ -184,6 +189,11 @@ export async function revertChanges(workspaceId: string, runId: string, paths: s
   return await client.request("change.revert", { workspace_id: workspaceId, run_id: runId, paths, confirm: "revert" }) as { reverted_paths: string[]; blocked_paths: Record<string, string> };
 }
 
+export async function stageChanges(workspaceId: string, paths: string[]): Promise<string[]> {
+  const result = await client.request("change.stage", { workspace_id: workspaceId, paths });
+  return (result.staged_paths as string[] | undefined) ?? [];
+}
+
 export async function getRuntimeSettings(): Promise<RuntimeSettings | null> {
   const result = await client.request("settings.get");
   return (result.settings as RuntimeSettings | undefined) ?? null;
@@ -197,6 +207,21 @@ export async function setRuntimeSettings(update: Partial<RuntimeSettings>): Prom
 export async function getProviderStatus(): Promise<ProviderStatus | null> {
   const result = await client.request("provider.status");
   return result as unknown as ProviderStatus;
+}
+
+export type CcswitchProvider = {
+  id: string; name: string; base_url: string; model: string;
+  has_api_key: boolean; is_current: boolean;
+};
+
+export async function listCcswitchProviders(): Promise<CcswitchProvider[]> {
+  const result = await client.request("provider.ccswitch_list");
+  return (result.providers as CcswitchProvider[] | undefined) ?? [];
+}
+
+export async function applyCcswitchProvider(providerId: string): Promise<RuntimeSettings | null> {
+  const result = await client.request("provider.ccswitch_apply", { provider_id: providerId });
+  return (result.settings as RuntimeSettings | undefined) ?? null;
 }
 
 export async function respondPermission(toolUseId: string, decision: "allow_once" | "always_allow" | "deny_once" | "always_deny"): Promise<void> {
