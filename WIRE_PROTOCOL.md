@@ -264,6 +264,16 @@ All commands are sent as JSON-RPC 2.0 requests. The `type` field inside `params`
           "default": false,
           "title": "Revertible",
           "type": "boolean"
+        },
+        "additions": {
+          "default": 0,
+          "title": "Additions",
+          "type": "integer"
+        },
+        "deletions": {
+          "default": 0,
+          "title": "Deletions",
+          "type": "integer"
         }
       },
       "required": [

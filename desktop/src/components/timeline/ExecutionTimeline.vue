@@ -2,17 +2,24 @@
 import { computed } from "vue";
 import { BrainCircuit, ChevronDown, Sparkles } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
+import ChangeReviewCard from "../Diff/ChangeReviewCard.vue";
 import ThinkingPanel from "./ThinkingPanel.vue";
 import TokenStream from "./TokenStream.vue";
 import ToolCallGroup from "./ToolCallGroup.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import type { PermissionDecision, PermissionState, TimelineStep, ToolCallEntry } from "./types";
 
-const props = defineProps<{ steps: TimelineStep[] }>();
-defineEmits<{ decide: [toolUseId: string, decision: PermissionDecision] }>();
+const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string }>();
+defineEmits<{
+  decide: [toolUseId: string, decision: PermissionDecision];
+  reverted: [runId: string];
+  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
+}>();
 
 type TurnView = {
   key: string | number;  // 一轮思考生命周期的全局唯一 ID（优先 runId）
+  runId?: string;
+  changePaths: string[];
   userMessage?: string;
   steps: TimelineStep[];
   hasContent: boolean;
@@ -82,8 +89,14 @@ const turns = computed<TurnView[]>(() => {
     const thinking = Boolean(
       last && last.status === "thinking" && !last.tokens.length && !last.finalText,
     );
+    const runId = steps.find((step) => step.runId)?.runId;
+    const changePaths = [
+      ...new Set(aggregatedStep.changes?.flatMap((entry) => entry.paths) ?? []),
+    ];
     return {
-      key: steps.find((step) => step.runId)?.runId ?? `turn-${index}`,
+      key: runId ?? `turn-${index}`,
+      runId,
+      changePaths,
       userMessage: group.userMessage,
       steps,
       hasActivity,
@@ -116,6 +129,14 @@ const turns = computed<TurnView[]>(() => {
             </div>
           </details>
           <TokenStream :tokens="[]" :final-text="turn.text" />
+          <ChangeReviewCard
+            v-if="workspaceId && turn.runId && turn.changePaths.length"
+            :workspace-id="workspaceId"
+            :run-id="turn.runId"
+            :paths="turn.changePaths"
+            @reverted="$emit('reverted', $event)"
+            @review="$emit('review', $event)"
+          />
           <div v-if="turn.thinking" class="thinking-loading" aria-live="polite"><span class="typing-dots"><i /><i /><i /></span><span>思考中…</span></div>
         </div>
       </div>

@@ -168,6 +168,8 @@ class ChangeSummary(BaseModel):
     run_id: str | None = None
     agent_owned: bool = False
     revertible: bool = False
+    additions: int = 0  # 该文件新增行数
+    deletions: int = 0  # 该文件删除行数
 
 
 class ChangeListCommand(BaseModel):
@@ -197,6 +199,16 @@ class ChangeRevertCommand(BaseModel):
 class ChangeRevertResult(BaseModel):
     reverted_paths: list[str]
     blocked_paths: dict[str, str]
+
+
+class ChangeStageCommand(BaseModel):
+    type: Literal["change.stage"] = "change.stage"
+    workspace_id: str
+    paths: list[str] = Field(min_length=1, max_length=200)
+
+
+class ChangeStageResult(BaseModel):
+    staged_paths: list[str]
 
 
 class ChangeDiffResult(BaseModel):
@@ -450,6 +462,7 @@ Command = Annotated[
     | ChangeListCommand
     | ChangeDiffCommand
     | ChangeRevertCommand
+    | ChangeStageCommand
     | EventSubscribeCommand
     | SessionCreateCommand
     | SessionListCommand

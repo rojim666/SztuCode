@@ -12,6 +12,7 @@ export type FileReadResult = {
 export type ChangeSummary = {
   path: string; index_status: string; worktree_status: string;
   run_id?: string | null; agent_owned?: boolean; revertible?: boolean;
+  additions?: number; deletions?: number;
 };
 export type Session = {
   session_id: string; title: string; status: string; updated_at: string;
@@ -186,6 +187,11 @@ export async function changeDiff(workspaceId: string, path?: string): Promise<st
 
 export async function revertChanges(workspaceId: string, runId: string, paths: string[]): Promise<{ reverted_paths: string[]; blocked_paths: Record<string, string> }> {
   return await client.request("change.revert", { workspace_id: workspaceId, run_id: runId, paths, confirm: "revert" }) as { reverted_paths: string[]; blocked_paths: Record<string, string> };
+}
+
+export async function stageChanges(workspaceId: string, paths: string[]): Promise<string[]> {
+  const result = await client.request("change.stage", { workspace_id: workspaceId, paths });
+  return (result.staged_paths as string[] | undefined) ?? [];
 }
 
 export async function getRuntimeSettings(): Promise<RuntimeSettings | null> {

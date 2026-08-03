@@ -11,6 +11,7 @@ import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import WorkContextPanel from "./components/Inspector/WorkContextPanel.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
+import DiffReview from "./components/Diff/DiffReview.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
@@ -20,7 +21,8 @@ import {
   type CcswitchProvider, type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
 
-type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings";
+type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "settings" | "diff";
+type ReviewContext = { workspaceId: string; runId: string; paths: string[] };
 type RuntimeEvent = Record<string, unknown>;
 const page = ref<Page>("work");
 const chatView = ref<ChatView>("home");
@@ -39,6 +41,7 @@ const projectMenuOpen = ref(false);
 const projectActionsOpen = ref<string | null>(null);
 const collapsedProjects = ref(new Set<string>());
 const inspectorOpen = ref(true);
+const inspectorWidth = ref(Math.min(720, Math.max(280, Number(localStorage.getItem("sztu.inspectorWidth")) || 355)));
 const attachedFiles = ref<string[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
@@ -49,6 +52,7 @@ const nativeSettingsAvailable = ref(false);
 const nativeSettingsError = ref("");
 const webBridgeAllowed = ref(false);
 const currentStepByRun = new Map<string, number>();
+const reviewCtx = ref<ReviewContext | null>(null);
 const ccswitchOpen = ref(false);
 const ccswitchLoading = ref(false);
 const ccswitchApplying = ref<string | null>(null);
@@ -64,6 +68,32 @@ const archivedSessions = computed(() => sessions.value.filter((item) => item.arc
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const projects = computed(() => activeWorkspaces.value.map((item) => ({ ...item, tasks: liveSessions.value.filter((task) => task.workspace_id === item.workspace_id).slice(0, 5) })));
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
+// 工作区布局：右侧文件面板宽度走可拖拽的 CSS 变量，收起时退化为单列
+const workLayoutStyle = computed(() => {
+  if (!inspectorOpen.value || !activeWorkspace.value) return { gridTemplateColumns: "minmax(0, 1fr)" };
+  return { gridTemplateColumns: `minmax(0, 1fr) 6px ${inspectorWidth.value}px` };
+});
+// 拖拽分割线调整左右面板宽度比，并限制最小/最大宽度
+function startDividerDrag(event: MouseEvent) {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = inspectorWidth.value;
+  const container = (event.currentTarget as HTMLElement).parentElement;
+  const maxWidth = Math.max(280, (container?.clientWidth ?? 1200) - 320); // 左侧对话区至少保留 320
+  const minWidth = 280;
+  function onMove(ev: MouseEvent) {
+    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, startWidth + (startX - ev.clientX)));
+  }
+  function onUp() {
+    localStorage.setItem("sztu.inspectorWidth", String(inspectorWidth.value));
+    document.body.style.cursor = "";
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  }
+  document.body.style.cursor = "col-resize";
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
 const skillSuggestions = computed(() => {
   const match = prompt.value.match(/^\/([^\s]*)$/);
   if (!match) return [];
@@ -383,6 +413,25 @@ function onComposerKeydown(event: KeyboardEvent) {
   void submit();
 }
 async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
+// 撤销后清除该 run 的全部改动，使变更卡片随之消失
+function handleReverted(runId: string) {
+  const next = new Map(timeline.value);
+  for (const [step, item] of next) {
+    if (item.runId === runId) next.set(step, { ...item, changes: [] });
+  }
+  timeline.value = next;
+  void refreshIndex(false);
+}
+// 进入代码变更审核页
+function handleReview(ctx: ReviewContext) {
+  reviewCtx.value = ctx;
+  page.value = "diff";
+}
+function closeReview() {
+  reviewCtx.value = null;
+  page.value = "work";
+  void refreshIndex(false);
+}
 async function openLocalProject() {
   const selected = await openDialog({ directory: true, multiple: false, title: "打开本地项目" });
   if (typeof selected !== "string") return;
@@ -604,12 +653,12 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
               <button title="项目文件" :class="{ active: inspectorOpen }" @click="inspectorOpen = !inspectorOpen"><Folder :size="18" /></button>
             </div>
           </header>
-          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }">
+          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div class="task-conversation">
                 <div class="task-stream">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="agent-orb"><Bot :size="20" /></span><p>任务已经创建。告诉 SztuCode 你希望完成什么，它会在这里展示计划、工具调用与最终结果。</p></div>
-                  <ExecutionTimeline :steps="orderedTimeline" @decide="decidePermission" />
+                  <ExecutionTimeline :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" />
                 </div>
                 <form class="kimi-composer" @submit.prevent="submit">
                   <div v-if="skillSuggestions.length" class="skill-completions"><button v-for="skill in skillSuggestions" :key="skill.name" type="button" @click="chooseSkill(skill.name)"><b>/{{ skill.name }}</b><span>{{ skill.description }}</span></button></div>
@@ -620,7 +669,10 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
               </div>
               <WorkContextPanel :steps="orderedTimeline" :attachments="attachedFiles" :workspace-name="activeWorkspace?.name" :workspace-path="activeWorkspace?.path" />
             </section>
-            <ProjectInspector v-if="inspectorOpen && activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :run-id="active.latest_run_id" />
+            <template v-if="inspectorOpen && activeWorkspace">
+              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
+              <ProjectInspector :workspace-id="activeWorkspace.workspace_id" :run-id="active.latest_run_id" />
+            </template>
           </div>
         </section>
         <section v-else class="landing-page">
@@ -635,6 +687,8 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
       </template>
 
       <section v-else-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
+
+      <section v-else-if="page === 'diff'" class="diff-page"><DiffReview v-if="reviewCtx" :workspace-id="reviewCtx.workspaceId" :run-id="reviewCtx.runId" :paths="reviewCtx.paths" @close="closeReview" @changed="refreshIndex(false)" /></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>会话</h1><p>管理本地任务、归档与已关闭会话</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>

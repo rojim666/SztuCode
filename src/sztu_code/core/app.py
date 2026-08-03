@@ -26,6 +26,8 @@ from sztu_code.core.bus.commands import (
     ChangeListResult,
     ChangeRevertCommand,
     ChangeRevertResult,
+    ChangeStageCommand,
+    ChangeStageResult,
     ChangeSummary,
     EventSubscribeCommand,
     EventSubscribeResult,
@@ -451,6 +453,16 @@ class CoreApp:
             raise HandlerError(-32602, str(error)) from error
         return ChangeRevertResult(reverted_paths=reverted, blocked_paths=blocked)
 
+    # 将指定文件加入 git 暂存区（审核"接受"）
+    async def _change_stage_handler(self, params: dict[str, Any]) -> ChangeStageResult:
+        assert self._workspaces is not None
+        cmd = ChangeStageCommand.model_validate(params)
+        try:
+            staged = self._workspaces.stage(cmd.workspace_id, cmd.paths)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return ChangeStageResult(staged_paths=staged)
+
     def _agent_change_summaries(
         self, workspace_id: str, run_id: str | None
     ) -> list[ChangeSummary]:
@@ -463,6 +475,13 @@ class CoreApp:
         if manifest is None or manifest.get("workspace_path") != workspace_path:
             return []
         changes = active_manifest_changes(manifest, Path(workspace.path))
+        valid = [
+            change
+            for change in changes
+            if isinstance(change, dict) and isinstance(change.get("path"), str)
+        ]
+        paths = [str(change["path"]) for change in valid]
+        numstat = self._workspaces.diff_numstat(workspace_id, paths) if paths else {}
         return [
             ChangeSummary(
                 path=str(change.get("path", "")),
@@ -471,9 +490,10 @@ class CoreApp:
                 run_id=run_id,
                 agent_owned=True,
                 revertible=bool(change.get("revertible", False)),
+                additions=numstat.get(str(change.get("path", "")), (0, 0))[0],
+                deletions=numstat.get(str(change.get("path", "")), (0, 0))[1],
             )
-            for change in changes
-            if isinstance(change, dict) and isinstance(change.get("path"), str)
+            for change in valid
         ]
 
     @staticmethod
@@ -865,6 +885,7 @@ class CoreApp:
         server.register("change.list", self._change_list_handler)
         server.register("change.diff", self._change_diff_handler)
         server.register("change.revert", self._change_revert_handler)
+        server.register("change.stage", self._change_stage_handler)
         server.register("event.subscribe", self._subscribe_handler)
         server.register("session.create", self._session_create_handler)
         server.register("session.list", self._session_list_handler)

@@ -220,3 +220,18 @@ def test_workspace_delete_missing_raises(tmp_path: Path) -> None:
         manager.delete("ws-nonexistent")
 
     assert manager.list_recent() == []
+
+
+# \u529f\u80fd\uff1a\u9a8c\u8bc1\u76ee\u5f55\u5df2\u4e0d\u5b58\u5728\u7684\u5de5\u4f5c\u533a\u88ab\u81ea\u52a8\u8fc7\u6ee4\uff0c\u4e0d\u663e\u793a\u60ac\u6302\u9879\u76ee\u6761\u76ee
+# \u8bbe\u8ba1\uff1a\u6253\u5f00\u4e34\u65f6\u76ee\u5f55\u540e\u5220\u9664\u76ee\u5f55\uff0c\u65ad\u8a00 list_recent \u4e0d\u518d\u8fd4\u56de\u8be5\u5de5\u4f5c\u533a\uff0c\u9632\u6b62\u6765\u8def\u4e0d\u660e\u7684\u65e0\u6548\u9879\u76ee
+def test_list_recent_filters_missing_directory_workspaces(tmp_path: Path) -> None:
+    recent_file = tmp_path / "state" / "workspaces.json"
+    manager = WorkspaceManager(recent_file)
+    root = tmp_path / "gone"
+    root.mkdir()
+    manager.open(str(root))
+    assert len(manager.list_recent()) == 1
+
+    root.rmdir()
+
+    assert manager.list_recent() == []
