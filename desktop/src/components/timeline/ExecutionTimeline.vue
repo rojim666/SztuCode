@@ -59,12 +59,24 @@ function aggregateStep(steps: TimelineStep[]): TimelineStep {
   };
 }
 
+// 判断 step 是否包含助手侧内容（hydrate 会把用户消息与回复合并进同一 step）
+function hasAssistantContent(step: TimelineStep): boolean {
+  return Boolean(
+    step.finalText || step.tokens.length || step.thinking || step.toolCalls.length ||
+    step.plan?.length || step.tests?.length || step.changes?.length ||
+    step.logs?.length || step.subagents?.length || step.skills?.length,
+  );
+}
+
 // 将按 step 平铺的时间线按"用户消息为一轮"分组，合并同一轮内的连续 AI step
 const turns = computed<TurnView[]>(() => {
   const groups: { userMessage?: string; steps: TimelineStep[] }[] = [];
   for (const item of props.steps) {
     if (item.userMessage) {
-      groups.push({ userMessage: item.userMessage, steps: [] });
+      const group: { userMessage?: string; steps: TimelineStep[] } = { userMessage: item.userMessage, steps: [] };
+      groups.push(group);
+      // hydrate 合并场景：同一 step 里既有用户消息也有回复内容，需纳入本轮 steps 供文本/活动提取
+      if (hasAssistantContent(item)) group.steps.push(item);
     } else {
       if (!groups.length) groups.push({ steps: [] });
       groups[groups.length - 1].steps.push(item);

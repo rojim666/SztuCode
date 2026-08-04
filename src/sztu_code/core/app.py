@@ -330,6 +330,7 @@ class CoreApp:
         return WorkspaceResumeResult(workspace=self._workspace_summary(workspace))
 
     # 删除项目：校验 confirm 后删除绑定会话并从项目列表移除（保留磁盘文件）
+    async def _workspace_delete_handler(self, params: dict[str, Any]) -> WorkspaceDeleteResult:
         assert self._workspaces is not None
         cmd = WorkspaceDeleteCommand.model_validate(params)
         if cmd.confirm != "delete":

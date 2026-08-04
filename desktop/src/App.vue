@@ -13,10 +13,10 @@ import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import DiffReview from "./components/Diff/DiffReview.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
-import type { PermissionDecision, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
+import type { PermissionDecision, PermissionState, PlanItem, TimelineStep, ToolCallEntry } from "./components/timeline/types";
 import {
   applyCcswitchProvider, connectRuntime, createSession, deleteWorkspace, getNativeSettings, getProviderStatus, getRuntimeSettings, listCcswitchProviders, listSessions,
-  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, replayRun, respondPermission,
+  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, respondPermission,
   resumeWorkspace, sendPrompt, sessionHistory, setNativeSettings, setRuntimeSettings,
   type CcswitchProvider, type ProviderStatus, type RuntimeSettings, type Session, type Workspace,
 } from "./services/sztu-runtime";
@@ -52,7 +52,10 @@ const nativeSettingsAvailable = ref(false);
 const nativeSettingsError = ref("");
 const webBridgeAllowed = ref(false);
 const currentStepByRun = new Map<string, number>();
+const runStepBase = new Map<string, number>(); // 每个 run 的 step 起点偏移，避免跨 run 步号冲突
 const reviewCtx = ref<ReviewContext | null>(null);
+// 后台会话（非当前展示）正在等待审批的权限，切走后仍可审批，避免任务停滞
+const pendingPermissions = ref<Array<{ toolUseId: string; toolName: string; preview: string; runId: string }>>([]);
 const ccswitchOpen = ref(false);
 const ccswitchLoading = ref(false);
 const ccswitchApplying = ref<string | null>(null);
@@ -139,7 +142,8 @@ function stepFor(event: RuntimeEvent): number {
   const runId = String(event.run_id ?? activeRunId.value ?? "");
   const existing = currentStepByRun.get(runId);
   if (existing !== undefined) return existing;
-  const fallback = Math.max(1, ...timeline.value.keys(), 0);
+  const base = runStepBase.get(runId) ?? Math.max(0, ...timeline.value.keys());
+  const fallback = base + 1;
   currentStepByRun.set(runId, fallback);
   return fallback;
 }
@@ -200,10 +204,32 @@ function hydrateTimeline(messages: unknown[], runId?: string | null) {
     void refreshIndex();
     return;
   }
+  // 权限审批是全局的：即使切到其他会话，后台任务的权限也要能审批，避免任务停滞
+  if (type === "permission.requested") {
+    const toolUseId = String(event.tool_use_id);
+    const perm: PermissionState = { toolUseId, toolName: String(event.tool_name), preview: String(event.param_preview ?? "等待确认"), status: "pending" };
+    if (relatedRunId === activeRunId.value) {
+      const step = stepFor(timelineEvent);
+      setStep(step, (current) => ({ ...current, status: "acting", permission: perm, toolCalls: current.toolCalls.map((call) => call.id === toolUseId ? { ...call, status: "awaiting_permission" } : call) }));
+    } else if (!pendingPermissions.value.some((p) => p.toolUseId === toolUseId)) {
+      pendingPermissions.value = [...pendingPermissions.value, { toolUseId, toolName: perm.toolName, preview: perm.preview, runId: relatedRunId }];
+    }
+    return;
+  }
+  if (type === "permission.granted" || type === "permission.denied") {
+    const toolUseId = String(event.tool_use_id);
+    pendingPermissions.value = pendingPermissions.value.filter((p) => p.toolUseId !== toolUseId);
+    if (relatedRunId === activeRunId.value) {
+      for (const step of timeline.value.keys()) setStep(step, (current) => current.permission?.toolUseId === toolUseId ? { ...current, permission: { ...current.permission, status: type === "permission.granted" ? "granted" : "denied" } } : current);
+    }
+    return;
+  }
   // 运行事件没有 session_id，只消费由当前会话发送消息返回的 run_id，避免串到其他任务。
   if (!relatedRunId || relatedRunId !== activeRunId.value) return;
   if (type === "step.started") {
-    const step = Number(event.step);
+    // 每个 run 的 step 从 1 编号，这里按 run 做偏移，保证跨 run 步号不冲突
+    if (!runStepBase.has(runId)) runStepBase.set(runId, Math.max(0, ...timeline.value.keys()));
+    const step = (runStepBase.get(runId) ?? 0) + Number(event.step);
     currentStepByRun.set(runId, step);
     setStep(step, (current) => ({ ...current, status: "thinking", runId }));
     return;
@@ -233,17 +259,6 @@ function hydrateTimeline(messages: unknown[], runId?: string | null) {
     const step = stepFor(timelineEvent);
     const callId = String(event.tool_use_id);
     setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? "工具调用失败") : undefined, elapsedMs: Number(event.elapsed_ms ?? 0) }) }));
-    return;
-  }
-  if (type === "permission.requested") {
-    const step = stepFor(timelineEvent);
-    const toolUseId = String(event.tool_use_id);
-    setStep(step, (current) => ({ ...current, status: "acting", permission: { toolUseId, toolName: String(event.tool_name), preview: String(event.param_preview ?? "等待确认"), status: "pending" }, toolCalls: current.toolCalls.map((call) => call.id === toolUseId ? { ...call, status: "awaiting_permission" } : call) }));
-    return;
-  }
-  if (type === "permission.granted" || type === "permission.denied") {
-    const toolUseId = String(event.tool_use_id);
-    for (const step of timeline.value.keys()) setStep(step, (current) => current.permission?.toolUseId === toolUseId ? { ...current, permission: { ...current.permission, status: type === "permission.granted" ? "granted" : "denied" } } : current);
     return;
   }
   if (type === "plan.updated") {
@@ -313,6 +328,7 @@ function beginTask(project: Workspace | null = workspace.value) {
   workspace.value = project;
   activeId.value = null;
   currentStepByRun.clear();
+  runStepBase.clear();
   timeline.value = new Map();
   activeRunId.value = null;
   page.value = "work";
@@ -327,6 +343,7 @@ async function submitTask(content: string, project: Workspace | null = workspace
       const sessionId = await createSession(project);
       activeId.value = sessionId;
       currentStepByRun.clear();
+      runStepBase.clear();
       timeline.value = new Map();
       activeRunId.value = null;
       page.value = "work";
@@ -656,6 +673,13 @@ watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", Str
               <button title="项目文件" :class="{ active: inspectorOpen }" @click="inspectorOpen = !inspectorOpen"><Folder :size="18" /></button>
             </div>
           </header>
+          <div v-if="pendingPermissions.length" class="global-permission-banner" aria-live="polite">
+            <div v-for="perm in pendingPermissions" :key="perm.toolUseId" class="global-permission-item">
+              <ShieldCheck :size="15" /><b>后台任务请求权限</b><span>{{ perm.toolName }} · {{ perm.preview }}</span>
+              <button type="button" @click="decidePermission(perm.toolUseId, 'deny_once')">拒绝</button>
+              <button type="button" class="allow" @click="decidePermission(perm.toolUseId, 'allow_once')">允许一次</button>
+            </div>
+          </div>
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div class="task-conversation">
