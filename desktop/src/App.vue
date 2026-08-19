@@ -185,6 +185,8 @@ const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
 const inspectorOpen = ref(true);
 const inspectorRendered = ref(true);
+// 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
+const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
 // 响应式窗口宽度 + 窄窗自动收起右侧功能栏的追踪标志
 const windowWidth = ref(window.innerWidth);
@@ -1968,10 +1970,25 @@ async function refreshRuntime(loadHistory: boolean) {
   return runtimeRefreshPromise;
 }
 
+// 输出链接 → 右侧浏览器栏：打开 Inspector 并导航到目标 URL；
+// 无挂载的工作区面板（ref 为空）时回退系统默认浏览器
+function onOpenInAppBrowser(event: Event) {
+  const url = (event as CustomEvent<{ url: string }>).detail?.url;
+  if (!url) return;
+  const inspector = inspectorRef.value;
+  if (inspector?.openUrlInAppBrowser) {
+    setInspectorOpen(true);
+    inspector.openUrlInAppBrowser(url);
+  } else {
+    void import("@tauri-apps/plugin-opener").then(({ openUrl }) => openUrl(url));
+  }
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
   handleWindowResize(); // 初始化窗口宽度与窄窗自动收起状态
+  window.addEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
@@ -1996,6 +2013,7 @@ onBeforeUnmount(() => {
   if (inspectorOpenFrame !== undefined) cancelAnimationFrame(inspectorOpenFrame);
   window.removeEventListener("keydown", handleGlobalShortcut);
   window.removeEventListener("resize", handleWindowResize);
+  window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
   stopDisconnect?.();
@@ -2236,6 +2254,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <template v-if="inspectorRendered && activeWorkspace">
               <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
               <ProjectInspector
+                ref="inspectorRef"
                 :workspace-id="activeWorkspace.workspace_id"
                 :run-id="active?.latest_run_id"
                 :steps="orderedTimeline"

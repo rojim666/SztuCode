@@ -307,6 +307,24 @@ function reloadBrowser(tab: BrowserTab) {
   tab.frameKey += 1;
 }
 
+function openUrlInAppBrowser(url: string) {
+  // 复用第一个浏览器标签或新建：从输出链接直达内置浏览器栏
+  const tab = browserTabs.value[0];
+  if (tab) {
+    tab.input = url;
+    navigateBrowser(tab);
+    activateBrowser(tab.id);
+    toolMenuOpen.value = false;
+    return;
+  }
+  createBrowserTab();
+  const fresh = browserTabs.value[browserTabs.value.length - 1];
+  if (fresh) {
+    fresh.input = url;
+    navigateBrowser(fresh);
+  }
+}
+
 function clearBrowserInput(tab: BrowserTab) {
   tab.input = "";
 }
@@ -419,6 +437,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closePreviewOnOutside);
   document.removeEventListener("keydown", closeToolMenuOnEscape);
 });
+defineExpose({ openUrlInAppBrowser });
 </script>
 
 <template>
