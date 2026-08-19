@@ -58,10 +58,12 @@ from sztu_code.core.tools.builtin import (
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.trace.provider import TracingProvider
 from sztu_code.core.trace.writer import TraceWriter
+from sztu_code.core.verification.discovery import build_completion_contract
 from sztu_code.core.verification.executor import VerificationExecutor
 from sztu_code.core.verification.models import VerificationOutcome
 from sztu_code.core.workflow.tool import WorkflowRunTool
 from sztu_code.core.workspace.project_profile import (
+    ProjectProfile,
     detect_project_profile,
     render_project_profile_context,
 )
@@ -248,6 +250,7 @@ class AgentRunner:
 
         project_root = workspace_root or Path.cwd()
         project_profile_context = ""
+        profile: ProjectProfile | None = None
         try:
             project_root = project_root.resolve()
             profile = detect_project_profile(project_root)
@@ -315,6 +318,18 @@ class AgentRunner:
             max_tokens=0,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
+        # issue #94 分支 3：门禁开启且尚无契约时，从用户声明/项目画像构建完成契约。
+        # profile 探测失败时仅尝试用户声明来源；构建失败不炸 run，契约保持 None，
+        # 门禁自然不触发。require_verification=False 时完全不调用（零回归）。
+        if self._config.agent.require_verification and context.completion_contract is None:
+            try:
+                context.completion_contract = build_completion_contract(
+                    run_id, profile, project_root
+                )
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "completion contract discovery failed run_id=%s", run_id, exc_info=True
+                )
         prefill_len = len(history)
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
 
