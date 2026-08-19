@@ -5,12 +5,15 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sztu_code.core.bus.events import (
     ChangeAppliedEvent,
     ContextInjectedEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    VerificationFinishedEvent,
+    VerificationStartedEvent,
 )
 from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
@@ -55,6 +58,8 @@ from sztu_code.core.tools.builtin import (
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.trace.provider import TracingProvider
 from sztu_code.core.trace.writer import TraceWriter
+from sztu_code.core.verification.executor import VerificationExecutor
+from sztu_code.core.verification.models import VerificationOutcome
 from sztu_code.core.workflow.tool import WorkflowRunTool
 from sztu_code.core.workspace.project_profile import (
     detect_project_profile,
@@ -66,11 +71,22 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# 基于 change_tracker.finalize() 的记录生成工作区修改状态摘要（纯函数，便于单测）；
+# records 为 None 表示未启用变更追踪，无法采集 → None
+def modification_status_summary(records: list[dict[str, Any]] | None) -> str | None:
+    if records is None:
+        return None
+    return f"modified:{len(records)}" if records else "clean"
+
+
 @dataclass
 class RunOutcome:
     status: str
     result: str
     reason: str | None
+    # 验证结论（VerificationOutcome 字符串值）；None 表示本 run 未执行验证。
+    # 与 status 正交：执行停止（status）与完成判定（verification）是两件事。
+    verification_status: str | None = None
 
 
 class AgentRunner:
@@ -426,8 +442,11 @@ class AgentRunner:
                 if not context.is_done():
                     context.mark_failed("llm_error")
 
+            changes: list[dict[str, Any]] = []
+            modification_status: str | None = None
             if change_tracker is not None:
                 changes = change_tracker.finalize()
+                modification_status = modification_status_summary(changes)
                 if changes:
                     await bus.publish(
                         ChangeAppliedEvent(
@@ -437,6 +456,53 @@ class AgentRunner:
                             ts=_now(),
                         )
                     )
+
+            # issue #94 验证门禁：end_turn 只代表执行停止，最终完成由 Harness 独立检查判定。
+            # 仅在显式开启且存在契约且 run 自称成功时执行；默认关闭，零回归。
+            # 不篡改 context.status 状态机，结论仅通过 verification_status 正交透传。
+            if (
+                self._config.agent.require_verification
+                and context.completion_contract is not None
+                and context.status == "success"
+            ):
+                await bus.publish(
+                    VerificationStartedEvent(
+                        run_id=run_id,
+                        condition_count=len(context.completion_contract.conditions),
+                        ts=_now(),
+                    )
+                )
+                verification_status: str
+                try:
+                    verification = await VerificationExecutor(
+                        change_workspace_root or project_root,
+                        run_path,
+                        check_timeout_s=self._config.agent.verification_check_timeout_s,
+                    ).verify(
+                        context.completion_contract,
+                        # 证据快照：finalize 后 manifest 中变更文件的 after_digest
+                        workspace_digests={
+                            str(record["path"]): str(record["after_digest"])
+                            for record in changes
+                            if record.get("after_digest")
+                        },
+                    )
+                    verification_status = verification.overall.value
+                except asyncio.CancelledError:
+                    # 保持取消语义：直接向上抛，由外层统一处理
+                    raise
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "verification executor crashed run_id=%s", run_id
+                    )
+                    verification_status = VerificationOutcome.UNVERIFIED.value
+                context.verification_status = verification_status
+                await bus.publish(
+                    VerificationFinishedEvent(
+                        run_id=run_id, outcome=verification_status, ts=_now()
+                    )
+                )
+
             if compactor is not None:
                 await compactor.wait_pending(cancel_pending=cancelled)
             if session is not None and store is not None:
@@ -465,6 +531,8 @@ class AgentRunner:
                     cache_read_input_tokens=final_stats.cache_read_input_tokens,
                     elapsed_s=final_stats.elapsed_s,
                     context_pct=final_stats.context_pct,
+                    verification_status=context.verification_status,
+                    modification_status=modification_status,
                     ts=_now(),
                 )
             )
@@ -490,4 +558,5 @@ class AgentRunner:
             status=context.status,
             result=context.result,
             reason=context.reason,
+            verification_status=context.verification_status,
         )
