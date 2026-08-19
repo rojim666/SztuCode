@@ -54,6 +54,10 @@ async function openDefaultBrowserFromMenu() {
 }
 
 function onLinkClick(event: MouseEvent) {
+  // 只处理左键（click, button=0）与中键（auxclick, button=1）：
+  // 右键会先触发 contextmenu（弹出菜单）再触发 auxclick(button=2)，
+  // 若不过滤会导致菜单弹出的同时误打开系统浏览器。
+  if (event.type === "auxclick" && event.button !== 1) return;
   const anchor = anchorFrom(event);
   if (!anchor) return;
   const url = safeUrl(anchor.href);
