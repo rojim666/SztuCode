@@ -1,0 +1,43 @@
+packages/runtime-ts/src/agent-loop.ts
+  s_8029a8f44a4ea7::t_885907efa20cc2 105
+  s_8029a8f44a4ea7::t_6ad19c96123fbd 22-26
+  s_8029a8f44a4ea7::t_a85526aae41e6a 40
+  s_8029a8f44a4ea7::t_c6673b1b4effb0 183
+packages/runtime-ts/tests/runtime.test.ts
+  s_8029a8f44a4ea7::t_f2501231c1dd69 95,110,207,222,495,509,530
+  s_8029a8f44a4ea7::t_fcb2c389a2b1c3 85-94,96-97
+  s_8029a8f44a4ea7::t_cb9aae7aa0e6f5 206
+  s_8029a8f44a4ea7::t_de4ae50853daff 221
+  s_8029a8f44a4ea7::t_9ad5ca01b02023 494
+  s_8029a8f44a4ea7::t_548c745253566a 508
+  s_8029a8f44a4ea7::t_c4362c3fbeb24c 529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "125eeca98196260ad0cd1b697697d7837250f466",
+  "prompts": {},
+  "sessions": {
+    "s_8029a8f44a4ea7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a85daa36e2a03c7f05ac07b",
+        "model": "DeepSeek-V4-Flash-Official"
+      },
+      "human_author": "rojim666 <771473941@qq.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a85dd82036cdd5183ed181d",
+        "operation_id": "6a85dd82036cdd5183ed181d",
+        "session_id": "6a85daa36e2a03c7f05ac07b",
+        "source_scene": "agent",
+        "external_session_id": "6a85daa36e2a03c7f05ac07b",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a85daa36e2a03c7f05ac07b:6a85dd82036cdd5183ed181d:afterEdit:a702b440",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit",
+        "client_type": "ide"
+      }
+    }
+  }
+}
