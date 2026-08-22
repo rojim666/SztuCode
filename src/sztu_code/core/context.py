@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sztu_code.core.compact.canvas import TaskCanvas
     from sztu_code.core.pricing import CostEstimate, PricingCatalog, UnknownPricingPolicy
+    from sztu_code.core.verification.models import CompletionContract
 
 
 # 终止原因枚举 — 仿 Claude Code 的 7 种退出条件
@@ -72,6 +73,11 @@ class ExecutionContext:
     max_output_tokens_recovery_count: int = 0
     # 最后一次 continue 原因（调试/追踪用）
     last_continue_reason: str = ""
+    # --- 完成契约与独立验证（issue #94，与 status 值域正交）---
+    # 验证结论（VerificationOutcome 字符串值）；None 表示本 run 未执行验证
+    verification_status: str | None = None
+    # run 开始前固化的完成契约；None 表示未生成契约
+    completion_contract: CompletionContract | None = None
 
     # 初始化消息历史，优先使用 session 完整回放内容
     def __post_init__(self) -> None:

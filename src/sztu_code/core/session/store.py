@@ -133,7 +133,9 @@ class SessionStore:
                         session.run_stats[run_id] = RunStats(
                             input_tokens=max(0, int(event.get("total_input_tokens", 0))),
                             output_tokens=max(0, int(event.get("total_output_tokens", 0))),
-                            cache_read_input_tokens=max(0, int(event.get("cache_read_input_tokens", 0))),
+                            cache_read_input_tokens=max(
+                                0, int(event.get("cache_read_input_tokens", 0))
+                            ),
                             elapsed_s=max(0.0, float(event.get("elapsed_s", 0.0))),
                             context_pct=max(0.0, float(event.get("context_pct", 0.0))),
                         )

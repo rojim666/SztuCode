@@ -72,6 +72,10 @@ class AgentConfig:
     stuck_max_total: int = _DEFAULT_STUCK_MAX_TOTAL
     # 同轮全只读工具批次的最大并发数；1 保持完全串行
     tool_max_concurrency: int = _DEFAULT_TOOL_MAX_CONCURRENCY
+    # run 结束前是否强制执行完成契约验证（issue #94）
+    require_verification: bool = False
+    # 单条完成条件检查命令的超时秒数
+    verification_check_timeout_s: int = 60
 
 
 @dataclass
@@ -439,6 +443,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         unknown_agent: set[str] = set(agent.keys()) - {
             "max_steps", "wrap_up_on_max_steps", "grace_step_on_max_steps",
             "stuck_max_failures", "stuck_max_total", "tool_max_concurrency",
+            "require_verification", "verification_check_timeout_s",
         }
         if unknown_agent:
             raise SystemExit(f"Unknown [agent] keys: {', '.join(sorted(unknown_agent))}")
@@ -473,6 +478,18 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
                     "Config error: agent.tool_max_concurrency must be an integer >= 1"
                 )
             config.agent.tool_max_concurrency = val
+        if "require_verification" in agent:
+            val = agent["require_verification"]
+            if not isinstance(val, bool):
+                raise SystemExit("Config error: agent.require_verification must be a boolean")
+            config.agent.require_verification = val
+        if "verification_check_timeout_s" in agent:
+            val = agent["verification_check_timeout_s"]
+            if not isinstance(val, int) or isinstance(val, bool) or val < 1:
+                raise SystemExit(
+                    "Config error: agent.verification_check_timeout_s must be an integer >= 1"
+                )
+            config.agent.verification_check_timeout_s = val
 
     if "budget" in data:
         budget = data["budget"]
@@ -878,6 +895,29 @@ def _apply_env(config: SztuConfig) -> None:
                 f"got: {tool_concurrency_str!r}"
             )
         config.agent.tool_max_concurrency = tool_concurrency
+
+    # --- 完成契约验证环境变量 ---
+    require_verification_str = os.environ.get("SZTU_REQUIRE_VERIFICATION")
+    if require_verification_str is not None:
+        config.agent.require_verification = (
+            require_verification_str.lower() not in ("0", "false", "no")
+        )
+
+    verification_timeout_str = os.environ.get("SZTU_VERIFICATION_CHECK_TIMEOUT_S")
+    if verification_timeout_str is not None:
+        try:
+            verification_timeout = int(verification_timeout_str)
+        except ValueError:
+            raise SystemExit(
+                "Config error: SZTU_VERIFICATION_CHECK_TIMEOUT_S must be an integer, "
+                f"got: {verification_timeout_str!r}"
+            )
+        if verification_timeout < 1:
+            raise SystemExit(
+                "Config error: SZTU_VERIFICATION_CHECK_TIMEOUT_S must be >= 1, "
+                f"got: {verification_timeout_str!r}"
+            )
+        config.agent.verification_check_timeout_s = verification_timeout
 
     # --- 多智能体工作流环境变量 ---
     for _env, _attr, _minimum in (
