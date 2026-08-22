@@ -21,3 +21,9 @@ test("bash permission rejects path, expansion, substitution, and redirection esc
     assert.equal(classify(command), "danger_full_access", command);
   }
 });
+
+test("bash permission treats git diff --no-index as full access (arbitrary file read)", () => {
+  for (const command of ["git diff --no-index a b", "git diff --binary --no-index a b", "git --no-index diff a b", "git diff --no-index ../outside/secret.txt copy"]) {
+    assert.equal(classify(command), "danger_full_access", command);
+  }
+});

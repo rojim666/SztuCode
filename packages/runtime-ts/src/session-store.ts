@@ -5,7 +5,7 @@ import type { ContentBlock, ContextMessage } from "./context.js";
 
 export type SessionStatus = "active" | "waiting_for_input" | "closed";
 export type SessionMode = "one_shot" | "chat";
-export type SessionMessage = { role: "user" | "assistant"; content: string | ContentBlock[]; ts: string; run_id?: string };
+export type SessionMessage = { role: "user" | "assistant"; content: string | ContentBlock[]; reasoning_content?: string; ts: string; run_id?: string };
 export type SessionRunEvent = { type: string; run_id?: string; [key: string]: unknown };
 export type RunStats = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number };
 export type Session = { id: string; mode: SessionMode; status: SessionStatus; title: string; created_at: string; updated_at: string; run_ids: string[]; run_stats: Record<string, RunStats>; archived: boolean; pinned: boolean; workspace_id: string | null };

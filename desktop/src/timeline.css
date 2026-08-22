@@ -140,6 +140,30 @@
 .session-stats-line__ctx.ctx-ok { color: #9aa0a7; }
 .session-stats-line__ctx.ctx-warn { color: #b07a2a; background: rgb(210 146 37 / 10%); }
 .session-stats-line__ctx.ctx-critical { color: #b3402f; background: rgb(179 64 47 / 12%); }
+/* 上下文占用进度条（借鉴 dsh ContextMeter）：文本旁紧凑横条，等级同警示着色 */
+.session-stats-line__ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.session-stats-line__meter {
+  display: inline-block;
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(154 160 167 / 22%);
+  overflow: hidden;
+  flex: none;
+}
+.session-stats-line__meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width .2s ease;
+}
+.session-stats-line__meter-fill.fill-ok { background: #6fa8dc; }
+.session-stats-line__meter-fill.fill-warn { background: #d29225; }
+.session-stats-line__meter-fill.fill-critical { background: #b3402f; }
 /* turn 页脚时序指标（借鉴 dsh 8.6 turn-tail）：每轮首 token 延迟与吞吐 */
 .turn-tail-metrics { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0 0; padding: 4px 0 2px; color: #9aa0a7; font-size: 10px; line-height: 1.5; }
 .turn-tail-metrics span { white-space: nowrap; }

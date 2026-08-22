@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { FileText, Folder, Folders, LoaderCircle } from "@lucide/vue";
 import { readFile, workspaceTree, type WorkspaceNode } from "../../services/sztu-runtime";
 import CodePreview from "./CodePreview.vue";
@@ -59,6 +59,7 @@ function toggleDir(node: TreeNode) {
 }
 
 // 拖拽分隔线调整文件树宽度（向右拖变宽），持久化到 localStorage
+let dragCleanup: (() => void) | null = null;
 function startTreeDrag(event: MouseEvent) {
   event.preventDefault();
   const startX = event.clientX;
@@ -70,12 +71,18 @@ function startTreeDrag(event: MouseEvent) {
     localStorage.setItem("sztu.treeWidth", String(next));
   };
   const onUp = () => {
+    dragCleanup?.();
+    dragCleanup = null;
+  };
+  dragCleanup = () => {
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
   };
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onUp);
 }
+
+onBeforeUnmount(() => dragCleanup?.());
 
 // 文件行：读取内容并预览
 async function openFile(node: TreeNode) {

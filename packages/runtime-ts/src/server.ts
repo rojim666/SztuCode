@@ -212,7 +212,7 @@ export class RuntimeServer {
         let runId = "";
         runId = this.runs.start(goal, history, async (messages, usage) => {
           const assistant = messages.at(-1);
-          if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, run_id: runId });
+          if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}), run_id: runId });
         }, workspaceRoot, params.session_id, (createdRunId) => this.runSessions.set(createdRunId, params.session_id));
         if (params.client_message_id) this.clientMessageRuns.set(`${params.session_id}:${params.client_message_id}`, runId);
         await this.sessions.attachRun(params.session_id, runId);

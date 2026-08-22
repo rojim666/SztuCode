@@ -40,7 +40,7 @@ test("agent loop offloads tool output and can recover it with read_ref", async (
     const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { offloadRoot: path.join(root, "run-data"), offloadMinChars: 100 });
     assert.equal((await loop.run("run-1", "read it", 4)).text, "done");
     assert.ok(refPath.startsWith("refs/")); assert.match(recovered, /0123456789/); assert.match(recovered, /\[ref page:/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("disabled offload creates no files", async () => {

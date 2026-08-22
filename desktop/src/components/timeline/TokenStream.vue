@@ -73,7 +73,11 @@ function onLinkContextMenu(event: MouseEvent) {
   const url = safeUrl(anchor.href);
   if (!url) return;
   event.preventDefault();
-  menu.value = { url, x: event.clientX, y: event.clientY };
+  // 菜单浮层 clamp 到视口内：靠近窗口右/下边缘时向左上收缩，避免被裁切
+  const menuWidth = 260; const menuHeight = 150;
+  const x = Math.max(4, Math.min(event.clientX, window.innerWidth - menuWidth - 8));
+  const y = Math.max(4, Math.min(event.clientY, window.innerHeight - menuHeight - 8));
+  menu.value = { url, x, y };
 }
 
 function closeMenu() {

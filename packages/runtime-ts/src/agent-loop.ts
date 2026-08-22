@@ -12,12 +12,17 @@ import { validateSchema } from "./schema-validator.js";
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
 export type ModelUsage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number };
-export type ModelResponse = { text: string; tool_calls: ModelToolCall[]; stop_reason: "end_turn" | "tool_use"; thinking_blocks?: ContentBlock[]; usage?: Partial<ModelUsage>; model?: string; streamed?: boolean };
+export type ModelResponse = { text: string; tool_calls: ModelToolCall[]; stop_reason: "end_turn" | "tool_use"; thinking_blocks?: ContentBlock[]; reasoning_content?: string; usage?: Partial<ModelUsage>; model?: string; streamed?: boolean };
 export type ModelInvocation = { runId: string; step: number; purpose?: "agent" | "compaction" };
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
 export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void> };
+
+// 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
+// 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
+const resolveContextWindow = (value: number | undefined, fallback = 128_000): number =>
+  value && value > 0 ? value : fallback;
 
 export class EchoProvider implements ModelProvider {
   async complete(messages: ChatMessage[]): Promise<ModelResponse> {
@@ -32,7 +37,7 @@ export class AgentLoop {
   async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[]): Promise<AgentRunResult> {
     const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? booleanEnv("SZTU_OFFLOAD_ENABLED", true), minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 2_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 50) });
     this.tools.replace(createReadRefTool(offload));
-    const context = new ContextManager([...history, { role: "user", content: goal }], { maxTokens: this.options.contextWindow ?? 128_000, reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
+    const context = new ContextManager([...history, { role: "user", content: goal }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
     const initialSystem = messages.find((message) => message.role === "system");
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
@@ -97,7 +102,7 @@ export class AgentLoop {
       usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
       usage.cache_read_input_tokens += Number(response.usage?.cache_read_input_tokens ?? 0);
       usage.cache_creation_input_tokens += Number(response.usage?.cache_creation_input_tokens ?? 0);
-      const contextWindow = this.options.contextWindow ?? 128_000;
+      const contextWindow = resolveContextWindow(this.options.contextWindow);
       const reservedOutputTokens = this.options.maxOutputTokens ?? 8_192;
       const responseInputTokens = Number(response.usage?.input_tokens ?? 0);
       lastContextPct = context.contextPct(responseInputTokens > 0 ? responseInputTokens : requestTokens);
@@ -106,10 +111,10 @@ export class AgentLoop {
       if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
       if (response.stop_reason === "end_turn" || response.tool_calls.length === 0) {
         this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
-        messages.push({ role: "assistant", content: responseContent(response) });
+        messages.push({ role: "assistant", content: responseContent(response), ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
         return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries };
       }
-      messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls });
+      messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
       for (const call of response.tool_calls) {
         signal?.throwIfAborted();
         const tool = this.tools.get(call.name);
@@ -175,7 +180,7 @@ export class AgentLoop {
     usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
     usage.cache_read_input_tokens += Number(response.usage?.cache_read_input_tokens ?? 0);
     usage.cache_creation_input_tokens += Number(response.usage?.cache_creation_input_tokens ?? 0);
-    const inputTokens = Number(response.usage?.input_tokens ?? 0); const contextPct = inputTokens > 0 ? inputTokens / Math.max(1, this.options.contextWindow ?? 128_000) : previousContextPct;
+    const inputTokens = Number(response.usage?.input_tokens ?? 0); const contextPct = inputTokens > 0 ? inputTokens / resolveContextWindow(this.options.contextWindow) : previousContextPct;
     this.options.onProgress?.({ steps: step, usage: { ...usage }, contextPct });
     if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
     messages.push({ role: "assistant", content: responseContent(response) });

@@ -58,6 +58,8 @@ export function createPlanTools(events: EventBus, runId: string, sessionId = "",
 
 async function collectFiles(root: string, current: string, output: string[]): Promise<void> {
   for (const entry of await readdir(current, { withFileTypes: true })) {
+    // 跳过符号链接：防止目录树跟随链接逃逸到工作区外（list/glob/grep 读外部文件）
+    if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory() && !ignored.has(entry.name)) await collectFiles(root, path.join(current, entry.name), output);
     else if (entry.isFile()) output.push(path.relative(root, path.join(current, entry.name)).split(path.sep).join("/"));
   }
@@ -67,11 +69,11 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register({ name: "read_file", description: "Read a UTF-8 file inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
-    try { return ok((await readFile(context.workspace.resolve(file))).toString("utf8")); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    try { const data = await readFile(await context.workspace.resolveExisting(file)); const limit = 2 * 1024 * 1024; const content = data.subarray(0, limit).toString("utf8"); return ok(content.length < data.length ? `${content}\n\n[truncated: file is ${data.length} bytes, showing first ${limit} bytes]` : content); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "write_file", description: "Write a UTF-8 file inside the workspace", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }, async invoke(params, context) {
     const file = str(params, "path"); const content = str(params, "content"); if (!file || content === null) return fail("path and content are required", "schema_error");
-    try { const target = context.workspace.resolve(file); const before = await readFile(target, "utf8").catch(() => null); await import("node:fs/promises").then(({ mkdir }) => mkdir(path.dirname(target), { recursive: true })); await writeFile(target, content, "utf8"); if (before !== content) context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`wrote ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    try { const target = await context.workspace.resolveExisting(file); const before = await readFile(target, "utf8").catch(() => null); await import("node:fs/promises").then(({ mkdir }) => mkdir(path.dirname(target), { recursive: true })); await writeFile(target, content, "utf8"); if (before !== content) context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`wrote ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "list_dir", description: "List a workspace directory as a tree", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, max_depth: { type: "integer", minimum: 1, maximum: 4 } } }, async invoke(params, context) {
     try { return ok((await context.workspace.list(str(params, "path") ?? ".", typeof params.max_depth === "number" ? Math.min(4, Math.max(1, params.max_depth)) : 2)).join("\n")); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
@@ -86,20 +88,22 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   }});
   registry.register({ name: "edit_file", description: "Replace an exact string in a workspace file", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "old_string", "new_string"] }, async invoke(params, context) {
     const file = str(params, "path"); const oldString = str(params, "old_string"); const newString = str(params, "new_string"); if (!file || oldString === null || newString === null) return fail("path, old_string and new_string are required", "schema_error"); if (oldString === newString) return fail("old_string and new_string are identical", "schema_error");
-    try { const target = context.workspace.resolve(file); const original = await readFile(target, "utf8"); const count = original.split(oldString).length - 1; if (!count) return fail(`old_string not found in ${file}`); if (count > 1 && params.replace_all !== true) return fail(`old_string appears ${count} times in ${file}`, "schema_error"); const updated = params.replace_all === true ? original.split(oldString).join(newString) : original.replace(oldString, newString); await writeFile(target, updated, "utf8"); context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`replaced ${params.replace_all === true ? count : 1} occurrence(s) in ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    try { const target = await context.workspace.resolveExisting(file); const original = await readFile(target, "utf8"); const count = original.split(oldString).length - 1; if (!count) return fail(`old_string not found in ${file}`); if (count > 1 && params.replace_all !== true) return fail(`old_string appears ${count} times in ${file}`, "schema_error"); const updated = params.replace_all === true ? original.split(oldString).join(newString) : original.replace(oldString, newString); await writeFile(target, updated, "utf8"); context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`replaced ${params.replace_all === true ? count : 1} occurrence(s) in ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "bash", description: "Execute a non-interactive shell command", permission: "danger_full_access", classifyPermission: classifyBashPermission, schema: { type: "object", properties: { command: { type: "string", minLength: 1 }, timeout: { type: "integer", minimum: 1, maximum: 120 } }, required: ["command"] }, async invoke(params, context) {
     const command = str(params, "command"); if (!command) return fail("command is required", "schema_error"); if (/(^|[;&|])\s*(npm|pnpm|yarn|pip|uv)\s+(install|add|update)\b/i.test(command)) return fail("Installing or updating dependencies is blocked");
     return new Promise((resolve) => {
       if (context.signal?.aborted) { resolve(fail("Run cancelled")); return; }
-      const child = spawn(command, { cwd: context.workspace.root, shell: true, windowsHide: true }); let output = ""; let settled = false;
+      const child = spawn(command, { cwd: context.workspace.root, shell: true, windowsHide: true }); let output = ""; let truncated = false; let settled = false;
+      const MAX_BASH_OUTPUT = 2 * 1024 * 1024;
+      const onData = (chunk: Buffer) => { if (output.length >= MAX_BASH_OUTPUT) { truncated = true; return; } const next = output + chunk.toString(); if (next.length > MAX_BASH_OUTPUT) { output = next.slice(0, MAX_BASH_OUTPUT); truncated = true; } else output = next; };
       const finish = (result: ToolResult) => { if (settled) return; settled = true; clearTimeout(timeout); context.signal?.removeEventListener("abort", abort); resolve(result); };
       const abort = () => { child.kill(); finish(fail("Run cancelled")); };
       const timeout = setTimeout(() => { child.kill(); finish(fail(`[timeout after ${params.timeout ?? 30}s]`, "timeout")); }, Math.min(120, Math.max(1, Number(params.timeout ?? 30))) * 1000);
       context.signal?.addEventListener("abort", abort, { once: true });
-      child.stdout.on("data", (chunk: Buffer) => { output += chunk.toString(); }); child.stderr.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+      child.stdout.on("data", onData); child.stderr.on("data", onData);
       child.on("error", (error) => finish(fail(error.message)));
-      child.on("close", (code) => finish(code === 0 ? ok(output) : { ok: false, output, error: `command exited with code ${code}`, errorType: "runtime_error" }));
+      child.on("close", (code) => finish(code === 0 ? ok(truncated ? `${output}\n\n[output truncated at ${MAX_BASH_OUTPUT} bytes]` : output) : { ok: false, output: truncated ? `${output}\n\n[output truncated at ${MAX_BASH_OUTPUT} bytes]` : output, error: `command exited with code ${code}`, errorType: "runtime_error" }));
     });
   }});
   for (const tool of extraTools) registry.register(tool);
