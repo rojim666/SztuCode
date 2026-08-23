@@ -76,6 +76,10 @@ class AgentConfig:
     require_verification: bool = False
     # 单条完成条件检查命令的超时秒数
     verification_check_timeout_s: int = 60
+    # 验证失败后自动修复的最大轮数（issue #94 分支 4）；0=关闭修复闭环。
+    # 不另设 enable_repair_loop 开关：门禁本身由 require_verification 守卫，
+    # 本字段置 0 即可单独关闭闭环，再加布尔开关属冗余配置
+    max_repair_attempts: int = 2
 
 
 @dataclass
@@ -444,6 +448,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             "max_steps", "wrap_up_on_max_steps", "grace_step_on_max_steps",
             "stuck_max_failures", "stuck_max_total", "tool_max_concurrency",
             "require_verification", "verification_check_timeout_s",
+            "max_repair_attempts",
         }
         if unknown_agent:
             raise SystemExit(f"Unknown [agent] keys: {', '.join(sorted(unknown_agent))}")
@@ -490,6 +495,13 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
                     "Config error: agent.verification_check_timeout_s must be an integer >= 1"
                 )
             config.agent.verification_check_timeout_s = val
+        if "max_repair_attempts" in agent:
+            val = agent["max_repair_attempts"]
+            if not isinstance(val, int) or isinstance(val, bool) or val < 0:
+                raise SystemExit(
+                    "Config error: agent.max_repair_attempts must be a non-negative integer"
+                )
+            config.agent.max_repair_attempts = val
 
     if "budget" in data:
         budget = data["budget"]
@@ -918,6 +930,22 @@ def _apply_env(config: SztuConfig) -> None:
                 f"got: {verification_timeout_str!r}"
             )
         config.agent.verification_check_timeout_s = verification_timeout
+
+    max_repair_attempts_str = os.environ.get("SZTU_MAX_REPAIR_ATTEMPTS")
+    if max_repair_attempts_str is not None:
+        try:
+            max_repair_attempts = int(max_repair_attempts_str)
+        except ValueError:
+            raise SystemExit(
+                "Config error: SZTU_MAX_REPAIR_ATTEMPTS must be an integer, "
+                f"got: {max_repair_attempts_str!r}"
+            )
+        if max_repair_attempts < 0:
+            raise SystemExit(
+                "Config error: SZTU_MAX_REPAIR_ATTEMPTS must be >= 0, "
+                f"got: {max_repair_attempts_str!r}"
+            )
+        config.agent.max_repair_attempts = max_repair_attempts
 
     # --- 多智能体工作流环境变量 ---
     for _env, _attr, _minimum in (
