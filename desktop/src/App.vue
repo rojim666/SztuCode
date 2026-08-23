@@ -1405,6 +1405,17 @@ async function stopActiveRun() {
   }
 }
 async function chooseTask(id: string) {
+  try {
+    const stored = JSON.parse(localStorage.getItem("sztu.unreadSessions") ?? "[]");
+    if (Array.isArray(stored) && stored.includes(id)) {
+      localStorage.setItem("sztu.unreadSessions", JSON.stringify(stored.filter((item) => item !== id)));
+    }
+  } catch {
+    // Ignore unavailable localStorage in embedded/private webviews.
+  }
+  document.dispatchEvent(new CustomEvent("sztu:session-unread-change", {
+    detail: { sessionId: id, unread: false },
+  }));
   const session = sessions.value.find((item) => item.session_id === id);
   const view = ensureSessionView(id);
   const latestRunId = session?.latest_run_id ?? null;
@@ -2095,7 +2106,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
               <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || '未命名任务' }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
             </button>
-            <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+            <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
           <p v-if="!visibleSessions.length" class="side-empty">没有匹配的任务</p>
         </section>
@@ -2123,7 +2134,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
                     <span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span>
                   </button>
-                  <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+                  <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
                 </div>
                 <p v-if="!item.tasks.length" class="project-empty">没有聊天</p>
               </div>
@@ -2136,7 +2147,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <span class="side-label">临时任务</span>
           <div v-for="task in temporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span></button>
-            <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+            <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
         </section>
 
@@ -2190,7 +2201,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || '未选择项目' }}</span><ChevronDown :size="14" /></button>
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
-                  <SessionActions :session="active" @changed="refreshIndex(false)" @closed="closeActiveSession" />
+                  <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>

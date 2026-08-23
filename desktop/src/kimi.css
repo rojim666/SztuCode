@@ -109,14 +109,24 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .icon-button { display: grid; width: 31px; height: 31px; padding: 0; place-items: center; color: #30343a; background: transparent; border-radius: 6px; }
 .icon-button:hover { background: #f4f5f6; }
 .session-actions { position: relative; }
-.session-menu { position: absolute; z-index: 30; top: 36px; right: 0; display: grid; width: 210px; padding: 6px; background: #fff; border: 1px solid #dadde1; border-radius: 8px; box-shadow: 0 12px 30px #1b20292b; }
-.session-menu > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 7px 9px; color: #2c3036; background: transparent; border-radius: 5px; text-align: left; font-size: 12px; }
-.session-menu > button:hover { background: #f1f3f4; }
+.session-menu { position: absolute; z-index: 30; top: 36px; right: 0; display: grid; width: 218px; padding: 5px 0; background: #fff; border: 1px solid #e0e3e6; border-radius: 8px; box-shadow: 0 10px 24px #1b20292b; }
+.session-menu > button,
+.session-menu__copy-wrap > button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 33px; padding: 6px 12px; color: #252a30; background: transparent; border-radius: 0; text-align: left; font-size: 13px; }
+.session-menu > button:hover,
+.session-menu__copy-wrap > button:hover,
+.session-menu__submenu button:hover { background: #f3f5f7; }
 .session-menu > button.danger { color: #b3261e; }
 .session-menu form { display: flex; gap: 5px; }
 .session-menu input { min-width: 0; width: 100%; padding: 7px; border: 1px solid #cfd3d8; border-radius: 5px; outline: none; }
 .session-menu form button { padding: 7px 9px; color: #fff; background: #25272b; border-radius: 5px; }
 .session-menu p { margin: 6px 8px; color: #777c84; font-size: 11px; line-height: 1.5; }
+.session-menu > button svg,
+.session-menu__copy-wrap > button svg { width: 15px; height: 15px; flex: 0 0 auto; color: #171b20; stroke-width: 1.7; }
+.session-menu__separator { height: 1px; margin: 5px 0; background: #d9e4f2; }
+.session-menu__copy-wrap { position: relative; }
+.session-menu__copy-wrap > button .session-menu__chevron { width: 14px; height: 14px; margin-left: auto; color: #5b6269; }
+.session-menu__submenu { position: absolute; z-index: 2; top: 0; left: calc(100% - 5px); min-width: 150px; padding: 4px 0; background: #fff; border: 1px solid #e0e3e6; border-radius: 7px; box-shadow: 0 8px 18px #1b20292b; }
+.session-menu__submenu button { display: block; width: 100%; padding: 7px 10px; color: #252a30; background: transparent; text-align: left; font-size: 12px; }
 
 .project-inspector { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: 44px minmax(0, 1fr); overflow: hidden; border-left: 1px solid #e9ebed; background: #fafbfb; }
 .project-inspector > header { display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #e7e9eb; }

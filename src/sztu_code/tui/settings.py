@@ -77,8 +77,9 @@ class SettingsModal(ModalScreen[None]):
     """
 
     # 初始化弹窗：行与分组数据为空，挂载后从 daemon 拉取
-    def __init__(self) -> None:
+    def __init__(self, *, focus_row: str | None = None) -> None:
         super().__init__()
+        self._focus_row = focus_row
         self._rows: list[_Row] = []
         self._groups: list[tuple[str, int]] = []  # (组标题, 起始行索引)
         self._cursor = 0
@@ -128,6 +129,9 @@ class SettingsModal(ModalScreen[None]):
             ]
         except Exception:
             self._load_error = "failed to load models"
+        self._model_name = str(
+            self._snapshot.get("model") or self._host_app._model or ""
+        )
         self._build_rows()
         self._redraw()
 
@@ -186,6 +190,11 @@ class SettingsModal(ModalScreen[None]):
         self._rows = rows
         self._groups = groups
         self._cursor = 0
+        if self._focus_row:
+            for index, row in enumerate(rows):
+                if row.name == self._focus_row and row.values is not None and row.enabled:
+                    self._cursor = index
+                    break
 
     # 重绘弹窗全部内容：分组标题、设置行与操作提示
     def _redraw(self) -> None:

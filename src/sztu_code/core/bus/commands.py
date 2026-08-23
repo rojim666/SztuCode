@@ -378,6 +378,16 @@ class SessionResumeResult(BaseModel):
     session: SessionSummary
 
 
+class SessionForkCommand(BaseModel):
+    type: Literal["session.fork"] = "session.fork"
+    session_id: str
+    title: str = ""
+
+
+class SessionForkResult(BaseModel):
+    session: SessionSummary
+
+
 class MessageImageBlock(BaseModel):
     type: Literal["image"] = "image"
     media_type: str  # 图片 MIME 类型，如 image/png
@@ -923,6 +933,7 @@ Command = Annotated[
     | SessionArchiveCommand
     | SessionPinCommand
     | SessionResumeCommand
+    | SessionForkCommand
     | SessionSendMessageCommand
     | SessionSteerMessageCommand
     | SessionGetHistoryCommand

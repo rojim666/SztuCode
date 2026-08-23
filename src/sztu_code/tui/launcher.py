@@ -108,7 +108,7 @@ def main() -> None:
         theme=config.tui.theme,
         wallpaper=config.tui.wallpaper,
     )
-    app.run()
+    app.run(inline=True, inline_no_clear=True)
 
 
 if __name__ == "__main__":

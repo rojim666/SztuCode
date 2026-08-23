@@ -42,9 +42,46 @@ def test_tui_banner_keeps_the_large_sztucode_wordmark() -> None:
     assert "输入消息开始对话" in KamaTuiApp._BANNER
 
 
+async def test_tui_mounts_workbench_layout_without_banner(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
+    app = KamaTuiApp(
+        "127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True,
+    )
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#header")
+        assert app.query_one("#transcript-label")
+        assert app.query_one("#composer-label")
+        assert app.query_one("#prompt")
+        assert app.query_one("#composer-spacer")
+        assert app.query_one("#status")
+        assert app.query_one("#footer")
+        assert not app.query("#banner")
+        assert "SztuCode" in str(app.query_one("#header").render())
+        assert app.query_one("#prompt").region.y < app.query_one("#status").region.y
+
+
 def test_tui_uses_the_launch_directory_as_the_initial_project_path() -> None:
     app = KamaTuiApp("127.0.0.1", 9999)
     assert app._project_path
+
+
+def test_welcome_card_matches_sztucode_model_switcher_style() -> None:
+    app = KamaTuiApp("127.0.0.1", 9999, project_path="/tmp/example")
+    rendered = app._welcome_text()
+
+    assert "SztuCode" in rendered
+    assert "model:" in rendered
+    assert "/model" in rendered
+    assert "to change" in rendered
+    assert "directory:" in rendered
+
+
+def test_model_command_is_available_in_slash_completion() -> None:
+    names = {name for name, _description in KamaTuiApp("127.0.0.1", 9999)._builtin_slash_items()}
+    assert "model" in names
 
 
 def test_header_does_not_show_the_internal_conversation_id() -> None:
@@ -323,6 +360,24 @@ async def test_input_submit_appends_user_turn_and_disables_prompt() -> None:
     assert area.text == ""
     assert "agent is working" in area.border_title.lower()
     assert appended[0].content == "[bold]>[/bold] hello"
+
+
+async def test_model_command_opens_model_settings() -> None:
+    class _FakeArea:
+        text = "/model"
+
+    class _FakeEvent:
+        value = "/model"
+        text_area = _FakeArea()
+
+    app = KamaTuiApp("127.0.0.1", 9999)
+    opened: list[bool] = []
+    app.action_open_model = lambda: opened.append(True)  # type: ignore[method-assign]
+
+    await app.on_chat_text_area_submitted(_FakeEvent())  # type: ignore[arg-type]
+
+    assert opened == [True]
+    assert _FakeEvent.text_area.text == ""
 
 
 # 功能：验证未知事件类型不抛异常也不追加任何 widget

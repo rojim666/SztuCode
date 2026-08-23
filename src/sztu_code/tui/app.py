@@ -781,9 +781,9 @@ class TrustScreen(Screen[str]):
 
 
 class KamaTuiApp(App[None]):
-    """SztuCode TUI：终端滚屏风格，实时展示 agent 执行过程。"""
+    """Codex-style workspace TUI backed by the existing agent event stream."""
 
-    TITLE = "SZTUCODE"
+    TITLE = "SztuCode"
     BINDINGS = [
         Binding("ctrl+q", "quit", "quit"),
         Binding("ctrl+s", "open_settings", "settings"),
@@ -794,18 +794,46 @@ class KamaTuiApp(App[None]):
     ]
     _MODE_CYCLE = ("auto", "accept_edits", "plan")
     CSS = """
-    Screen { layers: wallpaper base; background: $background; }
+    Screen { layers: wallpaper base; background: $background; overflow: hidden; }
     #wallpaper { layer: wallpaper; width: 1fr; height: 1fr; }
+
+    /* The top rail identifies the workspace without taking over the screen. */
     #header {
-        height: 1;
+        height: 2;
+        width: 1fr;
         background: $surface;
         color: $text;
-        padding: 0 1;
+        padding: 0 2;
+        content-align: left middle;
+        border-bottom: solid $border;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    #transcript-label {
+        height: 1;
+        width: 1fr;
+        background: $surface2;
+        color: $text-muted;
+        padding: 0 2;
+        content-align: left middle;
+        text-style: bold;
+    }
+    #welcome-card {
+        height: auto;
+        width: 1fr;
+        margin: 1 2 0 2;
+        padding: 1 2;
+        background: $surface;
+        border: round $border2;
+        color: $text;
     }
     #log-view {
         height: 1fr;
+        min-height: 4;
+        max-height: 8;
         width: 1fr;
         background: transparent;
+        padding: 0 1;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 1;
     }
@@ -815,28 +843,62 @@ class KamaTuiApp(App[None]):
         max-height: 8;
         background: $surface;
         border: round $border;
-        margin: 0 1 0 1;
+        margin: 0 2 1 2;
         padding: 0 1;
         scrollbar-size-vertical: 1;
     }
     #bg-panel.visible { display: block; }
-    #status {
+    #composer-label {
         height: 1;
-        background: $surface;
-        color: $text-muted;
-        padding: 0 1;
+        width: 1fr;
+        background: $surface2;
+        color: $accent;
+        padding: 0 2;
+        content-align: left middle;
+        text-style: bold;
+        border-top: solid $border;
     }
     #prompt {
         width: 1fr;
+        height: 5;
+        min-height: 4;
+        max-height: 8;
         background: $surface;
         color: $text;
-        border: tall $border;
-        margin: 0 1 1 1;
+        border: round $border2;
+        margin: 0 2 1 2;
+        padding: 1 1;
     }
     #prompt:focus {
-        border: tall $accent;
+        border: round $accent;
     }
-    #banner { padding: 2 3 1 3; color: $text; }
+    #status {
+        height: 1;
+        width: 1fr;
+        background: $surface;
+        color: $text-muted;
+        padding: 0 2;
+        content-align: left middle;
+        border-top: solid $border;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    #footer {
+        height: 1;
+        width: 1fr;
+        background: $surface;
+        color: $text-muted;
+        padding: 0 2;
+        content-align: left middle;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    #composer-spacer {
+        height: 4;
+        width: 1fr;
+        background: transparent;
+    }
+    #banner { display: none; }
     Static.user-turn { color: $text; padding: 1 2 0 2; }
     Static.run-header { color: $text-muted; padding: 1 2 0 2; }
     Static.step-divider { color: $text-muted; padding: 0 2; }
@@ -866,6 +928,9 @@ class KamaTuiApp(App[None]):
         read_only: bool = False,
         trust: bool = False,
         replay_run_id: str | None = None,
+        session_id: str | None = None,
+        initial_prompt: str | None = None,
+        output_last_message: str | None = None,
         theme: str | None = None,
         wallpaper: str | None = None,
     ) -> None:
@@ -883,7 +948,11 @@ class KamaTuiApp(App[None]):
         self._current_llm: LLMStreamBlock | None = None
         self._pending_tool_blocks: dict[str, ToolCallBlock] = {}
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
-        self._session_id: str | None = None
+        self._session_id: str | None = session_id
+        self._initial_prompt = initial_prompt
+        self._output_last_message = output_last_message
+        self._last_message_parts: list[str] = []
+        self._output_last_message_error: OSError | None = None
         self._workspace: dict[str, Any] | None = None
         self._project_path = str(Path(project_path or Path.cwd()).resolve())
         self._read_only = read_only
@@ -909,13 +978,30 @@ class KamaTuiApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Static("", id="wallpaper")
         yield Label(
-            f"[bold {c('ok')}]SZTUCODE[/bold {c('ok')}]  [dim]connecting...[/dim]",
+            f"[bold {c('ok')}]SztuCode[/bold {c('ok')}]  [dim]connecting...[/dim]",
             id="header",
         )
+        yield Static(
+            f"[bold {c('text')}]AGENT TRANSCRIPT[/bold {c('text')}]  "
+            f"[dim]live session events[/dim]",
+            id="transcript-label",
+        )
+        yield Static(self._welcome_text(), id="welcome-card")
         yield VerticalScroll(id="log-view")
         yield VerticalScroll(id="bg-panel")
-        yield Static("", id="status")
+        yield Static(
+            f"[bold {c('accent')}]PROMPT[/bold {c('accent')}]  "
+            f"[dim]send a message to continue the session[/dim]",
+            id="composer-label",
+        )
         yield ChatTextArea(id="prompt", show_line_numbers=False)
+        yield Static("", id="composer-spacer")
+        yield Static("", id="status")
+        yield Static(
+            "[dim]Ctrl+C[/dim] interrupt   [dim]Tab[/dim] mode   "
+            "[dim]Ctrl+S[/dim] settings   [dim]Ctrl+Q[/dim] quit",
+            id="footer",
+        )
 
     def on_mount(self) -> None:
         self._slash_items = self._builtin_slash_items()
@@ -923,7 +1009,6 @@ class KamaTuiApp(App[None]):
         self.run_worker(
             self._load_slash_items(), name="slash_items", group="slash", exclusive=False
         )
-        self._append(Static(self._BANNER, id="banner"))
         self._render_wallpaper()
         prompt = self.query_one("#prompt", ChatTextArea)
         prompt.disabled = True
@@ -972,6 +1057,26 @@ class KamaTuiApp(App[None]):
         self._start_socket_loop()
 
     # 返回当前模式的富文本标签，用于 header 栏显示
+    def _welcome_text(self) -> str:
+        project_path = self._project_path
+        if self._workspace is not None:
+            project_path = str(self._workspace.get("path") or project_path)
+        return (
+            f"[bold {c('ok')}]›  SztuCode[/bold {c('ok')}]  "
+            f"[dim]workspace[/dim]\n"
+            f"[dim]model:[/dim]  [bold]{self._model}[/bold]  "
+            f"[{c('info')}]/model[/{c('info')}] [dim]to change[/dim]\n"
+            f"[dim]directory:[/dim] {_preview(project_path, 96)}"
+        )
+
+    # 刷新顶部启动卡片中的模型和目录信息
+    def _update_welcome_card(self) -> None:
+        try:
+            self.query_one("#welcome-card", Static).update(self._welcome_text())
+        except Exception:
+            return
+
+    # 返回当前模式的富文本标签，用于 header 栏显示
     def _mode_label(self) -> str:
         if self._read_only:
             return f"[bold #111315 on {c('accent')}] READONLY [/bold #111315 on {c('accent')}]"
@@ -1001,6 +1106,7 @@ class KamaTuiApp(App[None]):
             ("bgs", "toggle background task list"),
             ("theme", "switch light/dark theme"),
             ("wallpaper", "cycle background style"),
+            ("model", "change the active model"),
             ("settings", "open settings dialog"),
         ]
 
@@ -1090,13 +1196,33 @@ class KamaTuiApp(App[None]):
                 await self._client.send_command("session.close", {"session_id": self._session_id})
             except (IpcError, RuntimeError, OSError):
                 self._append(Static("[yellow]warning: failed to close session[/yellow]"))
+        if self._output_last_message:
+            try:
+                Path(self._output_last_message).expanduser().write_text(
+                    "".join(self._last_message_parts), encoding="utf-8"
+                )
+            except OSError as error:
+                self._output_last_message_error = error
         self.exit()
+
+    @property
+    def output_last_message_error(self) -> OSError | None:
+        return self._output_last_message_error
 
     # 打开弹窗式设置界面；已打开时不重复入栈，关闭后焦点还给输入框
     def action_open_settings(self) -> None:
         if isinstance(self.screen, SettingsModal):
             return
         self.push_screen(SettingsModal(), callback=lambda _result: self._refocus_prompt())
+
+    # 打开模型选择设置，并把焦点直接放到 model 行
+    def action_open_model(self) -> None:
+        if isinstance(self.screen, SettingsModal):
+            return
+        self.push_screen(
+            SettingsModal(focus_row="model"),
+            callback=lambda _result: self._refocus_prompt(),
+        )
 
     # 设置弹窗关闭后把键盘焦点还给输入框（若其可输入）
     def _refocus_prompt(self) -> None:
@@ -1164,11 +1290,14 @@ class KamaTuiApp(App[None]):
             model = str(result.get("model") or "")
             if model:
                 self._model = model
+                self._update_welcome_card()
             else:
                 self._model = "not configured"
+                self._update_welcome_card()
             self._update_header("ready")
         except (IpcError, RuntimeError, OSError):
             self._model = "unavailable"
+            self._update_welcome_card()
             self._update_header("ready")
 
     # 将输入框提交内容发送给当前 chat session；用 worker 发送，避免 await 阻塞 App 消息泵
@@ -1243,6 +1372,10 @@ class KamaTuiApp(App[None]):
             event.text_area.text = ""
             self.action_open_settings()
             return
+        if content == "/model":
+            event.text_area.text = ""
+            self.action_open_model()
+            return
         # 检测 /system-prompt 指令
         if content == "/system-prompt":
             event.text_area.text = ""
@@ -1268,7 +1401,7 @@ class KamaTuiApp(App[None]):
         prompt.text = ""
         prompt.disabled = True
         prompt.read_only = False
-        prompt.border_title = "agent is working..."
+        prompt.border_title = "agent is working  ·  Ctrl+C to interrupt"
         self._append(Static(f"[bold]>[/bold] {content}", classes="user-turn"))
         self._update_header("running")
         self.run_worker(self._do_send_message(content), name="send_message", exclusive=False)
@@ -1460,7 +1593,7 @@ class KamaTuiApp(App[None]):
             if prompt is not None:
                 prompt.disabled = False
                 prompt.read_only = False
-                prompt.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
+                prompt.border_title = "message  ·  Enter send  ·  Shift+Enter newline"
             self._update_header("ready")
             self._append(Static(f"[red]send error: {e}[/red]", classes="log-line"))
 
@@ -1632,7 +1765,7 @@ class KamaTuiApp(App[None]):
                 if p is not None:
                     p.disabled = False
                     p.read_only = False
-                    p.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
+                    p.border_title = "message  ·  Enter send  ·  Shift+Enter newline"
                     p.focus()
         except Exception:
             log.exception("on_permission_select_decided failed tool_use_id=%s", tool_use_id)
@@ -1723,8 +1856,14 @@ class KamaTuiApp(App[None]):
         project_path = self._project_path
         if self._workspace is not None:
             project_path = str(self._workspace.get("path") or project_path)
-        workspace = f"  [dim]·[/dim] [{c('info')}]{project_path}[/{c('info')}]"
-        model = f"  [dim]model[/dim] [{c('text-muted')}]{self._model}[/{c('text-muted')}]"
+        project_name = Path(project_path).name or project_path
+        project_name = _preview(project_name, 28)
+        location = _preview(project_path, 48)
+        workspace = (
+            f"[bold {c('info')}]{project_name}[/bold {c('info')}]  "
+            f"[dim]{location}[/dim]"
+        )
+        model = f"[dim]model[/dim] [{c('text-muted')}]{self._model}[/{c('text-muted')}]"
         color = {
             "ready": "green",
             "running": "yellow",
@@ -1732,8 +1871,8 @@ class KamaTuiApp(App[None]):
             "connecting": "dim",
         }.get(state, "dim")
         header.update(
-            f"[bold {c('ok')}]SZTUCODE[/bold {c('ok')}]  [dim]{self._host}:{self._port}[/dim]"
-            f"{model}{workspace}  {self._mode_label()}  [{color}]{state}[/{color}]"
+            f"[bold {c('ok')}]SztuCode[/bold {c('ok')}]  {workspace}  "
+            f"{model}  {self._mode_label()}  [{color}]● {state}[/{color}]"
         )
         self._update_status()
 
@@ -1835,13 +1974,22 @@ class KamaTuiApp(App[None]):
                 if prompt is not None:
                     prompt.disabled = False
                     prompt.read_only = False
-                    prompt.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
+                    prompt.border_title = "message  ·  Enter send  ·  Shift+Enter newline"
                     prompt.focus()
                 self._update_header("ready")
+                if self._initial_prompt:
+                    initial_prompt = self._initial_prompt
+                    self._initial_prompt = None
+                    self.run_worker(
+                        self._do_send_message(initial_prompt),
+                        name="initial_prompt",
+                        group="session",
+                        exclusive=False,
+                    )
                 await loop_task
             except IpcError as e:
                 header.update(
-                    f"[bold {c('ok')}]SZTUCODE[/bold {c('ok')}]  "
+                    f"[bold {c('ok')}]SztuCode[/bold {c('ok')}]  "
                     f"[red]subscribe error: {e}[/red]"
                 )
             finally:
@@ -1852,7 +2000,7 @@ class KamaTuiApp(App[None]):
                 if prompt is not None:
                     prompt.disabled = True
                     prompt.read_only = False
-                    prompt.border_title = "disconnected, retrying..."
+                    prompt.border_title = "connection lost  ·  retrying"
                 self._break_llm()
                 await client.close()
 
@@ -1882,6 +2030,7 @@ class KamaTuiApp(App[None]):
 
         if t == "llm.token":
             token = event.get("token", "")
+            self._last_message_parts.append(str(token))
             if self._current_llm is None:
                 llm_block = LLMStreamBlock()
                 self._append(llm_block)
@@ -1895,6 +2044,7 @@ class KamaTuiApp(App[None]):
             model = str(event.get("model") or "")
             if model:
                 self._model = model
+                self._update_welcome_card()
                 self._update_header("running")
             return
 
@@ -1904,7 +2054,7 @@ class KamaTuiApp(App[None]):
             if prompt is not None:
                 prompt.disabled = False
                 prompt.read_only = False
-                prompt.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
+                prompt.border_title = "message  ·  Enter send  ·  Shift+Enter newline"
                 prompt.focus()
             self._update_header("ready")
 
@@ -1914,10 +2064,11 @@ class KamaTuiApp(App[None]):
             if prompt is not None:
                 prompt.disabled = True
                 prompt.read_only = False
-                prompt.border_title = "session closed"
+                prompt.border_title = "session closed  ·  start a new session to continue"
             self._update_header("disconnected")
 
         elif t == "run.started":
+            self._last_message_parts.clear()
             run_id = event.get("run_id", "")
             goal = event.get("goal", "")
             block = RunBlock(run_id, goal)
@@ -2192,7 +2343,7 @@ class KamaTuiApp(App[None]):
                     if p is not None:
                         p.disabled = False
                         p.read_only = False
-                        p.border_title = "type a message — enter to send, ⌘/⇧/⌥+enter for newline"
+                        p.border_title = "message  ·  Enter send  ·  Shift+Enter newline"
                         p.focus()
 
         elif t == "permission.mode_changed":
@@ -2213,4 +2364,4 @@ class KamaTuiApp(App[None]):
 # TUI 入口：读取配置并启动 KamaTuiApp
 def run(config: SztuConfig, replay_run_id: str | None = None) -> None:
     app = KamaTuiApp(config.host, config.port, replay_run_id=replay_run_id)
-    app.run()
+    app.run(inline=True, inline_no_clear=True)

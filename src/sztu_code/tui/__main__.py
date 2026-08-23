@@ -20,7 +20,7 @@ def main() -> None:
     config = get_config()
     _setup_logging(config.logging.level)
     app = KamaTuiApp(config.host, config.port, replay_run_id=args.replay)
-    app.run()
+    app.run(inline=True, inline_no_clear=True)
 
 
 if __name__ == "__main__":

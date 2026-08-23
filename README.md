@@ -184,10 +184,10 @@ ANTHROPIC_API_KEY=<your-api-key>
 
 ### 启动 TypeScript 链
 
-推荐直接在目标项目目录启动：
+显式启动 TS daemon（端口 7438）：
 
 ```bash
-npm run daemon:ts          # 等价 npm run daemon，启动 TS daemon（7438）
+npm run daemon:ts          # 显式启动 TS daemon（7438）
 ```
 
 另一个终端中：
@@ -207,10 +207,11 @@ npm install --global sztucode-tui
 sztu-ts [项目路径]
 ```
 
-### 启动 Python 链
+### 启动 Python 链（当前默认内核）
 
 ```bash
-npm run daemon:py          # uv run --offline python -m sztu_code.core（7437）
+npm run daemon            # 默认入口：uv run --offline python -m sztu_code.core（7437）
+npm run daemon:py         # 等价 npm run daemon
 ```
 
 另一个终端中：
@@ -251,8 +252,8 @@ python -m sztu_code.tui --replay <run_id>  # Textual TUI，可回放历史 run
 `desktop/` 是基于 Tauri 2、Vue 3 和 TypeScript 的图形客户端（仅连接 TypeScript daemon），提供项目与会话管理、执行时间线、权限审批、文件浏览、代码预览和 Git 变更审阅。
 
 ```bash
-# 终端 1：仓库根目录
-npm run daemon
+# 终端 1：仓库根目录（桌面端连接的是 TS daemon）
+npm run daemon:ts
 
 # 终端 2
 cd desktop
@@ -299,21 +300,21 @@ SztuCode/
 
 ## 开发与验证
 
-TypeScript 主链检查：
+Python 主链检查：
+
+```bash
+uv run ruff check src tests
+uv run mypy src
+uv run pytest
+```
+
+TypeScript 链检查（桌面端与 TS 链仍需）：
 
 ```bash
 npm run typecheck
 npm test
 npm run build
 npm run build --prefix desktop
-```
-
-Python 链检查：
-
-```bash
-uv run ruff check src tests
-uv run mypy src
-uv run pytest
 ```
 
 共享协议修改位于 `packages/protocol`（TS）与 `src/sztu_code/core/bus`（Python）。测试范围、桌面验证和模块修改清单见[测试指南](docs/development/testing.md)与[开发环境](docs/development/development.md)。
