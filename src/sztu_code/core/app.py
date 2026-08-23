@@ -109,6 +109,8 @@ from sztu_code.core.bus.commands import (
     SessionCreateResult,
     SessionDeleteCommand,
     SessionDeleteResult,
+    SessionForkCommand,
+    SessionForkResult,
     SessionGetHistoryCommand,
     SessionGetHistoryResult,
     SessionListCommand,
@@ -419,6 +421,13 @@ class CoreApp:
         cmd = SessionResumeCommand.model_validate(params)
         session = await self._sessions.resume(cmd.session_id)
         return SessionResumeResult(session=self._session_summary(session))
+
+    # Fork a persisted session through the session layer; Agent runtime remains unchanged.
+    async def _session_fork_handler(self, params: dict[str, Any]) -> SessionForkResult:
+        assert self._sessions is not None
+        cmd = SessionForkCommand.model_validate(params)
+        session = await self._sessions.fork(cmd.session_id, cmd.title)
+        return SessionForkResult(session=self._session_summary(session))
 
     # 打开本地工作区并记录为最近项目
     async def _workspace_open_handler(self, params: dict[str, Any]) -> WorkspaceOpenResult:
@@ -1875,6 +1884,7 @@ class CoreApp:
         server.register("session.archive", self._session_archive_handler)
         server.register("session.pin", self._session_pin_handler)
         server.register("session.resume", self._session_resume_handler)
+        server.register("session.fork", self._session_fork_handler)
         server.register("session.send_message", self._session_send_handler)
         server.register("session.steer_message", self._session_steer_handler)
         server.register("session.get_history", self._session_history_handler)

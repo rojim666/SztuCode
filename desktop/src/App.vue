@@ -185,6 +185,8 @@ const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
 const inspectorOpen = ref(true);
 const inspectorRendered = ref(true);
+// 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
+const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
 // 响应式窗口宽度 + 窄窗自动收起右侧功能栏的追踪标志
 const windowWidth = ref(window.innerWidth);
@@ -1403,6 +1405,17 @@ async function stopActiveRun() {
   }
 }
 async function chooseTask(id: string) {
+  try {
+    const stored = JSON.parse(localStorage.getItem("sztu.unreadSessions") ?? "[]");
+    if (Array.isArray(stored) && stored.includes(id)) {
+      localStorage.setItem("sztu.unreadSessions", JSON.stringify(stored.filter((item) => item !== id)));
+    }
+  } catch {
+    // Ignore unavailable localStorage in embedded/private webviews.
+  }
+  document.dispatchEvent(new CustomEvent("sztu:session-unread-change", {
+    detail: { sessionId: id, unread: false },
+  }));
   const session = sessions.value.find((item) => item.session_id === id);
   const view = ensureSessionView(id);
   const latestRunId = session?.latest_run_id ?? null;
@@ -1968,10 +1981,25 @@ async function refreshRuntime(loadHistory: boolean) {
   return runtimeRefreshPromise;
 }
 
+// 输出链接 → 右侧浏览器栏：打开 Inspector 并导航到目标 URL；
+// 无挂载的工作区面板（ref 为空）时回退系统默认浏览器
+function onOpenInAppBrowser(event: Event) {
+  const url = (event as CustomEvent<{ url: string }>).detail?.url;
+  if (!url) return;
+  const inspector = inspectorRef.value;
+  if (inspector?.openUrlInAppBrowser) {
+    setInspectorOpen(true);
+    inspector.openUrlInAppBrowser(url);
+  } else {
+    void import("@tauri-apps/plugin-opener").then(({ openUrl }) => openUrl(url));
+  }
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
   handleWindowResize(); // 初始化窗口宽度与窄窗自动收起状态
+  window.addEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
@@ -1996,6 +2024,7 @@ onBeforeUnmount(() => {
   if (inspectorOpenFrame !== undefined) cancelAnimationFrame(inspectorOpenFrame);
   window.removeEventListener("keydown", handleGlobalShortcut);
   window.removeEventListener("resize", handleWindowResize);
+  window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
   stopDisconnect?.();
@@ -2077,7 +2106,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
               <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || '未命名任务' }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
             </button>
-            <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+            <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
           <p v-if="!visibleSessions.length" class="side-empty">没有匹配的任务</p>
         </section>
@@ -2105,7 +2134,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
                     <span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span>
                   </button>
-                  <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+                  <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
                 </div>
                 <p v-if="!item.tasks.length" class="project-empty">没有聊天</p>
               </div>
@@ -2118,7 +2147,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <span class="side-label">临时任务</span>
           <div v-for="task in temporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span></button>
-            <SessionActions :session="task" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
+            <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
         </section>
 
@@ -2172,7 +2201,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || '未选择项目' }}</span><ChevronDown :size="14" /></button>
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
-                  <SessionActions :session="active" @changed="refreshIndex(false)" @closed="closeActiveSession" />
+                  <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
@@ -2236,6 +2265,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <template v-if="inspectorRendered && activeWorkspace">
               <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
               <ProjectInspector
+                ref="inspectorRef"
                 :workspace-id="activeWorkspace.workspace_id"
                 :run-id="active?.latest_run_id"
                 :steps="orderedTimeline"

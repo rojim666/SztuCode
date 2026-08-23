@@ -212,7 +212,7 @@ export class RuntimeServer {
         let runId = "";
         runId = this.runs.start(goal, history, async (messages, usage) => {
           const assistant = messages.at(-1);
-          if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, run_id: runId });
+          if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}), run_id: runId });
         }, workspaceRoot, params.session_id, (createdRunId) => this.runSessions.set(createdRunId, params.session_id));
         if (params.client_message_id) this.clientMessageRuns.set(`${params.session_id}:${params.client_message_id}`, runId);
         await this.sessions.attachRun(params.session_id, runId);
@@ -324,7 +324,9 @@ export class RuntimeServer {
       case "session.rename": { const params = request.params as { session_id: string; title: string }; return ok(request.id, { session: toSessionSummary(await this.sessions.rename(params.session_id, params.title)) }); }
       case "session.archive": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, true)) }); }
       case "session.resume": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, false)) }); }
-      case "session.pin": { const params = request.params as { session_id: string; pinned: boolean }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setPinned(params.session_id, params.pinned)) }); }
+      // Pinning only changes session metadata, so it remains available while a
+      // run is active. Archive/close/delete keep their active-run guard.
+      case "session.pin": { const params = request.params as { session_id: string; pinned: boolean }; return ok(request.id, { session: toSessionSummary(await this.sessions.setPinned(params.session_id, params.pinned)) }); }
       case "session.close": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { status: (await this.sessions.close(params.session_id)).status }); }
       case "session.delete": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); await this.sessions.delete(params.session_id); return ok(request.id, { session_id: params.session_id, deleted: true }); }
       case "session.compact": {

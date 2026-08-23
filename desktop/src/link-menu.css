@@ -1,0 +1,51 @@
+/* 输出链接右键菜单（TokenStream v-html 链接的打开方式选择） */
+.link-context-menu {
+  position: fixed;
+  z-index: 3000;
+  display: grid;
+  min-width: 232px;
+  max-width: 340px;
+  padding: 5px;
+  color: var(--text, #202426);
+  background: var(--surface-raised, #ffffff);
+  border: 1px solid var(--border, #dfe3e4);
+  border-radius: 10px;
+  box-shadow: var(--shadow-modal, 0 24px 70px rgb(26 34 38 / 22%));
+  font-size: 13px;
+}
+.link-context-menu button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px 9px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+}
+.link-context-menu button:hover {
+  background: var(--accent-soft, #e5e9ea);
+}
+.link-context-menu button:focus-visible {
+  outline: 2px solid var(--accent, #30383b);
+  outline-offset: -2px;
+}
+.link-context-menu__main {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link-context-menu__hint {
+  overflow: hidden;
+  max-width: 130px;
+  color: var(--text-faint, #98a0a4);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

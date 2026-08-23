@@ -34,7 +34,7 @@ export class WorkspaceManager {
   async delete(id: string): Promise<void> { await this.get(id); this.records.delete(id); await this.persist(); }
   async status(id: string): Promise<{ branch: string | null; is_git_repository: boolean; changed_file_count: number }> {
     const workspace = await this.get(id);
-    try { const branch = (await execFileAsync("git", ["-C", workspace.path, "branch", "--show-current"])).stdout.trim() || null; const porcelain = (await execFileAsync("git", ["-C", workspace.path, "status", "--porcelain"])).stdout.trim(); return { branch, is_git_repository: true, changed_file_count: porcelain ? porcelain.split(/\r?\n/).length : 0 }; } catch { return { branch: null, is_git_repository: false, changed_file_count: 0 }; }
+    try { const branch = (await execFileAsync("git", ["-C", workspace.path, "branch", "--show-current"], { timeout: 10_000 })).stdout.trim() || null; const porcelain = (await execFileAsync("git", ["-C", workspace.path, "status", "--porcelain"], { timeout: 10_000 })).stdout.trim(); return { branch, is_git_repository: true, changed_file_count: porcelain ? porcelain.split(/\r?\n/).length : 0 }; } catch { return { branch: null, is_git_repository: false, changed_file_count: 0 }; }
   }
   async tree(id: string, relative = "", maxDepth = 2, maxEntries = 300): Promise<Array<{ path: string; name: string; kind: "directory" | "file"; children?: unknown[] }>> {
     const record = await this.get(id); const workspace = new Workspace(record.path); const root = workspace.resolve(relative || "."); let count = 0;
@@ -48,6 +48,6 @@ export class WorkspaceManager {
   }
   async search(id: string, query: string, maxResults = 100): Promise<Array<{ path: string; line: number; preview: string }>> {
     const record = await this.get(id); const workspace = new Workspace(record.path); const rg = process.platform === "win32" ? "rg.exe" : "rg";
-    try { const result = await execFileAsync(rg, ["--line-number", "--no-heading", "--color", "never", "--glob", "!.git", "--glob", "!node_modules", query, "."], { cwd: workspace.root, maxBuffer: 4 * 1024 * 1024 }); return result.stdout.split(/\r?\n/).filter(Boolean).slice(0, maxResults).map((line) => { const match = line.match(/^\.\\?([^:]+):(\d+):(.*)$/); return match ? { path: match[1].replaceAll("\\", "/"), line: Number(match[2]), preview: match[3].trim() } : { path: "", line: 0, preview: line }; }); } catch { return []; }
+    try { const result = await execFileAsync(rg, ["--line-number", "--no-heading", "--color", "never", "--glob", "!.git", "--glob", "!node_modules", query, "."], { cwd: workspace.root, maxBuffer: 4 * 1024 * 1024, timeout: 15_000 }); return result.stdout.split(/\r?\n/).filter(Boolean).slice(0, maxResults).map((line) => { const match = line.match(/^\.\\?([^:]+):(\d+):(.*)$/); return match ? { path: match[1].replace(/^[\\/]+/, "").replaceAll("\\", "/"), line: Number(match[2]), preview: match[3].trim() } : { path: "", line: 0, preview: line }; }); } catch { return []; }
   }
 }

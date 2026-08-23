@@ -296,6 +296,8 @@
 
 :root[data-app-theme="dark"] :is(
   .session-menu > button,
+  .session-menu__copy-wrap > button,
+  .session-menu__submenu button,
   .project-action-menu button,
   .project-popover button,
   .launcher-popover button
@@ -303,10 +305,14 @@
 
 :root[data-app-theme="dark"] :is(
   .session-menu > button,
+  .session-menu__copy-wrap > button,
+  .session-menu__submenu button,
   .project-action-menu button,
   .project-popover button,
   .launcher-popover button
 ):hover { background: var(--surface-soft) !important; }
+
+:root[data-app-theme="dark"] .session-menu__submenu { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
 
 :root[data-app-theme="dark"] :is(
   .turn-history-toggle,

@@ -32,7 +32,7 @@ test("OpenAI chat provider parses SSE deltas and emits incremental text", async 
   globalThis.fetch = (async () => {
     const encoder = new TextEncoder();
     const chunks = [
-      `data: ${JSON.stringify({ choices: [{ delta: { content: "hel" } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "think-", content: "hel" } }] })}\n\n`,
       `data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}\n\n`,
       `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call-1", function: { name: "read_file", arguments: '{"path":"a' } }] } }] })}\n\n`,
       `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '.txt"}' } }] } }] })}\n\n`,
@@ -48,8 +48,27 @@ test("OpenAI chat provider parses SSE deltas and emits incremental text", async 
     const result = await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", stream: true }).complete([{ role: "user", content: "hi" }], tools, undefined, (token) => tokens.push(token));
     assert.deepEqual(tokens, ["hel", "lo"]);
     assert.equal(result.text, "hello");
+    assert.equal(result.reasoning_content, "think-");
     assert.deepEqual(result.tool_calls, [{ id: "call-1", name: "read_file", input: { path: "a.txt" } }]);
     assert.equal(result.streamed, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider sends reasoning_content back on assistant tool turns", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "continued" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const messages = [
+      { role: "user" as const, content: "inspect" },
+      { role: "assistant" as const, content: "", reasoning_content: "private reasoning", tool_calls: [{ id: "call-1", name: "read_file", input: { path: "a.txt" } }] },
+      { role: "tool" as const, tool_call_id: "call-1", content: "file contents" },
+    ];
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "reasoning-model" }).complete(messages, new ToolRegistry());
+    assert.equal(requestBody.messages[1].reasoning_content, "private reasoning");
   } finally { globalThis.fetch = originalFetch; }
 });
 

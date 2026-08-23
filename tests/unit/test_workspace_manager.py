@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
 import pytest

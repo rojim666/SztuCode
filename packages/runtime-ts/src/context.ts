@@ -5,7 +5,7 @@ import type { ModelInvocation } from "./agent-loop.js";
 
 export type ContentBlock = { type: string; text?: string; content?: string; [key: string]: unknown };
 export type ContextToolCall = { id: string; name: string; input: Record<string, unknown> };
-export type ContextMessage = { role: "system" | "user" | "assistant" | "tool"; content: string | ContentBlock[]; tool_call_id?: string; tool_calls?: ContextToolCall[]; is_error?: boolean };
+export type ContextMessage = { role: "system" | "user" | "assistant" | "tool"; content: string | ContentBlock[]; tool_call_id?: string; tool_calls?: ContextToolCall[]; reasoning_content?: string; is_error?: boolean };
 export type ContextCompactionProvider = { complete(messages: ContextMessage[], tools: { list(): unknown[] }, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation): Promise<{ text: string; usage?: { output_tokens?: number }; stop_reason?: string }> };
 export type ContextCompactionResult = { originalTokens: number; summaryTokens: number; removedMessages: number; summaryText: string; usedModel: boolean; deferred?: boolean; failed?: boolean };
 

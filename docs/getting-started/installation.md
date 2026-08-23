@@ -42,7 +42,7 @@ sztu-py chat
 
 源码开发时使用 `npm run daemon:ts` / `npm run cli:ts -- ...`，或
 `npm run daemon:py` / `npm run cli:py -- ...`。Python 脚本通过锁定的
-`uv` 环境运行。
+`uv` 环境运行。仓库默认入口 `npm run daemon` / `npm run cli` 已切换到 Python 内核。
 
 ## 配置模型
 
@@ -54,15 +54,13 @@ cp .env.example .env
 
 ## 启动终端客户端
 
-推荐入口：
+当前默认内核为 Python：
 
 ```bash
 npm run daemon
 ```
 
-另一个终端使用 Node 终端客户端：
-
-常用选项：
+另一个终端使用 Python 终端客户端：
 
 ```bash
 npm run cli -- ping
@@ -74,7 +72,6 @@ npm run cli -- chat
 
 ```bash
 # 终端 1
-npm run build
 npm run daemon
 
 # 终端 2
@@ -99,7 +96,7 @@ sztucode core stop
 ```bash
 # 终端 1：仓库根目录
 npm run build
-npm run daemon
+npm run daemon:ts
 
 # 终端 2
 cd desktop

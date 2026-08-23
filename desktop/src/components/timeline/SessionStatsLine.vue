@@ -54,6 +54,11 @@ const contextLevel = computed(() => {
   if (pct >= .8) return "warn";
   return "ok";
 });
+// 进度条宽度：占用百分比（0~100%），限制在 100 内
+const meterWidth = computed(() => {
+  const pct = Math.min(100, Math.max(0, (props.stats.contextPct ?? 0) * 100));
+  return `${pct}%`;
+});
 // breakdown 提示（system/tools/messages 三段启发式，对应 dsh contextBreakdown）
 const contextTip = computed(() => {
   const breakdown = props.stats.contextBreakdown;
@@ -67,7 +72,12 @@ const contextTip = computed(() => {
     <span v-for="(group, index) in groups" :key="index" class="session-stats-line__group">
       <span v-if="index" class="session-stats-line__sep" aria-hidden="true">|</span>
       <template v-if="group.startsWith('上下文 ')">
-        <span class="session-stats-line__ctx" :class="`ctx-${contextLevel}`" :title="contextTip">{{ group }}</span>
+        <span class="session-stats-line__ctx" :class="`ctx-${contextLevel}`" :title="contextTip">
+          <span aria-hidden="true">{{ group }}</span>
+          <span class="session-stats-line__meter" :class="`meter-${contextLevel}`" aria-hidden="true">
+            <span class="session-stats-line__meter-fill" :class="`fill-${contextLevel}`" :style="{ width: meterWidth }"></span>
+          </span>
+        </span>
       </template>
       <template v-else>{{ group }}</template>
     </span>

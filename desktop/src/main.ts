@@ -7,6 +7,7 @@ import "./kimi.css";
 import "./chat.css";
 import "./skill-center.css";
 import "./timeline.css";
+import "./link-menu.css";
 import "./workbench.css";
 import "./file-rail.css";
 import "./typography.css";

@@ -5,15 +5,12 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from sztu_code.core.bus.events import (
     ChangeAppliedEvent,
     ContextInjectedEvent,
     RunFinishedEvent,
     RunStartedEvent,
-    VerificationFinishedEvent,
-    VerificationStartedEvent,
 )
 from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
@@ -58,19 +55,8 @@ from sztu_code.core.tools.builtin import (
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.trace.provider import TracingProvider
 from sztu_code.core.trace.writer import TraceWriter
-from sztu_code.core.verification.discovery import build_completion_contract
-from sztu_code.core.verification.executor import VerificationExecutor
-from sztu_code.core.verification.models import VerificationOutcome, VerificationResult
-from sztu_code.core.verification.repair import (
-    RepairCircuitBreaker,
-    build_repair_prompt,
-    digests_from_change_records,
-    failure_signature,
-    mark_stale_evidence,
-)
 from sztu_code.core.workflow.tool import WorkflowRunTool
 from sztu_code.core.workspace.project_profile import (
-    ProjectProfile,
     detect_project_profile,
     render_project_profile_context,
 )
@@ -80,22 +66,11 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-# 基于 change_tracker.finalize() 的记录生成工作区修改状态摘要（纯函数，便于单测）；
-# records 为 None 表示未启用变更追踪，无法采集 → None
-def modification_status_summary(records: list[dict[str, Any]] | None) -> str | None:
-    if records is None:
-        return None
-    return f"modified:{len(records)}" if records else "clean"
-
-
 @dataclass
 class RunOutcome:
     status: str
     result: str
     reason: str | None
-    # 验证结论（VerificationOutcome 字符串值）；None 表示本 run 未执行验证。
-    # 与 status 正交：执行停止（status）与完成判定（verification）是两件事。
-    verification_status: str | None = None
 
 
 class AgentRunner:
@@ -231,70 +206,6 @@ class AgentRunner:
     async def run(self, goal: str, *, run_id: str | None = None) -> None:
         await self.run_and_capture(goal, run_id=run_id)
 
-    # issue #94 分支 4：验证失败后的修复闭环。复用同一 AgentLoop 与消息历史驱动修复
-    # 回合（与 steering/拒绝干预注入同构）：把失败详情作为 user 消息追加、状态复位
-    # running 后重新进入 loop.run，既有 max_steps/墙钟/卡死等守卫全部继续生效。
-    # 循环直至 verified 或三重熔断触发；熔断时保留最后一次真实验证结果，不伪装。
-    # 返回 (最后一次验证结果, 修复后重新 finalize 的变更记录或 None)。
-    async def _repair_loop(
-        self,
-        *,
-        context: ExecutionContext,
-        loop: AgentLoop,
-        executor: VerificationExecutor,
-        first_result: VerificationResult,
-        change_tracker: WorkspaceChangeTracker | None,
-        initial_changes: list[dict[str, Any]],
-    ) -> tuple[VerificationResult, list[dict[str, Any]] | None]:
-        log = logging.getLogger(__name__)
-        contract = context.completion_contract
-        if contract is None:  # 门禁守卫已排除；防御式直接返回
-            return first_result, None
-        breaker = RepairCircuitBreaker(self._config.agent.max_repair_attempts)
-        breaker.record(failure_signature(first_result))
-        result = first_result
-        latest_changes: list[dict[str, Any]] | None = None
-        current_digests = digests_from_change_records(initial_changes)
-        while result.overall is VerificationOutcome.FAILED:
-            reason = breaker.stop_reason()
-            if reason is not None:
-                log.warning(
-                    "verification repair stopped by circuit breaker (%s) run_id=%s; "
-                    "keeping last real verification outcome=%s",
-                    reason,
-                    context.run_id,
-                    result.overall.value,
-                )
-                break
-            context.messages.append(
-                {"role": "user", "content": build_repair_prompt(result, contract)}
-            )
-            # 状态复位仅为驱动下一回合；最终 status 以修复回合真实结局为准，
-            # 不新增状态值也不绕过 mark_* 语义（loop 内仍由 mark_* 落定）
-            context.status = "running"
-            context.reason = None
-            breaker.note_attempt()
-            await loop.run(context)
-            if context.status != "success":
-                log.warning(
-                    "repair round did not finish cleanly (status=%s reason=%s) run_id=%s",
-                    context.status,
-                    context.reason,
-                    context.run_id,
-                )
-                break
-            if change_tracker is not None:
-                latest_changes = change_tracker.finalize()
-                current_digests = digests_from_change_records(latest_changes)
-            # 上一轮证据与当前工作区摘要比对，不一致标 stale（stale 不计入通过）
-            if mark_stale_evidence(result, contract, current_digests):
-                log.info(
-                    "previous verification evidence marked stale run_id=%s", context.run_id
-                )
-            result = await executor.verify(contract, workspace_digests=current_digests)
-            breaker.record(failure_signature(result))
-        return result, latest_changes
-
     # 执行 agent run 并返回 RunOutcome（含最终文字结果）
     async def run_and_capture(
         self,
@@ -321,7 +232,6 @@ class AgentRunner:
 
         project_root = workspace_root or Path.cwd()
         project_profile_context = ""
-        profile: ProjectProfile | None = None
         try:
             project_root = project_root.resolve()
             profile = detect_project_profile(project_root)
@@ -389,21 +299,8 @@ class AgentRunner:
             max_tokens=0,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
-        # issue #94 分支 3：门禁开启且尚无契约时，从用户声明/项目画像构建完成契约。
-        # profile 探测失败时仅尝试用户声明来源；构建失败不炸 run，契约保持 None，
-        # 门禁自然不触发。require_verification=False 时完全不调用（零回归）。
-        if self._config.agent.require_verification and context.completion_contract is None:
-            try:
-                context.completion_contract = build_completion_contract(
-                    run_id, profile, project_root
-                )
-            except Exception:
-                logging.getLogger(__name__).warning(
-                    "completion contract discovery failed run_id=%s", run_id, exc_info=True
-                )
         prefill_len = len(history)
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
-        loop: AgentLoop | None = None  # 门禁修复闭环需要复用同一 loop 驱动修复回合
 
         async with EventWriter(run_path / "events.jsonl") as writer:
             writer.subscribe(bus)
@@ -529,11 +426,8 @@ class AgentRunner:
                 if not context.is_done():
                     context.mark_failed("llm_error")
 
-            changes: list[dict[str, Any]] = []
-            modification_status: str | None = None
             if change_tracker is not None:
                 changes = change_tracker.finalize()
-                modification_status = modification_status_summary(changes)
                 if changes:
                     await bus.publish(
                         ChangeAppliedEvent(
@@ -543,69 +437,6 @@ class AgentRunner:
                             ts=_now(),
                         )
                     )
-
-            # issue #94 验证门禁：end_turn 只代表执行停止，最终完成由 Harness 独立检查判定。
-            # 仅在显式开启且存在契约且 run 自称成功时执行；默认关闭，零回归。
-            # 不篡改 context.status 状态机，结论仅通过 verification_status 正交透传。
-            if (
-                self._config.agent.require_verification
-                and context.completion_contract is not None
-                and context.status == "success"
-            ):
-                await bus.publish(
-                    VerificationStartedEvent(
-                        run_id=run_id,
-                        condition_count=len(context.completion_contract.conditions),
-                        ts=_now(),
-                    )
-                )
-                verification_status: str
-                try:
-                    executor = VerificationExecutor(
-                        change_workspace_root or project_root,
-                        run_path,
-                        check_timeout_s=self._config.agent.verification_check_timeout_s,
-                    )
-                    verification = await executor.verify(
-                        context.completion_contract,
-                        # 证据快照：finalize 后 manifest 中变更文件的 after_digest
-                        workspace_digests=digests_from_change_records(changes),
-                    )
-                    # issue #94 分支 4：验证失败时驱动修复闭环（三重熔断内重试）。
-                    # max_repair_attempts=0 关闭闭环，行为退回分支 2 的单次验证。
-                    if (
-                        verification.overall is VerificationOutcome.FAILED
-                        and loop is not None
-                        and self._config.agent.max_repair_attempts > 0
-                    ):
-                        verification, repaired_changes = await self._repair_loop(
-                            context=context,
-                            loop=loop,
-                            executor=executor,
-                            first_result=verification,
-                            change_tracker=change_tracker,
-                            initial_changes=changes,
-                        )
-                        # 修复回合可能新增/回滚文件：刷新变更记录与修改状态摘要
-                        if repaired_changes is not None:
-                            changes = repaired_changes
-                            modification_status = modification_status_summary(changes)
-                    verification_status = verification.overall.value
-                except asyncio.CancelledError:
-                    # 保持取消语义：直接向上抛，由外层统一处理
-                    raise
-                except Exception:
-                    logging.getLogger(__name__).exception(
-                        "verification executor crashed run_id=%s", run_id
-                    )
-                    verification_status = VerificationOutcome.UNVERIFIED.value
-                context.verification_status = verification_status
-                await bus.publish(
-                    VerificationFinishedEvent(
-                        run_id=run_id, outcome=verification_status, ts=_now()
-                    )
-                )
-
             if compactor is not None:
                 await compactor.wait_pending(cancel_pending=cancelled)
             if session is not None and store is not None:
@@ -634,8 +465,6 @@ class AgentRunner:
                     cache_read_input_tokens=final_stats.cache_read_input_tokens,
                     elapsed_s=final_stats.elapsed_s,
                     context_pct=final_stats.context_pct,
-                    verification_status=context.verification_status,
-                    modification_status=modification_status,
                     ts=_now(),
                 )
             )
@@ -661,5 +490,4 @@ class AgentRunner:
             status=context.status,
             result=context.result,
             reason=context.reason,
-            verification_status=context.verification_status,
         )

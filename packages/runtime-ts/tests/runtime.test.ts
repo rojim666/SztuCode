@@ -82,6 +82,19 @@ test("agent loop auto-compacts at the configured threshold and preserves the ini
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("agent loop treats a 0 context window as auto and never reports 100% usage", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-zero-window-"));
+  try {
+    const events = new EventBus(path.join(root, "events.jsonl")); let calls = 0;
+    const provider: ModelProvider = { complete: async (_messages, _tools, _signal, _onToken, _invocation) => {
+      calls += 1; return calls === 1 ? { text: "", tool_calls: [{ id: "read", name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 800, output_tokens: 2 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 800, output_tokens: 2 } };
+    } };
+    await writeFile(path.join(root, "package.json"), "{}", "utf8");
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { contextWindow: 0 }).run("zero-window", "inspect", 2);
+    assert.equal(result.contextPct, 800 / 128_000); assert.ok(result.contextPct < 1);
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
 test("agent loop stops automatic compaction after consecutive summary failures", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-compact-breaker-"));
   try {
@@ -94,7 +107,7 @@ test("agent loop stops automatic compaction after consecutive summary failures",
     const history = [{ role: "user" as const, content: "goal" }, ...Array.from({ length: 6 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `old-${index} ${"detail ".repeat(20)}` }))];
     const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { contextWindow: 100, compactThreshold: 0.70, compactCooldownSteps: 0, compactCircuitBreaker: 2, compactMinimumOldTokens: 0 }).run("breaker", "continue", 4, history);
     assert.equal(result.text, "done"); assert.equal(result.compacted, false); assert.equal(compactions, 2);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("agent loop uses a tool-free conclusion when the final allowed step calls tools", async () => {
@@ -190,7 +203,8 @@ test("agent loop injects a traceable intervention after the same tool failure re
     assert.equal((await loop.run("stuck-run", "read missing", 4)).text, "changed approach");
     assert.match(prompts[2] ?? "", /appears to be stuck/);
     assert.ok(trace.includes("stuck.loop"));
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await events.flush();
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("agent loop canonicalizes tool aliases before permissions and telemetry", async () => {
@@ -204,7 +218,8 @@ test("agent loop canonicalizes tool aliases before permissions and telemetry", a
     assert.equal(await readFile(path.join(root, "alias.txt"), "utf8"), "written");
     assert.deepEqual(permissions, ["write_file"]);
     assert.deepEqual(names, ["write_file", "write_file"]);
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await events.flush();
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("agent loop retries transient tool failures once without repeating permission checks", async () => {
@@ -476,7 +491,8 @@ test("subagents apply profile permission modes without mutating the global mode"
     await new SubagentManager(provider(), root, events, permissions).run("coder", "write result.txt");
     assert.equal(await readFile(path.join(root, "result.txt"), "utf8"), "written");
     assert.equal(permissions.getMode(), "plan");
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await events.flush();
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("planner subagents receive the task tools declared by their profile", async () => {
@@ -489,7 +505,8 @@ test("planner subagents receive the task tools declared by their profile", async
     const events = new EventBus(path.join(root, "events.jsonl"));
     await new SubagentManager(provider, root, events, new PermissionManager(events, 20)).run("planner", "plan");
     assert.deepEqual(names, ["read_ref", "task_create", "task_get", "task_list", "task_update"]);
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await events.flush();
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("workflow coder records approved out-of-scope writes as changed paths and escalations", async () => {
@@ -509,5 +526,6 @@ test("workflow coder records approved out-of-scope writes as changed paths and e
     assert.deepEqual(result.tasks[0]?.artifact?.changed_paths, ["docs/result.txt"]);
     assert.deepEqual(result.tasks[0]?.artifact?.scope_escalations, ["docs/result.txt"]);
     assert.equal(result.tasks[0]?.tokens, 10);
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await events.flush();
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });

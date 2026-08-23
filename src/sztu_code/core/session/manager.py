@@ -395,12 +395,10 @@ class SessionManager:
         self._store.write_meta(session)
         return session
 
-    # 固定或取消固定一项未归档任务；固定任务始终显示在最近任务之前
+    # 固定或取消固定一项未归档任务；固定任务始终显示在最近任务之前。
+    # 这是会话元数据操作，运行中也可以执行，不应阻塞当前任务。
     async def pin(self, sid: str, pinned: bool) -> Session:
         session = self._get_session(sid)
-        lock = self._locks[sid]
-        if lock.locked():
-            raise HandlerError(SESSION_BUSY, "session busy")
         if pinned and session.archived:
             raise HandlerError(-32602, "archived session cannot be pinned")
         session.pinned = pinned
@@ -420,6 +418,34 @@ class SessionManager:
         self._store.write_meta(session)
         await self._bus.publish(SessionResumedEvent(session_id=sid, ts=session.updated_at))
         return session
+
+    # 创建一个保留当前模型上下文的新 session；不启动 Agent，只复制可恢复的消息历史。
+    async def fork(self, sid: str, title: str = "") -> Session:
+        source = self._get_session(sid)
+        if self._locks[sid].locked():
+            raise HandlerError(SESSION_BUSY, "session busy")
+        new_sid = f"sess-{uuid.uuid4().hex[:12]}"
+        ts = _now()
+        forked = Session(
+            id=new_sid,
+            mode="chat",
+            status="waiting_for_input",
+            title=title.strip() or f"Fork of {source.title or source.id}",
+            created_at=ts,
+            updated_at=ts,
+            workspace_id=source.workspace_id,
+        )
+        # read_messages 是当前模型可见上下文，包含压缩后的稳定摘要；复制它比只复制展示历史更
+        # 接近 Codex fork 的语义，同时不会复制原 session 的 run 统计或 active 状态。
+        for message in self._store.read_messages(sid):
+            role = str(message.get("role", ""))
+            if role in {"user", "assistant"}:
+                self._store.append_message(new_sid, role, message.get("content", ""))
+        self._sessions[new_sid] = forked
+        self._locks[new_sid] = asyncio.Lock()
+        self._store.write_meta(forked)
+        await self._bus.publish(SessionCreatedEvent(session_id=new_sid, mode="chat", ts=ts))
+        return forked
 
     # 从内存索引取 session，不存在时抛 JSON-RPC 结构化错误
     def _get_session(self, sid: str) -> Session:

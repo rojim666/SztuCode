@@ -87,6 +87,8 @@ async function renderNativePage() {
   instance.once<string>("tauri://error", (event) => {
     if (webview !== instance || generation !== currentGeneration) return;
     webview = null;
+    // 失败实例立即关闭，避免残留失效 webview 泄漏资源
+    void instance.close().catch(() => undefined);
     emit("error", String(event.payload));
   });
 }

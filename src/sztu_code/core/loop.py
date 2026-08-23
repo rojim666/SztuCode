@@ -53,18 +53,11 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-# _unwrap_provider 的最大解包层数：真实 wrapper 嵌套远小于此值；上限防御
-# 动态属性对象（每次 getattr 都返回新对象，seen 集合永远追不上）导致死循环
-_MAX_PROVIDER_UNWRAP_DEPTH = 32
-
-
 # 解开 Trace 等 provider wrapper，拿到底层模型提供者
 def _unwrap_provider(provider: LLMProvider) -> object:
     current: object = provider
     seen: set[int] = set()
-    for _ in range(_MAX_PROVIDER_UNWRAP_DEPTH):
-        if not hasattr(current, "_inner") or id(current) in seen:
-            break
+    while hasattr(current, "_inner") and id(current) not in seen:
         seen.add(id(current))
         current = getattr(current, "_inner")
     return current
@@ -187,8 +180,6 @@ class AgentLoop:
         wrap_up_on_max_steps: bool = True,
         grace_step_on_max_steps: bool = True,
         stuck_tracker: StuckLoopTracker | None = None,
-        # steer 消息队列：运行期间允许外部注入跟进消息；None 表示不启用
-        steering_queue: asyncio.Queue[dict[str, object]] | None = None,
         # 滑动窗口压缩参数
         sliding_window_size: int = 5,
         compact_cooldown_steps: int = 3,
@@ -227,7 +218,6 @@ class AgentLoop:
         self._pricing_model = pricing_model or _infer_pricing_model(provider)
         self._pricing_catalog = pricing_catalog
         self._unknown_pricing_policy = unknown_pricing_policy
-        self._steering_queue = steering_queue
         # 压缩冷却期：两次压缩之间至少间隔 N 步；冷启动即可触发
         self._last_compact_step: int = -15
         # 熔断器日志去重：避免每步都刷屏
@@ -257,6 +247,10 @@ class AgentLoop:
         canvas: TaskCanvas = context.canvas
 
         while not context.is_done():
+            # Ensure a prepared summary replaces the oversized snapshot before
+            # the next model request instead of only at runner shutdown.
+            if self._compactor is not None:
+                await self._compactor.wait_pending()
             self._drain_steering(context)
             # 惰性记录 run 开始墙钟（runner/子 agent 都可能未设置）
             if context.started_at <= 0.0:
@@ -664,15 +658,12 @@ class AgentLoop:
                     ):
                         should_compact = False
                     else:
-                        # 滑动窗口异步压缩 — 不阻塞 Agent 继续处理下一步；
-                        # single-flight 跳过（返回 None）时不更新冷却步，
-                        # 在飞任务完成后若仍超阈值可立即重新触发
-                        task = self._compactor.compact_async(
+                        # 滑动窗口异步压缩 — 不阻塞 Agent 继续处理下一步
+                        self._compactor.compact_async(
                             context, self._provider,
                             sliding_window_size=self._sliding_window_size,
                         )
-                        if task is not None:
-                            self._last_compact_step = context.step
+                        self._last_compact_step = context.step
 
             await self._bus.publish(
                 StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())

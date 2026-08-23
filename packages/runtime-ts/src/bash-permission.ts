@@ -60,6 +60,8 @@ function isReadOnlySegment(tokens: string[]): boolean {
   if (readOnlyCommands.has(name)) return true;
   if (name !== "git") return false;
   const args = tokens.slice(1).filter((arg) => !arg.startsWith("-C") && !arg.startsWith("--git-dir=") && !arg.startsWith("--work-tree="));
+  // --no-index 模式把两个路径当普通文件对比，可读工作区外任意文件，视为危险
+  if (args.includes("--no-index")) return false;
   const subcommand = args.find((arg) => !arg.startsWith("-"))?.toLowerCase();
   return Boolean(subcommand && readOnlyGitCommands.has(subcommand));
 }

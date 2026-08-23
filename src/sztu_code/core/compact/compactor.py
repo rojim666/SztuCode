@@ -230,13 +230,6 @@ class Compactor:
         *,
         sliding_window_size: int = 0,
     ) -> asyncio.Task[None] | None:
-        # single-flight：已有未完成的后台压缩时跳过本次触发。
-        # 否则并发任务共享同一 context，_run 的 len(snapshot) 后缀合并
-        # 假设快照仍是前缀，先完成的任务替换消息后该假设被破坏，
-        # 后完成的旧快照结果会覆盖新结果并丢失中间消息。
-        self._pending_tasks = [t for t in self._pending_tasks if not t.done()]
-        if self._pending_tasks:
-            return None
         # 对当前消息做快照（浅拷贝列表，消息 dict 本身不变）
         snapshot = list(context.messages)
 

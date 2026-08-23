@@ -2,7 +2,7 @@ import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from 
 import type { ToolRegistry } from "../tools.js";
 import { AnthropicMessagesProvider } from "./anthropic.js";
 
-type OpenAiResponse = { choices?: Array<{ message?: { content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } };
+type OpenAiResponse = { choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; content?: Array<{ type?: string; text?: string }> };
 type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
 export type OpenAiProviderOptions = { apiKey?: string; baseUrl?: string; model: string; timeoutMs?: number; apiFormat?: "openai_chat_completions" | "openai_responses"; maxOutputTokens?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; stream?: boolean; cacheControl?: boolean };
@@ -17,7 +17,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     try {
       const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
       const definitions = tools.list().map((tool, index, all) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }));
-      const apiMessages = messages.map((message) => message.role === "assistant" && message.tool_calls?.length ? { role: "assistant", content: typeof message.content === "string" ? message.content || null : message.content, tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : message.role === "system" && this.options.cacheControl ? { ...message, cache_control: { type: "ephemeral" } } : message);
+      const apiMessages = messages.map((message) => message.role === "assistant" && message.tool_calls?.length ? { role: "assistant", content: typeof message.content === "string" ? message.content || null : message.content, ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}), tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : message.role === "system" && this.options.cacheControl ? { ...message, cache_control: { type: "ephemeral" } } : message);
       const responses = this.options.apiFormat === "openai_responses";
       const input: Array<Record<string, unknown>> = [];
       for (const message of messages) {
@@ -45,12 +45,12 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         try { input = JSON.parse(call.function.arguments || "{}"); } catch { throw new Error(`Invalid JSON arguments for tool ${call.function.name}`); }
         return [{ id: call.id, name: call.function.name, input }];
       });
-      return { text: choice.content ?? "", tool_calls: toolCalls, stop_reason: toolCalls.length ? "tool_use" : "end_turn", model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? 0) } };
+      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: toolCalls.length ? "tool_use" : "end_turn", model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? 0) } };
     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
   }
 
   private async parseStream(response: Response, responses: boolean, onToken?: (token: string) => void): Promise<ModelResponse> {
-    const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = ""; let text = ""; const calls = new Map<number, { id: string; name: string; args: string }>(); let usage: ResponsesResponse["usage"] & OpenAiResponse["usage"] = {};
+    const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = ""; let text = ""; let reasoning_content = ""; const calls = new Map<number, { id: string; name: string; args: string }>(); let usage: ResponsesResponse["usage"] & OpenAiResponse["usage"] = {};
     const consume = (raw: string) => {
       if (raw === "[DONE]") return;
       let event: any; try { event = JSON.parse(raw); } catch { return; }
@@ -60,11 +60,11 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         else if (event.type === "response.output_item.added" && event.item?.type === "function_call") { const index = Number(event.output_index ?? calls.size); calls.set(index, { id: String(event.item.call_id ?? event.item.id ?? `call_${index}`), name: String(event.item.name ?? ""), args: String(event.item.arguments ?? "") }); }
         else if (event.type === "response.completed") usage = event.response?.usage ?? {};
       } else {
-        const chunk = event as OpenAiResponse; const delta = chunk.choices?.[0]?.delta; const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
+        const chunk = event as OpenAiResponse; const delta = chunk.choices?.[0]?.delta; const reasoning = delta?.reasoning_content ?? ""; if (reasoning) reasoning_content += reasoning; const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
     };
     while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const rows = buffer.split(/\r?\n\r?\n/); buffer = rows.pop() ?? ""; for (const row of rows) { const data = row.split(/\r?\n/).find((line) => line.startsWith("data:")); if (data) consume(data.slice(5).trim()); } }
     const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => { let input: Record<string, unknown> = {}; try { input = JSON.parse(call.args || "{}"); } catch { throw new Error(`Invalid JSON arguments for tool ${call.name}`); } return { id: call.id, name: call.name, input }; });
-    return { text, tool_calls, stop_reason: tool_calls.length ? "tool_use" : "end_turn", model: this.options.model, streamed: true, usage: { input_tokens: Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: tool_calls.length ? "tool_use" : "end_turn", model: this.options.model, streamed: true, usage: { input_tokens: Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
   }
 
   private parseResponses(payload: ResponsesResponse): ModelResponse {

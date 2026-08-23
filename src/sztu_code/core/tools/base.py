@@ -57,8 +57,6 @@ class BaseTool(ABC):
     manages_timeout: bool = False
     # 工具名称别名列表（如 "read" → "read_file"）
     aliases: ClassVar[list[str]] = []
-    # 默认不可安全重试；幂等工具（如只读查询）可在子类声明为 True
-    retry_safe: ClassVar[bool] = False
 
     # 执行工具调用，返回结果或错误
     @abstractmethod

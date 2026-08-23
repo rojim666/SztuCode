@@ -33,10 +33,6 @@ class RunFinishedEvent(BaseModel):
     cache_read_input_tokens: int = 0
     elapsed_s: float = 0.0
     context_pct: float = 0.0  # 最近一次 LLM 调用的上下文占用百分比
-    # 验证结论（VerificationOutcome 字符串值）；None 表示本 run 未执行验证
-    verification_status: str | None = None
-    # 工作区修改状态摘要；None 表示未采集
-    modification_status: str | None = None
     ts: str
 
 
@@ -453,22 +449,6 @@ class WorkflowFinishedEvent(BaseModel):
     ts: str
 
 
-class VerificationStartedEvent(BaseModel):
-    type: Literal["verification.started"] = "verification.started"
-    run_id: str
-    # 契约中待验证的完成条件数
-    condition_count: int = 0
-    ts: str
-
-
-class VerificationFinishedEvent(BaseModel):
-    type: Literal["verification.finished"] = "verification.finished"
-    run_id: str
-    # VerificationOutcome 字符串值："verified" | "partial" | "unverified" | "failed" | ...
-    outcome: str
-    ts: str
-
-
 # 根据 type 字段决定事件类型的判别联合
 Event = Annotated[
     CoreStartedEvent
@@ -511,8 +491,6 @@ Event = Annotated[
     | WorkflowHandoffEvent
     | WorkflowReviewEvent
     | WorkflowFinishedEvent
-    | VerificationStartedEvent
-    | VerificationFinishedEvent
     | PermissionModeChangedEvent,
     Discriminator("type"),
 ]

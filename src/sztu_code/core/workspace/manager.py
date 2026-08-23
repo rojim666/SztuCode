@@ -349,10 +349,7 @@ class WorkspaceManager:
         workspace = self.get(workspace_id)
         root = Path(workspace.path)
         git_paths = [self._git_relative_path(workspace_id, path) for path in paths]
-        tracked = [
-            path for path in git_paths
-            if self._git(root, ["ls-files", "--error-unmatch", "--", path]).strip()
-        ]
+        tracked = [path for path in git_paths if self._git(root, ["ls-files", "--error-unmatch", "--", path]).strip()]
         if tracked:
             self._git(root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", *tracked])
         return paths
@@ -469,10 +466,7 @@ class WorkspaceManager:
                 try:
                     data = file_path.read_bytes()
                     _content, _encoding, binary = self._decode_text(data)
-                    line_count = (
-                        0 if binary
-                        else len(data.decode("utf-8", errors="replace").splitlines())
-                    )
+                    line_count = 0 if binary else len(data.decode("utf-8", errors="replace").splitlines())
                 except OSError:
                     line_count = 0
                 stats[relative_path] = (line_count, 0)

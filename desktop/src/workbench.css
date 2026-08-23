@@ -665,6 +665,36 @@
 .sidebar-session:hover,
 .sidebar-session:focus-within { background: #eef0f2; }
 
+.sidebar-session:has(.session-actions[data-pinned="true"]) { box-shadow: inset 2px 0 #397fd0; }
+.sidebar-session:has(.session-actions[data-unread="true"]) :is(.status-task-row b, .project-task, .conversation-row) { color: #202124; font-weight: 650; }
+/* A running session owns the attention slot; unread is shown only after it stops. */
+.sidebar-session:has(.session-actions[data-unread="true"]):not(:has(.session-actions[data-running="true"]))::after,
+.sidebar-session:has(.session-actions[data-running="true"])::after {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 31px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  content: "";
+  transform: translateY(-50%);
+}
+.sidebar-session:has(.session-actions[data-unread="true"]):not(:has(.session-actions[data-running="true"]))::after {
+  width: 6px;
+  height: 6px;
+  background: #397fd0;
+}
+.sidebar-session:has(.session-actions[data-running="true"])::after {
+  background: transparent;
+  border: 2px solid #3785dc;
+  border-top-color: transparent;
+  animation: session-running-spin .8s linear infinite;
+}
+.status-session:has(.session-actions[data-running="true"]) .status-task-row > i { visibility: hidden; }
+@keyframes session-running-spin { to { transform: translateY(-50%) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sidebar-session:has(.session-actions[data-running="true"])::after { animation: none; } }
+
 .sidebar-session .project-task,
 .sidebar-session .conversation-row {
   min-width: 0;
