@@ -30,7 +30,8 @@ export class EventBus {
     this.history.push(event);
     if (this.history.length > 10_000) this.history.splice(0, this.history.length - 10_000);
     if (!this.traceReady) this.traceReady = mkdir(path.dirname(this.tracePath), { recursive: true }).then(() => undefined).catch(() => undefined);
-    this.traceWrite = this.traceWrite.then(() => appendFile(this.tracePath, `${JSON.stringify(event)}\n`, "utf8")).catch(() => undefined);
+    const traceReady = this.traceReady;
+    this.traceWrite = this.traceWrite.then(() => traceReady.then(() => appendFile(this.tracePath, `${JSON.stringify(event)}\n`, "utf8"))).catch(() => undefined);
     for (const listener of this.listeners) listener(event);
   }
 

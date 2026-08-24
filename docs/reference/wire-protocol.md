@@ -57,6 +57,7 @@
 - `session.compact`
 - `session.create`
 - `session.delete`
+- `session.fork`
 - `session.get`
 - `session.get_history`
 - `session.history`

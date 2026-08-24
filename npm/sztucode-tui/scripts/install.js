@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 import { prepareSkillAssets } from "../../../scripts/prepare-skill-assets.js";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,9 +20,6 @@ const cliSource = resolve(repositoryRoot, "packages/cli/src/main.ts"); const cli
 rmSync(cliTarget, { recursive: true, force: true }); mkdirSync(cliTarget, { recursive: true });
 const runtimeTarget = resolve(packageRoot, "runtime"); rmSync(runtimeTarget, { recursive: true, force: true }); mkdirSync(runtimeTarget, { recursive: true });
 const runtimeSource = resolve(repositoryRoot, "packages/runtime-ts/src/main.ts");
-const esbuild = resolve(repositoryRoot, "node_modules/esbuild/bin/esbuild");
-const cliBundle = await import("node:child_process").then(({ spawnSync }) => spawnSync(process.execPath, [esbuild, cliSource, "--bundle", "--platform=node", "--format=esm", `--outfile=${resolve(cliTarget, "main.js")}`], { cwd: repositoryRoot, stdio: "inherit", windowsHide: true }));
-if (cliBundle.status !== 0) process.exit(cliBundle.status ?? 1);
-const bundled = await import("node:child_process").then(({ spawnSync }) => spawnSync(process.execPath, [esbuild, runtimeSource, "--bundle", "--platform=node", "--format=esm", `--outfile=${resolve(runtimeTarget, "main.js")}`], { cwd: repositoryRoot, stdio: "inherit", windowsHide: true }));
-if (bundled.status !== 0) process.exit(bundled.status ?? 1);
+await build({ entryPoints: [cliSource], bundle: true, platform: "node", format: "esm", outfile: resolve(cliTarget, "main.js") });
+await build({ entryPoints: [runtimeSource], bundle: true, platform: "node", format: "esm", outfile: resolve(runtimeTarget, "main.js") });
 console.log("Bundled the TypeScript runtime and CLI for npm publishing.");

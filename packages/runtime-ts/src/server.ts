@@ -324,6 +324,7 @@ export class RuntimeServer {
       case "session.rename": { const params = request.params as { session_id: string; title: string }; return ok(request.id, { session: toSessionSummary(await this.sessions.rename(params.session_id, params.title)) }); }
       case "session.archive": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, true)) }); }
       case "session.resume": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, false)) }); }
+      case "session.fork": { const params = request.params as { session_id: string; title?: string }; return ok(request.id, { session: toSessionSummary(await this.sessions.fork(params.session_id, params.title ?? "")) }); }
       // Pinning only changes session metadata, so it remains available while a
       // run is active. Archive/close/delete keep their active-run guard.
       case "session.pin": { const params = request.params as { session_id: string; pinned: boolean }; return ok(request.id, { session: toSessionSummary(await this.sessions.setPinned(params.session_id, params.pinned)) }); }
