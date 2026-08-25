@@ -57,6 +57,7 @@
 - `session.compact`
 - `session.create`
 - `session.delete`
+- `session.fork`
 - `session.get`
 - `session.get_history`
 - `session.history`
@@ -205,6 +206,14 @@
 | `mode` | `"one_shot" \| "chat"` | no |
 | `title` | `string` | no |
 | `workspace_id` | `string \| null` | no |
+
+### SessionForkParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.fork"` | no |
+| `session_id` | `string` | yes |
+| `title` | `string` | no |
 
 ### SessionGetParams
 

@@ -410,7 +410,7 @@ async def test_read_only_failure_is_isolated_and_context_order_is_stable() -> No
     ]
     assert [block["content"] for block in result_blocks] == [
         "done:first",
-        "failed:second",
+        "failed:second\nAutomatic retry was skipped because the failure was not explicitly transient.",
         "done:third",
     ]
     terminal_ids = [
@@ -950,7 +950,7 @@ async def test_loop_waits_for_background_before_end_turn() -> None:
 
     child_ctx = ExecutionContext(run_id="bg-1", goal="bg", max_steps=1, result="bg done")
     registry = BackgroundTaskRegistry()
-    registry.register("bg-1", asyncio.create_task(_bg()), child_ctx)
+    registry.register("bg-1", "parent", asyncio.create_task(_bg()), child_ctx)
 
     ctx = _ctx()
     ctx.pending_background_run_ids.add("bg-1")
@@ -977,7 +977,7 @@ async def test_loop_background_already_done() -> None:
     task = asyncio.create_task(_bg())
     await asyncio.sleep(0.01)  # 让后台任务先完成
     registry = BackgroundTaskRegistry()
-    registry.register("bg-done", task, child_ctx)
+    registry.register("bg-done", "parent", task, child_ctx)
 
     ctx = _ctx()
     ctx.pending_background_run_ids.add("bg-done")
@@ -989,17 +989,18 @@ async def test_loop_background_already_done() -> None:
     assert "already done" in ctx.result
 
 
-# 功能：max_steps 触发失败时同样等待后台任务落定
-# 设计：max_steps=1 + 阻塞后台任务，断言 loop 等后台结束才标记 exceeded_max_steps，摘要仍写入 result
-async def test_loop_max_steps_still_waits() -> None:
-    gate = asyncio.Event()
+# 功能：max_steps 中断时不再抢先等待后台 child，立即确定终态退出 loop
+# 设计：max_steps=1 + 永不结束的后台任务（gate 不 set），断言 loop 不阻塞、
+#       以 interrupted/exceeded_max_steps 结束，且不依赖后台 child 结果
+async def test_loop_max_steps_does_not_wait_for_background() -> None:
+    gate = asyncio.Event()  # 永不放行，模拟阻塞的后台 child
 
     async def _bg() -> None:
         await gate.wait()
 
     child_ctx = ExecutionContext(run_id="bg-m", goal="bg", max_steps=1, result="bg result")
     registry = BackgroundTaskRegistry()
-    registry.register("bg-m", asyncio.create_task(_bg()), child_ctx)
+    registry.register("bg-m", "parent", asyncio.create_task(_bg()), child_ctx)
 
     ctx = _ctx(max_steps=1)
     ctx.pending_background_run_ids.add("bg-m")
@@ -1008,15 +1009,16 @@ async def test_loop_max_steps_still_waits() -> None:
     ])
     loop = AgentLoop(provider, ToolRegistry(), EventBus(), task_registry=registry)
 
-    run_task = asyncio.create_task(loop.run(ctx))
-    await asyncio.sleep(0.05)
-    assert not run_task.done()
-
-    gate.set()
-    await asyncio.wait_for(run_task, 2.0)
+    # loop 应在不等待后台 child 的情况下快速结束（不阻塞）
+    await asyncio.wait_for(loop.run(ctx), timeout=2.0)
     assert ctx.status == "interrupted"
     assert ctx.reason == "exceeded_max_steps"
-    assert "bg result" in ctx.result
+    # 中断路径不读取后台 child 摘要（由 runner 负责 cancel_descendants）
+    assert "bg result" not in ctx.result
+
+    # 清理阻塞的后台 task
+    gate.set()
+    await registry.cancel_descendants("parent", reason="parent_interrupted")
 
 
 # 功能：未传入 task_registry 时 pending 集合被忽略，loop 不等待不报错

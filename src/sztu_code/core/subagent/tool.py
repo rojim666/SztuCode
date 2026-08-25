@@ -17,7 +17,10 @@ from sztu_code.core.loop import AgentLoop
 from sztu_code.core.runs import new_run_id
 from sztu_code.core.skills.loader import SkillLoader
 from sztu_code.core.stuck_tracker import StuckLoopTracker
-from sztu_code.core.subagent.registry import BackgroundTaskRegistry
+from sztu_code.core.subagent.registry import (
+    BackgroundTaskRegistry,
+    BackgroundTaskStatus,
+)
 from sztu_code.core.tools.base import BaseTool, ToolResult
 from sztu_code.core.tools.builtin.bash import BashTool
 from sztu_code.core.tools.builtin.edit_file import EditFileTool
@@ -127,6 +130,7 @@ class SpawnAgentTool(BaseTool):
         stuck_max_total: int = 0,
         tool_max_concurrency: int = 4,
         max_depth: int = 2,
+        owner_run_id: str = "",
     ) -> None:
         self._provider = provider
         self._parent_bus = parent_bus
@@ -148,6 +152,9 @@ class SpawnAgentTool(BaseTool):
         self._stuck_max_total = stuck_max_total
         self._tool_max_concurrency = tool_max_concurrency
         self._max_depth = max_depth
+        # owner_run_id：所属 root run。嵌套 spawn 时从父 tool 继承，保证整个后代树的
+        # 终态事件都路由回 root sink。为空时回退为 parent_run_id（root tool 自身场景）。
+        self._owner_run_id = owner_run_id or parent_run_id
 
     # 派生子 agent，前台时阻塞直到完成并返回结果，后台时立即返回 run_id
     async def invoke(self, params: dict[str, object]) -> ToolResult:
@@ -309,7 +316,12 @@ class SpawnAgentTool(BaseTool):
                     child_loop, child_context, child_bus, child_run_path, child_run_id
                 )
             )
-            self._task_registry.register(child_run_id, task, child_context)
+            # 注册时记录所有权（parent_run_id 直接父 + owner_run_id root owner），
+            # 使取消可递归遍历后代树，且终态事件按 owner 路由到 root sink
+            self._task_registry.register(
+                child_run_id, self._parent_run_id, task, child_context,
+                owner_run_id=self._owner_run_id,
+            )
             return ToolResult(
                 content=(
                     f"Subagent started in background. run_id={child_run_id}. "
@@ -356,7 +368,9 @@ class SpawnAgentTool(BaseTool):
             "elapsed_s": context.elapsed_s(),
         }
 
-    # 后台任务协程：写事件文件，运行 loop，发布完成事件
+    # 后台任务协程：写事件文件，运行 loop，发布完成事件。
+    # 终态事件只发布一次：registry.mark_terminal 在并发完成/取消竞争中只有首个赢家胜出，
+    # 取消不得覆盖先到的完成结果。
     async def _run_background(
         self,
         loop: AgentLoop,
@@ -365,17 +379,44 @@ class SpawnAgentTool(BaseTool):
         run_path: Path,
         run_id: str,
     ) -> None:
-        async with EventWriter(run_path / "events.jsonl") as writer:
-            writer.subscribe(bus)
-            await loop.run(context)
-        await self._parent_bus.publish(
-            SubagentFinishedEvent(
-                run_id=run_id,
-                parent_run_id=self._parent_run_id,
-                status=context.status,
-                ts=_now(),
+        try:
+            async with EventWriter(run_path / "events.jsonl") as writer:
+                writer.subscribe(bus)
+                await loop.run(context)
+        except asyncio.CancelledError:
+            # 取消到达时仍需终结记录；只有赢得 mark_terminal 的路径发布终态事件
+            self._publish_terminal(run_id, context, cancelled=True)
+            raise
+        except Exception as exc:  # noqa: BLE001 — 后台任务异常需转为 failed 终态
+            self._publish_terminal(run_id, context, detail=str(exc))
+            raise
+        else:
+            self._publish_terminal(run_id, context)
+
+    # 登记终态到 registry：mark_terminal 赢家由 registry 的 on_terminal 回调
+    # 发布 SubagentFinishedEvent，使事件发布不依赖本协程是否已执行。
+    # cancelled 用 CANCELLED，不复用 FAILED，避免把取消误判为失败。
+    def _publish_terminal(
+        self,
+        run_id: str,
+        context: ExecutionContext,
+        *,
+        cancelled: bool = False,
+        detail: str = "",
+    ) -> None:
+        if cancelled:
+            self._task_registry.mark_terminal(
+                run_id, BackgroundTaskStatus.CANCELLED, reason=detail or "cancelled"
             )
-        )
+        elif context.status == "success":
+            self._task_registry.mark_terminal(
+                run_id, BackgroundTaskStatus.COMPLETED, detail=context.result
+            )
+        else:
+            fail_reason = detail or context.reason or context.status
+            self._task_registry.mark_terminal(
+                run_id, BackgroundTaskStatus.FAILED, reason=fail_reason
+            )
 
     # 构造子 registry；基于合并后的白名单过滤工具，深度允许时注册嵌套 SpawnAgentTool
     def _build_child_registry(
@@ -449,6 +490,7 @@ class SpawnAgentTool(BaseTool):
                 stuck_max_total=self._stuck_max_total,
                 tool_max_concurrency=self._tool_max_concurrency,
                 max_depth=self._max_depth,
+                owner_run_id=self._owner_run_id,
             )
             if _allowed("spawn_agent"):
                 registry.register(nested)
@@ -485,28 +527,42 @@ class AgentResultTool(BaseTool):
     def __init__(self, task_registry: BackgroundTaskRegistry) -> None:
         self._task_registry = task_registry
 
-    # 查询指定 run_id 的后台任务状态，返回结果或错误
+    # 查询指定 run_id 的后台任务状态，返回结果或错误。
+    # 区分 unknown / running / completed / cancelled / failed / reclaimed：终态结果首次读取后回收。
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         p = AgentResultParams.model_validate(params)
-        entry = self._task_registry.get(p.run_id)
-        if entry is None:
-            return ToolResult(
-                content=f"Unknown run_id: {p.run_id}. Only background subagents can be queried.",
-                is_error=True,
-                error_type="runtime_error",
-            )
-        task, context = entry
-        if not task.done():
+        query = self._task_registry.consume_result(p.run_id)
+        if query.status is BackgroundTaskStatus.RUNNING:
+            if query.reason == "unknown":
+                return ToolResult(
+                    content=(
+                        f"Unknown run_id: {p.run_id}. "
+                        "Only background subagents can be queried."
+                    ),
+                    is_error=True,
+                    error_type="runtime_error",
+                )
             return ToolResult(content="still running")
-        if task.cancelled():
+        if query.status is BackgroundTaskStatus.COMPLETED:
+            return ToolResult(content=query.result_text)
+        if query.status is BackgroundTaskStatus.CANCELLED:
             return ToolResult(
-                content="Subagent was cancelled.", is_error=True, error_type="runtime_error"
-            )
-        exc = task.exception()
-        if exc is not None:
-            return ToolResult(
-                content=f"Subagent raised an exception: {exc}",
+                content=query.result_text or "Subagent was cancelled.",
                 is_error=True,
                 error_type="runtime_error",
             )
-        return ToolResult(content=context.result or "Subagent completed with no text result.")
+        if query.status is BackgroundTaskStatus.FAILED:
+            return ToolResult(
+                content=query.result_text or "Subagent failed.",
+                is_error=True,
+                error_type="runtime_error",
+            )
+        # reclaimed：结果已被消费或过期回收，与 unknown 的拼写错误可区分
+        return ToolResult(
+            content=(
+                f"Result for run_id {p.run_id} is no longer available "
+                f"({query.reason or 'reclaimed'})."
+            ),
+            is_error=True,
+            error_type="runtime_error",
+        )

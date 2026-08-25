@@ -57,7 +57,11 @@ def _now() -> str:
 def _unwrap_provider(provider: LLMProvider) -> object:
     current: object = provider
     seen: set[int] = set()
-    while hasattr(current, "_inner") and id(current) not in seen:
+    # 深度上限防止 MagicMock 这类"任意属性访问恒返回新 mock"的 provider 导致无限解包；
+    # 真实 wrapper 链（如 TraceProvider→Provider）层数有限，8 层足以覆盖。
+    for _ in range(8):
+        if not hasattr(current, "_inner") or id(current) in seen:
+            break
         seen.add(id(current))
         current = getattr(current, "_inner")
     return current
@@ -177,6 +181,8 @@ class AgentLoop:
         session_id: str = "",
         task_registry: BackgroundTaskRegistry | None = None,
         offload_manager: OffloadManager | None = None,
+        # 外部注入的 steer 消息收件箱；SessionManager 运行时投递追加指令，loop 每步排空
+        steering_queue: asyncio.Queue[dict[str, object]] | None = None,
         wrap_up_on_max_steps: bool = True,
         grace_step_on_max_steps: bool = True,
         stuck_tracker: StuckLoopTracker | None = None,
@@ -206,6 +212,7 @@ class AgentLoop:
         self._session_id = session_id
         self._task_registry = task_registry
         self._offload_manager = offload_manager
+        self._steering_queue = steering_queue
         self._wrap_up_on_max_steps = wrap_up_on_max_steps
         self._grace_step_on_max_steps = grace_step_on_max_steps
         self._stuck_tracker = stuck_tracker
@@ -514,13 +521,12 @@ class AgentLoop:
                         is_error=True,
                     )
 
-            # 仅在真正终止的那一步（end_turn 或 max_steps 已到）才等待后台 subagent 落定，
-            # 避免中间 tool_use 步骤过早清空 pending 导致最终摘要丢失
+            # 仅在确定会以正常 success 收尾（end_turn）时才等待后台 subagent 落定并读取摘要。
+            # 中断路径（max_steps / wall_clock / 预算 / blocking_limit / repeated_error）不在此
+            # 等待未完成 child——先让根 context 确定终态退出 loop，再由 runner 调
+            # cancel_descendants 取消并等待后代，避免父 run 因永不返回的 child 卡死。
             pending_summaries: list[str] = []
-            if context.pending_background_run_ids and (
-                response.stop_reason == "end_turn"
-                or (context.max_steps > 0 and context.step >= context.max_steps)
-            ):
+            if context.pending_background_run_ids and response.stop_reason == "end_turn":
                 pending_summaries = await self._wait_for_background(context)
 
             steering_count = self._drain_steering(context)
@@ -780,7 +786,8 @@ class AgentLoop:
         # 未按标记作答但正常 end_turn：与普通回合一致，信任为完成
         return (True, text)
 
-    # 等待本 run 派生的后台 subagent 全部结束，返回每条的结果摘要
+    # 等待本 run 派生的后台 subagent 全部结束，返回每条的结果摘要。
+    # 只读取结果摘要，不消费/回收记录，使 agent_result 仍有读取机会。
     async def _wait_for_background(
         self, context: ExecutionContext
     ) -> list[str]:
@@ -788,21 +795,33 @@ class AgentLoop:
             return []
         run_ids = sorted(context.pending_background_run_ids)
         context.pending_background_run_ids.clear()
-        entries = [self._task_registry.get(rid) for rid in run_ids]
-        tasks = [e[0] for e in entries if e is not None]
+        records = [self._task_registry.get(rid) for rid in run_ids]
+        # snapshot task 后再 await，避免持有可变迭代器跨 await
+        tasks = [r.task for r in records if r is not None and r.task is not None]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         summaries: list[str] = []
-        for rid, entry in zip(run_ids, entries):
-            if entry is None:
+        for rid, record in zip(run_ids, records):
+            if record is None:
                 summaries.append(f"[subagent {rid}] status=unknown")
                 continue
-            task, child_ctx = entry
-            if task.cancelled():
+            # 已被回收（消费/过期）的记录：用终态详情，不再访问已释放的 context
+            if record.context is None or record.is_terminal:
+                if record.status.value == "reclaimed":
+                    summaries.append(f"[subagent {rid}] status=reclaimed")
+                else:
+                    text = (record.terminal_detail or "").strip()[:200]
+                    summaries.append(
+                        f"[subagent {rid}] status={record.status.value}: {text}"
+                    )
+                continue
+            task = record.task
+            if task is not None and task.cancelled():
                 summaries.append(f"[subagent {rid}] status=cancelled")
-            elif task.exception() is not None:
+            elif task is not None and task.exception() is not None:
                 summaries.append(f"[subagent {rid}] status=error: {task.exception()!r}")
             else:
+                child_ctx = record.context
                 text = (child_ctx.result or "").strip()[:200]
                 summaries.append(f"[subagent {rid}] status={child_ctx.status}: {text}")
         return summaries

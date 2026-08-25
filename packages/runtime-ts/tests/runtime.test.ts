@@ -52,8 +52,9 @@ test("workflow scope upgrades only out-of-scope file writes", async () => {
 
 test("agent loop publishes thinking deltas and preserves signed blocks in history", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-thinking-loop-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
-    const events = new EventBus(path.join(root, "events.jsonl")); const thinking: string[] = [];
+    const thinking: string[] = [];
     events.subscribe((event) => { if (event.type === "llm.thinking") thinking.push(event.thinking); });
     const provider: ModelProvider = { complete: async (_messages, _tools, _signal, _onToken, _invocation, onThinking) => {
       onThinking?.("inspect "); onThinking?.("files");
@@ -62,13 +63,14 @@ test("agent loop publishes thinking deltas and preserves signed blocks in histor
     const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }).run("thinking-run", "work", 1);
     assert.deepEqual(thinking, ["inspect ", "files"]);
     assert.deepEqual(result.messages.at(-1)?.content, [{ type: "thinking", thinking: "inspect files", signature: "signed-1" }, { type: "text", text: "done" }]);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("agent loop auto-compacts at the configured threshold and preserves the initial goal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-auto-compact-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
-    const events = new EventBus(path.join(root, "events.jsonl")); const compacted: any[] = []; const purposes: string[] = [];
+    const compacted: any[] = []; const purposes: string[] = [];
     events.subscribe((event) => { if (event.type === "context.compacted") compacted.push(event); });
     let agentCalls = 0; const provider: ModelProvider = { complete: async (_messages, _tools, _signal, _onToken, invocation) => {
       purposes.push(invocation?.purpose ?? "agent");
@@ -79,7 +81,7 @@ test("agent loop auto-compacts at the configured threshold and preserves the ini
     const history = [{ role: "user" as const, content: "original goal" }, ...Array.from({ length: 8 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `turn-${index} ${"detail ".repeat(20)}` }))];
     const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { sessionId: "session-1", contextWindow: 100, compactThreshold: 0.70, slidingWindowSize: 2, compactMinimumOldTokens: 0 }).run("compact-run", "continue", 2, history);
     assert.deepEqual(purposes, ["agent", "compaction", "agent"]); assert.equal(result.compacted, true); assert.equal(result.contextPct, 0.8); assert.equal(result.messages.some((message) => message.content === "original goal"), true); assert.equal(compacted.length, 1);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("agent loop treats a 0 context window as auto and never reports 100% usage", async () => {
@@ -112,6 +114,7 @@ test("agent loop stops automatic compaction after consecutive summary failures",
 
 test("agent loop uses a tool-free conclusion when the final allowed step calls tools", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-max-step-conclusion-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
     const toolCounts: number[] = []; const progress: Array<{ steps: number; output: number }> = []; let calls = 0;
     const provider: ModelProvider = { complete: async (_messages, tools) => {
@@ -120,10 +123,10 @@ test("agent loop uses a tool-free conclusion when the final allowed step calls t
       return { text: "[COMPLETE] finished at the boundary", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 4 } };
     } };
     await writeFile(path.join(root, "package.json"), "{}", "utf8");
-    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { onProgress: ({ steps, usage }) => progress.push({ steps, output: usage.output_tokens }) }).run("max-step", "inspect", 1);
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { onProgress: ({ steps, usage }) => progress.push({ steps, output: usage.output_tokens }) }).run("max-step", "inspect", 1);
     assert.equal(result.text, "finished at the boundary"); assert.equal(result.steps, 1); assert.equal(result.usage.output_tokens, 6);
     assert.ok(toolCounts[0]! > 0); assert.equal(toolCounts[1], 0); assert.deepEqual(progress, [{ steps: 1, output: 2 }, { steps: 1, output: 6 }]);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("run manager reports real progress when a step-limited run remains incomplete", async () => {
@@ -151,15 +154,17 @@ test("agent loop applies dynamic bash permission before approval", async () => {
 
 test("permission always decisions persist while full-access calls still require approval", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-permission-policy-"));
+  const eventBuses: EventBus[] = [];
   try {
     const policyPath = path.join(root, "policy.toml");
-    const firstEvents = new EventBus(path.join(root, "first-events.jsonl"));
+    const firstEvents = new EventBus(path.join(root, "first-events.jsonl")); eventBuses.push(firstEvents);
     const first = new PermissionManager(firstEvents, 100, policyPath);
     const pending = first.check("run-1", "permission-1", "write_file", { path: "src/a.ts" }, "workspace_write");
     assert.equal(first.respond("permission-1", "always_allow"), true);
     assert.equal(await pending, true);
 
-    const second = new PermissionManager(new EventBus(path.join(root, "second-events.jsonl")), 10, policyPath);
+    const secondEvents = new EventBus(path.join(root, "second-events.jsonl")); eventBuses.push(secondEvents);
+    const second = new PermissionManager(secondEvents, 10, policyPath);
     assert.equal(await second.check("run-2", "permission-2", "write_file", { path: "src/b.ts" }, "workspace_write"), true);
     assert.equal(await second.check("run-2", "permission-3", "write_file", { path: "docs/b.ts" }, "danger_full_access"), false);
     assert.match(await readFile(policyPath, "utf8"), /write_file = "allow"/);
@@ -167,15 +172,16 @@ test("permission always decisions persist while full-access calls still require 
     const denyPending = second.check("run-2", "permission-4", "edit_file", { path: "src/a.ts" }, "workspace_write");
     assert.equal(second.respond("permission-4", "always_deny"), true);
     assert.equal(await denyPending, false);
-    const third = new PermissionManager(new EventBus(path.join(root, "third-events.jsonl")), 10, policyPath);
+    const thirdEvents = new EventBus(path.join(root, "third-events.jsonl")); eventBuses.push(thirdEvents);
+    const third = new PermissionManager(thirdEvents, 10, policyPath);
     assert.equal(await third.check("run-3", "permission-5", "edit_file", { path: "src/b.ts" }, "workspace_write"), false);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await Promise.all(eventBuses.map((bus) => bus.flush())); await rm(root, { recursive: true, force: true }); }
 });
 
 test("agent loop injects a traceable intervention after repeated permission denials", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-denial-intervention-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
-    const events = new EventBus(path.join(root, "events.jsonl"));
     const trace: string[] = [];
     events.subscribe((event) => trace.push(event.type));
     const seenMessages: string[] = [];
@@ -190,7 +196,7 @@ test("agent loop injects a traceable intervention after repeated permission deni
     assert.equal(result.text, "changed approach");
     assert.match(seenMessages[3] ?? "", /repeatedly rejected/);
     assert.ok(trace.includes("denial.intervention"));
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
 test("agent loop injects a traceable intervention after the same tool failure repeats", async () => {

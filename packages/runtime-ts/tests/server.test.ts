@@ -97,6 +97,40 @@ test("workflow runs can be cancelled and queried through the shared run controls
   } finally { await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
 });
 
+test("session.fork clones history into a new session and leaves the original intact", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-fork-test-")); const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
+  const server = new RuntimeServer("127.0.0.1", 0);
+  const address = await server.listen(); const port = Number(address.split(":").at(-1)); const socket = net.createConnection({ host: "127.0.0.1", port }); await new Promise<void>((resolve, reject) => { socket.once("connect", () => resolve()); socket.once("error", reject); });
+  try {
+    const created = await rpc(socket, "session.create", { mode: "chat", title: "original" });
+    const sessionId = created.session_id;
+    await server.sessions.appendMessage(sessionId, { role: "user", content: "first user turn" });
+    await server.sessions.appendMessage(sessionId, { role: "assistant", content: "first assistant turn" });
+
+    const forked = await rpc(socket, "session.fork", { session_id: sessionId });
+    const forkId = forked.session.session_id;
+    assert.notEqual(forkId, sessionId);
+    assert.equal(forked.session.status, "waiting_for_input");
+    assert.equal(forked.session.workspace_id, null);
+    assert.match(forked.session.title, /Fork of original/);
+
+    const forkHistory = await rpc(socket, "session.history", { session_id: forkId });
+    assert.equal(forkHistory.messages.length, 2);
+    assert.equal(forkHistory.messages[0].role, "user");
+    assert.equal(forkHistory.messages[0].content, "first user turn");
+    assert.equal(forkHistory.messages[1].role, "assistant");
+    assert.equal(forkHistory.messages[1].content, "first assistant turn");
+
+    // 原会话历史不受 fork 影响
+    const originalHistory = await rpc(socket, "session.history", { session_id: sessionId });
+    assert.equal(originalHistory.messages.length, 2);
+    assert.equal(originalHistory.messages[0].content, "first user turn");
+
+    // fork 不存在的源 session 报错
+    await assert.rejects(() => rpc(socket, "session.fork", { session_id: "missing" }));
+  } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
+});
+
 test("manual session.compact uses provider summary and persists continuation messages", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-compact-test-")); const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
   let compactionPrompt = "";
