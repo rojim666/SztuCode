@@ -36,6 +36,7 @@ class _PendingRequest:
     future: asyncio.Future[str]
     session_id: str
     tool_name: str
+    run_id: str
 
 
 # 管理工具调用权限：策略评估、用户审批挂起、session 级和持久化 always 缓存、超时、模式控制
@@ -145,6 +146,7 @@ class PermissionManager:
         tool_name: str,
         params: dict[str, Any],
         session_id: str,
+        run_id: str,
         event_emitter: Callable[[dict[str, Any]], Awaitable[None]],
         *,
         tool_permission: Any | None = None,
@@ -216,6 +218,7 @@ class PermissionManager:
             future=future,
             session_id=session_id,
             tool_name=tool_name,
+            run_id=run_id,
         )
 
         await event_emitter(
@@ -244,10 +247,20 @@ class PermissionManager:
         return allowed, raw
 
     # 处理客户端返回的审批决策，resolve 对应 Future
-    def respond(self, tool_use_id: str, decision: str) -> None:
+    def respond(self, tool_use_id: str, decision: str, run_id: str, session_id: str) -> None:
         req = self._pending.pop(tool_use_id, None)
         if req is None:
             logger.warning("permission.respond: unknown tool_use_id=%s", tool_use_id)
+            return
+        # 验证 run_id 和 session_id 匹配，防止不同上下文的请求被错误处理
+        if req.run_id != run_id or req.session_id != session_id:
+            logger.warning(
+                "permission.respond: context mismatch tool_use_id=%s "
+                "expected (run_id=%s, session_id=%s) got (run_id=%s, session_id=%s)",
+                tool_use_id, req.run_id, req.session_id, run_id, session_id
+            )
+            # 将请求重新放回待处理队列，以避免丢失
+            self._pending[tool_use_id] = req
             return
         if not req.future.done():
             req.future.set_result(decision)

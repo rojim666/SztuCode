@@ -286,6 +286,7 @@ async def invoke_tool(
                 tool_name=tool_call.name,
                 params=dict(tool_call.input),
                 session_id=session_id,
+                run_id=run_id,
                 event_emitter=_emit_permission,
                 tool_permission=tool_permission,
             )
