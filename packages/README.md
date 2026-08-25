@@ -43,4 +43,4 @@ The runtime keeps the same JSON-RPC envelope and supports
 OpenAI-compatible and Anthropic providers, context budgeting, session history,
 workspace tools, permissions, Git operations, skills, MCP clients, subagents,
 and typed workflow orchestration. The Python implementation remains available
-under `src/sztu_code` and uses its own CLI command and default port.
+under `py-runtime/src/sztu_code` and uses its own CLI command and default port.

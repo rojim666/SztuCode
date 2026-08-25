@@ -8,7 +8,7 @@
 npm run daemon
 ```
 
-默认监听 `127.0.0.1:7438`，按 `Ctrl+C` 优雅退出。
+默认 Python daemon 监听 `127.0.0.1:7437`，按 `Ctrl+C` 优雅退出。TypeScript daemon 使用 `npm run daemon:ts`，监听 `127.0.0.1:7438`。
 
 ### 验证连通
 
@@ -34,7 +34,7 @@ npm run cli -- core stop
 |------|--------|------|
 | `SZTU_DATA_DIR` | `~/.sztu` | 运行时设置、会话和 trace 数据目录 |
 | `SZTU_TS_HOST` / `SZTU_HOST` | `127.0.0.1` | TCP 监听地址 |
-| `SZTU_TS_PORT` / `SZTU_PORT` | `7438` | TCP 监听端口 |
+| `SZTU_TS_PORT` / `SZTU_PORT` | `7437`（Python）/ `7438`（TS） | TCP 监听端口 |
 | `SZTU_LLM_PROVIDER` | `openai` | Provider 类型 |
 | `SZTU_LLM_DEFAULT_MODEL` / `SZTU_MODEL` | `gpt-4o-mini` | 默认模型 |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | 无 | Provider 凭据，不提交到 Git |
@@ -51,7 +51,7 @@ npm run docs:protocol                 # 重新生成协议文档
 npm run docs:links                    # 检查 Markdown 本地链接
 ```
 
-Legacy Python 测试和脚本仅用于兼容 fixture 与专业 artifact；产品 daemon 和 CLI 不依赖 Python。
+Python runtime 的源码、测试和项目配置集中在 `py-runtime/`；直接开发时可在该目录运行 `uv run pytest`、`uv run ruff` 或 `uv run mypy`。
 
 ---
 
@@ -67,7 +67,7 @@ Get-Content ~/.sztu/traces/runtime-ts-events.jsonl -Wait
 
 | 报错 | 原因 | 处理 |
 |------|------|------|
-| `core already running at 127.0.0.1:7438` | 已有守护进程在运行 | `npm run cli -- core stop` |
+| `core already running at 127.0.0.1:7437` | 已有 Python 守护进程在运行 | `npm run cli -- core stop` |
 | `core not running` | 未启动守护进程 | `npm run daemon` |
 | `Address already in use` | 端口被其他进程占用 | `SZTU_PORT=8000 npm run daemon` |
 | `Invalid port` 或无法监听 | 环境变量中端口值无效 | 检查 `SZTU_TS_PORT` / `SZTU_PORT` 的值 |
