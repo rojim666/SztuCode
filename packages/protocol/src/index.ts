@@ -48,6 +48,7 @@ export interface WorkspaceSummary { workspace_id: string; path: string; name: st
 export interface WorkspaceOpenResult { workspace: WorkspaceSummary }
 export interface WorkspaceListResult { workspaces: WorkspaceSummary[] }
 export interface SessionCreateParams { type?: "session.create"; mode?: "one_shot" | "chat"; title?: string; workspace_id?: string | null }
+export interface SessionForkParams { type?: "session.fork"; session_id: string; title?: string }
 export interface SessionGetParams { type?: "session.get"; session_id: string }
 export interface SessionListParams { type?: "session.list"; include_archived?: boolean }
 export interface SessionHistoryParams { type?: "session.history" | "session.get_history"; session_id: string }

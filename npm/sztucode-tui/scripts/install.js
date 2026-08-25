@@ -20,6 +20,7 @@ const cliSource = resolve(repositoryRoot, "packages/cli/src/main.ts"); const cli
 rmSync(cliTarget, { recursive: true, force: true }); mkdirSync(cliTarget, { recursive: true });
 const runtimeTarget = resolve(packageRoot, "runtime"); rmSync(runtimeTarget, { recursive: true, force: true }); mkdirSync(runtimeTarget, { recursive: true });
 const runtimeSource = resolve(repositoryRoot, "packages/runtime-ts/src/main.ts");
-await build({ entryPoints: [cliSource], bundle: true, platform: "node", format: "esm", outfile: resolve(cliTarget, "main.js") });
-await build({ entryPoints: [runtimeSource], bundle: true, platform: "node", format: "esm", outfile: resolve(runtimeTarget, "main.js") });
+const sharedBuildOptions = { bundle: true, platform: "node", format: "esm", absWorkingDir: repositoryRoot };
+await build({ ...sharedBuildOptions, entryPoints: [cliSource], outfile: resolve(cliTarget, "main.js") });
+await build({ ...sharedBuildOptions, entryPoints: [runtimeSource], outfile: resolve(runtimeTarget, "main.js") });
 console.log("Bundled the TypeScript runtime and CLI for npm publishing.");

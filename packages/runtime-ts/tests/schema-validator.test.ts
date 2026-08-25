@@ -19,12 +19,13 @@ test("schema validator enforces nested types, ranges, enums, and required fields
 
 test("agent loop rejects invalid tool JSON before permission or invocation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-schema-boundary-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
     let permissions = 0; let calls = 0; const failures: Array<{ error_class: string; error_message: string }> = [];
-    const events = new EventBus(path.join(root, "events.jsonl")); events.subscribe((event) => { if (event.type === "tool.call_failed") failures.push(event); });
+    events.subscribe((event) => { if (event.type === "tool.call_failed") failures.push(event); });
     const provider: ModelProvider = { complete: async () => { calls += 1; return calls === 1 ? { text: "", tool_calls: [{ id: "bad", name: "bash", input: { command: 42, timeout: 500 } }], stop_reason: "tool_use" } : { text: "fixed", tool_calls: [], stop_reason: "end_turn" }; } };
     const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => { permissions += 1; return true; } });
     assert.equal((await loop.run("schema", "run", 3)).text, "fixed");
     assert.equal(permissions, 0); assert.equal(failures[0]?.error_class, "schema_error"); assert.match(failures[0]?.error_message ?? "", /command must be string/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });

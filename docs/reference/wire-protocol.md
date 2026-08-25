@@ -207,6 +207,14 @@
 | `title` | `string` | no |
 | `workspace_id` | `string \| null` | no |
 
+### SessionForkParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.fork"` | no |
+| `session_id` | `string` | yes |
+| `title` | `string` | no |
+
 ### SessionGetParams
 
 | Field | Type | Required |

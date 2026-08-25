@@ -51,13 +51,14 @@ test("disabled offload creates no files", async () => {
 
 test("agent loop falls back to bounded context when offload storage fails", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-offload-fallback-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
     const blocked = path.join(root, "not-a-directory"); await writeFile(blocked, "file");
     let calls = 0; let observed = "";
     const provider: ModelProvider = { complete: async (messages) => { calls += 1; if (calls === 1) return { text: "", tool_calls: [{ id: "large", name: "read_file", input: { path: "large.txt" } }], stop_reason: "tool_use" }; observed = String(messages.at(-1)?.content ?? ""); return { text: "done", tool_calls: [], stop_reason: "end_turn" }; } };
     await writeFile(path.join(root, "large.txt"), "x".repeat(20_000));
-    const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { offloadRoot: blocked, offloadMinChars: 100 });
+    const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { offloadRoot: blocked, offloadMinChars: 100 });
     assert.equal((await loop.run("fallback", "read it", 3)).text, "done");
     assert.match(observed, /chars omitted/); assert.ok(observed.length <= 4_000);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });

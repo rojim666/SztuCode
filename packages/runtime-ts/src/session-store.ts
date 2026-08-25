@@ -17,6 +17,20 @@ export class SessionStore {
     const session: Session = { id, mode, status: "active", title: title.trim().slice(0, 200) || "新会话", created_at: ts, updated_at: ts, run_ids: [], run_stats: {}, archived: false, pinned: false, workspace_id: workspaceId };
     await this.save(session); return session;
   }
+  // Fork a persisted session: 分配新 ID，复制源 session 的 user/assistant 可见历史，
+  // 继承 workspace_id 与 mode，但不复制 run 统计或 active 状态（对齐 Python SessionManager.fork）。
+  async fork(sessionId: string, title = ""): Promise<Session> {
+    const source = await this.get(sessionId);
+    const id = randomUUID(); const ts = new Date().toISOString();
+    const forked: Session = { id, mode: source.mode, status: "waiting_for_input", title: title.trim().slice(0, 200) || `Fork of ${source.title || source.id}`, created_at: ts, updated_at: ts, run_ids: [], run_stats: {}, archived: false, pinned: false, workspace_id: source.workspace_id };
+    await this.save(forked);
+    for (const message of await this.history(sessionId)) {
+      if (message.role === "user" || message.role === "assistant") {
+        await this.appendMessage(id, { role: message.role, content: message.content });
+      }
+    }
+    return forked;
+  }
   async get(id: string): Promise<Session> { return JSON.parse(await readFile(path.join(this.root, id, "meta.json"), "utf8")) as Session; }
   async rename(id: string, title: string): Promise<Session> { const session = await this.get(id); session.title = title.trim().slice(0, 200); session.updated_at = new Date().toISOString(); await this.save(session); return session; }
   async setArchived(id: string, archived: boolean): Promise<Session> { const session = await this.get(id); session.archived = archived; if (archived) session.pinned = false; else if (session.mode === "chat") session.status = "waiting_for_input"; session.updated_at = new Date().toISOString(); await this.save(session); return session; }
