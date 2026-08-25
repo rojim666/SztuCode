@@ -1,4 +1,5 @@
 import type { RuntimeEvent } from "@sztucode/protocol";
+import path from "node:path";
 import type { Tool } from "../tools.js";
 import type { BeforeToolCallResult, ExtensionAPI, ExtensionContext, ExtensionDefinition, ExtensionDiagnostic, ExtensionDiagnosticPhase, ExtensionHook, ExtensionHookHandler, ExtensionHookPayload, ExtensionResource, ExtensionScope, PromptTemplate, SessionEventListener, SlashCommand, ToolPromptContribution, Unregister } from "./types.js";
 
@@ -48,24 +49,43 @@ export class ExtensionRegistry {
     }
     return result;
   }
+  getTools(workspaceRoot: string, reserved = new Set<string>()): Tool[] { return this.toolsForWorkspace(workspaceRoot, reserved); }
   slashCommands(workspaceRoot: string): SlashCommand[] { return this.visible(workspaceRoot).flatMap((item) => [...item.commands.values()]); }
+  getSlashCommands(workspaceRoot: string): SlashCommand[] { return this.slashCommands(workspaceRoot); }
   promptTemplates(workspaceRoot: string): PromptTemplate[] { return this.visible(workspaceRoot).flatMap((item) => [...item.templates.values()]); }
+  getPromptTemplates(workspaceRoot: string): PromptTemplate[] { return this.promptTemplates(workspaceRoot); }
   resources(workspaceRoot: string): ExtensionResource[] { return this.visible(workspaceRoot).flatMap((item) => [...item.resources.values()]); }
+  getResources(workspaceRoot: string): ExtensionResource[] { return this.resources(workspaceRoot); }
   toolPromptContributions(workspaceRoot: string): ToolPromptContribution[] { return this.visible(workspaceRoot).flatMap((item) => [...item.contributions]); }
+  getToolPromptContributions(workspaceRoot: string): ToolPromptContribution[] { return this.toolPromptContributions(workspaceRoot); }
 
   async dispatch(hook: ExtensionHook, payload: ExtensionHookPayload, workspaceRoot: string, extra: Partial<ExtensionContext> = {}): Promise<BeforeToolCallResult | undefined> {
     let merged: BeforeToolCallResult | undefined;
     for (const item of this.visible(workspaceRoot)) for (const handler of item.hooks.get(hook) ?? []) {
-      try { const result = await handler(payload, { ...item.context, ...extra }); if (hook === "before_tool_call" && result) merged = { ...(merged ?? {}), ...result }; }
+      try { const result = await handler(payload, { ...item.context, workspaceRoot, ...extra }); if (hook === "before_tool_call" && result) merged = { ...(merged ?? {}), ...result }; }
       catch (error) { this.record(item.definition, "hook", errorMessage(error), error, hook); }
     }
     return merged;
   }
+  async dispatchAll(hook: ExtensionHook, payload: ExtensionHookPayload, extra: Partial<ExtensionContext> = {}): Promise<void> {
+    for (const item of this.loaded.values()) for (const handler of item.hooks.get(hook) ?? []) {
+      try { await handler(payload, { ...item.context, ...extra }); }
+      catch (error) { this.record(item.definition, "hook", errorMessage(error), error, hook); }
+    }
+  }
+  async renderToolPromptContributions(workspaceRoot: string, extra: Partial<ExtensionContext> = {}): Promise<string[]> {
+    const output: string[] = [];
+    for (const item of this.toolPromptContributions(workspaceRoot)) {
+      try { output.push(typeof item.content === "function" ? await item.content({ extensionId: "prompt", scope: "global", workspaceRoot, ...extra }) : item.content); }
+      catch (error) { const owner = this.visible(workspaceRoot).find((candidate) => candidate.contributions.has(item)); if (owner) this.record(owner.definition, "hook", errorMessage(error), error); }
+    }
+    return output;
+  }
   async emitSessionEvent(event: RuntimeEvent, workspaceRoot: string, extra: Partial<ExtensionContext> = {}): Promise<void> {
-    for (const item of this.visible(workspaceRoot)) for (const listener of item.listeners) try { await listener(event, { ...item.context, ...extra }); } catch (error) { this.record(item.definition, "hook", errorMessage(error), error); }
+    for (const item of this.visible(workspaceRoot)) for (const listener of item.listeners) try { await listener(event, { ...item.context, workspaceRoot, ...extra }); } catch (error) { this.record(item.definition, "hook", errorMessage(error), error); }
   }
 
-  private visible(root: string): Loaded[] { return [...this.loaded.values()].filter((item) => item.definition.scope === "global" || item.definition.root === root); }
+  private visible(root: string): Loaded[] { const resolved = path.resolve(root); return [...this.loaded.values()].filter((item) => item.definition.scope === "global" || path.resolve(item.definition.root) === resolved); }
   private add<T>(map: Map<string, T>, key: string, value: T, definition: ExtensionDefinition, kind: string): Unregister { if (map.has(key)) { this.record(definition, "register", `${kind} already registered: ${key}`); return () => {}; } map.set(key, value); return () => map.delete(key); }
   private record(definition: ExtensionDefinition, phase: ExtensionDiagnosticPhase, message: string, error?: unknown, hook?: ExtensionHook): void { this.errors.push({ extensionId: definition.id, path: definition.root, scope: definition.scope, phase, hook, message, error }); }
 }

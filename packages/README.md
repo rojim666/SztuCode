@@ -1,5 +1,27 @@
 # TypeScript Runtime
 
+## Runtime Composition
+
+`packages/runtime-ts` is the daemon composition entry point. `RuntimeServer`
+assembles the TCP/NDJSON transport, trace writer, event bus, provider, and
+coding-agent services. RPC behavior lives in `ServerService`; it creates and
+opens transport-free `AgentSession` handles. `RunManager` remains as a
+compatibility runner for existing CLI, desktop, and test callers while new
+composition code should use `ServerService` and `AgentSession`.
+
+Workspace, permission, MCP, skills, Git, settings, and model services are
+constructed once by the entry point and injected into the service graph. The
+daemon still defaults to `127.0.0.1:7438`, keeps the existing JSON-RPC/NDJSON
+methods and event names, and can be started with:
+
+```powershell
+npm run --prefix packages/runtime-ts dev
+```
+
+The dependency direction is `RuntimeServer -> ServerService -> coding-agent
+services`; transport and desktop clients depend only on the protocol and
+daemon client packages.
+
 The repository keeps separate TypeScript and Python runtime entry points. This
 directory contains the TypeScript packages:
 

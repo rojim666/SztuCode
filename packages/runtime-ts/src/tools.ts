@@ -10,7 +10,7 @@ import { classifyBashPermission } from "./bash-permission.js";
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
 export type ToolContext = { workspace: Workspace; signal?: AbortSignal; onFileChanged?: (relativePath: string) => void };
-export interface Tool { readonly name: string; readonly aliases?: readonly string[]; readonly description: string; readonly permission: ToolPermission; readonly schema: Record<string, unknown>; classifyPermission?(params: Record<string, unknown>): ToolPermission; invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult>; }
+export interface Tool { readonly name: string; readonly aliases?: readonly string[]; readonly description: string; readonly permission: ToolPermission; readonly schema: Record<string, unknown>; readonly executionMode?: "parallel" | "sequential"; readonly timeoutMs?: number; classifyPermission?(params: Record<string, unknown>): ToolPermission; invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult>; }
 
 const ok = (output: string): ToolResult => ({ ok: true, output });
 const fail = (error: string, errorType: ToolResult["errorType"] = "runtime_error"): ToolResult => ({ ok: false, output: "", error, errorType });

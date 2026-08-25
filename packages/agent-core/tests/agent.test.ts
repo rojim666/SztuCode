@@ -23,7 +23,7 @@ test("prompt emits lifecycle events, executes tools, and runs hooks", async () =
     { role: "assistant", text: "", toolCalls: [{ id: "call-1", name: "echo", input: { value: "x" } }], stopReason: "tool_use" },
     { role: "assistant", text: "done", toolCalls: [], stopReason: "end_turn" },
   ];
-  const tool: AgentTool = { name: "echo", schema: { type: "object" }, async execute(_id, args, _signal, update) { update({ progress: 1 }); return { content: `echo:${args.value}` }; } };
+  const tool: AgentTool = { name: "echo", description: "echo", parameters: { type: "object" }, async execute(args, context) { context.onUpdate({ details: { progress: 1 } }); return { content: `echo:${(args as Record<string, unknown>).value}` }; } };
   const agent = new Agent({ model, streamFn: streamResponses(responses), tools: [tool], toolExecution: "sequential", beforeToolCall: () => { hooks.push("before"); return undefined; }, afterToolCall: () => { hooks.push("after"); return { details: { ok: true } }; }, prepareNextTurn: () => { hooks.push("prepare"); }, shouldStopAfterTurn: ({ message }) => { hooks.push(`stop:${message.text}`); return false; } });
   agent.subscribe((event) => { events.push(event); });
   await agent.prompt("start");
@@ -41,7 +41,7 @@ test("parallel tools emit completion order while preserving result message order
   const events: AgentEvent[] = [];
   const response: AssistantMessage = { role: "assistant", text: "", toolCalls: [{ id: "slow", name: "slow", input: {} }, { id: "fast", name: "fast", input: {} }], stopReason: "tool_use" };
   const final: AssistantMessage = { role: "assistant", text: "finished", toolCalls: [], stopReason: "end_turn" };
-  const tool = (name: string, delay: number): AgentTool => ({ name, schema: {}, async execute() { await new Promise((resolve) => setTimeout(resolve, delay)); return { content: name }; } });
+  const tool = (name: string, delay: number): AgentTool => ({ name, description: name, parameters: { type: "object" }, async execute() { await new Promise((resolve) => setTimeout(resolve, delay)); return { content: name }; } });
   const agent = new Agent({ model, streamFn: streamResponses([response, final]), tools: [tool("slow", 20), tool("fast", 1)], toolExecution: "parallel" });
   agent.subscribe((event) => events.push(event));
   await agent.prompt("run");

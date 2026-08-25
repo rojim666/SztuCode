@@ -125,7 +125,7 @@ export class AgentLoop {
       messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
       for (const call of response.tool_calls) {
         signal?.throwIfAborted();
-        const before = await extensions?.dispatch("before_tool_call", { toolName: call.name, toolName_: call.name, input: call.input, toolCallId: call.id } as any, extensionRoot, { runId, sessionId: this.options.sessionId });
+        const before = await extensions?.dispatch("before_tool_call", { toolName: call.name, input: call.input, toolCallId: call.id }, extensionRoot, { runId, sessionId: this.options.sessionId });
         if (before?.cancel) { messages.push({ role: "tool", tool_call_id: call.id, content: before.reason ?? "Tool call cancelled by extension", is_error: true }); continue; }
         const input = before?.input ?? call.input;
         const tool = this.tools.get(call.name);
@@ -168,9 +168,9 @@ export class AgentLoop {
           denials.recordSuccess(toolName);
           stuck.recordSuccess(stuckSignature(canonicalCall));
           this.publish({ type: "tool.call_finished", run_id: runId, tool_use_id: call.id, tool_name: toolName, elapsed_ms: elapsedMs, output: contextOutput, ts: now() });
-          if (isTestCommand(String(call.input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(call.input.command ?? ""), result.output), ts: now() });
+          if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(input.command ?? ""), result.output), ts: now() });
         }
-        else { stuck.recordFailure(stuckSignature(canonicalCall)); this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() }); if (isTestCommand(String(call.input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(call.input.command ?? ""), result.error ?? "Tool failed"), ts: now() }); }
+        else { stuck.recordFailure(stuckSignature(canonicalCall)); this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() }); if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() }); }
         messages.push({ role: "tool", tool_call_id: call.id, content: contextOutput, is_error: !result.ok });
       }
       this.publish({ type: "step.finished", run_id: runId, step, ts: now() });

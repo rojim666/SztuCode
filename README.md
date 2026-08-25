@@ -132,6 +132,8 @@ sztu-tui TUI ──┘                                   └─ 同上，功能�
 
 TypeScript runtime 默认监听 `127.0.0.1:7438`，Python runtime 默认监听 `127.0.0.1:7437`，可以同时运行。IPC 命令和事件详情见[架构说明](docs/reference/architecture.md)。
 
+TypeScript daemon 的入口层采用组合结构：`RuntimeServer` 只装配 transport、trace、EventBus、provider 和 coding-agent services；`ServerService` 承载 RPC 服务，负责创建/打开 transport-free `AgentSession`。`RunManager` 作为兼容执行器暂时保留，桌面端、CLI 和既有测试仍可使用原入口。新的服务依赖方向为 `RuntimeServer -> ServerService -> Workspace / Permission / MCP / Skills / Git / Session services`，不会改变现有 RPC 方法、事件名称或 7438 默认端口。
+
 ## 快速开始
 
 ### 环境要求

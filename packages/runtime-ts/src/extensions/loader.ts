@@ -12,7 +12,13 @@ export async function loadExtensionModule(registry: ExtensionRegistry, modulePat
     if (!definition || typeof definition.activate !== "function") throw new Error("Extension module must export default activate(api) or an ExtensionDefinition");
     return await registry.load({ ...definition, id: definition.id ?? id, scope: definition.scope ?? scope, root: definition.root ?? root });
   } catch (error) {
-    registry.recordLoad(id, root, scope, error);
+    registry.recordLoad(id, path.resolve(modulePath), scope, error);
     return false;
   }
+}
+
+export async function loadExtensionModules(registry: ExtensionRegistry, modulePaths: readonly string[], scope: ExtensionScope, workspaceRoot: string): Promise<{ loaded: number; failed: number }> {
+  let loaded = 0; let failed = 0;
+  for (const modulePath of modulePaths) if (await loadExtensionModule(registry, modulePath, scope, workspaceRoot)) loaded += 1; else failed += 1;
+  return { loaded, failed };
 }
