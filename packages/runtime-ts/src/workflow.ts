@@ -11,8 +11,8 @@ export type WorkflowTaskExecution = {
 export type WorkflowTaskExecutor = (task: WorkflowTask, execution: WorkflowTaskExecution) => Promise<HandoffArtifact>;
 
 export type WorkflowOrchestratorHooks = {
-  onTaskUpdated?: (result: WorkflowTaskResult) => void;
-  onHandoff?: (artifact: HandoffArtifact) => void;
+  onTaskUpdated?: (result: WorkflowTaskResult) => void | Promise<void>;
+  onHandoff?: (artifact: HandoffArtifact) => void | Promise<void>;
 };
 
 class WorkflowTimeoutError extends Error {
@@ -40,14 +40,14 @@ export class WorkflowOrchestrator {
     for (const task of graph.tasks) results.set(task.id, { task, status: "pending", attempts: 0, artifact: null, error: "", tokens: 0 });
 
     while ([...results.values()].some((result) => result.status === "pending" || result.status === "running")) {
-      if (signal?.aborted) { this.cancelUnfinished(results); break; }
+      if (signal?.aborted) { await this.cancelUnfinished(results); break; }
       const ready = readyTaskIds([...results.values()].map((result) => ({ id: result.task.id, dependencies: result.task.dependencies, status: result.status }))).slice(0, this.maxConcurrency);
       if (!ready.length) {
         for (const result of results.values()) {
           if (result.status !== "pending") continue;
           result.status = "blocked";
           result.error = "dependency failed or workflow stalled";
-          this.notify(result);
+          await this.notify(result);
         }
         break;
       }
@@ -71,11 +71,11 @@ export class WorkflowOrchestrator {
     const maximumAttempts = 1 + (task.max_retries ?? 0);
 
     for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
-      if (parentSignal?.aborted) { result.status = "cancelled"; result.error = "workflow cancelled"; this.notify(result); return; }
+      if (parentSignal?.aborted) { result.status = "cancelled"; result.error = "workflow cancelled"; await this.notify(result); return; }
       result.status = "running";
       result.attempts = attempt;
       result.error = "";
-      this.notify(result);
+      await this.notify(result);
 
       const controller = new AbortController();
       const cancel = () => controller.abort(new WorkflowCancelledError());
@@ -86,24 +86,24 @@ export class WorkflowOrchestrator {
         result.artifact = normalized;
         result.tokens += Math.max(0, normalized.tokens);
         validateHandoff(workflowId, task, normalized);
-        this.hooks.onHandoff?.(normalized);
+        await this.hooks.onHandoff?.(normalized);
 
         if (task.token_budget > 0 && result.tokens > task.token_budget) {
           result.status = "rejected";
           result.error = `token budget exceeded: used ${result.tokens}, budget ${task.token_budget}`;
-          this.notify(result);
+          await this.notify(result);
           return;
         }
         if (normalized.status === "succeeded" && normalized.review_decision !== "return") {
           result.status = "succeeded";
           completed.set(task.id, normalized);
-          this.notify(result);
+          await this.notify(result);
           return;
         }
 
         result.status = normalized.review_decision === "return" ? "rejected" : "failed";
         result.error = normalized.review_decision === "return" ? normalized.conclusion || "reviewer returned the task" : normalized.summary || "task failed";
-        if (result.status === "rejected") { this.notify(result); return; }
+        if (result.status === "rejected") { await this.notify(result); return; }
       } catch (error) {
         const timedOut = error instanceof WorkflowTimeoutError;
         const cancelled = error instanceof WorkflowCancelledError || parentSignal?.aborted;
@@ -114,12 +114,12 @@ export class WorkflowOrchestrator {
         controller.abort();
       }
 
-      this.notify(result);
+      await this.notify(result);
       if (result.status === "cancelled") return;
       if (task.token_budget > 0 && result.tokens >= task.token_budget) {
         result.status = "rejected";
         result.error = `token budget exhausted: used ${result.tokens}, budget ${task.token_budget}`;
-        this.notify(result);
+        await this.notify(result);
         return;
       }
       if (attempt === maximumAttempts) return;
@@ -144,16 +144,16 @@ export class WorkflowOrchestrator {
     }
   }
 
-  private notify(result: WorkflowTaskResult): void {
-    this.hooks.onTaskUpdated?.({ ...result });
+  private async notify(result: WorkflowTaskResult): Promise<void> {
+    await this.hooks.onTaskUpdated?.({ ...result });
   }
 
-  private cancelUnfinished(results: Map<string, WorkflowTaskResult>): void {
+  private async cancelUnfinished(results: Map<string, WorkflowTaskResult>): Promise<void> {
     for (const result of results.values()) {
       if (result.status !== "pending" && result.status !== "running") continue;
       result.status = "cancelled";
       result.error = "workflow cancelled";
-      this.notify(result);
+      await this.notify(result);
     }
   }
 }

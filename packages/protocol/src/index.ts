@@ -237,20 +237,22 @@ export interface WorkflowTask {
   dependencies: string[]; completion_criteria: string[]; allowed_paths: string[];
   depth: number; token_budget: number; time_budget_s: number; max_retries: number | null;
 }
-export interface WorkflowGraph { workflow_id: string; goal: string; planner_summary: string; tasks: WorkflowTask[] }
+export interface WorkflowGraph { workflow_id: string; goal: string; planner_summary: string; tasks: WorkflowTask[]; parent_session_id?: string }
 export interface HandoffArtifact {
   workflow_id: string; task_id: string; role: WorkflowRole; status: "succeeded" | "failed";
   summary: string; changed_paths: string[]; scope_escalations: string[]; commands: string[];
   output: string; conclusion: string; diff_summary: string; test_summary: string;
   security_summary: string; review_decision: "accept" | "return" | null;
   tokens: number; elapsed_s: number; attempt: number; child_run_id: string;
+  /** Correlation fields for parent/child SessionRuntime execution. */
+  parent_run_id?: string; child_session_id?: string;
 }
-export interface WorkflowTaskResult { task: WorkflowTask; status: WorkflowTaskStatus; attempts: number; artifact: HandoffArtifact | null; error: string; tokens: number }
-export interface WorkflowResult { workflow_id: string; status: WorkflowStatus; reason: string; tasks: WorkflowTaskResult[]; total_tokens: number; elapsed_s: number }
+export interface WorkflowTaskResult { task: WorkflowTask; status: WorkflowTaskStatus; attempts: number; artifact: HandoffArtifact | null; error: string; tokens: number; child_session_id?: string; parent_run_id?: string }
+export interface WorkflowResult { workflow_id: string; status: WorkflowStatus; reason: string; tasks: WorkflowTaskResult[]; total_tokens: number; elapsed_s: number; parent_run_id?: string }
 
 export interface CoreStartedEvent { type: "core.started"; listen_addr: string; version: string }
 export interface RunStartedEvent { type: "run.started"; run_id: string; goal: string; ts: string }
-export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; ts: string }
+export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; parent_session_id?: string; ts: string }
 export interface StepStartedEvent { type: "step.started"; run_id: string; step: number; ts: string }
 export interface StepFinishedEvent { type: "step.finished"; run_id: string; step: number; ts: string }
 export interface LlmTokenEvent { type: "llm.token"; run_id: string; token: string; ts: string }
@@ -270,14 +272,14 @@ export interface ContextInjectedEvent { type: "context.injected"; run_id: string
 export interface SessionMessageReceivedEvent { type: "session.message_received"; session_id: string; content: string; ts: string }
 export interface QuestionRequestedEvent { type: "question.requested"; rpc_id: string; session_id: string; run_id: string; questions: Array<Record<string, unknown>>; ts: string }
 export interface QuestionResolvedEvent { type: "question.resolved"; rpc_id: string; session_id: string; run_id: string; outcome: "answered" | "cancelled"; ts: string }
-export interface SubagentStartedEvent { type: "subagent.started"; run_id: string; parent_run_id: string; description: string; ts: string }
-export interface SubagentFinishedEvent { type: "subagent.finished"; run_id: string; parent_run_id: string; status: "success" | "failed"; ts: string }
-export interface WorkflowTaskSnapshot { id: string; title: string; owner: WorkflowRole; status: WorkflowTaskStatus; dependencies: string[]; completion_criteria: string[]; allowed_paths: string[]; attempt: number; error: string }
-export interface WorkflowStartedEvent { type: "workflow.started"; run_id: string; workflow_id: string; goal: string; planner_summary: string; tasks: WorkflowTaskSnapshot[]; ts: string }
-export interface WorkflowTaskUpdatedEvent { type: "workflow.task_updated"; run_id: string; workflow_id: string; task: WorkflowTaskSnapshot; ts: string }
-export interface WorkflowHandoffEvent { type: "workflow.handoff"; run_id: string; workflow_id: string; artifact: HandoffArtifact; ts: string }
-export interface WorkflowReviewedEvent { type: "workflow.reviewed"; run_id: string; workflow_id: string; task_id: string; decision: "accept" | "return"; diff_summary: string; test_summary: string; security_summary: string; conclusion: string; ts: string }
-export interface WorkflowFinishedEvent { type: "workflow.finished"; run_id: string; workflow_id: string; status: WorkflowStatus; reason: string; total_tokens: number; elapsed_s: number; ts: string }
+export interface SubagentStartedEvent { type: "subagent.started"; run_id: string; parent_run_id: string; parent_session_id?: string; child_session_id?: string; description: string; ts: string }
+export interface SubagentFinishedEvent { type: "subagent.finished"; run_id: string; parent_run_id: string; parent_session_id?: string; child_session_id?: string; status: "success" | "failed"; ts: string }
+export interface WorkflowTaskSnapshot { id: string; title: string; owner: WorkflowRole; status: WorkflowTaskStatus; dependencies: string[]; completion_criteria: string[]; allowed_paths: string[]; attempt: number; error: string; child_session_id?: string; parent_run_id?: string }
+export interface WorkflowStartedEvent { type: "workflow.started"; run_id: string; workflow_id: string; goal: string; planner_summary: string; tasks: WorkflowTaskSnapshot[]; parent_run_id?: string; parent_session_id?: string; ts: string }
+export interface WorkflowTaskUpdatedEvent { type: "workflow.task_updated"; run_id: string; workflow_id: string; task: WorkflowTaskSnapshot; parent_run_id?: string; parent_session_id?: string; ts: string }
+export interface WorkflowHandoffEvent { type: "workflow.handoff"; run_id: string; workflow_id: string; artifact: HandoffArtifact; parent_run_id?: string; ts: string }
+export interface WorkflowReviewedEvent { type: "workflow.reviewed"; run_id: string; workflow_id: string; task_id: string; decision: "accept" | "return"; diff_summary: string; test_summary: string; security_summary: string; conclusion: string; parent_run_id?: string; ts: string }
+export interface WorkflowFinishedEvent { type: "workflow.finished"; run_id: string; workflow_id: string; status: WorkflowStatus; reason: string; total_tokens: number; elapsed_s: number; parent_run_id?: string; parent_session_id?: string; ts: string }
 export interface SessionLifecycleEvent { type: "session.created" | "session.waiting_for_input" | "session.closed"; session_id: string; mode?: "one_shot" | "chat"; last_run_id?: string; ts: string }
 export interface SessionSnapshotEvent { type: "session.snapshot"; session_id: string; snapshot: SessionSnapshot; ts: string }
 export interface SessionAttachedEvent { type: "session.attached" | "session.detached"; session_id: string; attached: boolean; ts: string }

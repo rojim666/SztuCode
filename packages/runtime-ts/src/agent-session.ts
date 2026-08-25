@@ -4,6 +4,10 @@ import { projectModelContext, type ForkOptions, type NewSessionEntry, type Sessi
 import type { RuntimeEvent } from "@sztucode/protocol";
 import type { RunManager } from "./run-manager.js";
 import type { Session, SessionStore } from "./session-store.js";
+import { AgentLoop, type ChatMessage, type ModelProvider } from "./agent-loop.js";
+import type { ToolContext, ToolRegistry as LegacyToolRegistry } from "./tools.js";
+import type { PermissionGate as LegacyPermissionGate } from "./permissions.js";
+import type { EventBus } from "./event-bus.js";
 
 export interface AgentSessionHost {
   readonly sessions: SessionStore;
@@ -42,6 +46,32 @@ export interface ContextCompaction {
 export interface ResourceLoader { loadSystemPrompt?(context: { sessionId: string }): string | Promise<string>; }
 export interface ExtensionRunner { onEvent?(event: AgentEvent, context: { sessionId: string }): void | Promise<void>; }
 
+export interface LegacyAgentSessionOptions {
+  id: string;
+  backend: SessionBackend;
+  provider: ModelProvider;
+  tools: LegacyToolRegistry;
+  context: ToolContext;
+  events: EventBus;
+  permissions: LegacyPermissionGate;
+  runId: string;
+  maxSteps?: number;
+  workspaceRoot?: string;
+  sessionId?: string;
+  parentSessionId?: string;
+  extensions?: import("./extensions/registry.js").ExtensionRegistry;
+}
+
+interface LegacySessionRuntime {
+  prompt(input: PromptInput): Promise<void>;
+  abort(): Promise<"cancelling" | "not_running">;
+  subscribe(listener: (event: import("@sztucode/protocol").RuntimeEvent) => void): () => void;
+  dispose(): void;
+  waitForIdle(): Promise<void>;
+  getTokens(): number;
+  getText(): string;
+}
+
 export interface AgentSessionOptions {
   id: string;
   backend: SessionBackend;
@@ -68,16 +98,23 @@ export class AgentSession {
   private readonly resourceLoader?: ResourceLoader;
   private readonly configuredTools?: ToolRegistry | AgentTool[];
   private readonly agent?: Agent;
+  private readonly legacyRuntime?: LegacySessionRuntime;
   private disposed = false;
   private unsubscribeAgent?: () => void;
 
   constructor(host: AgentSessionHost, id: string);
   constructor(options: AgentSessionOptions, agent: Agent);
-  constructor(first: AgentSessionHost | AgentSessionOptions, second: string | Agent) {
+  constructor(options: LegacyAgentSessionOptions, runtime: LegacySessionRuntime, mode: "legacy");
+  constructor(first: AgentSessionHost | AgentSessionOptions | LegacyAgentSessionOptions, second: string | Agent | LegacySessionRuntime, mode?: "legacy") {
     if (typeof second === "string") { this.legacyHost = first as AgentSessionHost; this.id = second; return; }
+    if (mode === "legacy") {
+      const options = first as LegacyAgentSessionOptions;
+      this.id = options.id; this.backend = options.backend; this.manager = createSessionManager(options.backend); this.legacyRuntime = second as LegacySessionRuntime;
+      return;
+    }
     const options = first as AgentSessionOptions;
     this.id = options.id; this.backend = options.backend; this.compaction = options.contextCompaction; this.extensions = options.extensions; this.permissionGate = options.permissionGate; this.resourceLoader = options.resourceLoader; this.configuredTools = options.tools;
-    this.manager = options.sessionManager ?? createSessionManager(options.backend); this.agent = second;
+    this.manager = options.sessionManager ?? createSessionManager(options.backend); this.agent = second as Agent;
     this.unsubscribeAgent = this.agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
@@ -85,7 +122,7 @@ export class AgentSession {
     const manager = options.sessionManager ?? createSessionManager(options.backend);
     const snapshot = await manager.load(options.id);
     const systemPrompt = options.systemPrompt ?? await options.resourceLoader?.loadSystemPrompt?.({ sessionId: options.id }) ?? "";
-    const tools = Array.isArray(options.tools) ? options.tools : options.tools?.list() ?? [];
+    const tools: AgentTool[] = Array.isArray(options.tools) ? options.tools : options.tools?.list() ?? [];
     const agent = new Agent({
       model: options.modelRuntime.model,
       thinkingLevel: options.thinkingLevel ?? options.modelRuntime.thinkingLevel,
@@ -98,13 +135,24 @@ export class AgentSession {
     return new AgentSession({ ...options, sessionManager: manager }, agent);
   }
 
+  /** Creates a SessionRuntime around the legacy provider/tool pipeline. AgentLoop construction stays inside AgentSession. */
+  static async openLegacy(options: LegacyAgentSessionOptions): Promise<AgentSession> {
+    await options.backend.get(options.id);
+    const runtime = new LegacySessionRuntimeImpl(options);
+    return new AgentSession(options, runtime, "legacy");
+  }
+
   get state() { this.requireModern(); return this.agent!.state; }
   get agentCore(): Agent { this.requireModern(); return this.agent!; }
-  async prompt(input: PromptInput | PromptInput[]): Promise<void> { this.requireModern(); await this.agent!.prompt(input); }
+  async prompt(input: PromptInput | PromptInput[]): Promise<void> {
+    if (this.legacyRuntime) { if (Array.isArray(input)) { for (const item of input) await this.legacyRuntime.prompt(item); } else await this.legacyRuntime.prompt(input); return; }
+    this.requireModern(); await this.agent!.prompt(input);
+  }
   steer(input: PromptInput): void { this.requireModern(); this.agent!.steer(input); }
   followUp(input: PromptInput): void { this.requireModern(); this.agent!.followUp(input); }
   async abort(): Promise<"cancelling" | "not_running" | void> {
     if (this.legacyHost) { const session = await this.legacyHost.sessions.get(this.id); const runId = session.run_ids.at(-1); return runId ? this.legacyHost.runs.cancel(runId) : "not_running"; }
+    if (this.legacyRuntime) return this.legacyRuntime.abort();
     this.requireModern(); this.agent!.abort(); return undefined;
   }
   async compact(focus = ""): Promise<{ summary: string; removedMessages: number }> {
@@ -124,16 +172,19 @@ export class AgentSession {
   }
   subscribe(listener: ((event: AgentEvent) => void | Promise<void>) | ((event: RuntimeEvent) => void)): () => void {
     if (this.legacyHost) return () => undefined;
+    if (this.legacyRuntime) return this.legacyRuntime.subscribe(listener as (event: RuntimeEvent) => void);
     this.requireModern(); return this.agent!.subscribe(listener as (event: AgentEvent, signal: AbortSignal) => void | Promise<void>);
   }
-  dispose(): void { if (this.disposed) return; this.disposed = true; this.unsubscribeAgent?.(); if (this.agent?.state.isStreaming) this.agent.abort(); }
+  dispose(): void { if (this.disposed) return; this.disposed = true; this.unsubscribeAgent?.(); this.legacyRuntime?.dispose(); if (this.agent?.state.isStreaming) this.agent.abort(); }
   detach(): void { this.dispose(); }
 
   async get(): Promise<Session | DomainSessionSnapshot> { if (this.legacyHost) return this.legacyHost.sessions.get(this.id); this.requireModern(); return this.backend!.get(this.id); }
   async history(): Promise<Awaited<ReturnType<SessionStore["history"]>> | SessionEntry[]> { if (this.legacyHost) return this.legacyHost.sessions.history(this.id); this.requireModern(); return this.backend!.history(this.id); }
   setModel(model: Model): void { this.requireModern(); this.agent!.setModel(model); }
   setThinkingLevel(level: ThinkingLevel): void { this.requireModern(); this.agent!.setThinkingLevel(level); }
-  waitForIdle(): Promise<void> { this.requireModern(); return this.agent!.waitForIdle(); }
+  waitForIdle(): Promise<void> { if (this.legacyRuntime) return this.legacyRuntime.waitForIdle(); this.requireModern(); return this.agent!.waitForIdle(); }
+  get usageTokens(): number { return this.legacyRuntime?.getTokens() ?? 0; }
+  get outputText(): string { return this.legacyRuntime?.getText() ?? ""; }
 
   private async handleAgentEvent(event: AgentEvent): Promise<void> {
     if (this.disposed) return;
@@ -143,7 +194,58 @@ export class AgentSession {
   private modernOptions(): AgentSessionOptions {
     return { id: this.id, backend: this.backend!, sessionManager: this.manager, modelRuntime: { model: this.agent!.state.model, stream: this.agent!.options.streamFn, thinkingLevel: this.agent!.state.thinkingLevel }, tools: this.configuredTools ?? this.agent!.state.tools, permissionGate: this.permissionGate, resourceLoader: this.resourceLoader, systemPrompt: this.agent!.state.systemPrompt, contextCompaction: this.compaction, extensions: this.extensions };
   }
-  private requireModern(): void { if (!this.agent || !this.backend || !this.manager) throw new Error("This AgentSession uses the legacy runtime adapter"); if (this.disposed) throw new Error("AgentSession has been disposed"); }
+  private requireModern(): void { if ((!this.agent && !this.legacyRuntime) || !this.backend || !this.manager) throw new Error("This AgentSession is not configured"); if (this.disposed) throw new Error("AgentSession has been disposed"); }
+}
+
+class LegacySessionRuntimeImpl implements LegacySessionRuntime {
+  private readonly listeners = new Set<(event: import("@sztucode/protocol").RuntimeEvent) => void>();
+  private readonly unsubscribeEvents: () => void;
+  private readonly loop: AgentLoop;
+  private active?: Promise<void>;
+  private controller?: AbortController;
+  private tokens = 0;
+  private text = "";
+  private disposed = false;
+
+  constructor(private readonly options: LegacyAgentSessionOptions) {
+    this.loop = new AgentLoop(options.provider, options.tools, options.context, options.events, options.permissions, { sessionId: options.sessionId ?? options.id, workspaceRoot: options.workspaceRoot, extensions: options.extensions });
+    this.unsubscribeEvents = options.events.subscribe((event) => {
+      if (!("run_id" in event) || event.run_id !== options.runId) return;
+      for (const listener of this.listeners) { try { listener(event); } catch { /* session observers are isolated */ } }
+    });
+  }
+
+  async prompt(input: PromptInput): Promise<void> {
+    if (this.disposed) throw new Error("SessionRuntime has been disposed");
+    if (this.active) throw new Error("SessionRuntime is busy");
+    const text = typeof input === "string" ? input : String(input.content ?? "");
+    this.controller = new AbortController();
+    const signal = this.controller.signal;
+    this.active = (async () => {
+      const snapshot = await this.options.backend.get(this.options.id);
+      const history = projectModelContext(snapshot) as ChatMessage[];
+      await this.options.backend.append(this.options.id, { type: "message", message: { role: "user", content: text } });
+      const result = await this.loop.run(this.options.runId, text, this.options.maxSteps ?? 20, history, signal);
+      this.tokens = result.usage.input_tokens + result.usage.output_tokens;
+      this.text = result.text;
+      const assistant = result.messages.at(-1);
+      if (assistant?.role === "assistant") await this.options.backend.append(this.options.id, { type: "message", message: { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}) } });
+    })().finally(() => { this.active = undefined; this.controller = undefined; });
+    await this.active;
+  }
+
+  async abort(): Promise<"cancelling" | "not_running"> {
+    if (!this.active) return "not_running";
+    this.controller?.abort(new Error("SessionRuntime aborted"));
+    this.options.events.publish({ type: "run.finished", run_id: this.options.runId, status: "cancelled", reason: "cancelled", steps: 0, total_input_tokens: 0, total_output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, elapsed_s: 0, context_pct: 0, ...(this.options.parentSessionId ? { parent_session_id: this.options.parentSessionId } : {}), ts: new Date().toISOString() });
+    return "cancelling";
+  }
+
+  subscribe(listener: (event: import("@sztucode/protocol").RuntimeEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  dispose(): void { if (this.disposed) return; this.disposed = true; this.unsubscribeEvents(); }
+  waitForIdle(): Promise<void> { return this.active ?? Promise.resolve(); }
+  getTokens(): number { return this.tokens; }
+  getText(): string { return this.text; }
 }
 
 function createSessionManager(backend: SessionBackend): SessionManager { return { load: (id) => backend.get(id), append: (id, entry) => backend.append(id, entry), fork: (id, options) => backend.fork(id, options) }; }

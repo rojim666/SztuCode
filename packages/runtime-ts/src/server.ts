@@ -18,6 +18,7 @@ import { ExtensionRegistry } from "./extensions/registry.js";
 import { loadExtensionModules } from "./extensions/loader.js";
 import { ServerService, type CodingAgentServices } from "./server-service.js";
 import { classifyError, dataRoot, clientId, error, requestRunId, responseRunId, matchesSubscription } from "./server-helpers.js";
+import { JsonlSessionBackend } from "@sztucode/session-fs";
 
 const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
@@ -30,6 +31,7 @@ export class RuntimeServer {
   readonly mcp = new McpManager();
   readonly runs: RunManager;
   readonly sessions = new SessionStore();
+  readonly sessionBackend = new JsonlSessionBackend(path.join(dataRoot(), "sessions"));
   readonly workspaces = new WorkspaceManager();
   readonly git = new GitManager(this.workspaces);
   readonly models = new ModelProfileStore(this.settings);
@@ -52,7 +54,7 @@ export class RuntimeServer {
     const baseProvider = provider ?? new ConfigurableProvider(this.settings);
     this.provider = this.trace ? new TracingProvider(baseProvider, this.trace, !/^(0|false|no)$/i.test(process.env.SZTU_TRACE_INCLUDE_LLM_PAYLOAD ?? "true")) : baseProvider;
     this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, streaming: true }; }, this.sessions, this.extensions);
-    this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider } satisfies CodingAgentServices);
+    this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, sessionBackend: this.sessionBackend, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider } satisfies CodingAgentServices);
     this.transport = new TcpNdjsonTransport({ host, port, maxFrameBytes, compatibilityMode: true }, {
       onMessage: (connection, message) => {
         const socket = connection.socket;

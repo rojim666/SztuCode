@@ -23,11 +23,13 @@ import type { ModelProfileStore } from "./model-profiles.js";
 import type { QuestionManager } from "./questions.js";
 import type { RunManager } from "./run-manager.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
+import type { SessionBackend } from "@sztucode/session";
 
 export interface CodingAgentServices {
   readonly events: EventBus;
   readonly settings: SettingsStore;
   readonly sessions: SessionStore;
+  readonly sessionBackend: SessionBackend;
   readonly workspaces: WorkspaceManager;
   readonly git: GitManager;
   readonly mcp: McpManager;
@@ -45,9 +47,14 @@ export class ServerService {
   constructor(readonly services?: CodingAgentServices) {}
   async persistRunEvent(this: any, event: import("@sztucode/protocol").RuntimeEvent): Promise<void> {
     const host = resolveServiceHost(this); if (!("run_id" in event) || !host) return;
-    const sessionId = host.runSessions.get(event.run_id); if (!sessionId) return;
+    const parentSessionId = "parent_session_id" in event && typeof event.parent_session_id === "string" ? event.parent_session_id : undefined;
+    const mappedChildEvent = Boolean(parentSessionId && !host.runSessions.has(event.run_id));
+    const sessionId = host.runSessions.get(event.run_id) ?? parentSessionId; if (!sessionId) return;
+    if (mappedChildEvent && parentSessionId) {
+      try { await host.sessions.get(parentSessionId); } catch { return; }
+    }
     await host.sessions.appendRunEvent(sessionId, event as unknown as import("./session-store.js").SessionRunEvent);
-    if (event.type !== "run.finished") return;
+    if (event.type !== "run.finished" || mappedChildEvent) return;
     await host.sessions.recordRunStats(sessionId, event.run_id, { input_tokens: event.total_input_tokens, output_tokens: event.total_output_tokens, cache_read_input_tokens: event.cache_read_input_tokens, cache_creation_input_tokens: event.cache_creation_input_tokens, elapsed_s: event.elapsed_s, context_pct: event.context_pct });
     const session = await host.sessions.get(sessionId);
     const nextStatus = session.mode === "one_shot" ? "closed" : "waiting_for_input";
@@ -115,19 +122,19 @@ export class ServerService {
         return ok(request.id, { run_id: this.runs.start(params.goal) });
       }
       case "agent.subagent": {
-        const params = request.params as { role?: import("@sztucode/protocol").WorkflowRole; goal?: string; workspace_id?: string };
+        const params = request.params as { role?: import("@sztucode/protocol").WorkflowRole; goal?: string; workspace_id?: string; parent_run_id?: string; parent_session_id?: string };
         if (!params.goal?.trim()) throw new Error("goal is required");
         const workspaceRoot = params.workspace_id ? (await this.workspaces.get(params.workspace_id)).path : process.cwd();
-        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions);
-        return ok(request.id, await manager.run(params.role ?? "coder", params.goal));
+        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend);
+        return ok(request.id, await manager.run(params.role ?? "coder", params.goal, [], String(params.parent_run_id ?? ""), { parentSessionId: typeof params.parent_session_id === "string" ? params.parent_session_id : undefined }));
       }
       case "workflow.run": {
-        const params = request.params as { graph?: import("@sztucode/protocol").WorkflowGraph; workspace_id?: string };
+        const params = request.params as { graph?: import("@sztucode/protocol").WorkflowGraph; workspace_id?: string; parent_run_id?: string; parent_session_id?: string };
         if (!params.graph) throw new Error("graph is required");
         const workspaceRoot = params.workspace_id ? (await this.workspaces.get(params.workspace_id)).path : process.cwd();
-        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions);
+        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend);
         const runId = randomUUID(); const controller = new AbortController(); const state = { controller, status: "running" as const }; this.workflows.set(runId, state);
-        try { const result = await manager.runWorkflow(params.graph, { runId, signal: controller.signal }); this.workflows.set(runId, { controller, status: result.status === "cancelled" ? "cancelled" : "completed" }); return ok(request.id, result); }
+        try { const result = await manager.runWorkflow({ ...params.graph, parent_session_id: typeof params.parent_session_id === "string" ? params.parent_session_id : params.graph.parent_session_id }, { runId, signal: controller.signal, parentSessionId: typeof params.parent_session_id === "string" ? params.parent_session_id : undefined, parentRunId: typeof params.parent_run_id === "string" ? params.parent_run_id : undefined }); this.workflows.set(runId, { controller, status: result.status === "cancelled" ? "cancelled" : "completed" }); return ok(request.id, result); }
         catch (error) { this.workflows.set(runId, { controller, status: controller.signal.aborted ? "cancelled" : "completed" }); throw error; }
       }
       case "session.create": {
