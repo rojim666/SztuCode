@@ -11,7 +11,7 @@ name = "SztuCode"
 version = "0.0.1"
 description = "Python runtime and CLI for the SztuCode agent"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = { file = "../LICENSE" }
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2.0",       # 数据校验与序列化（含 JSON 模型等）

@@ -21,4 +21,4 @@ npm run docs:protocol
 npm run docs:links
 ```
 
-专业 artifact Skill 若修改了 Python helper，应按对应 Skill 文档运行其自带检查；项目主链不需要 Python、uv、Ruff、mypy 或 pytest。
+Python runtime 位于 `py-runtime/`。修改 Python daemon、CLI 或评测代码时，在该目录环境中运行对应的 pytest、Ruff 和 mypy 检查；TypeScript 主链仍按上面的 npm 命令验证。

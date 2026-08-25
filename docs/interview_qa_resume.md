@@ -2,7 +2,7 @@
 
 > 历史复盘：本文描述早期 Python daemon + Textual 阶段，不代表当前 TypeScript daemon、Node 终端客户端和 Tauri 桌面架构。当前实现以 [架构说明](reference/architecture.md) 为准。
 
-> 基于项目代码（`src/sztu_code/`）、Git 历史（50 commits, S0→S7）和设计文档，
+> 基于项目代码（`py-runtime/src/sztu_code/`）、Git 历史（50 commits, S0→S7）和设计文档，
 > 逐句拆解简历描述的每个关键概念，预测面试提问并给出有代码证据的回答。
 
 ---

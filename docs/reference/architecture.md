@@ -40,7 +40,7 @@ npm 发布入口会启动 TypeScript daemon，并让 Node CLI 创建绑定到目
 
 ### `sztu-py` / Python CLI
 
-Python 包入口连接 `src/sztu_code` 中的 Python daemon，默认端口为 `7437`。仓库内可使用 `npm run cli:py -- ...` 和 `npm run daemon:py`。
+Python 包入口连接 `py-runtime/src/sztu_code` 中的 Python daemon，默认端口为 `7437`。仓库内可使用 `npm run cli:py -- ...` 和 `npm run daemon:py`。
 
 ### Tauri Desktop
 

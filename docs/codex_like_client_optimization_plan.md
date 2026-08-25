@@ -30,7 +30,7 @@ SztuCode 已经具备 Agent 产品的核心能力：daemon 与客户端分离、
 
 ### 当前客户端问题
 
-1. `src/sztu_code/desktop/app.py` 是一个 28KB 的 Tkinter 单窗口，只有顶部状态、聊天流和输入框；没有工作区、任务列表、文件树、diff、设置或恢复会话入口。
+1. `py-runtime/src/sztu_code/desktop/app.py` 是一个 28KB 的 Tkinter 单窗口，只有顶部状态、聊天流和输入框；没有工作区、任务列表、文件树、diff、设置或恢复会话入口。
 2. Tkinter 结构把布局、状态、事件订阅和渲染放在同一类中，难以实现虚拟列表、可停靠面板、复杂键盘导航和高质量代码 diff。
 3. 桌面端 IPC 名称已漂移：它监听 `tool.started/tool.finished`，但核心事件为 `tool.call_started/tool.call_finished`；它调用 `permission.decide`，而 daemon 注册的是 `permission.respond`。这属于 P0 正确性问题，必须先修复。
 4. 现有协议可获取单个会话历史，但没有会话列表、重命名、归档、恢复、工作区、文件变更、运行取消等面向产品的命令。

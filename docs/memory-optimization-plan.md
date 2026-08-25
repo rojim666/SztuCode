@@ -160,7 +160,7 @@ def should_offload(tool_name: str, content: str) -> bool:
 
 ### 4.5 新增模块
 
-#### `src/sztu_code/core/compact/offload.py`
+#### `py-runtime/src/sztu_code/core/compact/offload.py`
 
 ```python
 # 模块职责：工具结果外存化写入、摘要生成、索引管理

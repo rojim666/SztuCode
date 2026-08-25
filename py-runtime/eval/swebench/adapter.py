@@ -16,7 +16,7 @@ RPC 流程:
   8. session.close         → 清理
 
 用法:
-    cd F:/Learning/codinganget/SztuCode
+    cd F:/Learning/codinganget/SztuCode/py-runtime
     uv run python -m eval.swebench.adapter --max-instances 10
 """
 from __future__ import annotations
