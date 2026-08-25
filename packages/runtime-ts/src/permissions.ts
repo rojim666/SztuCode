@@ -31,8 +31,12 @@ export class PermissionManager {
   }
   private ask(runId: string, permissionId: string, toolName: string, params: Record<string, unknown>, permission: ToolPermission, signal?: AbortSignal): Promise<boolean> {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => { if (this.pending.delete(permissionId)) resolve(false); }, this.timeoutMs);
-      const finish = (allowed: boolean) => { clearTimeout(timer); signal?.removeEventListener("abort", abort); resolve(allowed); };
+      const timer = setTimeout(() => { if (this.pending.delete(permissionId)) finish(false); }, this.timeoutMs);
+      const finish = (allowed: boolean) => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        void this.events.flush().then(() => resolve(allowed), () => resolve(allowed));
+      };
       const abort = () => { if (this.pending.delete(permissionId)) finish(false); };
       this.pending.set(permissionId, { resolve: finish, runId, toolName, permission });
       signal?.addEventListener("abort", abort, { once: true });
@@ -48,10 +52,11 @@ export class PermissionManager {
       try { savePermissionPolicy(this.persistent, this.policyPath); }
       catch { /* the current decision still applies even when persistence is unavailable */ }
     }
-    pending.resolve(allowed);
     const ts = new Date().toISOString();
     this.events.publish({ type: "permission.resolved", run_id: pending.runId, permission_id: permissionId, tool_use_id: permissionId, decision, ts });
-    this.events.publish({ type: allowed ? "permission.granted" : "permission.denied", run_id: pending.runId, tool_use_id: permissionId, decision, ts }); return true;
+    this.events.publish({ type: allowed ? "permission.granted" : "permission.denied", run_id: pending.runId, tool_use_id: permissionId, decision, ts });
+    pending.resolve(allowed);
+    return true;
   }
   cancelRun(runId: string): void {
     for (const [permissionId, pending] of this.pending) {

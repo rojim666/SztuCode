@@ -14,8 +14,9 @@ import type { Tool } from "./tools.js";
 import { buildSystemPrompt } from "./prompt-loader.js";
 import { createMemoryTools, loadMemoryCatalog } from "./memory.js";
 import type { SessionStore } from "./session-store.js";
+import { buildCompletionContract, buildRepairPrompt, RepairCircuitBreaker, VerificationExecutor, digestsFromChangeRecords, failureSignature, markStaleEvidence, type VerificationResult } from "./verification.js";
 
-type RunState = { runId: string; goal: string; status: "running" | "completed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
+type RunState = { runId: string; goal: string; status: "running" | "completed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[]; verificationStatus?: string };
 
 export class RunManager {
   private readonly runs = new Map<string, RunState>();
@@ -72,16 +73,19 @@ export class RunManager {
   }
 
   private async execute(run: RunState, history: ChatMessage[], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string): Promise<void> {
+    const root = workspaceRoot ?? process.cwd();
     let result: AgentRunResult;
+    let loop: AgentLoop | undefined;
+    let verification: VerificationResult | undefined;
     const tracker = workspaceRoot ? new WorkspaceChangeTracker(workspaceRoot, run.runId) : null;
     try {
-      const root = workspaceRoot ?? process.cwd(); const memory = await loadMemoryCatalog(root, this.sessions, sessionId);
+      const memory = await loadMemoryCatalog(root, this.sessions, sessionId);
       const tools = createWorkspaceTools([...createPlanTools(this.events, run.runId, sessionId), ...createMemoryTools(memory, this.sessions, sessionId, run.runId), ...this.extraTools()]); if (tracker) await tracker.capture();
       if (sessionId && this.questions) registerQuestionTool(tools, (questions) => this.questions!.ask(sessionId, run.runId, questions as never));
       const config = await this.contextConfig();
       const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name), taskText: run.goal }), memory.prompt()].filter(Boolean).join("\n\n");
       const initialHistory = [{ role: "system" as const, content: prompt }, ...history];
-      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
+      loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
       result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => run.steering.splice(0, run.steering.length));
     } catch (error) {
       if (tracker) await tracker.finalize();
@@ -94,9 +98,56 @@ export class RunManager {
     run.steps = result.steps;
     run.usage = result.usage;
     run.contextPct = result.contextPct;
-    const changes = tracker ? await tracker.finalize() : [];
+    let changes = tracker ? await tracker.finalize() : [];
     if (changes.length) this.emit({ type: "change.applied", run_id: run.runId, workspace_path: path.resolve(workspaceRoot!), paths: changes.map((item) => item.path), ts: now() });
     if (run.status !== "running") return;
+
+    // Verification is opt-in so existing projects without a check contract keep
+    // their historical completion semantics. A user checks.toml or project
+    // package scripts becomes an independent, permission-free gate when enabled.
+    try {
+    if (verificationEnabled() && loop) {
+      const contract = await buildCompletionContract(run.runId, root);
+      if (contract) {
+        const executor = new VerificationExecutor(root, runDataRoot(run.runId), verificationTimeoutMs());
+        const breaker = new RepairCircuitBreaker(repairAttempts());
+        this.emit({ type: "verification.started", run_id: run.runId, condition_count: contract.conditions.length, ts: now() });
+        verification = await executor.verify(contract, digestsFromChangeRecords(changes));
+        breaker.record(failureSignature(verification));
+        for (;;) {
+          const stopReason = breaker.stopReason();
+          if (verification.overall !== "failed" || stopReason || run.status !== "running") {
+            if (stopReason && verification.overall === "failed") this.emit({ type: "log.line", run_id: run.runId, level: "WARN", source: "verification", message: `Repair stopped: ${stopReason}`, ts: now() });
+            break;
+          }
+          breaker.noteAttempt();
+          if (tracker) await tracker.capture();
+          result = await loop.run(run.runId, buildRepairPrompt(verification, contract), maxSteps(), result.messages, run.controller.signal, () => run.steering.splice(0, run.steering.length));
+          changes = tracker ? await tracker.finalize() : changes;
+          const current = digestsFromChangeRecords(changes);
+          markStaleEvidence(verification, contract, current);
+          verification = await executor.verify(contract, current);
+          breaker.record(failureSignature(verification));
+        }
+        run.verificationStatus = verification.overall;
+        this.emit({ type: "verification.finished", run_id: run.runId, overall: verification.overall, results: verification.results.map((item) => ({ condition_id: item.condition_id, outcome: item.outcome, message: item.message })), ts: now() });
+        if (verification.overall === "failed") {
+          if (onComplete) await onComplete(result.messages, run.usage);
+          if (sessionId && this.sessions) await this.sessions.replaceModelHistory(sessionId, result.messages.filter((message) => message.role !== "system"));
+          run.status = "completed";
+          if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
+          this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: "independent verification failed", verification_status: verification.overall, steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
+          return;
+        }
+      }
+    }
+    } catch (error) {
+      if (run.status !== "running") return;
+      run.status = "completed";
+      if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
+      this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: error instanceof Error ? error.message : String(error), ...(verification ? { verification_status: verification.overall } : {}), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
+      return;
+    }
     if (onComplete) await onComplete(result.messages, run.usage);
     if (sessionId && this.sessions) {
       await this.sessions.replaceModelHistory(sessionId, result.messages.filter((message) => message.role !== "system"));
@@ -105,7 +156,7 @@ export class RunManager {
     if (run.status !== "running") return;
     run.status = "completed";
     if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
-    this.emit({ type: "run.finished", run_id: run.runId, status: "success", steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
+    this.emit({ type: "run.finished", run_id: run.runId, status: "success", ...(run.verificationStatus ? { verification_status: run.verificationStatus } : {}), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
   }
 
   private emit(event: RuntimeEvent): void { this.events.publish(event); }
@@ -114,3 +165,7 @@ export class RunManager {
 const now = () => new Date().toISOString();
 const elapsed = (startedAt: number) => (Date.now() - startedAt) / 1000;
 const maxSteps = (): number => { const value = Number(process.env.SZTU_MAX_STEPS); return Number.isInteger(value) && value >= 0 ? value : 100; };
+const verificationEnabled = (): boolean => /^(1|true|yes)$/i.test(process.env.SZTU_REQUIRE_VERIFICATION ?? "");
+const verificationTimeoutMs = (): number => { const value = Number(process.env.SZTU_VERIFICATION_TIMEOUT_S); return Number.isFinite(value) && value > 0 ? value * 1_000 : 60_000; };
+const repairAttempts = (): number => { const value = Number(process.env.SZTU_MAX_REPAIR_ATTEMPTS); return Number.isInteger(value) && value > 0 ? value : 3; };
+const runDataRoot = (runId: string): string => path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu"), "runs", runId);

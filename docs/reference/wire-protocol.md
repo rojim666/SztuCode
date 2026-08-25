@@ -401,6 +401,7 @@
 | `run_id` | `string` | yes |
 | `status` | `"success" \| "failed" \| "cancelled"` | yes |
 | `reason` | `string` | no |
+| `verification_status` | `string` | no |
 | `steps` | `number` | yes |
 | `total_input_tokens` | `number` | yes |
 | `total_output_tokens` | `number` | yes |
@@ -787,6 +788,25 @@
 | `run_id` | `string` | yes |
 | `workspace_path` | `string` | yes |
 | `paths` | `string[]` | yes |
+| `ts` | `string` | yes |
+
+### VerificationStartedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"verification.started"` | yes |
+| `run_id` | `string` | yes |
+| `condition_count` | `number` | yes |
+| `ts` | `string` | yes |
+
+### VerificationFinishedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"verification.finished"` | yes |
+| `run_id` | `string` | yes |
+| `overall` | `"verified" \| "partial" \| "unverified" \| "failed" \| "env_blocked" \| "stale"` | yes |
+| `results` | `Array<{ condition_id: string; outcome: string; message: string }>` | yes |
 | `ts` | `string` | yes |
 
 ### PermissionModeChangedEvent

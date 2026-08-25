@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "sections": [
-    {"id": "context-compaction-summary", "file": "system-prompt-context-compaction-summary.md", "source": "docs/Prompt.md#11.1", "status": "active", "consumer": "conversation compactor"},
-    {"id": "full-compaction-analysis", "file": "system-prompt-analysis-instructions-for-full-compact-prompt-full-conversation.md", "source": "docs/Prompt.md#11.2", "status": "reference-only"},
-    {"id": "recent-messages-analysis", "file": "system-prompt-analysis-instructions-for-full-compact-prompt-recent-messages.md", "source": "docs/Prompt.md#11.3", "status": "reference-only"},
-    {"id": "subagent-delegation-examples", "file": "system-prompt-subagent-delegation-examples.md", "source": "docs/Prompt.md#11.4", "status": "reference-only"}
-  ]
-}

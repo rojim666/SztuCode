@@ -1,7 +1,0 @@
-[agent]
-description = "coder agent：默认子 agent，通用软件工程助手，共享主 agent 大部分工具"
-prompt_id = "general"
-# 空 allowed_tools = 不限工具（等价于注册子 agent 可用全部工具）
-allowed_tools = []
-# 角色步数上限（高于全局默认 20，给功能实现更多余地）
-max_steps = 40
