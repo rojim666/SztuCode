@@ -24,6 +24,7 @@ import type { QuestionManager } from "./questions.js";
 import type { RunManager } from "./run-manager.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
 import type { SessionBackend } from "@sztucode/session";
+import type { TelemetryContext } from "@sztucode/telemetry";
 
 export interface CodingAgentServices {
   readonly events: EventBus;
@@ -38,6 +39,7 @@ export interface CodingAgentServices {
   readonly runs: RunManager;
   readonly extensions: ExtensionRegistry;
   readonly provider: unknown;
+  readonly telemetry?: TelemetryContext;
 }
 const METHOD_NOT_FOUND = -32601;
 const SESSION_BUSY = -32012;
@@ -125,14 +127,14 @@ export class ServerService {
         const params = request.params as { role?: import("@sztucode/protocol").WorkflowRole; goal?: string; workspace_id?: string; parent_run_id?: string; parent_session_id?: string };
         if (!params.goal?.trim()) throw new Error("goal is required");
         const workspaceRoot = params.workspace_id ? (await this.workspaces.get(params.workspace_id)).path : process.cwd();
-        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend);
+        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend, undefined, this.telemetry);
         return ok(request.id, await manager.run(params.role ?? "coder", params.goal, [], String(params.parent_run_id ?? ""), { parentSessionId: typeof params.parent_session_id === "string" ? params.parent_session_id : undefined }));
       }
       case "workflow.run": {
         const params = request.params as { graph?: import("@sztucode/protocol").WorkflowGraph; workspace_id?: string; parent_run_id?: string; parent_session_id?: string };
         if (!params.graph) throw new Error("graph is required");
         const workspaceRoot = params.workspace_id ? (await this.workspaces.get(params.workspace_id)).path : process.cwd();
-        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend);
+        const manager = new SubagentManager(this.provider, workspaceRoot, this.events, this.runs.permissions, this.sessionBackend, undefined, this.telemetry);
         const runId = randomUUID(); const controller = new AbortController(); const state = { controller, status: "running" as const }; this.workflows.set(runId, state);
         try { const result = await manager.runWorkflow({ ...params.graph, parent_session_id: typeof params.parent_session_id === "string" ? params.parent_session_id : params.graph.parent_session_id }, { runId, signal: controller.signal, parentSessionId: typeof params.parent_session_id === "string" ? params.parent_session_id : undefined, parentRunId: typeof params.parent_run_id === "string" ? params.parent_run_id : undefined }); this.workflows.set(runId, { controller, status: result.status === "cancelled" ? "cancelled" : "completed" }); return ok(request.id, result); }
         catch (error) { this.workflows.set(runId, { controller, status: controller.signal.aborted ? "cancelled" : "completed" }); throw error; }

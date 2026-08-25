@@ -15,6 +15,7 @@ import { JsonlSessionBackend } from "@sztucode/session-fs";
 import type { SessionBackend, SessionHeader, SessionSnapshot } from "@sztucode/session";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 const roleNames: Record<WorkflowRole, string> = { planner: "planner", coder: "coder", tester: "tester", reviewer: "reviewer" };
 const workflowCoderTools = ["read_file", "write_file", "edit_file", "list_dir", "grep_search", "glob_search"];
@@ -36,8 +37,11 @@ export class SubagentManager {
   private readonly children = new Map<string, ChildSessionInfo>();
   private readonly workflowRoot: string;
   private workflowWrite = Promise.resolve();
-  constructor(private readonly provider: ModelProvider, private readonly workspaceRoot: string, private readonly events: EventBus, private readonly permissions: PermissionManager, private readonly sessionBackend: SessionBackend = new JsonlSessionBackend(), workflowRoot = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "workflows")) { this.workflowRoot = workflowRoot; }
+  constructor(private readonly provider: ModelProvider, private readonly workspaceRoot: string, private readonly events: EventBus, private readonly permissions: PermissionManager, private readonly sessionBackend: SessionBackend = new JsonlSessionBackend(), workflowRoot = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "workflows"), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) { this.workflowRoot = workflowRoot; }
   async run(role: WorkflowRole, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
+    return safeStartSpan(this.telemetry, { name: "subagent.run", attributes: { role, parent_run_id: options.parentRunId ?? parentRunId, parent_session_id: options.parentSessionId } }, (span) => { span.addEvent("subagent.started"); return this.runInternal(role, goal, history, parentRunId, options); });
+  }
+  private async runInternal(role: WorkflowRole, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
     if (options.signal?.aborted) throw options.signal.reason ?? new Error("subagent cancelled");
     const runId = randomUUID(); const sessionId = randomUUID(); const effectiveParentRunId = options.parentRunId ?? parentRunId; const ts = new Date().toISOString();
     const profile = await loadAgentProfile(this.workspaceRoot, roleNames[role]);
@@ -83,7 +87,7 @@ export class SubagentManager {
     const header: SessionHeader = { type: "session", version: 1, id: input.sessionId, parentSessionId: input.parentSessionId, createdAt: now, updatedAt: now, title: `${input.role}: ${input.profile.name ?? input.role}`, workspaceId: this.workspaceRoot, metadata: { parentRunId: input.parentRunId, childRunId: input.runId, role: input.role } };
     await this.sessionBackend.create(header);
     for (const message of input.history) await this.sessionBackend.append(input.sessionId, { type: "message", message: message as never });
-    return AgentSession.openLegacy({ id: input.sessionId, backend: this.sessionBackend, provider: this.provider, tools: input.tools, context: input.context, events: this.events, permissions: input.permissions, runId: input.runId, maxSteps: input.profile.maxSteps || 20, workspaceRoot: this.workspaceRoot, sessionId: input.sessionId, parentSessionId: input.parentSessionId ?? undefined });
+    return AgentSession.openLegacy({ id: input.sessionId, backend: this.sessionBackend, provider: this.provider, tools: input.tools, context: input.context, events: this.events, permissions: input.permissions, runId: input.runId, maxSteps: input.profile.maxSteps || 20, workspaceRoot: this.workspaceRoot, sessionId: input.sessionId, parentSessionId: input.parentSessionId ?? undefined, telemetry: this.telemetry });
   }
   async runWorkflow(graph: WorkflowGraph, options: { runId?: string; signal?: AbortSignal; parentSessionId?: string; parentRunId?: string } = {}): Promise<import("@sztucode/protocol").WorkflowResult> {
     const workflowRunId = options.runId ?? randomUUID(); const parentSessionId = options.parentSessionId ?? graph.parent_session_id ?? null; const parentRunId = options.parentRunId ?? ""; const started = new Date().toISOString();

@@ -15,6 +15,7 @@ import { buildSystemPrompt } from "./prompt-loader.js";
 import { createMemoryTools, loadMemoryCatalog } from "./memory.js";
 import type { SessionStore } from "./session-store.js";
 import { ExtensionRegistry } from "./extensions/registry.js";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 type RunState = { runId: string; goal: string; status: "running" | "completed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
@@ -28,8 +29,8 @@ export class RunManager {
   private readonly sessionRuns = new Map<string, string>();
   private readonly runRoots = new Map<string, string>();
   readonly permissions: PermissionManager;
-  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry()) {
-    this.permissions = new PermissionManager(events);
+  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) {
+    this.permissions = new PermissionManager(events, 60_000, undefined, this.telemetry);
     this.events.subscribe((event) => {
       const root = ("workspace_path" in event && typeof event.workspace_path === "string" ? event.workspace_path : undefined) ?? ("run_id" in event ? this.runRoots.get(event.run_id) : undefined) ?? workspaceRoot;
       void this.extensions.emitSessionEvent(event, root, { runId: "run_id" in event ? event.run_id : undefined });
@@ -44,7 +45,7 @@ export class RunManager {
     if (sessionId) this.sessionRuns.set(sessionId, runId);
     onRunCreated?.(runId);
     this.emit({ type: "run.started", run_id: runId, goal, ts: now() });
-    void this.execute(run, history, onComplete, workspaceRoot, sessionId);
+    void safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); });
     return runId;
   }
 
@@ -97,7 +98,7 @@ export class RunManager {
       const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name), taskText: run.goal }), extensionPrompt, memory.prompt()].filter(Boolean).join("\n\n");
       await this.extensions.dispatch("session_start", { goal: run.goal }, root, { runId: run.runId, sessionId });
       const initialHistory = [{ role: "system" as const, content: prompt }, ...history];
-      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
+      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
       result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => run.steering.splice(0, run.steering.length));
     } catch (error) {
       if (tracker) await tracker.finalize();

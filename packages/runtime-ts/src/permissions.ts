@@ -2,6 +2,7 @@ import type { PermissionDecision, PermissionMode } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import type { ToolPermission } from "./tools-types.js";
 import { defaultPolicyPath, loadPermissionPolicy, savePermissionPolicy, type StoredPermissionDecision } from "./permission-policy.js";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 type Pending = { resolve: (allowed: boolean) => void; runId: string; toolName: string; permission: ToolPermission };
 export interface PermissionGate {
@@ -11,7 +12,7 @@ export class PermissionManager {
   private mode: PermissionMode = "normal";
   private readonly pending = new Map<string, Pending>();
   private readonly persistent: Map<string, StoredPermissionDecision>;
-  constructor(private readonly events: EventBus, private readonly timeoutMs = 60_000, private readonly policyPath = defaultPolicyPath()) { this.persistent = loadPermissionPolicy(policyPath); }
+  constructor(private readonly events: EventBus, private readonly timeoutMs = 60_000, private readonly policyPath = defaultPolicyPath(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) { this.persistent = loadPermissionPolicy(policyPath); }
   getMode(): PermissionMode { return this.mode; }
   setMode(mode: PermissionMode): void { const old = this.mode; this.mode = mode; if (old !== mode) this.events.publish({ type: "permission.mode_changed", old_mode: old, new_mode: mode, ts: new Date().toISOString() }); }
   scoped(mode: PermissionMode): PermissionGate { return { check: (runId, permissionId, toolName, params, permission, signal) => this.checkWithMode(mode, runId, permissionId, toolName, params, permission, signal) }; }
@@ -30,15 +31,15 @@ export class PermissionManager {
     return this.ask(runId, permissionId, toolName, params, permission, signal);
   }
   private ask(runId: string, permissionId: string, toolName: string, params: Record<string, unknown>, permission: ToolPermission, signal?: AbortSignal): Promise<boolean> {
-    return new Promise((resolve) => {
+    return safeStartSpan(this.telemetry, { name: "permission.request", attributes: { run_id: runId, permission_id: permissionId, tool_name: toolName, permission } }, (span) => new Promise((resolve) => {
       const timer = setTimeout(() => { if (this.pending.delete(permissionId)) resolve(false); }, this.timeoutMs);
-      const finish = (allowed: boolean) => { clearTimeout(timer); signal?.removeEventListener("abort", abort); resolve(allowed); };
+      const finish = (allowed: boolean) => { clearTimeout(timer); signal?.removeEventListener("abort", abort); span.setAttributes({ allowed }); resolve(allowed); };
       const abort = () => { if (this.pending.delete(permissionId)) finish(false); };
       this.pending.set(permissionId, { resolve: finish, runId, toolName, permission });
       signal?.addEventListener("abort", abort, { once: true });
       const paramPreview = preview(toolName, params);
       this.events.publish({ type: "permission.requested", run_id: runId, permission_id: permissionId, tool_use_id: permissionId, tool_name: toolName, params, preview: paramPreview, param_preview: paramPreview, ts: new Date().toISOString() });
-    });
+    }));
   }
   respond(permissionId: string, decision: PermissionDecision): boolean {
     const pending = this.pending.get(permissionId); if (!pending) return false;

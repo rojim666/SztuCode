@@ -9,6 +9,7 @@ import path from "node:path";
 import { createReadRefTool, OffloadManager } from "./offload.js";
 import { validateSchema } from "./schema-validator.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
@@ -18,7 +19,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -62,7 +63,13 @@ export class AgentLoop {
     const startCompaction = (step: number): boolean => {
       if (pendingCompaction || compactThreshold <= 0 || compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker || step - lastCompactStep < compactCooldownSteps) return false;
       if (this.options.sessionId) this.publish({ type: "context.compacting", session_id: this.options.sessionId, run_id: runId, ts: now() });
-      pendingCompaction = context.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
+      pendingCompaction = safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "context.compaction", attributes: { run_id: runId, step, compaction_count: compactionCount } }, async (span) => {
+        try {
+          const result = await context.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
+          span.setAttributes({ removed_messages: result.removedMessages, summary_tokens: result.summaryTokens, failed: Boolean(result.failed) });
+          return result;
+        } catch (error) { span.recordError(error); throw error; }
+      });
       lastCompactStep = step;
       return true;
     };
@@ -154,8 +161,14 @@ export class AgentLoop {
           continue;
         }
         const started = Date.now();
-        const result = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
-          this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+        const result = await safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "tool.execution", attributes: { run_id: runId, tool_name: toolName, tool_use_id: call.id } }, async (span) => {
+          try {
+            const value = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
+              this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+            });
+            span.setAttributes({ ok: value.ok, error_type: value.errorType ?? "" });
+            return value;
+          } catch (error) { span.recordError(error); throw error; }
         });
         const elapsedMs = Date.now() - started;
         await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });

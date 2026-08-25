@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
-    "build": "npm run build --prefix ../ai && npm run build --prefix ../agent-core && npm run build --prefix ../protocol && tsc -p tsconfig.json",
+    "build": "npm run build --prefix ../ai && npm run build --prefix ../agent-core && npm run build --prefix ../protocol && npm run build --prefix ../telemetry && tsc -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "@sztucode/session": "file:../session",
     "@sztucode/session-fs": "file:../session-fs",
     "@sztucode/server": "file:../server",
+    "@sztucode/telemetry": "file:../telemetry",
     "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {

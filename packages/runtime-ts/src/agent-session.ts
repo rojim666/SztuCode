@@ -8,6 +8,7 @@ import { AgentLoop, type ChatMessage, type ModelProvider } from "./agent-loop.js
 import type { ToolContext, ToolRegistry as LegacyToolRegistry } from "./tools.js";
 import type { PermissionGate as LegacyPermissionGate } from "./permissions.js";
 import type { EventBus } from "./event-bus.js";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 export interface AgentSessionHost {
   readonly sessions: SessionStore;
@@ -60,6 +61,7 @@ export interface LegacyAgentSessionOptions {
   sessionId?: string;
   parentSessionId?: string;
   extensions?: import("./extensions/registry.js").ExtensionRegistry;
+  telemetry?: TelemetryContext;
 }
 
 interface LegacySessionRuntime {
@@ -82,6 +84,7 @@ export interface AgentSessionOptions {
   contextCompaction?: ContextCompaction;
   resourceLoader?: ResourceLoader;
   extensions?: ExtensionRunner;
+  telemetry?: TelemetryContext;
   thinkingLevel?: ThinkingLevel;
   systemPrompt?: string;
 }
@@ -99,6 +102,7 @@ export class AgentSession {
   private readonly configuredTools?: ToolRegistry | AgentTool[];
   private readonly agent?: Agent;
   private readonly legacyRuntime?: LegacySessionRuntime;
+  private readonly telemetry: TelemetryContext;
   private disposed = false;
   private unsubscribeAgent?: () => void;
 
@@ -106,15 +110,15 @@ export class AgentSession {
   constructor(options: AgentSessionOptions, agent: Agent);
   constructor(options: LegacyAgentSessionOptions, runtime: LegacySessionRuntime, mode: "legacy");
   constructor(first: AgentSessionHost | AgentSessionOptions | LegacyAgentSessionOptions, second: string | Agent | LegacySessionRuntime, mode?: "legacy") {
-    if (typeof second === "string") { this.legacyHost = first as AgentSessionHost; this.id = second; return; }
+    if (typeof second === "string") { this.legacyHost = first as AgentSessionHost; this.id = second; this.telemetry = NOOP_TELEMETRY_CONTEXT; return; }
     if (mode === "legacy") {
       const options = first as LegacyAgentSessionOptions;
-      this.id = options.id; this.backend = options.backend; this.manager = createSessionManager(options.backend); this.legacyRuntime = second as LegacySessionRuntime;
+      this.id = options.id; this.backend = options.backend; this.manager = createSessionManager(options.backend); this.legacyRuntime = second as LegacySessionRuntime; this.telemetry = options.telemetry ?? NOOP_TELEMETRY_CONTEXT;
       return;
     }
     const options = first as AgentSessionOptions;
     this.id = options.id; this.backend = options.backend; this.compaction = options.contextCompaction; this.extensions = options.extensions; this.permissionGate = options.permissionGate; this.resourceLoader = options.resourceLoader; this.configuredTools = options.tools;
-    this.manager = options.sessionManager ?? createSessionManager(options.backend); this.agent = second as Agent;
+    this.manager = options.sessionManager ?? createSessionManager(options.backend); this.agent = second as Agent; this.telemetry = options.telemetry ?? NOOP_TELEMETRY_CONTEXT;
     this.unsubscribeAgent = this.agent.subscribe((event) => this.handleAgentEvent(event));
   }
 
@@ -145,8 +149,10 @@ export class AgentSession {
   get state() { this.requireModern(); return this.agent!.state; }
   get agentCore(): Agent { this.requireModern(); return this.agent!; }
   async prompt(input: PromptInput | PromptInput[]): Promise<void> {
-    if (this.legacyRuntime) { if (Array.isArray(input)) { for (const item of input) await this.legacyRuntime.prompt(item); } else await this.legacyRuntime.prompt(input); return; }
-    this.requireModern(); await this.agent!.prompt(input);
+    await safeStartSpan(this.telemetry, { name: "session.operation", attributes: { session_id: this.id, operation: "prompt" } }, async () => {
+      if (this.legacyRuntime) { if (Array.isArray(input)) { for (const item of input) await this.legacyRuntime.prompt(item); } else await this.legacyRuntime.prompt(input); return; }
+      this.requireModern(); await this.agent!.prompt(input);
+    });
   }
   steer(input: PromptInput): void { this.requireModern(); this.agent!.steer(input); }
   followUp(input: PromptInput): void { this.requireModern(); this.agent!.followUp(input); }
@@ -192,7 +198,7 @@ export class AgentSession {
     await this.extensions?.onEvent?.(event, { sessionId: this.id });
   }
   private modernOptions(): AgentSessionOptions {
-    return { id: this.id, backend: this.backend!, sessionManager: this.manager, modelRuntime: { model: this.agent!.state.model, stream: this.agent!.options.streamFn, thinkingLevel: this.agent!.state.thinkingLevel }, tools: this.configuredTools ?? this.agent!.state.tools, permissionGate: this.permissionGate, resourceLoader: this.resourceLoader, systemPrompt: this.agent!.state.systemPrompt, contextCompaction: this.compaction, extensions: this.extensions };
+    return { id: this.id, backend: this.backend!, sessionManager: this.manager, modelRuntime: { model: this.agent!.state.model, stream: this.agent!.options.streamFn, thinkingLevel: this.agent!.state.thinkingLevel }, tools: this.configuredTools ?? this.agent!.state.tools, permissionGate: this.permissionGate, resourceLoader: this.resourceLoader, systemPrompt: this.agent!.state.systemPrompt, contextCompaction: this.compaction, extensions: this.extensions, telemetry: this.telemetry };
   }
   private requireModern(): void { if ((!this.agent && !this.legacyRuntime) || !this.backend || !this.manager) throw new Error("This AgentSession is not configured"); if (this.disposed) throw new Error("AgentSession has been disposed"); }
 }
@@ -208,7 +214,7 @@ class LegacySessionRuntimeImpl implements LegacySessionRuntime {
   private disposed = false;
 
   constructor(private readonly options: LegacyAgentSessionOptions) {
-    this.loop = new AgentLoop(options.provider, options.tools, options.context, options.events, options.permissions, { sessionId: options.sessionId ?? options.id, workspaceRoot: options.workspaceRoot, extensions: options.extensions });
+    this.loop = new AgentLoop(options.provider, options.tools, options.context, options.events, options.permissions, { sessionId: options.sessionId ?? options.id, workspaceRoot: options.workspaceRoot, extensions: options.extensions, telemetry: options.telemetry ?? NOOP_TELEMETRY_CONTEXT });
     this.unsubscribeEvents = options.events.subscribe((event) => {
       if (!("run_id" in event) || event.run_id !== options.runId) return;
       for (const listener of this.listeners) { try { listener(event); } catch { /* session observers are isolated */ } }
