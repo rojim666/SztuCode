@@ -22,7 +22,8 @@ sztu-ts /path/to/project
 ```
 
 `sztu-ts` is the explicit TypeScript entry point. The separately installed
-Python package uses `sztu-py`, so both implementations can coexist.
+The historical Python runtime is maintained separately on the repository's
+`python-runtime` branch; this package always starts the TypeScript daemon.
 
 The launcher starts the bundled TypeScript daemon when needed and reuses an existing daemon on the configured loopback port. CLI subcommands are forwarded unchanged:
 

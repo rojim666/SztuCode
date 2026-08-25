@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "sections": [
-    {"id": "auto-memory", "file": "system-prompt-auto-memory.md", "source": "docs/Prompt.md#12.1", "status": "active", "consumer": "session AgentRunner"},
-    {"id": "memory-update", "file": "agent-prompt-session-memory-update-instructions.md", "source": "docs/Prompt.md#12.2", "status": "reference-only"},
-    {"id": "private-feedback", "file": "system-prompt-memory-system-private-feedback.md", "source": "docs/Prompt.md#12.3", "status": "reference-only"},
-    {"id": "claude-md-creation", "file": "agent-prompt-claudemd-creation.md", "source": "docs/Prompt.md#12.4", "status": "reference-only"}
-  ]
-}

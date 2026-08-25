@@ -1,7 +1,7 @@
 # TypeScript Runtime
 
-The repository keeps separate TypeScript and Python runtime entry points. This
-directory contains the TypeScript packages:
+The repository's product runtime is TypeScript. This directory contains the
+runtime packages:
 
 - `protocol/` is the shared JSON-RPC, event and workflow contract.
 - `runtime-ts/` is a Node.js daemon with TCP/NDJSON transport, an event bus,
@@ -29,18 +29,13 @@ The command-line entry points are intentionally distinct:
 # TypeScript CLI/runtime (default port 7438)
 sztu-ts core start
 sztu-ts chat
-
-# Python CLI/runtime (default port 7437)
-sztu-py core start
-sztu-py chat
 ```
 
-From a source checkout, the equivalent scripts are `npm run cli:ts -- ...`,
-`npm run daemon:ts`, `npm run cli:py -- ...`, and `npm run daemon:py`. The
-Python source scripts use the locked `uv` environment.
+From a source checkout, the equivalent scripts are `npm run cli -- ...` and
+`npm run daemon` (or the explicit `:ts` aliases).
 
-The runtime keeps the same JSON-RPC envelope and supports
+The runtime uses a JSON-RPC envelope and supports
 OpenAI-compatible and Anthropic providers, context budgeting, session history,
 workspace tools, permissions, Git operations, skills, MCP clients, subagents,
-and typed workflow orchestration. The Python implementation remains available
-under `src/sztu_code` and uses its own CLI command and default port.
+and typed workflow orchestration. The historical Python implementation is
+maintained separately on the `python-runtime` branch.

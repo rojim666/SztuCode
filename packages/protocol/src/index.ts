@@ -76,7 +76,7 @@ export interface WorkflowResult { workflow_id: string; status: WorkflowStatus; r
 
 export interface CoreStartedEvent { type: "core.started"; listen_addr: string; version: string }
 export interface RunStartedEvent { type: "run.started"; run_id: string; goal: string; ts: string }
-export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; ts: string }
+export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; verification_status?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; ts: string }
 export interface StepStartedEvent { type: "step.started"; run_id: string; step: number; ts: string }
 export interface StepFinishedEvent { type: "step.finished"; run_id: string; step: number; ts: string }
 export interface LlmTokenEvent { type: "llm.token"; run_id: string; token: string; ts: string }
@@ -113,9 +113,11 @@ export interface PlanItem { id: number; subject: string; status: "pending" | "in
 export interface PlanUpdatedEvent { type: "plan.updated"; run_id: string; session_id: string; items: PlanItem[]; ts: string }
 export interface TestResultEvent { type: "test.result"; run_id: string; tool_use_id: string; status: "passed" | "failed"; summary: string; ts: string }
 export interface ChangeAppliedEvent { type: "change.applied"; run_id: string; workspace_path: string; paths: string[]; ts: string }
+export interface VerificationStartedEvent { type: "verification.started"; run_id: string; condition_count: number; ts: string }
+export interface VerificationFinishedEvent { type: "verification.finished"; run_id: string; overall: "verified" | "partial" | "unverified" | "failed" | "env_blocked" | "stale"; results: Array<{ condition_id: string; outcome: string; message: string }>; ts: string }
 export interface PermissionModeChangedEvent { type: "permission.mode_changed"; old_mode: PermissionMode; new_mode: PermissionMode; ts: string }
 
-export type RuntimeEvent = CoreStartedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
+export type RuntimeEvent = CoreStartedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | VerificationStartedEvent | VerificationFinishedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
 
 export function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
   if (!value || typeof value !== "object") return false;
