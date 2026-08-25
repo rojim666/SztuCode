@@ -536,15 +536,6 @@ class AgentRunner:
             for h in self._extra_handlers:
                 bus.unsubscribe(h)
 
-        if session is not None and store is not None:
-            # Phase 3a: 等待后台异步压缩完成（compactor 为 None 时跳过）
-            if compactor is not None:
-                await compactor.wait_pending()
-            if context.compacted:
-                store.write_compacted(session.id, context.messages)
-            else:
-                store.append_messages(session.id, context.messages[prefill_len:], run_id=run_id)
-
         # 普通 run 结束：仅做有界保留清理，保留完成子 Agent 的轻量结果供 agent_result
         # 在 TTL 内查询。不调用 shutdown()——后者只在 runner/daemon 生命周期结束时使用。
         self._task_registry.prune()
