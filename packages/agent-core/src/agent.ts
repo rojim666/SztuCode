@@ -1,5 +1,6 @@
-import type { AssistantMessage, ModelContext, ModelEvent, ModelToolCall } from "@sztucode/ai";
+import type { AssistantMessage, ModelContext, ModelEvent, ModelToolCall, Model, ThinkingLevel } from "@sztucode/ai";
 import type { AgentEvent, AgentListener, AgentMessage, AgentOptions, AgentState, AgentTool, AgentToolResult, PromptInput, QueueMode, TurnHookContext } from "./types.js";
+import { validateToolParameters, type ToolExecutionContext } from "./tool-system.js";
 
 class MessageQueue {
   private items: AgentMessage[] = [];
@@ -14,6 +15,7 @@ class MessageQueue {
 type MutableState = {
   systemPrompt: string;
   model: AgentState["model"];
+  thinkingLevel: ThinkingLevel;
   tools: AgentTool[];
   messages: AgentMessage[];
   isStreaming: boolean;
@@ -29,6 +31,8 @@ const copyState = (state: MutableState): AgentState => ({
   set systemPrompt(value) { state.systemPrompt = value; },
   get model() { return state.model; },
   set model(value) { state.model = value; },
+  get thinkingLevel() { return state.thinkingLevel; },
+  set thinkingLevel(value) { state.thinkingLevel = value; },
   get tools() { return state.tools.slice(); },
   set tools(value) { state.tools = value.slice(); },
   get messages() { return state.messages.slice(); },
@@ -51,12 +55,15 @@ export class Agent {
 
   constructor(options: AgentOptions) {
     this.options = options;
-    this.mutable = { systemPrompt: options.systemPrompt ?? "", model: options.model, tools: options.tools?.slice() ?? [], messages: options.messages?.slice() ?? [], isStreaming: false, pendingToolCalls: new Set(), steeringQueueSize: 0, followUpQueueSize: 0 };
+    this.mutable = { systemPrompt: options.systemPrompt ?? "", model: options.model, thinkingLevel: options.thinkingLevel ?? "off", tools: options.tools?.slice() ?? [], messages: options.messages?.slice() ?? [], isStreaming: false, pendingToolCalls: new Set(), steeringQueueSize: 0, followUpQueueSize: 0 };
     this.steeringQueue = new MessageQueue(options.steeringMode ?? "one-at-a-time");
     this.followUpQueue = new MessageQueue(options.followUpMode ?? "one-at-a-time");
   }
 
   get state(): AgentState { return copyState(this.mutable); }
+  setModel(model: Model): void { if (this.active) throw new Error("Cannot change model while agent is processing"); this.mutable.model = model; }
+  setThinkingLevel(level: ThinkingLevel): void { if (this.active) throw new Error("Cannot change thinking level while agent is processing"); this.mutable.thinkingLevel = level; }
+  replaceMessages(messages: AgentMessage[]): void { if (this.active) throw new Error("Cannot replace messages while agent is processing"); this.mutable.messages = messages.slice(); }
   get signal(): AbortSignal | undefined { return this.active?.controller.signal; }
   get steeringMode(): QueueMode { return this.steeringQueue.mode; }
   set steeringMode(mode: QueueMode) { this.steeringQueue.mode = mode; }
@@ -154,10 +161,10 @@ export class Agent {
   private async requestAssistant(signal: AbortSignal): Promise<AssistantMessage> {
     this.mutable.streamingMessage = undefined;
     const contextMessages = this.mutable.systemPrompt ? [{ role: "system" as const, content: this.mutable.systemPrompt }, ...this.mutable.messages] : this.mutable.messages;
-    const context: ModelContext = { messages: contextMessages, tools: this.mutable.tools.map(({ name, description, schema }) => ({ name, description, schema })), system: this.mutable.systemPrompt };
+    const context: ModelContext = { messages: contextMessages, tools: this.mutable.tools.map(({ name, description, parameters }) => ({ name, description, schema: parameters })), system: this.mutable.systemPrompt };
     let final: AssistantMessage | undefined;
     let started = false;
-    for await (const event of this.options.streamFn(this.mutable.model, context, { signal })) {
+    for await (const event of this.options.streamFn(this.mutable.model, context, { signal, thinkingLevel: this.mutable.thinkingLevel })) {
       if (event.type === "token" || event.type === "thinking" || event.type === "tool_call") {
         const current: AssistantMessage = this.mutable.streamingMessage ?? { role: "assistant", text: "", toolCalls: [], stopReason: "end_turn" };
         if (!started) { started = true; await this.emit({ type: "message_start", message: snapshotAssistant(current) }); }
@@ -177,7 +184,7 @@ export class Agent {
 
   private async executeTools(assistant: AssistantMessage, signal: AbortSignal): Promise<AgentMessage[]> {
     const calls = assistant.toolCalls ?? [];
-    if (this.options.toolExecution === "sequential" || calls.length < 2) {
+    if (this.options.toolExecution === "sequential" || calls.some((call) => this.findTool(call.name)?.executionMode === "sequential") || calls.length < 2) {
       const results: AgentMessage[] = []; for (const call of calls) results.push(await this.executeTool(assistant, call, signal)); return results;
     }
     const results = await Promise.all(calls.map((call) => this.executeTool(assistant, call, signal)));
@@ -185,26 +192,57 @@ export class Agent {
   }
 
   private async executeTool(assistant: AssistantMessage, call: ModelToolCall, signal: AbortSignal): Promise<AgentMessage> {
-    const tool = this.mutable.tools.find((item) => item.name === call.name); this.mutable.pendingToolCalls.add(call.id); this.syncQueueState();
+    const tool = this.findTool(call.name); this.mutable.pendingToolCalls.add(call.id); this.syncQueueState();
     await this.emit({ type: "tool_execution_start", toolCallId: call.id, toolName: call.name, args: call.input });
-    let result: AgentToolResult = { content: `Tool ${call.name} not found`, isError: true };
+    let result: AgentToolResult = { content: `Tool ${call.name} not found`, isError: true, errorCode: "NOT_FOUND" };
     let isError = true;
+    let hookArgs: unknown = call.input;
     const updateEvents: Promise<void>[] = [];
     try {
       if (tool) {
-        const before = await this.options.beforeToolCall?.({ assistantMessage: assistant, toolCall: call, args: call.input, messages: this.mutable.messages.slice() }, signal);
-        if (!before?.block) { result = await tool.execute(call.id, call.input, signal, (partialResult) => { updateEvents.push(this.emit({ type: "tool_execution_update", toolCallId: call.id, toolName: call.name, args: call.input, partialResult })); }); await Promise.all(updateEvents); isError = result.isError === true; }
-        else result = { content: before.reason ?? "Tool execution was blocked", isError: true, terminate: before.terminate };
-        const after = await this.options.afterToolCall?.({ assistantMessage: assistant, toolCall: call, args: call.input, result, isError, messages: this.mutable.messages.slice() }, signal);
+        const validation = validateToolParameters(call.input, tool.parameters);
+        if (!validation.valid) result = { content: validation.error ?? "Invalid tool arguments", isError: true, errorCode: "INVALID_ARGUMENTS" };
+        else if (this.options.checkToolPermission && !await this.options.checkToolPermission({ tool, args: validation.value, permission: tool.classifyPermission?.(validation.value as never) ?? tool.permission, signal })) result = { content: `Permission denied for tool ${tool.name}`, isError: true, errorCode: "PERMISSION_DENIED" };
+        else {
+          hookArgs = validation.value;
+          const before = await this.options.beforeToolCall?.({ assistantMessage: assistant, toolCall: call, args: hookArgs, messages: this.mutable.messages.slice() }, signal);
+          if (!before?.block) {
+            result = await this.executeWithTimeout(tool, validation.value, call.id, signal, updateEvents);
+            isError = result.isError === true;
+          } else result = { content: before.reason ?? "Tool execution was blocked", isError: true, errorCode: "PERMISSION_DENIED", terminate: before.terminate };
+        }
+        const after = await this.options.afterToolCall?.({ assistantMessage: assistant, toolCall: call, args: hookArgs, result, isError, messages: this.mutable.messages.slice() }, signal);
         if (after) {
           result = { ...result, ...(after.content === undefined ? {} : { content: after.content }), ...(after.details === undefined ? {} : { details: after.details }), ...(after.terminate === undefined ? {} : { terminate: after.terminate }), ...(after.usage === undefined ? {} : { usage: after.usage }), isError: after.isError ?? isError };
           isError = result.isError === true;
         }
       }
-    } catch (error) { result = { content: error instanceof Error ? error.message : String(error), isError: true }; }
+    } catch (error) { result = { content: error instanceof Error ? error.message : String(error), isError: true, errorCode: "EXECUTION_FAILED" }; }
     this.mutable.pendingToolCalls.delete(call.id); this.syncQueueState();
     await this.emit({ type: "tool_execution_end", toolCallId: call.id, toolName: call.name, result, isError });
-    return { role: "tool", tool_call_id: call.id, content: result.content, is_error: isError };
+    return { role: "tool", tool_call_id: call.id, content: result.content, ...(result.details === undefined ? {} : { details: result.details }), is_error: isError };
+  }
+
+  private findTool(name: string): AgentTool | undefined { return this.mutable.tools.find((tool) => tool.name === name || tool.aliases?.includes(name)); }
+
+  private async executeWithTimeout(tool: AgentTool, args: unknown, callId: string, parentSignal: AbortSignal, updateEvents: Promise<void>[]): Promise<AgentToolResult> {
+    const controller = new AbortController();
+    const abort = () => controller.abort(parentSignal.reason);
+    parentSignal.addEventListener("abort", abort, { once: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const updates = (update: { content?: string | readonly unknown[]; details?: unknown }) => { updateEvents.push(this.emit({ type: "tool_execution_update", toolCallId: callId, toolName: tool.name, args: args as Record<string, unknown>, partialResult: update })); };
+    try {
+      const execution = tool.execute(args as never, { callId, signal: controller.signal, onUpdate: updates } as ToolExecutionContext);
+      if (!tool.timeoutMs || tool.timeoutMs <= 0) return await execution;
+      return await new Promise<AgentToolResult>((resolve) => {
+        let settled = false;
+        const finish = (result: AgentToolResult) => { if (settled) return; settled = true; parentSignal.removeEventListener("abort", parentAbort); resolve(result); };
+        const parentAbort = () => { controller.abort(parentSignal.reason); finish({ content: `Tool ${tool.name} was aborted`, isError: true, errorCode: "ABORTED" }); };
+        parentSignal.addEventListener("abort", parentAbort, { once: true });
+        timer = setTimeout(() => { controller.abort(new Error("Tool execution timed out")); finish({ content: `Tool ${tool.name} timed out after ${tool.timeoutMs}ms`, isError: true, errorCode: "TIMEOUT" }); }, tool.timeoutMs);
+        execution.then((result) => finish(result), (error) => finish({ content: error instanceof Error ? error.message : String(error), isError: true, errorCode: "EXECUTION_FAILED" }));
+      });
+    } finally { if (timer) clearTimeout(timer); parentSignal.removeEventListener("abort", abort); }
   }
 
   private async finish(messages: AgentMessage[], reason: "completed" | "aborted" | "error", error?: string): Promise<void> { await this.emit({ type: "agent_end", messages: messages.slice(), reason, ...(error ? { error } : {}) }); }

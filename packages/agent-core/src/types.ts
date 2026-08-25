@@ -1,27 +1,14 @@
-import type { AssistantMessage, ContentBlock, Model, ModelMessage, ModelToolCall, StreamFn, Usage } from "@sztucode/ai";
+import type { AssistantMessage, ContentBlock, Model, ModelMessage, ModelToolCall, StreamFn, ThinkingLevel, Usage } from "@sztucode/ai";
+import type { AgentTool, AgentToolResult, ToolExecutionMode, ToolPermission } from "./tool-system.js";
 
-export type AgentMessage = ModelMessage & { timestamp?: number };
-export type ToolExecutionMode = "sequential" | "parallel";
+export type AgentMessage = ModelMessage & { timestamp?: number; details?: unknown };
 export type QueueMode = "all" | "one-at-a-time";
-
-export interface AgentToolResult {
-  content: string | ContentBlock[];
-  details?: unknown;
-  isError?: boolean;
-  terminate?: boolean;
-  usage?: Usage;
-}
-
-export interface AgentTool {
-  name: string;
-  description?: string;
-  schema: Record<string, unknown>;
-  execute: (callId: string, args: Record<string, unknown>, signal: AbortSignal, onUpdate: (partialResult: unknown) => void) => Promise<AgentToolResult>;
-}
+export type { AgentTool, AgentToolResult, ToolExecutionMode, ToolPermission } from "./tool-system.js";
 
 export interface AgentState {
   systemPrompt: string;
   model: Model;
+  thinkingLevel: ThinkingLevel;
   tools: AgentTool[];
   messages: AgentMessage[];
   readonly isStreaming: boolean;
@@ -35,7 +22,7 @@ export interface AgentState {
 export interface BeforeToolCallContext {
   assistantMessage: AssistantMessage;
   toolCall: ModelToolCall;
-  args: Record<string, unknown>;
+  args: unknown;
   messages: readonly AgentMessage[];
 }
 
@@ -48,7 +35,7 @@ export interface BeforeToolCallResult {
 export interface AfterToolCallContext {
   assistantMessage: AssistantMessage;
   toolCall: ModelToolCall;
-  args: Record<string, unknown>;
+  args: unknown;
   result: AgentToolResult;
   isError: boolean;
   messages: readonly AgentMessage[];
@@ -93,12 +80,14 @@ export type AgentListener = (event: AgentEvent, signal: AbortSignal) => void | P
 export interface AgentOptions extends AgentHooks {
   model: Model;
   streamFn: StreamFn;
+  thinkingLevel?: ThinkingLevel;
   systemPrompt?: string;
   messages?: AgentMessage[];
   tools?: AgentTool[];
   toolExecution?: ToolExecutionMode;
   steeringMode?: QueueMode;
   followUpMode?: QueueMode;
+  checkToolPermission?: (context: { tool: AgentTool; args: unknown; permission?: string; signal: AbortSignal }) => boolean | Promise<boolean>;
 }
 
 export type PromptInput = string | AgentMessage;
