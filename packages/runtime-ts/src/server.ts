@@ -1,5 +1,5 @@
 import net from "node:net";
-import type { JsonRpcRequest, JsonRpcResponse, EventEnvelope, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams } from "@sztucode/protocol";
+import type { JsonRpcRequest, JsonRpcResponse, EventEnvelope, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionForkParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { RunManager } from "./run-manager.js";
 import { SessionStore } from "./session-store.js";
@@ -322,6 +322,7 @@ export class RuntimeServer {
         return ok(request.id, { accepted, ok: accepted });
       }
       case "session.rename": { const params = request.params as { session_id: string; title: string }; return ok(request.id, { session: toSessionSummary(await this.sessions.rename(params.session_id, params.title)) }); }
+      case "session.fork": { const params = request.params as unknown as SessionForkParams; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); const forked = await this.sessions.fork(params.session_id, params.title ?? ""); this.events.publish({ type: "session.created", session_id: forked.id, mode: forked.mode, ts: new Date().toISOString() }); return ok(request.id, { session: toSessionSummary(forked) }); }
       case "session.archive": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, true)) }); }
       case "session.resume": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, false)) }); }
       // Pinning only changes session metadata, so it remains available while a
