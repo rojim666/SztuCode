@@ -11,6 +11,7 @@ from sztu_code.core.bus.events import (
     ContextInjectedEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    SubagentFinishedEvent,
 )
 from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
@@ -187,6 +188,7 @@ class AgentRunner:
                 stuck_max_total=self._config.agent.stuck_max_total,
                 tool_max_concurrency=self._config.agent.tool_max_concurrency,
                 max_depth=self._config.workflow.max_depth,
+                owner_run_id=run_id,
             )
             if _ok("spawn_agent"):
                 registry.register(spawn_tool)
@@ -205,6 +207,11 @@ class AgentRunner:
     # 执行一次完整的 agent run（委托给 run_and_capture，忽略返回值）
     async def run(self, goal: str, *, run_id: str | None = None) -> None:
         await self.run_and_capture(goal, run_id=run_id)
+
+    # runner/daemon 生命周期结束时调用：取消并等待所有活跃后台后代，回收重型引用。
+    # 可安全重复调用。普通 run 结束不应调用此方法——否则会破坏 TTL/消费前结果保留。
+    async def shutdown(self) -> None:
+        await self._task_registry.shutdown()
 
     # 执行 agent run 并返回 RunOutcome（含最终文字结果）
     async def run_and_capture(
@@ -261,6 +268,40 @@ class AgentRunner:
         bus = self._bus if self._bus is not None else EventBus()
         for h in self._extra_handlers:
             bus.subscribe(h)
+
+        # 终态事件发布 task：由 _on_terminal 创建，在 RunFinishedEvent 发布前统一 await，
+        # 保证 subagent.finished 落盘先于 root run.finished，避免 fire-and-forget 丢失。
+        pending_publishes: list[asyncio.Task[None]] = []
+
+        # 注册终态回调：mark_terminal 赢家发布 SubagentFinishedEvent，覆盖协程未跑就被取消
+        # 的情况（task 在首次调度前被 cancel，_run_background 体不会执行）。
+        # COMPLETED 映射回 "success" 以保持与前台 spawn 路径（context.status）一致。
+        _STATUS_TO_EVENT: dict[str, str] = {
+            "completed": "success",
+            "failed": "failed",
+            "cancelled": "cancelled",
+        }
+
+        def _on_terminal(run_id: str, status: object) -> None:
+            raw = status.value if hasattr(status, "value") else str(status)
+            record = self._task_registry.get(run_id)
+            parent = record.parent_run_id if record is not None else run_id
+            pending_publishes.append(
+                asyncio.get_running_loop().create_task(
+                    bus.publish(
+                        SubagentFinishedEvent(
+                            run_id=run_id,
+                            parent_run_id=parent,
+                            status=_STATUS_TO_EVENT.get(raw, raw),
+                            ts=_now(),
+                        )
+                    )
+                )
+            )
+
+        # 按 owner_run_id（root run）注册 sink：整个后代树（含 grandchild）的终态事件
+        # 都路由到本 run 的 bus，多个 root 并发时互不串流。run 结束时注销避免泄漏。
+        self._task_registry.register_sink(run_id, _on_terminal)
 
         base_prompt = ""
         if not system_prompt_override:
@@ -413,6 +454,7 @@ class AgentRunner:
                     tool_max_concurrency=self._config.agent.tool_max_concurrency,
                     pricing_provider=self._config.llm.provider,
                     pricing_model=self._config.llm.default_model,
+                    steering_queue=steering_queue,
                 )
                 await loop.run(context)
             except asyncio.CancelledError:
@@ -425,6 +467,21 @@ class AgentRunner:
                 )
                 if not context.is_done():
                     context.mark_failed("llm_error")
+
+            # 父 run 非正常 success 收尾时递归取消并等待全部后台后代落定，
+            # 在 root finalization 可观察前完成清理。覆盖 failed、显式取消和所有
+            # interrupted 原因（max_steps/wall_clock/budget/blocking_limit）。
+            # 正常 success 的直接子由 _wait_for_background 等待并入结果，此处不处理。
+            if context.status != "success":
+                if cancelled:
+                    cancel_reason = "parent_cancelled"
+                elif context.status == "interrupted":
+                    cancel_reason = "parent_interrupted"
+                else:
+                    cancel_reason = "parent_failed"
+                await self._task_registry.cancel_descendants(
+                    run_id, reason=cancel_reason
+                )
 
             if change_tracker is not None:
                 changes = change_tracker.finalize()
@@ -454,6 +511,11 @@ class AgentRunner:
             if session is not None and store is not None:
                 session.run_stats[run_id] = final_stats
                 store.write_meta(session)
+            # 等待所有 subagent.finished 发布 task 落盘，确保子 Agent 终态事件
+            # 先于 root run.finished 写入，避免乱序或丢失
+            if pending_publishes:
+                await asyncio.gather(*pending_publishes, return_exceptions=False)
+                pending_publishes.clear()
             await bus.publish(
                 RunFinishedEvent(
                     run_id=run_id,
@@ -482,6 +544,12 @@ class AgentRunner:
                 store.write_compacted(session.id, context.messages)
             else:
                 store.append_messages(session.id, context.messages[prefill_len:], run_id=run_id)
+
+        # 普通 run 结束：仅做有界保留清理，保留完成子 Agent 的轻量结果供 agent_result
+        # 在 TTL 内查询。不调用 shutdown()——后者只在 runner/daemon 生命周期结束时使用。
+        self._task_registry.prune()
+        # 注销本 run 的终态 sink，避免多 run 复用时 sink 字典无限增长
+        self._task_registry.unregister_sink(run_id)
 
         if cancelled:
             raise asyncio.CancelledError()

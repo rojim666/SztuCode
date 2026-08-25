@@ -139,7 +139,8 @@ async def test_agent_result_done(tmp_path: Path) -> None:
 
     entry = registry.get(run_id)
     assert entry is not None
-    task, _ = entry
+    task = entry.task
+    assert task is not None
     await asyncio.wait_for(task, timeout=5.0)
 
     result_tool = AgentResultTool(registry)

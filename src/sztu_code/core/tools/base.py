@@ -57,6 +57,9 @@ class BaseTool(ABC):
     manages_timeout: bool = False
     # 工具名称别名列表（如 "read" → "read_file"）
     aliases: ClassVar[list[str]] = []
+    # 该工具是否可在失败后安全重复执行；is_retry_safe 默认读取此属性。
+    # 子类如需按参数动态判断应覆盖 is_retry_safe 而非设置此字段。
+    retry_safe: ClassVar[bool] = False
 
     # 执行工具调用，返回结果或错误
     @abstractmethod
