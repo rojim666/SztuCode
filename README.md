@@ -7,6 +7,15 @@ Tauri/Vue desktop workbench.
 The historical Python daemon is isolated on the `python-runtime` branch and is
 not part of the main product branch.
 
+To inspect the Python runtime locally, switch to that branch explicitly:
+
+```bash
+git switch python-runtime
+```
+
+The branch is kept as a compatibility and validation reference; new daemon
+features should be implemented on the TypeScript runtime first.
+
 ## Architecture
 
 ```text
@@ -25,6 +34,21 @@ The daemon can discover completion checks from `.sztu/checks.toml`. Set
 `SZTU_REQUIRE_VERIFICATION=1` to enable independent checks and the bounded
 repair loop. Verification commands run as argv subprocesses, with output and
 workspace digests recorded under the run directory.
+
+For example, a workspace can declare a completion check with:
+
+```toml
+[[check]]
+id = "unit-tests"
+command = ["npm", "test"]
+priority = 10
+```
+
+Run verification-enabled work with:
+
+```bash
+SZTU_REQUIRE_VERIFICATION=1 npm run cli -- run --goal "修复测试失败"
+```
 
 ## Quick Start
 
