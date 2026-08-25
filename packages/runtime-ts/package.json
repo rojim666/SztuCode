@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/main.ts",
-    "build": "npm run build --prefix ../protocol && tsc -p tsconfig.json",
+    "build": "npm run build --prefix ../ai && npm run build --prefix ../protocol && tsc -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@sztucode/ai": "file:../ai",
     "@sztucode/protocol": "file:../protocol",
+    "@sztucode/server": "file:../server",
     "js-tiktoken": "^1.0.21"
   },
   "devDependencies": {

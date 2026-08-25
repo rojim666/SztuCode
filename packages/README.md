@@ -4,6 +4,10 @@ The repository keeps separate TypeScript and Python runtime entry points. This
 directory contains the TypeScript packages:
 
 - `protocol/` is the shared JSON-RPC, event and workflow contract.
+- `server/` contains the reusable TCP/NDJSON transport, handshake, RPC router,
+  and live `SessionRuntime` attachment layer.
+- `client/` contains the typed daemon client SDK with handshake, request
+  correlation, timeouts, reconnect, and event subscriptions.
 - `runtime-ts/` is a Node.js daemon with TCP/NDJSON transport, an event bus,
   run lifecycle, workflow helpers, workspace boundary checks and a typed tool
   registry.

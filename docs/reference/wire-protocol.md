@@ -6,11 +6,112 @@
 
 ## Transport
 
+- Protocol version: `1` (hello handshake is additive; legacy JSON-RPC first frame remains valid)
 - TCP loopback `127.0.0.1:7438` (override via `SZTU_HOST` / `SZTU_PORT`)
 - Each message is one `\n`-terminated JSON line (NDJSON)
 - Commands use JSON-RPC 2.0; server events use `kind=event`.
 
-## Registered Methods
+## Handshake and Capabilities
+
+- Client sends `{type: "hello", version: 1, capabilities?: string[]}` as an optional first frame.
+- Server replies with `{type: "hello", version: 1, server_version: string, capabilities: string[]}` or `hello_error`.
+- Advertised capabilities: `jsonrpc`, `ndjson`, `hello`, `request.cancel`, `request.idempotency`, `session.attach`, `session.detach`, `session.snapshot`, `event.subscribe`.
+
+## Error Codes
+
+| Name | Code |
+| --- | ---: |
+| `PARSE_ERROR` | -32700 |
+| `INVALID_REQUEST` | -32600 |
+| `METHOD_NOT_FOUND` | -32601 |
+| `INVALID_PARAMS` | -32602 |
+| `INTERNAL_ERROR` | -32603 |
+| `VERSION_UNSUPPORTED` | -32001 |
+| `NOT_IMPLEMENTED` | -32002 |
+| `INVALID_STATE` | -32003 |
+| `NOT_FOUND` | -32004 |
+| `SESSION_BUSY` | -32012 |
+| `REQUEST_CANCELLED` | -32013 |
+| `IDEMPOTENCY_CONFLICT` | -32014 |
+
+## Contract Methods
+
+- `core.ping`
+- `core.shutdown`
+- `event.subscribe`
+- `event.unsubscribe`
+- `agent.run`
+- `agent.subagent`
+- `run.cancel`
+- `run.get`
+- `run.replay`
+- `request.cancel`
+- `$/cancelRequest`
+- `permission.respond`
+- `permission.set_mode`
+- `session.create`
+- `session.attach`
+- `session.detach`
+- `session.get`
+- `session.list`
+- `session.history`
+- `session.get_history`
+- `session.send_message`
+- `session.steer_message`
+- `session.archive`
+- `session.close`
+- `session.compact`
+- `session.delete`
+- `session.fork`
+- `session.pin`
+- `session.rename`
+- `session.resume`
+- `change.diff`
+- `change.discard`
+- `change.list`
+- `change.revert`
+- `change.stage`
+- `change.unstage`
+- `file.read`
+- `file.search`
+- `git.commit`
+- `git.history`
+- `plugin.catalog`
+- `plugin.catalog_install`
+- `plugin.install`
+- `plugin.list`
+- `plugin.marketplace_add`
+- `plugin.marketplace_refresh`
+- `plugin.marketplace_remove`
+- `plugin.set_enabled`
+- `plugin.uninstall`
+- `provider.ccswitch_apply`
+- `provider.ccswitch_list`
+- `provider.model_benchmark`
+- `provider.model_delete`
+- `provider.model_list`
+- `provider.model_save`
+- `provider.model_select`
+- `provider.model_test`
+- `provider.status`
+- `question.pending`
+- `question.respond`
+- `settings.get`
+- `settings.update`
+- `skill.install`
+- `skill.list`
+- `skill.set_enabled`
+- `workflow.run`
+- `workspace.archive`
+- `workspace.delete`
+- `workspace.list`
+- `workspace.open`
+- `workspace.profile`
+- `workspace.resume`
+- `workspace.status`
+- `workspace.tree`
+
+## Registered Methods (runtime-ts)
 
 - `agent.run`
 - `agent.subagent`
@@ -84,6 +185,40 @@
 
 ## Shared Request and Result Types
 
+### ProtocolError
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `code` | `JsonRpcErrorCode` | yes |
+| `message` | `string` | yes |
+| `data` | `unknown` | no |
+
+### ClientHello
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"hello"` | yes |
+| `version` | `ProtocolVersion` | yes |
+| `client` | `string` | no |
+| `capabilities` | `ProtocolCapability[]` | no |
+
+### ServerHello
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"hello"` | yes |
+| `version` | `ProtocolVersion` | yes |
+| `server_version` | `string` | yes |
+| `capabilities` | `ProtocolCapability[]` | yes |
+| `connection_id` | `string` | no |
+
+### ServerHelloError
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"hello_error"` | yes |
+| `error` | `ProtocolError` | yes |
+
 ### PingParams
 
 | Field | Type | Required |
@@ -120,6 +255,14 @@
 | `run_id` | `string` | yes |
 | `max_events` | `number` | no |
 
+### RequestCancelParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"request.cancel" \| "$/cancelRequest"` | no |
+| `request_id` | `RequestId` | yes |
+| `reason` | `string` | no |
+
 ### PermissionRespondParams
 
 | Field | Type | Required |
@@ -149,6 +292,7 @@
 | `uptime_ms` | `number` | yes |
 | `received_at` | `string` | yes |
 | `capabilities` | `string[]` | yes |
+| `protocol_version` | `ProtocolVersion` | no |
 
 ### AgentRunResult
 
@@ -176,6 +320,13 @@
 | --- | --- | --- |
 | `run_id` | `string` | yes |
 | `events` | `RuntimeEvent[]` | yes |
+
+### RequestCancelResult
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `request_id` | `RequestId` | yes |
+| `status` | `"cancelling" \| "not_running"` | yes |
 
 ### WorkspaceSummary
 
@@ -206,6 +357,20 @@
 | `mode` | `"one_shot" \| "chat"` | no |
 | `title` | `string` | no |
 | `workspace_id` | `string \| null` | no |
+
+### SessionAttachParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.attach"` | no |
+| `session_id` | `string` | yes |
+
+### SessionDetachParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.detach"` | no |
+| `session_id` | `string` | yes |
 
 ### SessionForkParams
 
@@ -263,11 +428,47 @@
 | `content` | `string` | yes |
 | `images` | `MessageImageBlock[]` | no |
 
+### SessionSnapshot
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `session_id` | `string` | yes |
+| `mode` | `"one_shot" \| "chat"` | yes |
+| `status` | `SessionStatus` | yes |
+| `title` | `string` | yes |
+| `created_at` | `string` | no |
+| `updated_at` | `string` | yes |
+| `run_count` | `number` | yes |
+| `archived` | `boolean` | yes |
+| `pinned` | `boolean` | yes |
+| `workspace_id` | `string \| null` | yes |
+| `latest_run_id` | `string \| null` | yes |
+| `attached` | `boolean` | no |
+| `locked` | `boolean` | no |
+| `phase` | `"idle" \| "running" \| "steering" \| "aborting" \| "closed"` | no |
+| `revision` | `number` | no |
+
 ### SessionResult
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `session` | `{ session_id: string; mode: "one_shot" \| "chat"; status: "active" \| "waiting_for_input" \| "closed"; title: string; updated_at: string; run_count: number; archived: boolean; pinned: boolean; workspace_id: string \| null; latest_run_id: string \| null }` | yes |
+| `session` | `SessionSnapshot` | yes |
+
+### SessionAttachResult
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `session_id` | `string` | yes |
+| `attached` | `true` | yes |
+| `session` | `SessionSnapshot` | yes |
+
+### SessionDetachResult
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `session_id` | `string` | yes |
+| `attached` | `false` | yes |
+| `session` | `SessionSnapshot` | no |
 
 ### SessionListResult
 
@@ -716,6 +917,24 @@
 | `session_id` | `string` | yes |
 | `mode` | `"one_shot" \| "chat"` | no |
 | `last_run_id` | `string` | no |
+| `ts` | `string` | yes |
+
+### SessionSnapshotEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.snapshot"` | yes |
+| `session_id` | `string` | yes |
+| `snapshot` | `SessionSnapshot` | yes |
+| `ts` | `string` | yes |
+
+### SessionAttachedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.attached" \| "session.detached"` | yes |
+| `session_id` | `string` | yes |
+| `attached` | `boolean` | yes |
 | `ts` | `string` | yes |
 
 ### SessionMessageSteeredEvent

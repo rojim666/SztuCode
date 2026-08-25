@@ -1,5 +1,6 @@
 import net from "node:net";
-import type { JsonRpcRequest, JsonRpcResponse, EventEnvelope, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionForkParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams } from "@sztucode/protocol";
+import { TcpNdjsonTransport } from "@sztucode/server";
+import { PROTOCOL_CAPABILITIES, PROTOCOL_VERSION, type JsonRpcRequest, type JsonRpcResponse, type EventEnvelope, type AgentRunParams, type PingParams, type RunCancelParams, type RunGetParams, type RunReplayParams, type PermissionRespondParams, type SessionCreateParams, type SessionForkParams, type SessionGetParams, type SessionListParams, type SessionHistoryParams, type SessionSendMessageParams, type SessionCommand } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { RunManager } from "./run-manager.js";
 import { SessionStore } from "./session-store.js";
@@ -58,8 +59,9 @@ export class RuntimeServer {
   readonly models = new ModelProfileStore(this.settings);
   readonly trace: TraceWriter | null;
   private readonly provider: ModelProvider;
-  private readonly server: net.Server;
+  private readonly transport: TcpNdjsonTransport;
   private readonly clients = new Set<net.Socket>();
+  private readonly handshakenClients = new Set<net.Socket>();
   private readonly subscriptions = new Map<net.Socket, { id: string; topics: string[]; scope: string }>();
   private readonly clientMessageRuns = new Map<string, string>();
   private readonly runSessions = new Map<string, string>();
@@ -72,7 +74,30 @@ export class RuntimeServer {
     const baseProvider = provider ?? new ConfigurableProvider(this.settings);
     this.provider = this.trace ? new TracingProvider(baseProvider, this.trace, !/^(0|false|no)$/i.test(process.env.SZTU_TRACE_INCLUDE_LLM_PAYLOAD ?? "true")) : baseProvider;
     this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, streaming: true }; }, this.sessions);
-    this.server = net.createServer((socket) => this.handleClient(socket));
+    this.transport = new TcpNdjsonTransport({ host, port, maxFrameBytes, compatibilityMode: true }, {
+      onMessage: (connection, message) => {
+        const socket = connection.socket;
+        this.clients.add(socket);
+        if (message && typeof message === "object" && (message as { type?: unknown }).type === "hello") {
+          const version = (message as { version?: unknown }).version;
+          if (version !== PROTOCOL_VERSION) {
+            this.send(socket, { type: "hello_error", error: { code: -32001, message: `Unsupported protocol version ${String(version)}` } } as never);
+            socket.end();
+          } else {
+            this.handshakenClients.add(socket);
+            this.send(socket, { type: "hello", version: PROTOCOL_VERSION, server_version: "ts-0.2.0", capabilities: [...PROTOCOL_CAPABILITIES], connection_id: `${socket.remoteAddress ?? "unknown"}:${socket.remotePort ?? 0}` } as never);
+          }
+          return;
+        }
+        void this.handleLine(socket, JSON.stringify(message));
+      },
+      onClose: (connection) => {
+        this.clients.delete(connection.socket);
+        this.handshakenClients.delete(connection.socket);
+        this.subscriptions.delete(connection.socket);
+      },
+      onError: (error) => this.trace?.emit({ ts: new Date().toISOString(), direction: "CORE", layer: "ipc", kind: "error", run_id: null, data: { message: error.message } }),
+    });
     this.events.subscribe((event) => {
       this.trace?.emit({ ts: new Date().toISOString(), direction: "CORE", layer: "event", kind: "event", run_id: "run_id" in event ? event.run_id : null, data: event as unknown as Record<string, unknown> });
       this.broadcast({ kind: "event", event }); void this.persistRunEvent(event);
@@ -83,43 +108,15 @@ export class RuntimeServer {
     await this.mcp.load();
     const settings = await this.settings.get();
     this.runs.permissions.setMode(settings.permission_mode);
-    return new Promise((resolve, reject) => {
-      this.server.once("error", reject);
-      this.server.listen(this.port, this.host, () => {
-        const address = this.server.address();
-        const listenAddress = typeof address === "object" && address ? `${address.address}:${address.port}` : `${this.host}:${this.port}`;
-        this.events.publish({ type: "core.started", listen_addr: listenAddress, version: "ts-0.2.0" });
-        resolve(listenAddress);
-      });
-    });
+    const listenAddress = await this.transport.listen();
+    this.events.publish({ type: "core.started", listen_addr: listenAddress, version: "ts-0.2.0" });
+    return listenAddress;
   }
 
   async close(): Promise<void> {
     this.runs.cancelAll();
     for (const workflow of this.workflows.values()) if (workflow.status === "running") workflow.controller.abort();
-    for (const client of this.clients) client.destroy();
-    await this.mcp.close(); await new Promise<void>((resolve) => this.server.close(() => resolve())); await this.trace?.flush();
-  }
-
-  private handleClient(socket: net.Socket): void {
-    this.clients.add(socket);
-    let buffer = "";
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk: string) => {
-      buffer += chunk;
-      if (Buffer.byteLength(buffer, "utf8") > this.maxFrameBytes && !buffer.includes("\n")) {
-        this.send(socket, error(null, INVALID_REQUEST, "Request too large")); socket.end(); buffer = ""; return;
-      }
-      let newline = buffer.indexOf("\n");
-      while (newline >= 0) {
-        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
-        if (Buffer.byteLength(line, "utf8") > this.maxFrameBytes) { this.send(socket, error(null, INVALID_REQUEST, "Request too large")); socket.end(); buffer = ""; return; }
-        void this.handleLine(socket, line);
-        newline = buffer.indexOf("\n");
-      }
-    });
-    socket.on("close", () => { this.clients.delete(socket); this.subscriptions.delete(socket); });
-    socket.on("error", () => { this.clients.delete(socket); this.subscriptions.delete(socket); });
+    await this.mcp.close(); await this.transport.close(); await this.trace?.flush();
   }
 
   private async handleLine(socket: net.Socket, line: string): Promise<void> {
@@ -147,6 +144,35 @@ export class RuntimeServer {
       case "core.shutdown": {
         setTimeout(() => { void this.close(); }, 0);
         return ok(request.id, { stopping: true });
+      }
+      case "session.command": {
+        const command = (request.params as { command?: SessionCommand }).command;
+        if (!command) throw new Error("command is required");
+        if (command.command === "list") return ok(request.id, { command: "list", sessions: (await this.sessions.list(true)).map((session) => toProtocolSessionSnapshot(session)) });
+        if (command.command === "create") {
+          const session = await this.sessions.create("chat", null, command.name ?? "");
+          return ok(request.id, { command: "create", session: toProtocolSessionSnapshot(session) });
+        }
+        const sessionId = command.sessionId;
+        if (command.command === "attach") return ok(request.id, { command: "attach", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) });
+        if (command.command === "detach") return ok(request.id, { command: "detach", sessionId });
+        if (command.command === "prompt") {
+          const params = { session_id: sessionId, content: command.text };
+          await this.dispatch({ ...request, method: "session.send_message", params }, socket);
+          return ok(request.id, { command: "prompt", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) });
+        }
+        if (command.command === "steer") {
+          const params = { session_id: sessionId, content: command.text };
+          await this.dispatch({ ...request, method: "session.steer_message", params }, socket);
+          return ok(request.id, { command: "steer", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) });
+        }
+        if (command.command === "abort") {
+          const session = await this.sessions.get(sessionId); const runId = session.run_ids.at(-1); if (runId) this.runs.cancel(runId);
+          return ok(request.id, { command: "abort", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) });
+        }
+        if (command.command === "set_model") { await this.models.select(command.model); return ok(request.id, { command: "set_model", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) }); }
+        if (command.command === "set_thinking") { await this.settings.update({ reasoning_effort: command.thinkingLevel as never }); return ok(request.id, { command: "set_thinking", session: toProtocolSessionSnapshot(await this.sessions.get(sessionId), true) }); }
+        throw new Error(`Unsupported session command: ${(command as { command: string }).command}`);
       }
       case "agent.run": {
         const params = request.params as unknown as AgentRunParams;
@@ -391,6 +417,7 @@ const classifyError = (cause: unknown): { code: number; message: string; data?: 
   return { code: INTERNAL_ERROR, message };
 };
 const toSessionSummary = (session: import("./session-store.js").Session) => { const stats = Object.values(session.run_stats ?? {}); return { session_id: session.id, title: session.title, mode: session.mode, status: session.status, updated_at: session.updated_at, run_count: session.run_ids.length, archived: session.archived, pinned: session.pinned, workspace_id: session.workspace_id, latest_run_id: session.run_ids.at(-1) ?? null, total_input_tokens: stats.reduce((sum, item) => sum + item.input_tokens, 0), total_output_tokens: stats.reduce((sum, item) => sum + item.output_tokens, 0), total_elapsed_s: stats.reduce((sum, item) => sum + item.elapsed_s, 0) }; };
+const toProtocolSessionSnapshot = (session: import("./session-store.js").Session, attached = false) => ({ session_id: session.id, mode: session.mode, status: session.status, title: session.title, created_at: session.created_at, updated_at: session.updated_at, run_count: session.run_ids.length, archived: session.archived, pinned: session.pinned, workspace_id: session.workspace_id, latest_run_id: session.run_ids.at(-1) ?? null, attached, locked: attached });
 
 const topicMatches = (type: string, pattern: string): boolean => pattern === "*" || pattern === type || pattern.endsWith("*") && type.startsWith(pattern.slice(0, -1));
 const matchesSubscription = (event: import("@sztucode/protocol").RuntimeEvent, subscription: { topics: string[]; scope: string }): boolean => {

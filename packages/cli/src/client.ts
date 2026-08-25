@@ -1,6 +1,8 @@
 import net from "node:net";
 import { randomUUID } from "node:crypto";
 import type { EventEnvelope, JsonRpcResponse, RuntimeEvent } from "@sztucode/protocol";
+export { DaemonClient } from "@sztucode/client";
+export { createTcpTransportFactory } from "@sztucode/client/tcp";
 
 export class IpcClient {
   private socket: net.Socket | null = null; private buffer = ""; private pending = new Map<string, { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void }>();

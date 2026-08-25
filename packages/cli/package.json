@@ -5,6 +5,6 @@
   "type": "module",
   "bin": { "sztu-ts": "dist/main.js" },
   "scripts": { "start": "tsx src/main.ts", "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.js", "typecheck": "tsc --noEmit" },
-  "dependencies": { "@sztucode/protocol": "file:../protocol" },
+  "dependencies": { "@sztucode/client": "file:../client", "@sztucode/protocol": "file:../protocol" },
   "devDependencies": { "@types/node": "^22.10.2", "esbuild": "^0.28.2", "tsx": "^4.23.10", "typescript": "~5.6.3" }
 }

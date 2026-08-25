@@ -1,5 +1,5 @@
 {
-  "name": "@sztucode/protocol",
+  "name": "@sztucode/agent-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,15 +7,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./workflow": {
-      "types": "./dist/workflow.d.ts",
-      "import": "./dist/workflow.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@sztucode/ai": "file:../ai"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.23.10",
+    "typescript": "~5.6.3"
   }
 }

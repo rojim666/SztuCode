@@ -1,0 +1,15 @@
+{
+  "name": "@sztucode/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./tcp": { "types": "./dist/tcp.d.ts", "import": "./dist/tcp.js" }
+  },
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "node --import tsx --test tests/*.test.ts" },
+  "dependencies": { "@sztucode/protocol": "file:../protocol" },
+  "devDependencies": { "@types/node": "^22.10.2" }
+}
