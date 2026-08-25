@@ -105,6 +105,7 @@ export class RunManager {
     // Verification is opt-in so existing projects without a check contract keep
     // their historical completion semantics. A user checks.toml or project
     // package scripts becomes an independent, permission-free gate when enabled.
+    try {
     if (verificationEnabled() && loop) {
       const contract = await buildCompletionContract(run.runId, root);
       if (contract) {
@@ -131,12 +132,21 @@ export class RunManager {
         run.verificationStatus = verification.overall;
         this.emit({ type: "verification.finished", run_id: run.runId, overall: verification.overall, results: verification.results.map((item) => ({ condition_id: item.condition_id, outcome: item.outcome, message: item.message })), ts: now() });
         if (verification.overall === "failed") {
+          if (onComplete) await onComplete(result.messages, run.usage);
+          if (sessionId && this.sessions) await this.sessions.replaceModelHistory(sessionId, result.messages.filter((message) => message.role !== "system"));
           run.status = "completed";
           if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
           this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: "independent verification failed", verification_status: verification.overall, steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
           return;
         }
       }
+    }
+    } catch (error) {
+      if (run.status !== "running") return;
+      run.status = "completed";
+      if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
+      this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: error instanceof Error ? error.message : String(error), ...(verification ? { verification_status: verification.overall } : {}), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
+      return;
     }
     if (onComplete) await onComplete(result.messages, run.usage);
     if (sessionId && this.sessions) {

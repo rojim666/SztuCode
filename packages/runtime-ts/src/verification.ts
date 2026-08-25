@@ -85,8 +85,6 @@ export async function buildCompletionContract(runId: string, workspaceRoot: stri
     try { conditions = parseChecksToml(await readFile(checksPath, "utf8")); }
     catch { conditions = []; }
   }
-  if (!conditions) conditions = [];
-  if (!conditions) return null;
   if (!conditions.length) {
     try {
       const packageJson = JSON.parse(await readFile(path.join(workspaceRoot, "package.json"), "utf8")) as { scripts?: Record<string, unknown> };
@@ -125,12 +123,14 @@ export class VerificationExecutor {
     catch (error) { return { condition_id: condition.id, outcome: "env_blocked", evidence: null, message: `cannot start check command: ${String(error)}` }; }
     const chunks: Buffer[] = [];
     child.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk)); child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let startupError: Error | undefined;
     const exitCode = await new Promise<number | null>((resolve) => {
       let settled = false;
       const finish = (code: number | null) => { if (settled) return; settled = true; resolve(code); };
-      child.once("error", () => finish(null)); child.once("close", (code) => finish(code));
+      child.once("error", (error) => { startupError = error instanceof Error ? error : new Error(String(error)); finish(null); }); child.once("close", (code) => finish(code));
       setTimeout(() => { if (!settled) { child.kill("SIGKILL"); finish(null); } }, this.timeoutMs).unref();
     });
+    if (startupError) return { condition_id: condition.id, outcome: "env_blocked", evidence: null, message: `cannot start check command: ${startupError.message}` };
     const evidence: Evidence = { condition_id: condition.id, kind: "command_exit_code", command: command.join(" "), exit_code: exitCode, output_path: await this.writeOutput(outputPath, Buffer.concat(chunks)), workspace_digests: digests, collected_at: now(), stale: false };
     if (exitCode === null) return { condition_id: condition.id, outcome: "failed", evidence, message: `check timed out or process failed after ${this.timeoutMs}ms` };
     return { condition_id: condition.id, outcome: exitCode === 0 ? "verified" : "failed", evidence, message: exitCode === 0 ? "" : `check command exited with code ${exitCode}` };
