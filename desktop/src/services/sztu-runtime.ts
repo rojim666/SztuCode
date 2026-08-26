@@ -502,8 +502,18 @@ export async function testModelProfile(input: Omit<ModelProfileInput, "id" | "na
   return await client.request("provider.model_test", input) as ModelTestResult;
 }
 
-export async function respondPermission(toolUseId: string, decision: "allow_once" | "always_allow" | "deny_once" | "always_deny"): Promise<void> {
-  await client.request("permission.respond", { tool_use_id: toolUseId, decision });
+export async function respondPermission(
+  toolUseId: string,
+  decision: "allow_once" | "always_allow" | "deny_once" | "always_deny",
+  runId: string,
+  sessionId: string,
+): Promise<void> {
+  await client.request("permission.respond", {
+    tool_use_id: toolUseId,
+    decision,
+    run_id: runId,
+    session_id: sessionId,
+  });
 }
 
 export async function unstageChanges(workspaceId: string, paths: string[]): Promise<string[]> {

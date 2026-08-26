@@ -809,7 +809,12 @@ class CoreApp:
         if self._permission_manager is None:
             logger.error("permission.respond: PermissionManager not initialized")
             return PermissionRespondResult()
-        self._permission_manager.respond(cmd.tool_use_id, cmd.decision)
+        self._permission_manager.respond(
+            cmd.tool_use_id,
+            cmd.decision,
+            cmd.run_id,
+            cmd.session_id,
+        )
         return PermissionRespondResult()
 
     # 接收结构化问题回答，校验后恢复 ask_user_question 所在的工具调用
