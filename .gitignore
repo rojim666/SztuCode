@@ -35,3 +35,12 @@ release-artifacts/v0.1.1/appimage-final.zip
 
 # Qoder IDE 本地诊断与工作目录
 .qoder/
+
+# Python 时代遗留的本地缓存与虚拟环境（当前分支已无 Python 运行时）
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Claude Code 个人本地配置
+.claude/settings.local.json
