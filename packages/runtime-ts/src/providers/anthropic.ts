@@ -1,5 +1,6 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import type { ToolRegistry } from "../tools.js";
+import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 
 type AnthropicResponse = { content?: Array<{ type: string; text?: string; thinking?: string; signature?: string; id?: string; name?: string; input?: Record<string, unknown> }>; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
 export type AnthropicProviderOptions = { apiKey: string; baseUrl?: string; model: string; maxTokens?: number; timeoutMs?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; cacheControl?: boolean };
@@ -8,6 +9,12 @@ type AnthropicMessage = { role: "user" | "assistant"; content: AnthropicBlock[] 
 
 export class AnthropicMessagesProvider implements ModelProvider {
   constructor(private readonly options: AnthropicProviderOptions) {}
+  stream(model: Model, context: ModelContext, options: StreamOptions = {}): AsyncIterable<ModelEvent> {
+    return streamFromCompletion(async (_model, _context, streamOptions, callbacks): Promise<AssistantMessage> => {
+      const response = await this.complete(_context.messages as ChatMessage[], { list: () => (_context.tools ?? []).map((tool) => ({ name: tool.name, description: tool.description ?? "", schema: tool.schema })) } as ToolRegistry, streamOptions.signal, callbacks.onToken, streamOptions.invocation as ModelInvocation | undefined, callbacks.onThinking);
+      return { role: "assistant", text: response.text, toolCalls: response.tool_calls, stopReason: response.stop_reason, ...(response.thinking_blocks ? { thinkingBlocks: response.thinking_blocks } : {}), ...(response.reasoning_content ? { reasoningContent: response.reasoning_content } : {}), ...(response.usage ? { usage: usageFromLegacy(response.usage) } : {}), model: { provider: model.provider, id: response.model ?? model.id } };
+    }, model, context, options);
+  }
   async complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, _invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
     const system = messages.filter((message) => message.role === "system").map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n");
     const bodyMessages = toAnthropicMessages(messages);

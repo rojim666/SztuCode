@@ -8,6 +8,8 @@ import { StuckLoopTracker, stuckSignature } from "./stuck-tracker.js";
 import path from "node:path";
 import { createReadRefTool, OffloadManager } from "./offload.js";
 import { validateSchema } from "./schema-validator.js";
+import type { ExtensionRegistry } from "./extensions/registry.js";
+import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
@@ -17,7 +19,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void> };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -35,6 +37,10 @@ export class AgentLoop {
   constructor(private readonly provider: ModelProvider, private readonly tools: ToolRegistry, private readonly context: ToolContext, private readonly events: EventBus, private readonly permissions: PermissionGate, private readonly options: AgentLoopOptions = {}) {}
 
   async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[]): Promise<AgentRunResult> {
+    const extensionRoot = this.options.workspaceRoot ?? this.context.workspace.root;
+    const extensions = this.options.extensions;
+    await extensions?.dispatch("before_agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
+    await extensions?.dispatch("agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
     const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? booleanEnv("SZTU_OFFLOAD_ENABLED", true), minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 2_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 50) });
     this.tools.replace(createReadRefTool(offload));
     const context = new ContextManager([...history, { role: "user", content: goal }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
@@ -57,7 +63,13 @@ export class AgentLoop {
     const startCompaction = (step: number): boolean => {
       if (pendingCompaction || compactThreshold <= 0 || compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker || step - lastCompactStep < compactCooldownSteps) return false;
       if (this.options.sessionId) this.publish({ type: "context.compacting", session_id: this.options.sessionId, run_id: runId, ts: now() });
-      pendingCompaction = context.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
+      pendingCompaction = safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "context.compaction", attributes: { run_id: runId, step, compaction_count: compactionCount } }, async (span) => {
+        try {
+          const result = await context.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
+          span.setAttributes({ removed_messages: result.removedMessages, summary_tokens: result.summaryTokens, failed: Boolean(result.failed) });
+          return result;
+        } catch (error) { span.recordError(error); throw error; }
+      });
       lastCompactStep = step;
       return true;
     };
@@ -68,6 +80,7 @@ export class AgentLoop {
       if (result.deferred) return;
       compactionFailures = 0; compactionCount += 1; compacted = true;
       if (result.summaryText) summaries.push(result.summaryText);
+      await extensions?.dispatch("compact", { messages, summary: result.summaryText, removedMessages: result.removedMessages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       await this.options.onCompacted?.(messages, result.summaryText);
       this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "context", message: `Summarized ${result.removedMessages} messages using a ${slidingWindowSize}-turn window`, ts: now() });
       if (this.options.sessionId) this.publish({ type: "context.compacted", session_id: this.options.sessionId, run_id: runId, original_tokens: result.originalTokens, summary_tokens: result.summaryTokens, ts: now() });
@@ -77,6 +90,7 @@ export class AgentLoop {
     for (let step = 1; maxSteps === 0 || step <= maxSteps; step += 1) {
       signal?.throwIfAborted();
       await applyPendingCompaction();
+      await extensions?.dispatch("turn_start", { goal, step, messages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       this.publish({ type: "step.started", run_id: runId, step, ts: now() });
       const intervention = denials.intervention();
       if (intervention) {
@@ -96,6 +110,7 @@ export class AgentLoop {
       }
       const sanitized = sanitizeContextMessages(messages, context.budgetMaxToolResultChars());
       if (sanitized.length !== messages.length || sanitized.some((message, index) => message !== messages[index])) { messages.splice(0, messages.length, ...sanitized); }
+      await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
       const requestTokens = context.tokenEstimate();
       const response = await this.provider.complete(messages, this.tools, signal, (token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }), { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
       usage.input_tokens += Number(response.usage?.input_tokens ?? 0);
@@ -117,25 +132,28 @@ export class AgentLoop {
       messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
       for (const call of response.tool_calls) {
         signal?.throwIfAborted();
+        const before = await extensions?.dispatch("before_tool_call", { toolName: call.name, input: call.input, toolCallId: call.id }, extensionRoot, { runId, sessionId: this.options.sessionId });
+        if (before?.cancel) { messages.push({ role: "tool", tool_call_id: call.id, content: before.reason ?? "Tool call cancelled by extension", is_error: true }); continue; }
+        const input = before?.input ?? call.input;
         const tool = this.tools.get(call.name);
         const toolName = tool?.name ?? call.name;
-        const canonicalCall = tool ? { ...call, name: toolName } : call;
-        this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: call.input, ts: now() });
+        const canonicalCall = tool ? { ...call, name: toolName, input } : { ...call, input };
+        this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: input, ts: now() });
         if (!tool) {
           stuck.recordFailure(stuckSignature(call));
           this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: call.name, error_class: "unknown_tool", error_message: `Unknown tool: ${call.name}`, elapsed_ms: 0, ts: now() });
           messages.push({ role: "tool", tool_call_id: call.id, content: `Unknown tool: ${call.name}`, is_error: true });
           continue;
         }
-        const validation = validateSchema(call.input, tool.schema);
+        const validation = validateSchema(input, tool.schema);
         if (!validation.valid) {
           stuck.recordFailure(stuckSignature(canonicalCall));
           this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "schema_error", error_message: validation.error, elapsed_ms: 0, ts: now() });
           messages.push({ role: "tool", tool_call_id: call.id, content: validation.error, is_error: true });
           continue;
         }
-        const permission = tool.classifyPermission?.(call.input) ?? tool.permission;
-        const allowed = await this.permissions.check(runId, call.id, toolName, call.input, permission, signal);
+        const permission = tool.classifyPermission?.(input) ?? tool.permission;
+        const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
         if (!allowed) {
           denials.recordDenial(toolName);
           this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "permission_denied", error_message: "Permission denied or approval timed out", elapsed_ms: 0, ts: now() });
@@ -143,10 +161,17 @@ export class AgentLoop {
           continue;
         }
         const started = Date.now();
-        const result = await invokeToolWithRetry(tool, call.input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
-          this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+        const result = await safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "tool.execution", attributes: { run_id: runId, tool_name: toolName, tool_use_id: call.id } }, async (span) => {
+          try {
+            const value = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
+              this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+            });
+            span.setAttributes({ ok: value.ok, error_type: value.errorType ?? "" });
+            return value;
+          } catch (error) { span.recordError(error); throw error; }
         });
         const elapsedMs = Date.now() - started;
+        await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });
         const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "Tool failed";
         let contextOutput = rawOutput;
         if (offload.shouldOffload(toolName, rawOutput)) {
@@ -156,12 +181,13 @@ export class AgentLoop {
           denials.recordSuccess(toolName);
           stuck.recordSuccess(stuckSignature(canonicalCall));
           this.publish({ type: "tool.call_finished", run_id: runId, tool_use_id: call.id, tool_name: toolName, elapsed_ms: elapsedMs, output: contextOutput, ts: now() });
-          if (isTestCommand(String(call.input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(call.input.command ?? ""), result.output), ts: now() });
+          if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(input.command ?? ""), result.output), ts: now() });
         }
-        else { stuck.recordFailure(stuckSignature(canonicalCall)); this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() }); if (isTestCommand(String(call.input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(call.input.command ?? ""), result.error ?? "Tool failed"), ts: now() }); }
+        else { stuck.recordFailure(stuckSignature(canonicalCall)); this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() }); if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() }); }
         messages.push({ role: "tool", tool_call_id: call.id, content: contextOutput, is_error: !result.ok });
       }
       this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+      await extensions?.dispatch("turn_end", { goal, step, messages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       if (maxSteps > 0 && step >= maxSteps) {
         const conclusion = await this.conclude(runId, step, messages, usage, lastContextPct, signal);
         if (conclusion.complete) return { text: conclusion.text, steps: step, messages, usage, contextPct: conclusion.contextPct, compacted, summaries };

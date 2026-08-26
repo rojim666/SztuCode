@@ -97,7 +97,12 @@ export class SessionStore {
     const block = `---\nid: ${nextId}\nstatus: active\nsupersedes: ${noteId}\nsuperseded_by: \nts: ${new Date().toISOString()}\nrun_id: ${runId}\n---\n${content.trim()}\n\n`; const temporary = `${file}.${Date.now()}.tmp`;
     await writeFile(temporary, `${archived.trimEnd()}\n\n${block}`, "utf8"); await rename(temporary, file); return nextId;
   }
-  private async save(session: Session): Promise<void> { const dir = path.join(this.root, session.id); await mkdir(dir, { recursive: true }); await writeFile(path.join(dir, "meta.json"), `${JSON.stringify({ ...session, run_stats: session.run_stats ?? {} }, null, 2)}\n`, "utf8"); }
+  private async save(session: Session): Promise<void> {
+    const dir = path.join(this.root, session.id); await mkdir(dir, { recursive: true });
+    const file = path.join(dir, "meta.json"); const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(temporary, `${JSON.stringify({ ...session, run_stats: session.run_stats ?? {} }, null, 2)}\n`, "utf8");
+    await rename(temporary, file);
+  }
 }
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

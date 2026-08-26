@@ -219,7 +219,8 @@ const firstTokenByRun = new Map<string, number>();
 // 切换会话加载动画：超过 260ms 未返回时显示终端图标动效，避免快加载闪屏
 const sessionLoading = computed(() => activeView.value?.loading ?? false);
 // 后台会话（非当前展示）正在等待审批的权限，切走后仍可审批，避免任务停滞
-const pendingPermissions = ref<Array<{ toolUseId: string; toolName: string; preview: string; runId: string }>>([]);
+const pendingPermissions = ref<Array<{ toolUseId: string; toolName: string; preview: string; runId: string; sessionId: string }>>([]);
+const permissionContexts = new Map<string, { runId: string; sessionId: string }>();
 const pendingUserQuestions = ref<PendingUserQuestion[]>([]);
 const questionSubmittingId = ref<string | null>(null);
 const questionErrors = reactive(new Map<string, string>());
@@ -774,16 +775,19 @@ function applyRuntimeEvent(event: RuntimeEvent) {
   }
   if (type === "permission.requested" && sessionId !== activeId.value) {
     const toolUseId = String(event.tool_use_id);
+    permissionContexts.set(toolUseId, { runId: relatedRunId, sessionId });
     if (!pendingPermissions.value.some((permission) => permission.toolUseId === toolUseId)) {
       pendingPermissions.value = [...pendingPermissions.value, {
         toolUseId,
         toolName: String(event.tool_name),
         preview: String(event.param_preview ?? "等待确认"),
         runId: relatedRunId,
+        sessionId,
       }];
     }
   } else if (type === "permission.granted" || type === "permission.denied") {
     const toolUseId = String(event.tool_use_id);
+    permissionContexts.delete(toolUseId);
     pendingPermissions.value = pendingPermissions.value.filter((permission) => permission.toolUseId !== toolUseId);
   }
   if (type === "question.requested") {
@@ -842,6 +846,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   // 权限审批是全局的：即使切到其他会话，后台任务的权限也要能审批，避免任务停滞
   if (type === "permission.requested") {
     const toolUseId = String(event.tool_use_id);
+    permissionContexts.set(toolUseId, { runId: relatedRunId, sessionId });
     const perm: PermissionState = { toolUseId, toolName: String(event.tool_name), preview: String(event.param_preview ?? "等待确认"), status: "pending" };
     const step = stepFor(timelineEvent);
     setStep(step, (current) => ({ ...current, status: "acting", permission: perm, toolCalls: current.toolCalls.map((call) => call.id === toolUseId ? { ...call, status: "awaiting_permission" } : call) }));
@@ -849,6 +854,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   }
   if (type === "permission.granted" || type === "permission.denied") {
     const toolUseId = String(event.tool_use_id);
+    permissionContexts.delete(toolUseId);
     pendingPermissions.value = pendingPermissions.value.filter((p) => p.toolUseId !== toolUseId);
     for (const step of timeline.value.keys()) setStep(step, (current) => current.permission?.toolUseId === toolUseId ? { ...current, permission: { ...current.permission, status: type === "permission.granted" ? "granted" : "denied" } } : current);
     return;
@@ -1564,7 +1570,11 @@ function onComposerKeydown(event: KeyboardEvent) {
   event.preventDefault();
   void submit(event.ctrlKey || event.metaKey ? "accelerated" : "enter");
 }
-async function decidePermission(toolUseId: string, decision: PermissionDecision) { await respondPermission(toolUseId, decision); }
+async function decidePermission(toolUseId: string, decision: PermissionDecision) {
+  const context = permissionContexts.get(toolUseId);
+  if (!context) throw new Error("Permission request is no longer active");
+  await respondPermission(toolUseId, decision, context.runId, context.sessionId);
+}
 // 撤销后清除该 run 的全部改动，使变更卡片随之消失
 function handleReverted(runId: string) {
   discardPendingTimeline();
