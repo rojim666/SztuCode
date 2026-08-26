@@ -90,7 +90,28 @@ for (let pid = process.ppid; pid && !protectedPids.has(pid); ) {
   protectedPids.add(pid);
   pid = processByPid.get(pid)?.ppid;
 }
-const targets = listProcesses().filter(
+// The active `tauri dev` spawns its DevCommand (`cargo run`) as a sibling of
+// this lifecycle hook, not as an ancestor. Protect the whole subtree under any
+// tauri-related ancestor so the cleanup never kills the current session's own
+// cargo build. True leftovers from earlier runs are not part of this subtree.
+const childrenByPpid = new Map();
+for (const p of processes) {
+  if (!childrenByPpid.has(p.ppid)) childrenByPpid.set(p.ppid, []);
+  childrenByPpid.get(p.ppid).push(p.pid);
+}
+const subtreeQueue = [...protectedPids].filter((pid) =>
+  String(processByPid.get(pid)?.command ?? "").toLowerCase().includes("tauri"),
+);
+while (subtreeQueue.length > 0) {
+  const pid = subtreeQueue.pop();
+  for (const child of childrenByPpid.get(pid) ?? []) {
+    if (!protectedPids.has(child)) {
+      protectedPids.add(child);
+      subtreeQueue.push(child);
+    }
+  }
+}
+const targets = processes.filter(
   (p) => !protectedPids.has(p.pid) && isDesktopResidual(p.name, p.command),
 );
 
