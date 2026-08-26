@@ -1,6 +1,6 @@
 # AGENT.md
 
-> Current product path: Python. The default daemon, Agent Loop, bus protocol, CLI, and evaluation runner live under `src/sztu_code`. The TypeScript chain (`packages/`, `desktop/`) remains available via `npm run daemon:ts` / `npm run cli:ts`; the desktop workbench connects to the TypeScript daemon.
+> Current product path: TypeScript. The default daemon, Agent Loop, protocol contracts, CLI, and evaluation runner live under `packages/`; the desktop workbench connects to the TypeScript daemon. This branch is TypeScript-only: the historical Python runtime lives on `main` and the `python-runtime` reference branches.
 
 ## Commands
 
@@ -18,7 +18,7 @@ npm run cli -- ping
 
 ## Architecture
 
-The default kernel is the Python daemon (`src/sztu_code/core`, 127.0.0.1:7437); `npm run daemon` and `npm run cli` use it. The Tauri desktop workbench and the Node terminal client (`npm run daemon:ts` / `npm run cli:ts`) connect to the persistent TypeScript daemon (`packages/runtime-ts`, 127.0.0.1:7438) over JSON-RPC 2.0 NDJSON.
+The product kernel is the TypeScript daemon (`packages/runtime-ts`, 127.0.0.1:7438); `npm run daemon` and `npm run cli` use it. The Tauri desktop workbench and the Node terminal client connect to the persistent daemon over JSON-RPC 2.0 NDJSON.
 
 ```
 packages/runtime-ts (daemon)
@@ -38,9 +38,9 @@ Shared request, response, event, and workflow types live in `packages/protocol`.
 - Use Node built-ins and existing workspace dependencies before adding a package.
 - Comments should explain non-obvious constraints, not restate code.
 
-## Python boundary
+## Skill scripts boundary
 
-Python is the default product runtime. Keep new product behavior in `src/sztu_code` with focused pytest coverage. The Skill directories under `packages/runtime-ts/skills` with Python scripts are isolated subprocess tools and must not define daemon, CLI, protocol, or desktop behavior for the Python chain.
+This branch contains no Python runtime. The Skill directories under `packages/runtime-ts/skills` with Python scripts are isolated subprocess tools for artifact formats whose mature libraries are Python-first; they must not define daemon, CLI, protocol, or desktop behavior.
 
 ## Documentation
 

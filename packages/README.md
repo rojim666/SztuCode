@@ -1,12 +1,14 @@
 # TypeScript Runtime
 
-The repository keeps separate TypeScript and Python runtime entry points. This
-directory contains the TypeScript packages:
+This branch contains the TypeScript product runtime. The `packages/`
+directory holds the npm workspaces:
 
 - `protocol/` is the shared JSON-RPC, event and workflow contract.
 - `runtime-ts/` is a Node.js daemon with TCP/NDJSON transport, an event bus,
   run lifecycle, workflow helpers, workspace boundary checks and a typed tool
   registry.
+- `cli/` is the Node command-line client.
+- `evaluation/` is the evaluation runner and reporting harness.
 
 Run the current TypeScript checks from the repository root:
 
@@ -17,30 +19,24 @@ npx tsc -p desktop/tsconfig.json --noEmit
 npx tsx --test packages/runtime-ts/tests/runtime.test.ts
 ```
 
-Start the TypeScript daemon on port `7438`:
+Start the daemon on port `7438`:
 
 ```powershell
 npm run --prefix packages/runtime-ts dev
 ```
 
-The command-line entry points are intentionally distinct:
+The command-line entry point after a global install:
 
 ```powershell
-# TypeScript CLI/runtime (default port 7438)
 sztu-ts core start
 sztu-ts chat
-
-# Python CLI/runtime (default port 7437)
-sztu-py core start
-sztu-py chat
 ```
 
-From a source checkout, the equivalent scripts are `npm run cli:ts -- ...`,
-`npm run daemon:ts`, `npm run cli:py -- ...`, and `npm run daemon:py`. The
-Python source scripts use the locked `uv` environment.
+From a source checkout, the equivalent scripts are `npm run cli -- ...` and
+`npm run daemon`.
 
-The runtime keeps the same JSON-RPC envelope and supports
-OpenAI-compatible and Anthropic providers, context budgeting, session history,
-workspace tools, permissions, Git operations, skills, MCP clients, subagents,
-and typed workflow orchestration. The Python implementation remains available
-under `src/sztu_code` and uses its own CLI command and default port.
+The runtime supports OpenAI-compatible and Anthropic providers, context
+budgeting, session history, workspace tools, permissions, Git operations,
+skills, MCP clients, subagents, and typed workflow orchestration. The
+historical Python implementation lives on other branches of the repository
+and is not part of this branch.

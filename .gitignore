@@ -1,17 +1,7 @@
 .env
-.venv/
-__pycache__/
-*.pyc
-*.pyo
 runs/
 dist/
 build/
-*.egg-info/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.pytest-temp/
-.pytest-run-*/
 packages/**/node_modules/
 packages/**/dist/
 npm/sztucode-tui/cli/
@@ -28,11 +18,6 @@ node_modules/
 .DS_Store
 *.log
 workspace/
-!src/sztu_code/core/workspace/
-!src/sztu_code/core/workspace/*.py
-
-# SWE-bench 会在此克隆第三方仓库，仅提交评测结果，不提交临时工作区
-eval/reports/swebench-workspace/
 .hilo/
 .workbuddy/
 
@@ -47,3 +32,6 @@ _*.txt
 # GitHub 单文件上限 100MB：超限的发布产物不纳入版本库（本地保留）
 release-artifacts/**/*.AppImage
 release-artifacts/v0.1.1/appimage-final.zip
+
+# Qoder IDE 本地诊断与工作目录
+.qoder/

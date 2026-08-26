@@ -21,8 +21,8 @@ sztucode-tui /path/to/project
 sztu-ts /path/to/project
 ```
 
-`sztu-ts` is the explicit TypeScript entry point. The separately installed
-Python package uses `sztu-py`, so both implementations can coexist.
+`sztu-ts` is the explicit TypeScript entry point; `sztucode` and
+`sztucode-tui` are legacy-compatible aliases for the same Node client.
 
 The launcher starts the bundled TypeScript daemon when needed and reuses an existing daemon on the configured loopback port. CLI subcommands are forwarded unchanged:
 
