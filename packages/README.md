@@ -152,8 +152,5 @@ Python source scripts use the locked `uv` environment.
 The runtime keeps the same JSON-RPC envelope and supports
 OpenAI-compatible and Anthropic providers, context budgeting, session history,
 workspace tools, permissions, Git operations, skills, MCP clients, subagents,
-and typed workflow orchestration. Subagents, workflow DAG execution, extension
-APIs and the new `AgentSession` composition are still experimental in the
-0.x line; their protocol fields and persistence details may change. The
-Python implementation remains available under `py-runtime/src/sztu_code` and
-uses its own CLI command and default port.
+and typed workflow orchestration. The Python implementation remains available
+under `py-runtime/src/sztu_code` and uses its own CLI command and default port.

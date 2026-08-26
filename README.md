@@ -68,6 +68,10 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 │ packages/cli        Node CLI（sztu-ts）          │   │ py-runtime/src/sztu_code/cli   Python CLI（sztu-py）    │
 │ packages/runtime-ts Node daemon ── 127.0.0.1:7438 │   │ py-runtime/src/sztu_code/core  Python daemon ── 7437  │
 │ packages/protocol   共享契约（类型包）             │   │ py-runtime/src/sztu_code/core/bus pydantic 契约模型    │
+│ desktop/    Tauri 2 + Vue 3 桌面工作台           │   │ py-runtime/src/sztu_code/tui   Textual 终端 TUI        │
+│ packages/cli        Node CLI（sztu-ts）          │   │ py-runtime/src/sztu_code/cli   Python CLI（sztu-py）    │
+│ packages/runtime-ts Node daemon ── 127.0.0.1:7438 │   │ py-runtime/src/sztu_code/core  Python daemon ── 7437  │
+│ packages/protocol   共享契约（类型包）             │   │ py-runtime/src/sztu_code/core/bus pydantic 契约模型    │
 └──────────────────────────────────────────────────┘   └────────────────────────────────────────────┘
 ```
 
@@ -137,6 +141,7 @@ desktop / packages/cli
 | 变更审阅 | 桌面端展示文件变化和 Diff，支持接受、暂存与回退 |
 | 项目指令 | 自动发现并注入工作区及父目录的 `CLAUDE.md`、`SZTUCODE.md` 等规则 |
 | 多 Agent 工作流 | Planner → Coder / Tester / Reviewer 结构化 DAG 编排，范围升级留 Trace 证据 |
+| Agent 评测 | TS：`packages/evaluation`；Python：`py-runtime/src/sztu_code/evaluation`，统一任务协议与 SWE-bench 适配 |
 | Agent 评测 | TS：`packages/evaluation`；Python：`py-runtime/src/sztu_code/evaluation`，统一任务协议与 SWE-bench 适配 |
 
 项目级语义索引、统一 LSP、领域 RAG、安全扫描闭环和完整多智能体工作流仍在路线图中，不将设计目标描述为已完成能力。
@@ -255,6 +260,7 @@ sztu-ts [项目路径]
 
 ```bash
 npm run daemon            # 默认入口：py-runtime 中的 Python daemon（7437）
+npm run daemon            # 默认入口：py-runtime 中的 Python daemon（7437）
 npm run daemon:py         # 等价 npm run daemon
 ```
 
@@ -336,10 +342,12 @@ SztuCode/
 │  └─ evaluation/            #   评测 runner 与报告
 ├─ desktop/                  # Tauri 2 + Vue 3 桌面工作台（连 TS daemon）
 ├─ py-runtime/src/sztu_code/            # Python 链
+├─ py-runtime/src/sztu_code/            # Python 链
 │  ├─ core/                  #   Python daemon（Agent Loop、bus、权限、workflow、skills 等）
 │  ├─ cli/                   #   sztu-py 命令行客户端
 │  ├─ tui/                   #   Textual TUI（sztu-tui）
 │  └─ evaluation/            #   Python 评测 harness 与报告
+├─ py-runtime/tests/         # Python 测试（pytest）
 ├─ py-runtime/tests/         # Python 测试（pytest）
 ├─ scripts/                  # 协议生成、链接检查等工程脚本（.ts 与 .py 成对）
 ├─ tmp/                      # 本地评测产物（不提交）
@@ -354,6 +362,7 @@ SztuCode/
 Python 主链检查：
 
 ```bash
+cd py-runtime
 cd py-runtime
 uv run ruff check src tests
 uv run mypy src
@@ -383,6 +392,7 @@ TypeScript 评测——离线运行 10 个内部 Coding Agent 基准并生成 JS
 npm run eval -- run --manifest packages/evaluation/tasks/internal-v1.json --repeat 3 --output-dir tmp/eval
 ```
 
+Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / models / reporting / runners）。两版任务格式、真实 daemon runner、指标定义和 SWE-bench Lite 小样本流程见[评测指南](docs/guides/evaluation.md)。
 Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / models / reporting / runners）。两版任务格式、真实 daemon runner、指标定义和 SWE-bench Lite 小样本流程见[评测指南](docs/guides/evaluation.md)。
 
 ## 路线图

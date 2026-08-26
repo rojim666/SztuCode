@@ -125,18 +125,13 @@ Permission Manager 结合当前模式、持久化策略、工具权限和用户�
 
 | 路径 | 所有者 | 内容 |
 | --- | --- | --- |
-| `${SZTU_DATA_DIR:-~/.sztu}/sessions/<session_id>/` | `SessionStore` 兼容路径 | `meta.json`、`thread.jsonl`、context、notes、runs 和事件 |
-| `@sztucode/session-fs` backend | `AgentSession` 组合路径 | typed session header、append-only JSONL entries、branch/fork 元数据和原子写入；可读取 legacy 目录 |
+| `~/.sztu/sessions/` | Session Store | 会话、消息、notes、runs 和事件 |
 | `~/.sztu/workspaces.json` | Workspace Manager | 最近和归档工作区 |
 | `~/.sztu/runtime-settings.json` | Settings Store | Provider、模型、端点、凭据和权限模式 |
 | `~/.sztu/model-profiles.json` | Model Profile Store | 模型列表与当前 profile ID |
 | `~/.sztu/traces/runtime-ts-events.jsonl` | EventBus | runtime 事件 trace |
 
 会话与 trace 可能包含源码、提示词和模型响应，应按敏感数据处理。
-Telemetry 默认使用 no-op 或脱敏 adapter；TraceWriter 兼容输出只记录必要的
-关联信息，不默认写入完整 prompt、API key 或文件内容。
-
-Session snapshot 是客户端恢复的事实来源：它至少包含 id、phase/status、updated time、当前 run/锁定状态和 branch 关联；事件用于补齐 snapshot 之后的增量。写入采用 append-only entry 或临时文件 + rename，避免 daemon crash 留下半写文件；客户端重试必须携带 idempotency key，服务端对支持的命令去重。
 
 ## 关键不变量
 
@@ -150,20 +145,14 @@ Session snapshot 是客户端恢复的事实来源：它至少包含 id、phase/
 
 ## 扩展入口
 
-扩展由 TypeScript daemon 加载，不能访问底层 Socket，也不能替代 protocol/client。全局扩展通过 `SZTU_EXTENSIONS` 配置，workspace 扩展通过 `SZTU_WORKSPACE_EXTENSIONS` 配置，并按解析后的 workspace root 建立隔离 registry。模块可以导出 `default activate(api)`、`activate` 或 `extension` 定义。
-
-Extension API 当前支持 `session_start`、`session_shutdown`、`before_agent_start`、`agent_start`、`turn_start`、`turn_end`、`before_tool_call`、`after_tool_call`、`context`、`compact` 和 `agent_end` hook，以及自定义工具、Slash command、Prompt template、Resource、tool prompt contribution 和 Session event listener。加载/激活/注册失败进入 diagnostics；单个 hook 抛错会记录并继续主循环。该 API 在 0.x 中属于实验性能力。
-
 | 目标 | 主要位置 |
 | --- | --- |
-| 新命令/事件 | `packages/protocol/`、`packages/server/`、`packages/runtime-ts/src/server-service.ts`、客户端 SDK |
+| 新命令/事件 | `packages/protocol/`、`packages/runtime-ts/src/server.ts`、客户端 SDK |
 | 新工具 | `packages/runtime-ts/src/tools.ts` |
 | 新 Provider | `packages/runtime-ts/src/providers/` |
 | 新权限规则 | `packages/runtime-ts/src/permissions.ts` |
 | 新 Skill | `.sztu/skills/`、`~/.sztu/skills/` 或内置 Skills |
-| 新 Agent 角色 | `packages/runtime-ts/src/subagent.ts`（实验性；child SessionRuntime） |
+| 新 Agent 角色 | `packages/runtime-ts/src/subagent.ts` |
 | 新 MCP 接入 | `packages/runtime-ts/src/mcp.ts` 与 JSON 配置 |
-
-完整 package 职责与依赖图见 [`packages/README.md`](../../packages/README.md)。
 
 实现细节和提交标准见 [开发环境](../development/development.md) 与 [贡献指南](../CONTRIBUTING.md)。
