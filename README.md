@@ -74,7 +74,7 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 | 维度 | TypeScript 版 | Python 版 |
 | --- | --- | --- |
 | 定位 | 当前产品主线，桌面端只连接它 | 并存镜像实现，生态自选 |
-| 代码位置 | `packages/`（protocol / runtime-ts / cli / evaluation） | `py-runtime/src/sztu_code/`（core / cli / tui / evaluation） |
+| 代码位置 | `packages/`（ai / agent-core / protocol / session / session-fs / server / client / telemetry / runtime-ts / cli / evaluation） | `py-runtime/src/sztu_code/`（core / cli / tui / evaluation） |
 | daemon 入口 | `packages/runtime-ts/src/main.ts` | `py-runtime/src/sztu_code/core/app.py`（`python -m sztu_code.core`） |
 | 默认端口 | `127.0.0.1:7438` | `127.0.0.1:7437` |
 | CLI 命令 | `sztu-ts`（发布包名 `sztucode` / `sztucode-tui`） | `sztu-py` |
@@ -88,6 +88,37 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 | 版本 | 0.2.0 | 0.0.1 |
 
 两套 runtime 使用不同的命令名和默认端口，因此可以并行安装和运行；客户端通过同一套 JSON-RPC 协议连接，Agent 执行状态以所选 daemon 为准。
+
+### TypeScript package 分层
+
+TypeScript 链按依赖方向从底层契约到进程装配分层，业务依赖只能向下：
+
+```text
+desktop / packages/cli
+        -> @sztucode/client
+        -> @sztucode/protocol
+
+@sztucode/runtime-ts
+        -> @sztucode/server
+        -> @sztucode/protocol
+        -> @sztucode/session-fs -> @sztucode/session -> @sztucode/ai
+        -> @sztucode/agent-core -> @sztucode/ai
+        -> @sztucode/telemetry
+```
+
+| Package | 职责 |
+| --- | --- |
+| `ai` | Provider 无关的模型、消息和流式类型；不依赖 daemon。 |
+| `agent-core` | Agent/tool 基础抽象；不拥有 Socket 或桌面协议。 |
+| `protocol` | JSON-RPC、NDJSON、事件、Session 和 Workflow 的共享类型与校验。 |
+| `session` | Session header、entry、branch 和 backend 接口。 |
+| `session-fs` | 本地 JSONL 持久化、分支/fork 和旧目录格式适配。 |
+| `server` | TCP/NDJSON transport、hello、连接状态、RPC router、attach/detach 和事件订阅；保持通用 wire 类型，不直接依赖业务协议。 |
+| `client` | 仅通过 daemon RPC 工作的 TypeScript SDK，提供超时、重连、请求关联和事件订阅。 |
+| `telemetry` | span、事件、状态/错误、no-op 和内存 adapter，并兼容 TraceWriter 输出。 |
+| `runtime-ts` | Node daemon 组合入口，注入 Workspace、Permission、MCP、Skills、Git、Session、Provider 和扩展服务。 |
+| `cli` | daemon client；可按需启动 bundled daemon，不实现 Agent Loop。 |
+| `evaluation` | TypeScript 评测 runner 与报告。 |
 
 ## 核心能力
 
@@ -116,21 +147,32 @@ SztuCode 使用 daemon 与客户端分离的架构。长任务不依赖某个界
 
 ```text
 Tauri Desktop ─┐
-Node CLI ──────┼─ TCP / NDJSON / JSON-RPC 2.0 ─ TypeScript daemon (7438)
-Eval Runner ───┘                                  │
-                                                  ├─ Workspace / Session
-                                                  ├─ Agent Runner / Loop
-                                                  ├─ LLM Provider
-                                                  ├─ Tools / Permissions
-                                                  ├─ Skills / Subagents / MCP
-                                                  ├─ Memory / Compaction
-                                                  └─ EventBus / Trace
+Node CLI ──────┼─ @sztucode/client ─ TCP / NDJSON ─┐
+Eval Runner ───┘                                   │
+                                                   ▼
+                                      @sztucode/server (transport/router)
+                                                   │
+                                      RuntimeServer (composition only)
+                                                   │
+                                      ServerService -> AgentSession
+                                                   │
+                           Workspace / Permission / MCP / Skills / Git
+                                                   │
+                                           AgentLoop / Provider / Tools
+                                                   │
+                                      SessionStore / session-fs / EventBus
 
 sztu-py CLI ──── TCP / NDJSON / JSON-RPC 2.0 ─ Python daemon (7437)
 sztu-tui TUI ──┘                                   └─ 同上，功能镜像
 ```
 
-TypeScript runtime 默认监听 `127.0.0.1:7438`，Python runtime 默认监听 `127.0.0.1:7437`，可以同时运行。IPC 命令和事件详情见[架构说明](docs/reference/architecture.md)。
+Agent、Session、Server 的边界分别是：Agent 负责模型回合、工具和权限请求；Session 负责上下文、生命周期、快照、分支和持久化；Server 负责连接、握手、路由、Session attach/detach 和事件投递。`@sztucode/server` 接收 `SessionRuntime`/`PiSessionRuntime`，不会创建 `AgentLoop`。
+
+连接流程是：客户端建立 TCP，新的 SDK 发送 `hello`（版本/能力），daemon 返回 welcome；随后客户端通过 `event.subscribe` 订阅主题并发送带 request id、可选 idempotency key 的 JSON-RPC。响应仍是 NDJSON，事件以 event envelope 推送。客户端断开不会终止运行中的 Session，重连后可重新 attach 并用 snapshot/history hydrate。TS daemon 的 compatibility mode 允许旧客户端跳过 hello 直接发送首个 JSON-RPC frame，同时保留既有 method、envelope、事件名称和错误码。
+
+Session 兼容路径写入 `${SZTU_DATA_DIR:-~/.sztu}/sessions/<session_id>/` 下的 `meta.json`、`thread.jsonl`、context、notes 和 run 文件；新组合路径由 `@sztucode/session-fs` 使用带 header 的 append-only JSONL、branch/fork 元数据和原子写入，并提供 legacy adapter。扩展只在 daemon 内加载：`SZTU_EXTENSIONS` 是 global scope，`SZTU_WORKSPACE_EXTENSIONS` 绑定解析后的 workspace root；加载、激活、注册和 hook 错误写入 diagnostics，不能打断 daemon 主循环。
+
+TypeScript runtime 默认监听 `127.0.0.1:7438`，Python runtime 默认监听 `127.0.0.1:7437`，可以同时运行。两者是平行的进程实现，不共享 TS runtime 的实现代码；共享的是面向客户端的协议语义。IPC 命令和事件详情见[架构说明](docs/reference/architecture.md)。
 
 TypeScript daemon 的入口层采用组合结构：`RuntimeServer` 只装配 transport、`@sztucode/telemetry`、EventBus、provider 和 coding-agent services；`ServerService` 承载 RPC 服务，负责创建/打开 transport-free `AgentSession`。`RunManager` 作为兼容执行器暂时保留，桌面端、CLI 和既有测试仍可使用原入口。新的服务依赖方向为 `RuntimeServer -> ServerService -> Workspace / Permission / MCP / Skills / Git / Session / Telemetry services`，不会改变现有 RPC 方法、事件名称或 7438 默认端口。Telemetry 默认使用 no-op 或脱敏 Trace adapter，TraceWriter 仍输出兼容的 JSONL 记录。
 
@@ -281,8 +323,15 @@ cargo check
 ```text
 SztuCode/
 ├─ packages/                 # TypeScript 链（npm workspaces）
-│  ├─ protocol/              #   JSON-RPC、事件和工作流契约（类型包）
-│  ├─ runtime-ts/            #   daemon、Agent Loop、工具、权限与扩展系统
+│  ├─ ai/                    #   provider-neutral 模型类型
+│  ├─ agent-core/            #   Agent/tool 基础抽象
+│  ├─ protocol/              #   JSON-RPC、事件和工作流契约
+│  ├─ session/               #   Session 接口与 entry/branch 类型
+│  ├─ session-fs/            #   JSONL backend 与 legacy adapter
+│  ├─ server/                #   transport、握手、router、Session 管理
+│  ├─ client/                #   daemon client SDK
+│  ├─ telemetry/             #   Trace/span 抽象与 adapters
+│  ├─ runtime-ts/            #   Node daemon 组合入口
 │  ├─ cli/                   #   Node 命令行客户端
 │  └─ evaluation/            #   评测 runner 与报告
 ├─ desktop/                  # Tauri 2 + Vue 3 桌面工作台（连 TS daemon）
@@ -317,8 +366,12 @@ TypeScript 链检查（桌面端与 TS 链仍需）：
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e:ts
+npm run test:migration
 npm run build --prefix desktop
 ```
+
+`npm run test:e2e:ts` 使用真实 TS daemon 验证流式事件；`npm run test:migration` 运行 Agent/Session/Server 迁移套件，覆盖旧客户端、新客户端、权限、工具失败、abort、重启、fork、compaction、subagent、MCP 和 desktop contract，并在失败时输出 request/session/run id。桌面端另需 `npm run build --prefix desktop`；Python 链按上表使用 `uv run ruff`、`mypy` 和 `pytest`，不属于 TS package 的运行时依赖。
 
 共享协议修改位于 `packages/protocol`（TS）与 `py-runtime/src/sztu_code/core/bus`（Python）。测试范围、桌面验证和模块修改清单见[测试指南](docs/development/testing.md)与[开发环境](docs/development/development.md)。
 

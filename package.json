@@ -9,6 +9,7 @@
     "typecheck": "npm run build --workspace @sztucode/ai && npm run build --workspace @sztucode/session && npm run build --workspace @sztucode/session-fs && npm run build --workspace @sztucode/telemetry && npm run build --workspace @sztucode/agent-core && npm run build --workspace @sztucode/protocol && npm run build --workspace @sztucode/server && npm run build --workspace @sztucode/client && tsc -p packages/runtime-ts/tsconfig.json --noEmit && npm run typecheck --workspace @sztucode/cli && npm run typecheck --workspace @sztucode/evaluation && tsc -p scripts/tsconfig.json && tsc -p desktop/tsconfig.json --noEmit",
     "test": "tsx --test packages/server/tests/*.test.ts packages/client/tests/*.test.ts packages/telemetry/tests/*.test.ts packages/runtime-ts/tests/*.test.ts packages/evaluation/tests/*.test.ts",
     "test:e2e:ts": "npm run build && tsx scripts/runtime_ts_e2e.ts",
+    "test:migration": "npm run build && node --import tsx scripts/migration_validation.ts",
     "daemon": "uv run --project py-runtime --offline python -m sztu_code.core",
     "daemon:ts": "node packages/runtime-ts/dist/main.js",
     "daemon:py": "uv run --project py-runtime --offline python -m sztu_code.core",

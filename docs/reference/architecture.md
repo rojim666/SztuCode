@@ -7,34 +7,44 @@
 SztuCode 是本地优先的 daemon/client Agent 系统。TypeScript 与 Python 各自提供 daemon 和 CLI 入口；桌面端连接 TypeScript runtime。客户端通过 TCP 上的 NDJSON/JSON-RPC 2.0 连接，Agent 执行状态以所选 daemon 为准。
 
 ```text
-Tauri Desktop ─┐
-Node CLI ──────┼─ TCP / NDJSON / JSON-RPC 2.0 ─ TypeScript daemon
-Eval Runner ───┘                                  │
-                                                  ├─ Session / Workspace
-                                                  ├─ Agent Runner / Loop
-                                                  ├─ LLM Provider
-                                                  ├─ Tools / Permissions
-                                                  ├─ Skills / Subagents / MCP
-                                                  ├─ Memory / Compaction
-                                                  └─ EventBus / Trace
+Tauri Desktop / Node CLI / Eval
+              │
+              ▼
+     @sztucode/client + @sztucode/protocol
+              │ TCP / NDJSON / JSON-RPC
+              ▼
+     @sztucode/server (transport/router/session attach)
+              │ injected SessionRuntime
+              ▼
+     runtime-ts RuntimeServer -> ServerService -> AgentSession
+              │
+     Workspace / Permission / MCP / Skills / Git / Telemetry
+              │
+     AgentLoop / Provider / Tools / Session persistence
 ```
+
+Python runtime 是独立的平行实现，默认监听 `127.0.0.1:7437`；它不依赖 TypeScript package，但对客户端暴露相同的主要 JSON-RPC/NDJSON 语义。
+
+### Agent、Session、Server 边界
+
+- **Agent**：`AgentLoop`、Provider adapter 和 Tool Registry 执行模型回合、工具调用和权限请求，发布 run/step/tool 事件；不拥有 Socket，也不决定客户端连接生命周期。
+- **Session**：`AgentSession` 实现一个 `SessionRuntime`，拥有上下文、生命周期、快照、分支、运行关联和持久化。Subagent/workflow child 使用独立 runtime，并带 `parent_session_id`/`parent_run_id` 关联。
+- **Server**：`@sztucode/server` 只负责 Transport、连接状态、hello、RPC router、事件订阅、Session attach/detach 和优雅关闭。`RuntimeServer` 只装配依赖，`ServerService` 创建/打开 `AgentSession`；transport/server 不直接创建 `AgentLoop`。`RunManager` 只是旧调用方使用的兼容层。
 
 ## 进程与客户端
 
 ### TypeScript daemon
 
-daemon 入口位于 `packages/runtime-ts/src/main.ts`，负责：
+daemon 入口位于 `packages/runtime-ts/src/main.ts`，负责组合而不是承载传输业务：
 
-- 加载配置和日志；
-- 初始化 Provider、Session Store、Workspace Manager 和 Permission Manager；
-- 注册 JSON-RPC handler；
-- 启动 TCP Server；
-- 执行 Agent run 并广播事件；
-- 在退出时取消并等待后台任务。
+- 加载配置、Provider、Telemetry、EventBus 和 coding-agent services；
+- 将 Workspace、Permission、MCP、Skills、Git、Session backend 和扩展 registry 注入 `ServerService`；
+- 用 `@sztucode/server` 启动 TCP/NDJSON transport，并注册协议路由；
+- 在 shutdown 时先停止接收新请求，再关闭 transport、释放连接并等待活动 Session/后台任务。
 
 ### `sztucode` / Node CLI
 
-npm 发布入口会启动 TypeScript daemon，并让 Node CLI 创建绑定到目标项目的会话。仓库内可使用 `npm run cli -- chat`。
+npm 发布入口会启动 TypeScript daemon，并让 Node CLI 创建绑定到目标项目的会话。仓库内可使用 `npm run cli:ts -- chat`。
 
 显式 TypeScript 命令为 `sztu-ts`，默认端口为 `7438`。
 
@@ -50,14 +60,14 @@ Python 包入口连接 `py-runtime/src/sztu_code` 中的 Python daemon，默认�
 
 ## 请求与事件链路
 
-1. 客户端发送 JSON-RPC 命令，例如 `session.send_message`。
-2. Socket Server 解析 envelope，并按共享 TypeScript 协议校验关键参数。
-3. `RuntimeServer` handler 操作会话或启动后台 run。
-4. `RunManager` 构建上下文、工具、权限和 Provider。
-5. `AgentLoop` 迭代模型响应与工具结果。
-6. EventBus 发布 run、step、tool、permission、LLM 和 change 事件。
-7. IPC Broadcaster 将订阅事件推送到客户端。
-8. 客户端按 `session_id` / `run_id` 合并实时事件和历史状态。
+1. `@sztucode/client` 建立 TCP，并发送 `{"type":"hello","version":1,...}`；daemon 回复 welcome、connection id 和 capabilities。
+2. 旧客户端在 compatibility mode 下可以省略 hello，直接发送第一个 JSON-RPC frame；新客户端仍必须先 hello。版本不兼容返回 `hello_error` 并关闭连接。
+3. 客户端调用 `event.subscribe` 选择主题，再发送带 request id、可选 idempotency key 的 JSON-RPC 命令，例如 `session.send_message`。
+4. `@sztucode/server` 解析 NDJSON、校验 envelope、路由到 `ServerService`，只通过注入的 `SessionRuntime` 执行操作。
+5. `AgentSession` 绑定 AgentLoop、Workspace、Permission、MCP、Skills、Git、Provider 和 Telemetry；AgentLoop 发布 run、step、tool、permission、LLM 和 change 事件。
+6. server 将匹配订阅的事件包装为 `{ kind: "event", event }` NDJSON frame；响应与事件都按 `session_id`/`run_id` 关联。
+7. 客户端断开时仅清理连接和 attachment；运行中的 Session 继续执行。重连后先 list/get，再 attach 并从 snapshot/history 去重 hydrate。
+8. `core.shutdown` 或进程停止触发 graceful shutdown：拒绝新请求，通知/取消可取消工作，等待持久化和连接关闭；已落盘 Session 可在下一次 daemon 启动后重新打开。
 
 命令和事件的字段定义见自动生成的 [Wire Protocol](wire-protocol.md)。
 
@@ -115,13 +125,18 @@ Permission Manager 结合当前模式、持久化策略、工具权限和用户�
 
 | 路径 | 所有者 | 内容 |
 | --- | --- | --- |
-| `~/.sztu/sessions/` | Session Store | 会话、消息、notes、runs 和事件 |
+| `${SZTU_DATA_DIR:-~/.sztu}/sessions/<session_id>/` | `SessionStore` 兼容路径 | `meta.json`、`thread.jsonl`、context、notes、runs 和事件 |
+| `@sztucode/session-fs` backend | `AgentSession` 组合路径 | typed session header、append-only JSONL entries、branch/fork 元数据和原子写入；可读取 legacy 目录 |
 | `~/.sztu/workspaces.json` | Workspace Manager | 最近和归档工作区 |
 | `~/.sztu/runtime-settings.json` | Settings Store | Provider、模型、端点、凭据和权限模式 |
 | `~/.sztu/model-profiles.json` | Model Profile Store | 模型列表与当前 profile ID |
 | `~/.sztu/traces/runtime-ts-events.jsonl` | EventBus | runtime 事件 trace |
 
 会话与 trace 可能包含源码、提示词和模型响应，应按敏感数据处理。
+Telemetry 默认使用 no-op 或脱敏 adapter；TraceWriter 兼容输出只记录必要的
+关联信息，不默认写入完整 prompt、API key 或文件内容。
+
+Session snapshot 是客户端恢复的事实来源：它至少包含 id、phase/status、updated time、当前 run/锁定状态和 branch 关联；事件用于补齐 snapshot 之后的增量。写入采用 append-only entry 或临时文件 + rename，避免 daemon crash 留下半写文件；客户端重试必须携带 idempotency key，服务端对支持的命令去重。
 
 ## 关键不变量
 
@@ -135,14 +150,20 @@ Permission Manager 结合当前模式、持久化策略、工具权限和用户�
 
 ## 扩展入口
 
+扩展由 TypeScript daemon 加载，不能访问底层 Socket，也不能替代 protocol/client。全局扩展通过 `SZTU_EXTENSIONS` 配置，workspace 扩展通过 `SZTU_WORKSPACE_EXTENSIONS` 配置，并按解析后的 workspace root 建立隔离 registry。模块可以导出 `default activate(api)`、`activate` 或 `extension` 定义。
+
+Extension API 当前支持 `session_start`、`session_shutdown`、`before_agent_start`、`agent_start`、`turn_start`、`turn_end`、`before_tool_call`、`after_tool_call`、`context`、`compact` 和 `agent_end` hook，以及自定义工具、Slash command、Prompt template、Resource、tool prompt contribution 和 Session event listener。加载/激活/注册失败进入 diagnostics；单个 hook 抛错会记录并继续主循环。该 API 在 0.x 中属于实验性能力。
+
 | 目标 | 主要位置 |
 | --- | --- |
-| 新命令/事件 | `packages/protocol/`、`packages/runtime-ts/src/server.ts`、客户端 SDK |
+| 新命令/事件 | `packages/protocol/`、`packages/server/`、`packages/runtime-ts/src/server-service.ts`、客户端 SDK |
 | 新工具 | `packages/runtime-ts/src/tools.ts` |
 | 新 Provider | `packages/runtime-ts/src/providers/` |
 | 新权限规则 | `packages/runtime-ts/src/permissions.ts` |
 | 新 Skill | `.sztu/skills/`、`~/.sztu/skills/` 或内置 Skills |
-| 新 Agent 角色 | `packages/runtime-ts/src/subagent.ts` |
+| 新 Agent 角色 | `packages/runtime-ts/src/subagent.ts`（实验性；child SessionRuntime） |
 | 新 MCP 接入 | `packages/runtime-ts/src/mcp.ts` 与 JSON 配置 |
+
+完整 package 职责与依赖图见 [`packages/README.md`](../../packages/README.md)。
 
 实现细节和提交标准见 [开发环境](../development/development.md) 与 [贡献指南](../CONTRIBUTING.md)。

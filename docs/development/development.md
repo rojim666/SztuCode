@@ -16,21 +16,47 @@ npm install
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e:ts
+npm run test:migration
 ```
 
-启动 daemon 进行手动调试：
+`typecheck` 会按依赖顺序检查 `ai`、`session`、`session-fs`、`telemetry`、`agent-core`、`protocol`、`server`、`client`、`runtime-ts`、CLI、评测和 desktop 类型。`npm test` 运行各 package 的 unit test；`test:e2e:ts` 和 `test:migration` 使用真实 TS daemon，后者额外验证旧客户端兼容、重启、fork、compaction、subagent、MCP 和桌面契约。
+
+启动 TypeScript daemon 进行手动调试：
 
 ```bash
-npm run daemon
+npm run daemon:ts
 ```
 
 另一个终端中：
 
 ```bash
-npm run cli -- ping
-npm run cli -- run --goal "inspect the repository"
-npm run cli -- chat
+npm run cli:ts -- ping
+npm run cli:ts -- run --goal "inspect the repository"
+npm run cli:ts -- chat
 ```
+
+默认连接 `127.0.0.1:7438`。新的 `@sztucode/client` 先执行 `connect()`/hello，再调用 typed RPC；断线时抛出明确的 disconnect 错误，`reconnect()` 后重新订阅并 attach。客户端只能依赖 `@sztucode/protocol` 和 daemon RPC，不能直接导入工具、Provider 或本地模型凭据。兼容性调试仍可用不发送 hello 的旧 JSON-RPC 客户端。
+
+## Package ownership and dependency direction
+
+修改应遵循从契约到组合入口的方向：
+
+```text
+client / cli / desktop -> protocol
+server -> injected SessionRuntime（通用 transport 类型）
+session-fs -> session -> ai
+agent-core -> ai
+runtime-ts -> server, protocol, session-fs, agent-core, telemetry
+```
+
+- `protocol` 只放可复用的 wire 类型、校验和事件契约；新增公共接口必须同步类型和测试。
+- `server` 维护 transport、hello、connection state、router、LiveSessionManager、attach/detach、subscription 和 graceful shutdown；它不创建 `AgentLoop`。
+- `client` 维护 TCP/NDJSON SDK、request id、idempotency key、timeout、重连和事件顺序，不绕过 daemon。
+- `session`/`session-fs` 维护 SessionRuntime 接口、snapshot、branch/fork 和持久化；`runtime-ts` 的 `ServerService` 创建/打开 `AgentSession`。
+- `runtime-ts` 是装配层，注入 Workspace、Permission、MCP、Skills、Git、Provider、Telemetry 和 extensions；`RunManager` 仅为旧调用方保留。
+
+Agent 负责模型回合、工具和权限；Session 负责上下文、状态、快照和持久化；Server 负责连接与路由。子 Agent 必须拥有独立 SessionRuntime，并通过 parent session/run 关系回传事件。
 
 ## 桌面端开发
 
@@ -92,16 +118,33 @@ cargo check
 - 为无效类型、边界值和优先级添加测试；
 - 明确是否包含凭据及其持久化方式。
 
+### Extension 开发
+
+daemon 从 `SZTU_EXTENSIONS` 加载 global extension，从
+`SZTU_WORKSPACE_EXTENSIONS` 加载 workspace extension；后者只对对应的
+workspace root 生效，两个 registry 不共享注册项。扩展通过 `activate(api)`
+注册工具、Slash command、Prompt template、Resource、tool prompt
+contribution 和 session event listener，并可使用 session/agent/turn/tool/
+context/compact 生命周期 hook。扩展不得访问 Socket；加载、激活、工具注册
+或 hook 错误必须出现在 diagnostics，hook 错误也不得结束 daemon 主循环。
+
+新增扩展公共类型和行为时，同时添加 loader/registry、卸载、工具注册和异常
+隔离测试。Extension API、Subagent/workflow DAG 和 `AgentSession` 组合入口
+仍是 0.x 实验性 API，文档和协议字段可能变化。
+
 ## 数据与调试
 
 开发时常用位置：
 
 ```text
 ~/.sztu/traces/runtime-ts-events.jsonl
-~/.sztu/sessions/
+${SZTU_DATA_DIR:-~/.sztu}/sessions/<session_id>/
 ```
 
-这些文件可能包含提示词、模型响应、工具输出和 API 配置。提交 Issue 或测试夹具前必须脱敏。
+兼容路径包含 `meta.json`、`thread.jsonl`、context、notes 和 run 事件；新的
+`session-fs` backend 使用带 header 的 append-only JSONL 和 branch/fork
+元数据。两者都可能包含提示词、模型响应、工具输出和 API 配置，提交 Issue
+或测试夹具前必须脱敏。
 
 ## 完成标准
 

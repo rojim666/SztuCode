@@ -23,12 +23,13 @@ AI Coding Agent 的一次任务可能持续数分钟，期间会产生模型流�
 
 SztuCode 采用持久 daemon 与多个客户端分离的架构：
 
-- TypeScript daemon 拥有 Agent Loop、LLM Provider、Tool Registry、Permission Manager、Session Store、Subagents、MCP 和 Trace；
-- TUI、Tauri 桌面端和 CLI 作为客户端，不复制核心任务状态；
-- 客户端与 daemon 通过 TCP 上的 NDJSON 传输 JSON-RPC 2.0 消息；
-- 命令、结果和事件使用 `packages/protocol` 的 TypeScript 类型定义；
-- 长时间 handler 独立运行，读循环仍能处理审批、订阅、查询和取消；
-- 默认监听 `127.0.0.1:7438`，不以远程多用户服务为当前目标。
+- `@sztucode/protocol` 定义 JSON-RPC/NDJSON、事件、Session 和 Workflow 的共享契约；`@sztucode/client` 是只调用 daemon RPC 的 typed SDK；desktop、CLI 和评测 runner 都通过它或兼容 transport 接入。
+- `@sztucode/server` 提供 TCP/NDJSON transport、hello handshake、connection state、RPC router、LiveSessionManager、attach/detach、订阅和 graceful shutdown。它依赖注入的 `SessionRuntime`/`PiSessionRuntime`，不创建 `AgentLoop`。
+- `packages/runtime-ts` 的 `RuntimeServer` 只装配依赖；`ServerService` 创建/打开 `AgentSession`，再注入 Workspace、Permission、MCP、Skills、Git、Provider、Telemetry 和 Session backend。`RunManager` 作为旧 desktop/CLI/test 调用方的兼容层暂时保留。
+- Agent 负责模型回合、工具和权限；Session 负责上下文、生命周期、snapshot、branch/fork 和持久化；Server 负责连接、路由、事件投递和 attach 状态。子 Agent 使用独立 SessionRuntime，并通过 parent session/run 关联。
+- 客户端与 daemon 继续通过 TCP 上的 NDJSON 传输 JSON-RPC 2.0；新客户端首帧为 `hello`，包含协议版本和能力，随后可订阅事件。`runtime-ts` 开启 compatibility mode，旧客户端可以跳过 hello 直接发送首个 JSON-RPC frame，既有 method、envelope、事件名和错误码保持不变。
+- 第一版只扩展现有 TCP + NDJSON 传输，不同时引入 CBOR；二进制协议若未来需要，必须通过新的协商能力和兼容测试单独引入。
+- 默认监听 `127.0.0.1:7438`，不以远程多用户服务为当前目标；Python daemon 是默认端口 `7437` 的平行实现，不是 TypeScript package 的依赖。
 
 客户端可以提供不同交互体验，但不得绕过 daemon 的权限、工作区和会话边界。新增用户可见能力如需改变 IPC，必须先更新类型化协议，再更新各客户端。
 
@@ -52,6 +53,8 @@ SztuCode 采用持久 daemon 与多个客户端分离的架构：
 
 - 客户端退出后，任务和会话可以继续存在并在重连后恢复；
 - 所有客户端复用统一的权限、工具、上下文和模型接入；
+- 客户端 SDK 提供 request timeout、request id、idempotency key、明确的断连错误和 reconnect；
+- Session snapshot 与 append-only session entries 让 list/get/attach 可以从磁盘恢复，连接断开不会取消活动 Session；
 - IPC、EventBus 和 LLM 三层数据可以独立观察和回放；
 - 客户端可以专注交互，而核心行为可以通过无界面测试验证。
 
@@ -69,6 +72,8 @@ SztuCode 采用持久 daemon 与多个客户端分离的架构：
 - 工作区、权限和工具约束只在 daemon 中作最终判定；
 - 通过集成测试覆盖真实 daemon 启动、IPC 往返、审批和会话流程；
 - 协议模型变更后生成并检查参考文档，减少客户端契约漂移。
+- 兼容路径保留 legacy `SessionStore` 目录；组合路径使用 `@sztucode/session-fs` 的 typed JSONL、branch/fork 元数据和原子写入，并提供迁移适配器。
+- 扩展只由 daemon 按 global/workspace scope 加载（`SZTU_EXTENSIONS`、`SZTU_WORKSPACE_EXTENSIONS`）；加载、注册和 hook 失败写 diagnostics，单个扩展错误不能结束主循环。
 
 ## 验证
 
@@ -77,9 +82,11 @@ SztuCode 采用持久 daemon 与多个客户端分离的架构：
 - CLI、TUI 和桌面端对同一命令与事件使用一致协议；
 - 集成测试使用真实 daemon 进程验证 IPC 边界；
 - 协议生成脚本检查参考文档与模型保持同步。
+- `npm run test:e2e:ts` 和 `npm run test:migration` 使用真实 daemon 验证 hello/compatibility、事件顺序、最终 snapshot、断线重连、重启和 desktop contract。
 
 ## 后续工作
 
-- 定义正式的协议兼容性和版本协商策略；
+- 定义正式的协议兼容性和版本协商策略；当前 hello version 仅为最小握手，compatibility mode 仍是迁移桥接；
 - 强化本地 IPC 客户端身份和未授权访问防护；
-- 为 daemon 与桌面端建立稳定的联合发布流程。
+- 为 daemon 与桌面端建立稳定的联合发布流程；
+- 将 `AgentSession` composition、Subagent/workflow DAG、Extension API 和部分 typed server/client API 从实验性状态推进到稳定契约。
