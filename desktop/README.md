@@ -44,6 +44,21 @@ npm run tauri dev
 
 桌面端通过一个持久 TCP 连接与 daemon 通信。Rust 桥只转发 NDJSON 帧，所有 JSON-RPC 请求关联、事件订阅与重连状态由 `src/lib/ipc.ts` 集中处理。
 
+如果 Tauri 只显示 `The "beforeDevCommand" terminated with a non-zero status code`，先直接运行前端命令查看真实错误：
+
+```bash
+npm run --prefix desktop dev
+```
+
+如果错误提到 `@rollup/rollup-<platform>` 或 `@tauri-apps/cli-<platform>` 缺失，这是 npm 没有安装当前平台的 native 可选依赖。使用当前平台重新安装 desktop 依赖：
+
+```bash
+npm install --prefix desktop --include=optional --force
+npm run --prefix desktop tauri dev
+```
+
+不要把其他操作系统生成的 `desktop/node_modules` 目录复制到当前平台；切换操作系统后需要重新安装依赖。
+
 macOS 使用系统 traffic lights 与 Overlay 标题栏（见 `src-tauri/tauri.macos.conf.json`）；该文件由 Tauri 构建与 `generate_context!()` 按平台自动合并进主配置（[Configuration Files](https://v2.tauri.app/develop/configuration-files/#platform-specific-configuration)），无需在 `main.rs` 中手动加载。Windows / Linux 继续使用自绘窗口按钮。
 
 ## 验证
