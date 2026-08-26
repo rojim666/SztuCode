@@ -459,6 +459,8 @@ class AgentRunner:
                 await loop.run(context)
             except asyncio.CancelledError:
                 cancelled = True
+                if self._permission_manager is not None:
+                    self._permission_manager.cancel_run(run_id, session_id_str)
                 if not context.is_done():
                     context.mark_failed("cancelled")
             except Exception:
