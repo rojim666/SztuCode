@@ -4,7 +4,7 @@ body, #app { height: 100vh; } body { margin: 0; min-width: 680px; overflow: hidd
 button, input, select, textarea { font: inherit; }
 button { border: 0; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .48; }
-.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 40px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: var(--sidebar-collapsed-width, 44px) minmax(0, 1fr); }
+.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 40px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .kimi-shell.sidebar-animating { transition: grid-template-columns .2s ease; }
 .kimi-shell.window-resizing,
 .kimi-shell.window-resizing .agent-sidebar,
@@ -13,7 +13,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 /* macOS: fixed toolbar owns toggle inset; titlebar is drag-only. */
 .kimi-shell.is-macos { --macos-nav-inset: 77px; border-radius: 0; }
 .kimi-titlebar.is-macos { padding-left: 0; }
-.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 10; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 40px; min-height: 40px; padding-left: var(--macos-nav-inset); }
+.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 70; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 40px; min-height: 40px; padding-left: var(--macos-nav-inset); }
 .kimi-shell.is-macos .nav-toggle-wrap { margin: 0; }
 .kimi-shell.is-macos.sidebar-collapsed .titlebar-drag-region { margin-left: calc(var(--macos-nav-inset) + 34px); }
 /* macOS: sidebar full height; titlebar only over main column. */
@@ -23,15 +23,28 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .kimi-shell.is-macos.sidebar-collapsed .kimi-titlebar { grid-column: 1 / -1; }
 .kimi-shell.is-macos .agent-sidebar { padding-top: 40px; }
 .window-mark { align-self: center; flex: 0 0 auto; width: 15px; height: 15px; margin-left: 16px; border: 1.5px solid #8e9298; border-radius: 4px; box-shadow: inset -4px 0 #fff; pointer-events: none; }
-.nav-toggle-wrap { position: relative; display: grid; flex: 0 0 auto; width: 34px; height: 34px; margin: 0 0 0 5px; place-items: center; }
+.nav-toggle-wrap { position: relative; z-index: 70; display: grid; flex: 0 0 auto; width: 34px; height: 34px; margin: 0 0 0 5px; place-items: center; }
 .nav-toggle { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; color: #303236; background: transparent; border: 1px solid transparent; border-radius: 7px; box-shadow: none; transition: color .14s ease, background-color .14s ease, border-color .14s ease; -webkit-app-region: no-drag; }
 .nav-toggle:hover { color: #151619; background: #fff; border-color: #d9dadd; }
 .nav-toggle:active { background: #efeff0; transform: translateY(1px); }
 .nav-toggle:focus-visible { outline: 2px solid #3383e8; outline-offset: 2px; }
-.nav-toggle-tooltip { position: absolute; z-index: 20; top: 2px; left: calc(100% + 7px); display: flex; align-items: center; gap: 5px; min-width: max-content; padding: 7px 9px 7px 11px; color: #fff; background: #303030; border-radius: 9px; box-shadow: 0 5px 14px #00000026; font-size: 13px; font-weight: 600; line-height: 18px; opacity: 0; pointer-events: none; transform: translateX(-4px); transition: opacity .15s ease, transform .15s ease; }
+.nav-toggle-tooltip { position: absolute; z-index: 60; isolation: isolate; top: 2px; left: calc(100% + 7px); display: flex; align-items: center; gap: 5px; min-width: max-content; padding: 7px 9px 7px 11px; color: #fff; background: #303030; background-color: rgb(48 48 48 / 100%); border-radius: 9px; box-shadow: 0 5px 14px #00000026; font-size: 13px; font-weight: 600; line-height: 18px; opacity: 0; pointer-events: none; transform: translateX(-4px); transition: opacity .15s ease, transform .15s ease; }
 .nav-toggle-tooltip::before { position: absolute; top: 10px; left: -5px; width: 10px; height: 10px; background: #303030; content: ""; transform: rotate(45deg); }
 .nav-toggle-tooltip > * { position: relative; z-index: 1; }
 .nav-toggle-wrap:hover .nav-toggle-tooltip, .nav-toggle:focus-visible + .nav-toggle-tooltip { opacity: 1; transform: translateX(0); }
+.app-menu-bar { position: relative; z-index: 30; display: flex; flex: 0 0 auto; align-items: center; gap: 1px; height: 100%; margin-left: 4px; -webkit-app-region: no-drag; }
+.app-menu-item { position: relative; display: flex; align-items: center; height: 100%; }
+.app-menu-item > button { min-width: 44px; height: 29px; padding: 0 9px; color: #42474e; background: transparent; border-radius: 5px; font-size: 13px; line-height: 1; }
+.app-menu-item > button:hover, .app-menu-item > button[aria-expanded="true"] { color: #17191c; background: rgb(36 42 48 / 8%); }
+.app-menu-item > button:focus-visible { outline: 2px solid #3383e8; outline-offset: -2px; }
+.app-menu-popover { position: absolute; z-index: 50; top: 35px; left: 0; display: grid; min-width: 210px; padding: 6px; color: #262a2f; background: #fff; border: 1px solid rgb(24 28 33 / 10%); border-radius: 13px; box-shadow: 0 14px 36px rgb(18 24 32 / 16%), 0 3px 10px rgb(18 24 32 / 8%); }
+.app-menu-popover--help { min-width: 180px; }
+.app-menu-popover button { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 34px; width: 100%; padding: 6px 10px; color: inherit; background: transparent; border-radius: 8px; text-align: left; font-size: 13px; }
+.app-menu-popover button:hover, .app-menu-popover button:focus-visible { background: #f0f3f5; outline: 0; }
+.app-menu-popover kbd { color: #818790; background: transparent; font: 12px "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
+.app-menu-separator { height: 1px; margin: 5px 7px; background: #e7e9eb; }
+.kimi-shell.is-macos .app-menu-bar { margin-left: 4px; }
+.kimi-shell.is-macos.sidebar-collapsed .app-menu-bar { margin-left: calc(var(--macos-nav-inset) + 38px); }
 .titlebar-drag-region { flex: 1 1 auto; align-self: stretch; min-width: 48px; cursor: default; }
 .window-actions { display: flex; flex: 0 0 auto; align-items: stretch; height: 39px; margin-left: auto; color: #34373c; }
 .window-action { display: grid; width: 46px; height: 39px; padding: 0; place-items: center; color: inherit; background: transparent; border-radius: 0; transition: color .12s ease, background-color .12s ease; -webkit-app-region: no-drag; }
@@ -109,9 +122,9 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .icon-button { display: grid; width: 31px; height: 31px; padding: 0; place-items: center; color: #30343a; background: transparent; border-radius: 6px; }
 .icon-button:hover { background: #f4f5f6; }
 .session-actions { position: relative; }
-.session-menu { position: absolute; z-index: 30; top: 36px; right: 0; display: grid; width: 218px; padding: 5px 0; background: #fff; border: 1px solid #e0e3e6; border-radius: 8px; box-shadow: 0 10px 24px #1b20292b; }
+.session-menu { position: absolute; z-index: 30; top: 36px; right: 0; display: grid; width: 232px; padding: 7px; background: #fff; border: 1px solid rgb(25 32 41 / 11%); border-radius: 14px; box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%); }
 .session-menu > button,
-.session-menu__copy-wrap > button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 33px; padding: 6px 12px; color: #252a30; background: transparent; border-radius: 0; text-align: left; font-size: 13px; }
+.session-menu__copy-wrap > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 7px 10px; color: #252a30; background: transparent; border-radius: 9px; text-align: left; font-size: 13px; }
 .session-menu > button:hover,
 .session-menu__copy-wrap > button:hover,
 .session-menu__submenu button:hover { background: #f3f5f7; }
@@ -122,7 +135,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .session-menu p { margin: 6px 8px; color: #777c84; font-size: 11px; line-height: 1.5; }
 .session-menu > button svg,
 .session-menu__copy-wrap > button svg { width: 15px; height: 15px; flex: 0 0 auto; color: #171b20; stroke-width: 1.7; }
-.session-menu__separator { height: 1px; margin: 5px 0; background: #d9e4f2; }
+.session-menu__separator { height: 1px; margin: 5px -7px; background: #e5e7e9; }
 .session-menu__copy-wrap { position: relative; }
 .session-menu__copy-wrap > button .session-menu__chevron { width: 14px; height: 14px; margin-left: auto; color: #5b6269; }
 .session-menu__submenu { position: absolute; z-index: 2; top: 0; left: calc(100% - 5px); min-width: 150px; padding: 4px 0; background: #fff; border: 1px solid #e0e3e6; border-radius: 7px; box-shadow: 0 8px 18px #1b20292b; }

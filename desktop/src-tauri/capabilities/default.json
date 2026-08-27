@@ -21,6 +21,7 @@
     "core:window:allow-close",
     "dialog:default",
     "opener:allow-default-urls",
+    "opener:allow-open-path",
     "opener:allow-open-url"
   ]
 }

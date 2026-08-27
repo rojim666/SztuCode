@@ -1,0 +1,77 @@
+diff --git a/desktop/src/appearance.css b/desktop/src/appearance.css
+index 5fedd71..8406b78 100644
+--- a/desktop/src/appearance.css
++++ b/desktop/src/appearance.css
+@@ -313,6 +313,13 @@
+ ):hover { background: var(--surface-soft) !important; }
+ 
+ :root[data-app-theme="dark"] .session-menu__submenu { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
++:root[data-app-theme="dark"] .app-menu-item > button { color: var(--text-muted); }
++:root[data-app-theme="dark"] .app-menu-item > button:hover,
++:root[data-app-theme="dark"] .app-menu-item > button[aria-expanded="true"] { color: var(--text); background: rgb(255 255 255 / 9%); }
++:root[data-app-theme="dark"] .app-menu-popover { color: var(--text); background: var(--surface-raised); border-color: var(--border); box-shadow: 0 14px 32px rgb(0 0 0 / 38%); }
++:root[data-app-theme="dark"] .app-menu-popover button:hover,
++:root[data-app-theme="dark"] .app-menu-popover button:focus-visible { background: rgb(255 255 255 / 8%); }
++:root[data-app-theme="dark"] .app-menu-separator { background: var(--border); }
+ 
+ :root[data-app-theme="dark"] :is(
+   .turn-history-toggle,
+diff --git a/desktop/src/components/Inspector/ProjectInspector.vue b/desktop/src/components/Inspector/ProjectInspector.vue
+index de81072..8635885 100644
+--- a/desktop/src/components/Inspector/ProjectInspector.vue
++++ b/desktop/src/components/Inspector/ProjectInspector.vue
+@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
+   document.removeEventListener("pointerdown", closePreviewOnOutside);
+   document.removeEventListener("keydown", closeToolMenuOnEscape);
+ });
+-defineExpose({ openUrlInAppBrowser });
++defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
+ </script>
+ 
+ <template>
+diff --git a/desktop/src/kimi.css b/desktop/src/kimi.css
+index 3ebb837..a559e3d 100644
+--- a/desktop/src/kimi.css
++++ b/desktop/src/kimi.css
+@@ -4,7 +4,7 @@ body, #app { height: 100vh; } body { margin: 0; min-width: 680px; overflow: hidd
+ button, input, select, textarea { font: inherit; }
+ button { border: 0; cursor: pointer; }
+ button:disabled { cursor: not-allowed; opacity: .48; }
+-.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 40px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: var(--sidebar-collapsed-width, 44px) minmax(0, 1fr); }
++.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 40px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+ .kimi-shell.sidebar-animating { transition: grid-template-columns .2s ease; }
+ .kimi-shell.window-resizing,
+ .kimi-shell.window-resizing .agent-sidebar,
+@@ -32,6 +32,19 @@ button:disabled { cursor: not-allowed; opacity: .48; }
+ .nav-toggle-tooltip::before { position: absolute; top: 10px; left: -5px; width: 10px; height: 10px; background: #303030; content: ""; transform: rotate(45deg); }
+ .nav-toggle-tooltip > * { position: relative; z-index: 1; }
+ .nav-toggle-wrap:hover .nav-toggle-tooltip, .nav-toggle:focus-visible + .nav-toggle-tooltip { opacity: 1; transform: translateX(0); }
++.app-menu-bar { position: relative; z-index: 30; display: flex; flex: 0 0 auto; align-items: center; gap: 1px; height: 100%; margin-left: 4px; -webkit-app-region: no-drag; }
++.app-menu-item { position: relative; display: flex; align-items: center; height: 100%; }
++.app-menu-item > button { min-width: 44px; height: 29px; padding: 0 9px; color: #42474e; background: transparent; border-radius: 5px; font-size: 13px; line-height: 1; }
++.app-menu-item > button:hover, .app-menu-item > button[aria-expanded="true"] { color: #17191c; background: rgb(36 42 48 / 8%); }
++.app-menu-item > button:focus-visible { outline: 2px solid #3383e8; outline-offset: -2px; }
++.app-menu-popover { position: absolute; z-index: 50; top: 35px; left: 0; display: grid; min-width: 210px; padding: 5px 0; color: #262a2f; background: #fff; border: 1px solid #dfe2e5; border-radius: 7px; box-shadow: 0 12px 28px rgb(18 24 32 / 18%); }
++.app-menu-popover--help { min-width: 180px; }
++.app-menu-popover button { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 33px; width: 100%; padding: 6px 12px; color: inherit; background: transparent; border-radius: 0; text-align: left; font-size: 13px; }
++.app-menu-popover button:hover, .app-menu-popover button:focus-visible { background: #f0f3f5; outline: 0; }
++.app-menu-popover kbd { color: #818790; background: transparent; font: 12px "SFMono-Regular", Consolas, monospace; white-space: nowrap; }
++.app-menu-separator { height: 1px; margin: 5px 0; background: #e7e9eb; }
++.kimi-shell.is-macos .app-menu-bar { margin-left: 4px; }
++.kimi-shell.is-macos.sidebar-collapsed .app-menu-bar { margin-left: calc(var(--macos-nav-inset) + 38px); }
+ .titlebar-drag-region { flex: 1 1 auto; align-self: stretch; min-width: 48px; cursor: default; }
+ .window-actions { display: flex; flex: 0 0 auto; align-items: stretch; height: 39px; margin-left: auto; color: #34373c; }
+ .window-action { display: grid; width: 46px; height: 39px; padding: 0; place-items: center; color: inherit; background: transparent; border-radius: 0; transition: color .12s ease, background-color .12s ease; -webkit-app-region: no-drag; }
+diff --git a/desktop/src/workbench.css b/desktop/src/workbench.css
+index 06f1631..9fcfc47 100644
+--- a/desktop/src/workbench.css
++++ b/desktop/src/workbench.css
+@@ -767,7 +767,7 @@
+ 
+ /* Agent workbench sidebar: attention first, project context second. */
+ .kimi-shell { position: relative; grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr); background: #f2f2f2; border-color: transparent; }
+-.kimi-shell.sidebar-collapsed { grid-template-columns: var(--sidebar-collapsed-width, 44px) minmax(0, 1fr); }
++.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+ .kimi-shell.sidebar-resizing { transition: none; cursor: col-resize; }
+ .kimi-titlebar { background: #f2f2f2; }
+ .nav-toggle { background: transparent; border-color: transparent; box-shadow: none; }

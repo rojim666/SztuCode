@@ -191,6 +191,8 @@ export class ServerService {
       }
       case "workspace.list": return ok(request.id, { workspaces: await this.workspaces.list() });
       case "workspace.open": { const params = request.params as { path?: string }; if (!params.path) throw new Error("path is required"); return ok(request.id, { workspace: await this.workspaces.open(params.path) }); }
+      case "workspace.pin": { const params = request.params as { workspace_id: string; pinned: boolean }; return ok(request.id, { workspace: await this.workspaces.pin(params.workspace_id, params.pinned) }); }
+      case "workspace.rename": { const params = request.params as { workspace_id: string; name: string }; return ok(request.id, { workspace: await this.workspaces.rename(params.workspace_id, params.name) }); }
       case "workspace.archive": { const params = request.params as { workspace_id: string }; return ok(request.id, { workspace: await this.workspaces.archive(params.workspace_id) }); }
       case "workspace.resume": { const params = request.params as { workspace_id: string }; return ok(request.id, { workspace: await this.workspaces.resume(params.workspace_id) }); }
       case "workspace.delete": { const params = request.params as { workspace_id: string; confirm?: string }; if (params.confirm !== "delete") throw new Error("confirm=delete is required"); await this.workspaces.delete(params.workspace_id); return ok(request.id, { deleted: true }); }
@@ -295,6 +297,7 @@ export class ServerService {
       case "session.fork": { const params = request.params as unknown as SessionForkParams; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); const forked = await this.sessions.fork(params.session_id, params.title ?? ""); this.events.publish({ type: "session.created", session_id: forked.id, mode: forked.mode, ts: new Date().toISOString() }); return ok(request.id, { session: toSessionSummary(forked) }); }
       case "session.archive": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, true)) }); }
       case "session.resume": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, false)) }); }
+      case "session.set_workspace": { const params = request.params as { session_id: string; workspace_id: string | null }; if (params.workspace_id !== null) await this.workspaces.get(params.workspace_id); return ok(request.id, { session: toSessionSummary(await this.sessions.setWorkspace(params.session_id, params.workspace_id)) }); }
       // Pinning only changes session metadata, so it remains available while a
       // run is active. Archive/close/delete keep their active-run guard.
       case "session.pin": { const params = request.params as { session_id: string; pinned: boolean }; return ok(request.id, { session: toSessionSummary(await this.sessions.setPinned(params.session_id, params.pinned)) }); }

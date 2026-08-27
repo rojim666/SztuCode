@@ -456,9 +456,6 @@
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
 .task-conversation > .kimi-composer { border-radius: 14px; border-color: #d9dcdf; box-shadow: 0 7px 24px rgb(28 36 44 / 8%); }
 .task-conversation > .kimi-composer.append-mode { width: min(620px, calc(100% - 72px)); border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
-.composer-append-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 25px; padding: 8px 12px 0; color: #7b8794; font-size: 10px; line-height: 1.2; }
-.composer-append-status b { color: #2d6da4; font-size: 10px; font-weight: 600; }
-.composer-append-status span + span { padding-left: 8px; border-left: 1px solid #d8e1ea; }
 .task-conversation > .kimi-composer.append-mode textarea { padding-top: 7px; }
 .task-conversation > .kimi-composer .attachment-strip { padding-top: 8px; }
 .task-conversation > .kimi-composer textarea { min-height: 52px; padding: 10px 12px 5px; }
@@ -601,30 +598,38 @@
   top: 34px;
   right: 0;
   display: grid;
-  width: 176px;
-  padding: 5px;
+  width: 194px;
+  padding: 7px;
   background: #fff;
-  border: 1px solid #dadddf;
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgb(25 32 41 / 17%);
+  border: 1px solid rgb(25 32 41 / 11%);
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
   animation: sidebar-menu-in 140ms ease-out;
 }
 
 .project-action-menu button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 36px;
+  padding: 7px 10px;
   color: #373c42;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 9px;
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
 }
 
-.project-action-menu button:hover { color: #176fd1; background: #eef5fd; }
+.project-action-menu button:hover,
+.project-action-menu button:focus-visible { color: #30353a; background: #f0f1f2; outline: 0; }
+
+.project-action-menu button svg { flex: 0 0 auto; color: #555b61; }
+
+.project-action-menu__separator { height: 1px; margin: 5px -7px; background: #e5e7e9; }
+.project-action-menu__edit { display: flex; gap: 5px; padding: 2px; }
+.project-action-menu__edit input { min-width: 0; flex: 1; padding: 6px 7px; color: #30353a; background: #f7f8f8; border: 1px solid #dfe2e4; border-radius: 7px; outline: 0; font-size: 12px; }
+.project-action-menu__edit button { width: auto; min-height: 30px; padding: 5px 8px; color: #fff; background: #555b61; border-radius: 7px; font-size: 12px; }
 
 .archived-projects {
   margin-top: 20px;
@@ -767,7 +772,7 @@
 
 /* Agent workbench sidebar: attention first, project context second. */
 .kimi-shell { position: relative; grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr); background: #f2f2f2; border-color: transparent; }
-.kimi-shell.sidebar-collapsed { grid-template-columns: var(--sidebar-collapsed-width, 44px) minmax(0, 1fr); }
+.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .kimi-shell.sidebar-resizing { transition: none; cursor: col-resize; }
 .kimi-titlebar { background: #f2f2f2; }
 .nav-toggle { background: transparent; border-color: transparent; box-shadow: none; }

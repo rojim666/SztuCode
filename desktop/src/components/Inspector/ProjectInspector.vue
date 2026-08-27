@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closePreviewOnOutside);
   document.removeEventListener("keydown", closeToolMenuOnEscape);
 });
-defineExpose({ openUrlInAppBrowser });
+defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
 </script>
 
 <template>

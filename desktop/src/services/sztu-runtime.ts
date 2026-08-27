@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { IpcClient, IpcRequestError } from "../lib/ipc";
 
-export type Workspace = { workspace_id: string; name: string; path: string; archived: boolean };
+export type Workspace = { workspace_id: string; name: string; path: string; archived: boolean; pinned?: boolean };
 export type NativeSettings = {
   autostart: boolean;
   stay_awake: boolean;
@@ -289,6 +289,15 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 export async function compactSession(sessionId: string, focus = ""): Promise<{ summary_tokens: number; saved_tokens: number; removed_messages?: number; used_model?: boolean }> {
   return await client.request("session.compact", { session_id: sessionId, focus }) as { summary_tokens: number; saved_tokens: number; removed_messages?: number; used_model?: boolean };
+}
+export async function pinWorkspace(workspaceId: string, pinned: boolean): Promise<Workspace> {
+  const result = await client.request("workspace.pin", { workspace_id: workspaceId, pinned }); return result.workspace as Workspace;
+}
+export async function renameWorkspace(workspaceId: string, name: string): Promise<Workspace> {
+  const result = await client.request("workspace.rename", { workspace_id: workspaceId, name }); return result.workspace as Workspace;
+}
+export async function moveSession(sessionId: string, workspaceId: string | null): Promise<Session> {
+  const result = await client.request("session.set_workspace", { session_id: sessionId, workspace_id: workspaceId }); return result.session as Session;
 }
 
 export async function replayRun(runId: string): Promise<Record<string, unknown>[]> {

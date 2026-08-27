@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Pin, PinOff, Pencil, RotateCcw, Share2 } from "@lucide/vue";
-import { archiveSession, pinSession, renameSession, resumeSession, type Session } from "../../services/sztu-runtime";
+import { ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
+import { listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
 
 const props = defineProps<{ session: Session; active?: boolean }>();
 const emit = defineEmits<{ changed: []; closed: [] }>();
@@ -43,6 +43,8 @@ const trigger = ref<HTMLElement | null>(null);
 const menu = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
 const copyOpen = ref(false);
+const projectOpen = ref(false);
+const projects = ref<Workspace[]>([]);
 
 async function positionMenu(point?: { x: number; y: number }) {
   await nextTick();
@@ -61,6 +63,7 @@ async function positionMenu(point?: { x: number; y: number }) {
 async function toggleMenu() {
   open.value = !open.value;
   copyOpen.value = false;
+  projectOpen.value = false;
   if (open.value) await positionMenu();
 }
 
@@ -68,6 +71,7 @@ function closeMenu() {
   open.value = false;
   renaming.value = false;
   copyOpen.value = false;
+  projectOpen.value = false;
 }
 
 async function togglePinned() {
@@ -130,6 +134,16 @@ async function markUnread() {
   publishUnreadSession(props.session.session_id, true);
   closeMenu();
   emit("changed");
+}
+
+async function toggleProjectMenu() {
+  projectOpen.value = !projectOpen.value;
+  copyOpen.value = false;
+  if (projectOpen.value) projects.value = (await listWorkspaces()).filter((item) => !item.archived);
+}
+
+async function assignProject(workspaceId: string | null) {
+  await run(() => moveSession(props.session.session_id, workspaceId));
 }
 
 async function copyText(value: string, message = "已复制") {
@@ -210,12 +224,17 @@ onBeforeUnmount(() => {
           <button role="menuitem" :disabled="busy" @click="togglePinned"><PinOff v-if="pinned" :size="19" /><Pin v-else :size="19" />{{ pinned ? '取消置顶' : '置顶' }}</button>
           <button role="menuitem" @click="renaming = true"><Pencil :size="19" />重命名</button>
           <button role="menuitem" @click="markUnread"><Eye :size="19" />标记为未读</button>
-          <button v-if="session.archived || session.status === 'closed'" role="menuitem" @click="run(() => resumeSession(session.session_id))"><RotateCcw :size="19" />恢复</button>
-          <button v-else role="menuitem" @click="run(() => archiveSession(session.session_id), true)"><Archive :size="19" />归档</button>
           <div class="session-menu__separator" />
-          <button role="menuitem" @click="share"><Share2 :size="19" />分享</button>
           <div class="session-menu__copy-wrap">
-            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen"><Copy :size="19" /><span>复制</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <button role="menuitem" :aria-expanded="projectOpen" @click="toggleProjectMenu"><Folder :size="19" /><span>项目</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <div v-if="projectOpen" class="session-menu__submenu" role="menu">
+              <button role="menuitem" :class="{ active: !session.workspace_id }" @click="assignProject(null)">无项目</button>
+              <button v-for="project in projects" :key="project.workspace_id" role="menuitem" :class="{ active: project.workspace_id === session.workspace_id }" @click="assignProject(project.workspace_id)">{{ project.name }}</button>
+            </div>
+          </div>
+          <div class="session-menu__separator" />
+          <div class="session-menu__copy-wrap">
+            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen; projectOpen = false"><Copy :size="19" /><span>复制</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
             <div v-if="copyOpen" class="session-menu__submenu" role="menu">
               <button role="menuitem" @click="copyText(session.title || '未命名任务', '会话名称已复制')">复制会话名称</button>
               <button role="menuitem" @click="copyText(session.session_id, '会话 ID 已复制')">复制会话 ID</button>
