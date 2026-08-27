@@ -631,6 +631,15 @@
 .project-action-menu__edit input { min-width: 0; flex: 1; padding: 6px 7px; color: #30353a; background: #f7f8f8; border: 1px solid #dfe2e4; border-radius: 7px; outline: 0; font-size: 12px; }
 .project-action-menu__edit button { width: auto; min-height: 30px; padding: 5px 8px; color: #fff; background: #555b61; border-radius: 7px; font-size: 12px; }
 
+.agent-sidebar .project-tree { display: flex; flex-direction: column; }
+.pinned-tree-label { order: 1; }
+.pinned-temporary-list { order: 2; }
+.project-group--pinned { order: 3; }
+.project-tree-label { order: 4; }
+.project-tree.has-pinned-section .project-tree-label { margin-top: 18px; }
+.project-group:not(.project-group--pinned) { order: 5; }
+.project-tree > .side-empty { order: 6; }
+
 .archived-projects {
   margin-top: 20px;
   padding-top: 14px;

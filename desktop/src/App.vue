@@ -254,13 +254,17 @@ const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerC
 const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || item.title.toLocaleLowerCase().includes(normalizedTaskQuery.value);
 const visibleSessions = computed(() => liveSessions.value.filter(matchesTaskQuery));
 const temporaryTasks = computed(() => visibleSessions.value.filter((item) => !item.workspace_id).slice(0, 5));
-const projects = computed(() => activeWorkspaces.value
+const allProjects = computed(() => activeWorkspaces.value
   .map((item) => {
     const projectMatches = item.name.toLocaleLowerCase().includes(normalizedTaskQuery.value);
     const candidates = normalizedTaskQuery.value && !projectMatches ? visibleSessions.value : liveSessions.value;
-    return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id).slice(0, 6), projectMatches };
+    return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id && (item.pinned || !task.pinned)).slice(0, 6), projectMatches };
   })
   .filter((item) => !normalizedTaskQuery.value || item.projectMatches || item.tasks.length));
+const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
+const projects = computed(() => allProjects.value.filter((item) => !item.pinned));
+const pinnedTemporaryTasks = computed(() => visibleSessions.value.filter((item) => item.pinned && (!item.workspace_id || !pinnedProjects.value.some((project) => project.workspace_id === item.workspace_id))));
+const ordinaryTemporaryTasks = computed(() => temporaryTasks.value.filter((item) => !item.pinned));
 const filteredLauncherWorkspaces = computed(() => {
   const query = launcherProjectQuery.value.trim().toLocaleLowerCase();
   if (!query) return activeWorkspaces.value.slice(0, 6);
@@ -2305,9 +2309,13 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <p v-if="!visibleSessions.length" class="side-empty">没有匹配的任务</p>
         </section>
 
-        <section class="side-section project-tree">
-          <span class="side-label side-label--action">项目<button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
-          <div v-for="item in projects" :key="item.workspace_id" class="project-group">
+        <section class="side-section project-tree" :class="{ 'has-pinned-section': !normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length) }">
+          <span v-if="!normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length)" class="side-label pinned-tree-label">置顶</span>
+          <div v-if="pinnedTemporaryTasks.length && !normalizedTaskQuery" class="pinned-temporary-list">
+            <div v-for="task in pinnedTemporaryTasks" :key="`pinned-temporary-${task.session_id}`" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><span>{{ task.title || '未命名任务' }}</span></button><SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" /></div>
+          </div>
+          <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
+          <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
             <div class="project-row-shell" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
               <button class="project-row-toggle" :title="isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目'" :aria-expanded="!isProjectCollapsed(item.workspace_id)" @click="toggleProject(item.workspace_id)">
                 <FolderOpen v-if="!isProjectCollapsed(item.workspace_id)" :size="16" :stroke-width="1.8" />
@@ -2340,12 +2348,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </div>
           </div>
-          <p v-if="!projects.length && !normalizedTaskQuery" class="side-empty">打开本地目录以建立项目上下文</p>
+          <p v-if="!allProjects.length && !normalizedTaskQuery" class="side-empty">打开本地目录以建立项目上下文</p>
         </section>
 
-        <section v-if="temporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
+        <section v-if="ordinaryTemporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
           <span class="side-label">临时任务</span>
-          <div v-for="task in temporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span></button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
