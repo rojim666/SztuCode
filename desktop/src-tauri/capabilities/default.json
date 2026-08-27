@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default desktop capability set",
-  "webviews": ["main", "splashscreen"],
+  "webviews": ["main", "tray-menu"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview",

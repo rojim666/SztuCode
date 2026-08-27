@@ -62,6 +62,22 @@ def test_workspace_archive_resume_persists(tmp_path: Path) -> None:
     ]
 
 
+def test_workspace_pin_and_rename_persist(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    recent_file = tmp_path / "workspaces.json"
+    manager = WorkspaceManager(recent_file)
+    workspace = manager.open(str(root))
+
+    updated = manager.pin(workspace.id, True)
+    updated = manager.rename(workspace.id, "  新项目  ")
+
+    restored = WorkspaceManager(recent_file).get(workspace.id)
+    assert updated.pinned is True
+    assert updated.name == "新项目"
+    assert restored == updated
+
+
 # 功能：验证工作区文件读取拒绝目录穿越及不存在目录，避免客户端借 IPC 读取任意本地文件。
 # 设计：对已打开临时工作区传入 ../ 路径和无效 open 路径，分别断言 ValueError，覆盖路径边界与输入验证。
 def test_workspace_rejects_paths_outside_root(tmp_path: Path) -> None:

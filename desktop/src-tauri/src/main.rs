@@ -14,7 +14,11 @@ use std::{
 use base64::Engine;
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
-use tauri::{path::BaseDirectory, Emitter, Manager, State, WebviewWindow, Window};
+use tauri::{
+    path::BaseDirectory,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, State, WebviewWindow, Window,
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{tcp::OwnedWriteHalf, TcpStream},
@@ -919,6 +923,45 @@ fn main() {
             if let Some(icon) = app.default_window_icon() {
                 window.set_icon(icon.clone())?;
             }
+
+            let tray_window = window.clone();
+            let app_handle = app.handle().clone();
+            app.listen("tray://quit", move |_| app_handle.exit(0));
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().expect("application icon").clone())
+                .tooltip("SztuCode")
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(move |_tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let _ = tray_window.show();
+                        let _ = tray_window.set_focus();
+                    } else if let TrayIconEvent::Click {
+                        button: MouseButton::Right,
+                        button_state: MouseButtonState::Up,
+                        position,
+                        ..
+                    } = event {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                            let _ = menu.set_position(tauri::PhysicalPosition::new(position.x - 332.0, position.y - 388.0));
+                            let _ = menu.show();
+                            let _ = menu.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            let close_window = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = close_window.hide();
+                }
+            });
             #[cfg(target_os = "macos")]
             {
                 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};

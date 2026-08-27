@@ -144,6 +144,8 @@ from sztu_code.core.bus.commands import (
     UserQuestionRespondResult,
     WorkspaceArchiveCommand,
     WorkspaceArchiveResult,
+    WorkspacePinCommand,
+    WorkspacePinResult,
     WorkspaceDeleteCommand,
     WorkspaceDeleteResult,
     WorkspaceListCommand,
@@ -154,6 +156,8 @@ from sztu_code.core.bus.commands import (
     WorkspaceProfileResult,
     WorkspaceResumeCommand,
     WorkspaceResumeResult,
+    WorkspaceRenameCommand,
+    WorkspaceRenameResult,
     WorkspaceStatusCommand,
     WorkspaceStatusResult,
     WorkspaceSummary,
@@ -290,6 +294,7 @@ class CoreApp:
             path=workspace.path,
             name=workspace.name,
             archived=workspace.archived,
+            pinned=workspace.pinned,
         )
 
     # 跟踪后台 run 任务，以支持客户端查询与安全取消
@@ -457,6 +462,24 @@ class CoreApp:
         except ValueError as error:
             raise HandlerError(-32602, str(error)) from error
         return WorkspaceArchiveResult(workspace=self._workspace_summary(workspace))
+
+    async def _workspace_pin_handler(self, params: dict[str, Any]) -> WorkspacePinResult:
+        assert self._workspaces is not None
+        cmd = WorkspacePinCommand.model_validate(params)
+        try:
+            workspace = self._workspaces.pin(cmd.workspace_id, cmd.pinned)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspacePinResult(workspace=self._workspace_summary(workspace))
+
+    async def _workspace_rename_handler(self, params: dict[str, Any]) -> WorkspaceRenameResult:
+        assert self._workspaces is not None
+        cmd = WorkspaceRenameCommand.model_validate(params)
+        try:
+            workspace = self._workspaces.rename(cmd.workspace_id, cmd.name)
+        except ValueError as error:
+            raise HandlerError(-32602, str(error)) from error
+        return WorkspaceRenameResult(workspace=self._workspace_summary(workspace))
 
     # 恢复已归档项目，使其重新出现在项目侧栏
     async def _workspace_resume_handler(self, params: dict[str, Any]) -> WorkspaceResumeResult:
@@ -1867,6 +1890,8 @@ class CoreApp:
         server.register("workspace.open", self._workspace_open_handler)
         server.register("workspace.list", self._workspace_list_handler)
         server.register("workspace.archive", self._workspace_archive_handler)
+        server.register("workspace.pin", self._workspace_pin_handler)
+        server.register("workspace.rename", self._workspace_rename_handler)
         server.register("workspace.resume", self._workspace_resume_handler)
         server.register("workspace.delete", self._workspace_delete_handler)
         server.register("workspace.status", self._workspace_status_handler)

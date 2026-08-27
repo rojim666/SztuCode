@@ -544,8 +544,7 @@
 /* Sidebar project and conversation controls. */
 .project-row-shell {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 27px;
+  display: block;
   align-items: center;
   gap: 2px;
   min-height: 36px;
@@ -570,27 +569,6 @@
 .project-row-toggle svg { color: #202124; }
 .project-row-toggle span { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .project-row-toggle:hover { color: #202124; background: transparent; }
-
-.side-item-action {
-  display: grid;
-  width: 25px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  color: #858b92;
-  background: transparent;
-  border-radius: 6px;
-}
-
-.side-item-action:hover { color: #2c3137; background: #dde1e4; }
-
-.side-item-action {
-  opacity: 0;
-  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
-}
-
-.project-row-shell:hover .side-item-action,
-.project-row-shell:focus-within .side-item-action { opacity: 1; }
 
 .project-action-menu {
   position: absolute;
@@ -627,9 +605,25 @@
 .project-action-menu button svg { flex: 0 0 auto; color: #555b61; }
 
 .project-action-menu__separator { height: 1px; margin: 5px -7px; background: #e5e7e9; }
-.project-action-menu__edit { display: flex; gap: 5px; padding: 2px; }
-.project-action-menu__edit input { min-width: 0; flex: 1; padding: 6px 7px; color: #30353a; background: #f7f8f8; border: 1px solid #dfe2e4; border-radius: 7px; outline: 0; font-size: 12px; }
-.project-action-menu__edit button { width: auto; min-height: 30px; padding: 5px 8px; color: #fff; background: #555b61; border-radius: 7px; font-size: 12px; }
+.project-edit-backdrop { position: fixed; z-index: 930; inset: 0; display: grid; padding: 24px; place-items: center; background: rgb(20 24 29 / 38%); backdrop-filter: blur(5px); }
+.project-edit-dialog { display: grid; width: min(480px, 100%); overflow: hidden; color: #292d32; background: #fff; border: 1px solid rgb(27 32 38 / 10%); border-radius: 18px; box-shadow: 0 28px 80px rgb(15 20 27 / 25%), 0 4px 14px rgb(15 20 27 / 9%); }
+.project-edit-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 23px 24px 18px; }
+.project-edit-dialog > header h2 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.2px; }
+.project-edit-dialog > header p { margin: 6px 0 0; color: #7c8289; font-size: 12px; line-height: 1.5; }
+.project-edit-dialog > header button { display: grid; width: 31px; height: 31px; flex: 0 0 auto; padding: 0; place-items: center; color: #686e75; background: #f2f3f4; border-radius: 9px; }
+.project-edit-dialog > header button:hover { color: #33383e; background: #e9ebed; }
+.project-edit-dialog__body { display: grid; gap: 15px; padding: 3px 24px 23px; }
+.project-edit-dialog__body label { display: grid; gap: 7px; color: #555b62; font-size: 12px; font-weight: 550; }
+.project-edit-dialog__body input { width: 100%; height: 41px; padding: 0 12px; color: #2d3237; background: #f8f9f9; border: 1px solid #dfe2e4; border-radius: 10px; outline: 0; font-size: 13px; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
+.project-edit-dialog__body input:focus { background: #fff; border-color: #8c9298; box-shadow: 0 0 0 3px rgb(55 62 70 / 8%); }
+.project-edit-dialog__body input[readonly] { color: #8a9096; background: #f3f4f5; font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; }
+.project-edit-dialog__error { margin: -3px 0 0; color: #ad3d38; font-size: 11px; }
+.project-edit-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; background: #f7f7f7; border-top: 1px solid #e8eaeb; }
+.project-edit-dialog > footer button { min-width: 72px; height: 35px; padding: 0 14px; color: #464c52; background: #fff; border: 1px solid #dde0e2; border-radius: 9px; font-size: 12px; }
+.project-edit-dialog > footer button:hover:not(:disabled) { background: #f0f1f2; }
+.project-edit-dialog > footer button.primary { color: #fff; background: #3d4248; border-color: #3d4248; }
+.project-edit-dialog > footer button.primary:hover:not(:disabled) { background: #292e33; }
+.project-edit-dialog button:disabled { cursor: default; opacity: .5; }
 
 .agent-sidebar .project-tree { display: flex; flex-direction: column; }
 .pinned-tree-label { order: 1; }

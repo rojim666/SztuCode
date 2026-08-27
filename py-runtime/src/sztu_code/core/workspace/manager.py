@@ -19,6 +19,7 @@ class Workspace:
     path: str
     name: str
     archived: bool = False
+    pinned: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,25 @@ class WorkspaceManager:
 
     def resume(self, workspace_id: str) -> Workspace:
         return self._set_archived(workspace_id, False)
+
+    def pin(self, workspace_id: str, pinned: bool) -> Workspace:
+        current = self.get(workspace_id)
+        if current.pinned == pinned:
+            return current
+        updated = replace(current, pinned=pinned)
+        self._workspaces[workspace_id] = updated
+        self._save_recent()
+        return updated
+
+    def rename(self, workspace_id: str, name: str) -> Workspace:
+        current = self.get(workspace_id)
+        normalized = name.strip()
+        if not normalized:
+            raise ValueError("workspace name is required")
+        updated = replace(current, name=normalized[:120])
+        self._workspaces[workspace_id] = updated
+        self._save_recent()
+        return updated
 
     def _set_archived(self, workspace_id: str, archived: bool) -> Workspace:
         current = self.get(workspace_id)
@@ -533,20 +553,22 @@ class WorkspaceManager:
                 if isinstance(value, dict) and isinstance(value.get("path"), str):
                     path = Path(value["path"]).expanduser()
                     archived = bool(value.get("archived", False))
+                    pinned = bool(value.get("pinned", False))
                 else:
                     continue
             else:
                 path = Path(value).expanduser()
                 archived = False
+                pinned = False
             if path.is_dir():
-                workspace = self._make_workspace(path.resolve(), archived=archived)
+                workspace = self._make_workspace(path.resolve(), archived=archived, pinned=pinned)
                 self._workspaces[workspace.id] = workspace
 
     # 将当前工作区目录写入最近记录文件
     def _save_recent(self) -> None:
         self._recent_file.parent.mkdir(parents=True, exist_ok=True)
         paths = [
-            {"path": workspace.path, "archived": workspace.archived}
+            {"path": workspace.path, "archived": workspace.archived, "pinned": workspace.pinned}
             for workspace in self._workspaces.values()
         ]
         self._recent_file.write_text(
@@ -556,13 +578,14 @@ class WorkspaceManager:
 
     # 从目录绝对路径生成稳定且不可歧义的工作区标识
     @staticmethod
-    def _make_workspace(path: Path, *, archived: bool = False) -> Workspace:
+    def _make_workspace(path: Path, *, archived: bool = False, pinned: bool = False) -> Workspace:
         workspace_id = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
         return Workspace(
             id=f"ws-{workspace_id}",
             path=str(path),
             name=path.name or str(path),
             archived=archived,
+            pinned=pinned,
         )
 
     # 执行只读 Git 命令；非 Git 目录或 Git 不存在时返回空字符串

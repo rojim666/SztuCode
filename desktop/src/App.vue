@@ -7,6 +7,7 @@ import {
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
@@ -29,6 +30,7 @@ import { isMacOSPlatform } from "./lib/platform";
 import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "./utils/timelineStream";
 import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
+import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
   archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listPendingUserQuestions, listSessions,
@@ -182,9 +184,9 @@ const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
 const projectEditingId = ref<string | null>(null);
 const projectEditName = ref("");
+const projectEditError = ref("");
 const projectActionBusy = ref(false);
 const sidebarToolsExpanded = ref(false);
-const collapsedProjects = ref(new Set<string>());
 const taskQuery = ref("");
 const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
@@ -201,6 +203,7 @@ const filesRequest = ref<{ workspaceId: string; seq: number } | null>(null);
 let filesRequestSeq = 0;
 let inspectorCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let inspectorOpenFrame: number | undefined;
+let trayListeners: Array<() => void> = [];
 // 待发送附件：图片走 base64 内容块，文本把内容注入消息
 type PendingAttachment = {
   path: string; name: string; size: number;
@@ -237,6 +240,11 @@ const resolvedQuestionIds = new Set<string>();
 let questionEventVersion = 0;
 const modelManagerOpen = ref(false);
 
+// 未发送的启动器输入按项目持久化；切走或重启应用后再次点击项目仍可继续编辑。
+watch(prompt, (value) => {
+  if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, value);
+});
+
 const active = computed(() => sessions.value.find((item) => item.session_id === activeId.value) ?? null);
 const activeUserQuestion = computed(() => pendingUserQuestions.value.find((item) => item.session_id === activeId.value) ?? null);
 const backgroundUserQuestions = computed(() => pendingUserQuestions.value.filter((item) => item.session_id !== activeId.value));
@@ -262,6 +270,7 @@ const allProjects = computed(() => activeWorkspaces.value
   })
   .filter((item) => !normalizedTaskQuery.value || item.projectMatches || item.tasks.length));
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
+const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
 const projects = computed(() => allProjects.value.filter((item) => !item.pinned));
 const pinnedTemporaryTasks = computed(() => visibleSessions.value.filter((item) => item.pinned && (!item.workspace_id || !pinnedProjects.value.some((project) => project.workspace_id === item.workspace_id))));
 const ordinaryTemporaryTasks = computed(() => temporaryTasks.value.filter((item) => !item.pinned));
@@ -1248,6 +1257,7 @@ async function submitUserQuestion(pending: PendingUserQuestion, answers: UserQue
 }
 
 function beginTask(project: Workspace | null = workspace.value) {
+  if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, prompt.value);
   projectActionsOpen.value = null;
   closeLauncherMenus();
   workspace.value = project;
@@ -1255,7 +1265,7 @@ function beginTask(project: Workspace | null = workspace.value) {
   launcherTimeline.value = new Map();
   attachedFiles.value = [];
   page.value = "work";
-  prompt.value = "";
+  prompt.value = loadComposerDraft(project?.workspace_id ?? null);
   selectedStarterTask.value = "";
   void nextTick(() => launcherPrompt.value?.focus());
 }
@@ -1336,6 +1346,7 @@ async function submitTask(content: string, project: Workspace | null = workspace
     view.loaded = true;
     activeId.value = sessionId;
     page.value = "work";
+    saveComposerDraft(project?.workspace_id ?? null, "");
     prompt.value = "";
     sending.value = false;
     const sent = await startSessionRun(sessionId, trimmed, images);
@@ -1450,14 +1461,6 @@ async function chooseTask(id: string) {
   await loadSessionHistory(id);
 }
 async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
-function isProjectCollapsed(workspaceId: string) { return collapsedProjects.value.has(workspaceId); }
-function toggleProject(workspaceId: string) {
-  const next = new Set(collapsedProjects.value);
-  if (next.has(workspaceId)) next.delete(workspaceId);
-  else next.add(workspaceId);
-  collapsedProjects.value = next;
-  projectActionsOpen.value = null;
-}
 async function createProjectTask(item: Workspace) {
   projectActionsOpen.value = null;
   beginTask(item);
@@ -1588,16 +1591,29 @@ async function decidePermission(toolUseId: string, decision: PermissionDecision)
   if (!context) throw new Error("Permission request is no longer active");
   await respondPermission(toolUseId, decision, context.runId, context.sessionId);
 }
-function beginProjectEdit(item: Workspace) { projectEditingId.value = item.workspace_id; projectEditName.value = item.name; }
-async function saveProjectEdit(item: Workspace) {
+function beginProjectEdit(item: Workspace) {
+  projectEditingId.value = item.workspace_id;
+  projectEditName.value = item.name;
+  projectEditError.value = "";
+  projectActionsOpen.value = null;
+}
+function closeProjectEdit() {
+  if (projectActionBusy.value) return;
+  projectEditingId.value = null;
+  projectEditError.value = "";
+}
+async function saveProjectEdit() {
+  const item = projectBeingEdited.value;
+  if (!item) return;
   if (!projectEditName.value.trim() || projectActionBusy.value) return;
   projectActionBusy.value = true;
+  projectEditError.value = "";
   try {
     const updated = await renameWorkspace(item.workspace_id, projectEditName.value);
     workspaces.value = workspaces.value.map((entry) => entry.workspace_id === updated.workspace_id ? updated : entry);
     projectEditingId.value = null;
     projectActionsOpen.value = null;
-  } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { projectEditError.value = error instanceof Error ? error.message : String(error); }
   finally { projectActionBusy.value = false; }
 }
 async function toggleProjectPinned(item: Workspace) {
@@ -2147,6 +2163,13 @@ onMounted(() => {
     scheduleRuntimeReconnect();
   });
   stopEvents = onRuntimeEvent(applyRuntimeEvent);
+  if ("__TAURI_INTERNALS__" in window) {
+    void Promise.all([
+      listen("tray://new_chat", () => beginTask()),
+      listen("tray://workspaces", () => { page.value = "work"; }),
+      listen("tray://settings", () => { settingsOpen.value = true; }),
+    ]).then((unlisteners) => { trayListeners = unlisteners; });
+  }
   void refreshRuntime(true);
 });
 onBeforeUnmount(() => {
@@ -2164,6 +2187,8 @@ onBeforeUnmount(() => {
   if (inspectorCloseTimer) clearTimeout(inspectorCloseTimer);
   if (inspectorOpenFrame !== undefined) cancelAnimationFrame(inspectorOpenFrame);
   window.removeEventListener("keydown", handleGlobalShortcut);
+  trayListeners.forEach((stop) => stop());
+  trayListeners = [];
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
@@ -2316,16 +2341,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           </div>
           <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
-            <div class="project-row-shell" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
-              <button class="project-row-toggle" :title="isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目'" :aria-expanded="!isProjectCollapsed(item.workspace_id)" @click="toggleProject(item.workspace_id)">
-                <FolderOpen v-if="!isProjectCollapsed(item.workspace_id)" :size="16" :stroke-width="1.8" />
-                <Folder v-else :size="16" :stroke-width="1.8" />
+            <div class="project-row-shell" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
+              <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
+                <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
-              <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" :stroke-width="1.8" /></button>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="`${item.name} 项目操作`">
-                <form v-if="projectEditingId === item.workspace_id" class="project-action-menu__edit" @submit.prevent="saveProjectEdit(item)"><input v-model="projectEditName" aria-label="项目名称" autofocus /><button type="submit" :disabled="projectActionBusy">保存</button></form>
-                <template v-else>
                 <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? '取消置顶' : '置顶' }}</button>
                 <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />编辑</button>
                 <div class="project-action-menu__separator" />
@@ -2333,10 +2354,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />创建永久工作树</button>
                 <div class="project-action-menu__separator" />
                 <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />归档聊天</button>
-                </template>
               </div>
             </div>
-            <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }">
+            <div class="project-task-list">
               <div class="project-task-list__inner">
                 <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
@@ -2575,6 +2595,21 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       @manage-model="openModelManager"
       @runtime-updated="runtimeSettings = $event"
     />
+
+    <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
+      <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
+        <header>
+          <div><h2 id="project-edit-title">编辑项目</h2><p>修改项目在侧边栏中显示的名称。</p></div>
+          <button type="button" aria-label="关闭编辑窗口" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
+        </header>
+        <div class="project-edit-dialog__body">
+          <label><span>项目名称</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus placeholder="输入项目名称" /></label>
+          <label><span>项目位置</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
+          <p v-if="projectEditError" class="project-edit-dialog__error" role="alert">{{ projectEditError }}</p>
+        </div>
+        <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
+      </form>
+    </div>
 
     <div v-if="modelManagerOpen" class="model-manager-backdrop"><ModelManager @close="modelManagerOpen = false" @updated="handleModelConfigUpdated" /></div>
 

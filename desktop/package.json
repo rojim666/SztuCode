@@ -9,7 +9,7 @@
     "prebuild": "node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
-    "test:unit": "tsx --test tests/composer-submission.test.ts tests/playwright-chromium.test.ts tests/platform.test.ts tests/reasoning-summary.test.ts tests/session-stats.test.ts tests/source-control-draft.test.ts tests/timeline-stream.test.ts",
+    "test:unit": "tsx --test tests/composer-draft.test.ts tests/composer-submission.test.ts tests/playwright-chromium.test.ts tests/platform.test.ts tests/reasoning-summary.test.ts tests/session-stats.test.ts tests/source-control-draft.test.ts tests/timeline-stream.test.ts",
     "test:visual": "playwright test"
   },
   "dependencies": {

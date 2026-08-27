@@ -1,0 +1,37 @@
+<script setup lang="ts">
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { emit } from "@tauri-apps/api/event";
+
+const win = getCurrentWindow();
+async function action(name: string) {
+  if (name === "quit") await emit("tray://quit");
+  else await emit(`tray://${name}`);
+  await win.hide();
+}
+</script>
+
+<template>
+  <main class="tray-menu">
+    <header><span class="mark">S</span><div><strong>SztuCode</strong><small>Agent 工作台</small></div></header>
+    <button class="primary" @click="action('new_chat')">＋ 新建会话</button>
+    <div class="section-label">快速访问</div>
+    <button @click="action('show')">⌂　显示主窗口</button>
+    <button @click="action('workspaces')">▦　工作区</button>
+    <button @click="action('settings')">⚙　设置</button>
+    <div class="divider" />
+    <button class="quit" @click="action('quit')">退出 SztuCode</button>
+  </main>
+</template>
+
+<style>
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+.tray-menu { width: 300px; padding: 14px; color: #1c2330; background: #fff; border: 1px solid #dfe4eb; border-radius: 16px; box-shadow: 0 14px 34px #1c23302b; }
+header { display: flex; align-items: center; gap: 10px; padding: 3px 6px 14px; }
+.mark { display: grid; width: 34px; height: 34px; place-items: center; color: #1c2330; background: #f1f4f8; border: 2px solid #1c2330; border-radius: 11px; font-weight: 800; }
+header strong, header small { display: block; } header strong { font-size: 15px; } header small { margin-top: 2px; color: #8b94a3; font-size: 11px; }
+button { width: 100%; padding: 10px 11px; color: #303948; background: transparent; border: 0; border-radius: 9px; font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+button:hover { background: #f1f5f9; } .primary { margin-bottom: 10px; color: #fff; background: #1c2330; font-weight: 600; } .primary:hover { background: #303b4c; }
+.section-label { padding: 5px 11px 3px; color: #a0a8b5; font-size: 11px; } .divider { height: 1px; margin: 9px 4px; background: #e8ecf1; } .quit { color: #c0393b; } .quit:hover { background: #fff1f1; }
+</style>

@@ -23,19 +23,16 @@
                 "transparent": true
             },
             {
-                "label": "splashscreen",
-                "visible": false,
+                "label": "tray-menu",
                 "title": "SztuCode",
-                "width": 460,
-                "height": 300,
+                "width": 332,
+                "height": 388,
                 "resizable": false,
-                "maximizable": false,
-                "minimizable": false,
                 "decorations": false,
-                "backgroundColor": "#0d1117",
-                "alwaysOnTop": true,
+                "transparent": true,
+                "visible": false,
                 "skipTaskbar": true,
-                "center": true,
+                "alwaysOnTop": true,
                 "shadow": false
             }
         ],
