@@ -25,9 +25,10 @@
             {
                 "label": "tray-menu",
                 "title": "SztuCode",
-                "width": 332,
-                "height": 388,
+                "width": 300,
+                "height": 338,
                 "resizable": false,
+                "focusable": true,
                 "decorations": false,
                 "transparent": true,
                 "visible": false,

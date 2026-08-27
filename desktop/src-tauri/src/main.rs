@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     path::BaseDirectory,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, State, WebviewWindow, Window,
+    Emitter, Listener, Manager, State, WebviewWindow, Window,
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -927,6 +927,14 @@ fn main() {
             let tray_window = window.clone();
             let app_handle = app.handle().clone();
             app.listen("tray://quit", move |_| app_handle.exit(0));
+            if let Some(menu_window) = app.get_webview_window("tray-menu") {
+                let menu_for_events = menu_window.clone();
+                menu_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        let _ = menu_for_events.hide();
+                    }
+                });
+            }
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("application icon").clone())
                 .tooltip("SztuCode")
@@ -938,6 +946,9 @@ fn main() {
                         ..
                     } = event
                     {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                            let _ = menu.hide();
+                        }
                         let _ = tray_window.show();
                         let _ = tray_window.set_focus();
                     } else if let TrayIconEvent::Click {
@@ -947,7 +958,28 @@ fn main() {
                         ..
                     } = event {
                         if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
-                            let _ = menu.set_position(tauri::PhysicalPosition::new(position.x - 332.0, position.y - 388.0));
+                            if menu.is_visible().unwrap_or(false) {
+                                let _ = menu.hide();
+                                return;
+                            }
+                            // 以托盘图标右上角为锚点，菜单贴在图标左上侧；
+                            // 同时限制在当前屏幕工作区内，避免任务栏/多屏时跑出屏幕。
+                            // 托盘事件给出物理像素坐标；窗口配置是逻辑像素，需要按 DPI 换算。
+                            let scale = menu.scale_factor().unwrap_or(1.0);
+                            let size = tauri::PhysicalSize::new(
+                                (300.0 * scale).round() as u32,
+                                (338.0 * scale).round() as u32,
+                            );
+                            let monitor = menu.current_monitor().ok().flatten();
+                            let (left, top, right, bottom) = monitor
+                                .map(|m| {
+                                    let p = m.position(); let s = m.size();
+                                    (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
+                                })
+                                .unwrap_or((0, 0, i32::MAX, i32::MAX));
+                            let x = ((position.x as i32) - size.width as i32).clamp(left, right - size.width as i32);
+                            let y = ((position.y as i32) - size.height as i32 - 4).clamp(top, bottom - size.height as i32);
+                            let _ = menu.set_position(tauri::PhysicalPosition::new(x, y));
                             let _ = menu.show();
                             let _ = menu.set_focus();
                         }

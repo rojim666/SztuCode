@@ -1,17 +1,33 @@
 <script setup lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
+import { onMounted, onBeforeUnmount } from "vue";
 
 const win = getCurrentWindow();
+onMounted(() => document.body.classList.add("tray-menu-host"));
+function closeOnBlur() { void win.hide(); }
+function closeOutside(event: PointerEvent) {
+  if (!(event.target as Element | null)?.closest(".tray-menu")) void win.hide();
+}
+onMounted(() => {
+  window.addEventListener("blur", closeOnBlur);
+  document.addEventListener("visibilitychange", closeOnBlur);
+  document.addEventListener("pointerdown", closeOutside, true);
+});
+onBeforeUnmount(() => {
+  document.body.classList.remove("tray-menu-host");
+  window.removeEventListener("blur", closeOnBlur);
+  document.removeEventListener("visibilitychange", closeOnBlur);
+  document.removeEventListener("pointerdown", closeOutside, true);
+});
 async function action(name: string) {
-  if (name === "quit") await emit("tray://quit");
-  else await emit(`tray://${name}`);
   await win.hide();
+  await emit(`tray://${name}`);
 }
 </script>
 
 <template>
-  <main class="tray-menu">
+<main class="tray-menu" tabindex="-1" @keydown.esc="win.hide()" @mousedown.stop>
     <header><span class="mark">S</span><div><strong>SztuCode</strong><small>Agent 工作台</small></div></header>
     <button class="primary" @click="action('new_chat')">＋ 新建会话</button>
     <div class="section-label">快速访问</div>
@@ -23,10 +39,10 @@ async function action(name: string) {
   </main>
 </template>
 
-<style>
-* { box-sizing: border-box; }
-html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
-body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+<style scoped>
+.tray-menu, .tray-menu *, .tray-menu *::before, .tray-menu *::after { box-sizing: border-box; }
+:global(html), :global(body.tray-menu-host), :global(body.tray-menu-host #app) { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+:global(body.tray-menu-host) { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
 .tray-menu { width: 300px; padding: 14px; color: #1c2330; background: #fff; border: 1px solid #dfe4eb; border-radius: 16px; box-shadow: 0 14px 34px #1c23302b; }
 header { display: flex; align-items: center; gap: 10px; padding: 3px 6px 14px; }
 .mark { display: grid; width: 34px; height: 34px; place-items: center; color: #1c2330; background: #f1f4f8; border: 2px solid #1c2330; border-radius: 11px; font-weight: 800; }

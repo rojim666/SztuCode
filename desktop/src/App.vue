@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, BookOpen, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
   GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
   ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Wrench, X,
 } from "@lucide/vue";
@@ -17,6 +17,7 @@ import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import BottomDiffPreview from "./components/Diff/BottomDiffPreview.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
+import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
@@ -2509,9 +2510,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <section v-else class="landing-page task-launcher" :class="{ 'slash-open': slashMenuOpen }">
           <div class="launcher-content">
             <header class="launcher-heading">
-              <span class="launcher-mark" aria-hidden="true"><BookOpen :size="42" :stroke-width="1.8" /></span>
+              <AgentLogo class="launcher-mark" />
               <div class="launcher-heading__copy">
-                <h1 aria-label="心念为引，一言功毕"><span aria-hidden="true">心念为引，一言功毕</span></h1>
+                <h1 aria-label="Think it. Build it."><span aria-hidden="true">Think it. Build it.</span></h1>
               </div>
             </header>
 

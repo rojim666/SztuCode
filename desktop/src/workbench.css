@@ -408,7 +408,7 @@
 
 /* Outcome-first task conversation. */
 .timeline-step { padding-bottom: 18px; }
-.timeline-assistant { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.timeline-assistant { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
 
 .turn-status { display: flex; min-height: 23px; align-items: center; gap: 6px; margin-bottom: 5px; }
 .turn-status b { color: #767779; font-size: 12px; font-weight: 620; }
@@ -481,7 +481,8 @@
   .bottom-diff-preview__files { max-height: 120px; border-right: 0; border-bottom: 1px solid var(--border); }
   .bottom-diff-preview__diff { max-height: 180px; }
   .timeline-user-message { max-width: 90%; }
-  .timeline-assistant { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .timeline-assistant { grid-template-columns: 32px minmax(0, 1fr); gap: 9px; }
+  .agent-logo { width: 32px; height: 32px; padding: 5px 4px; border-radius: 9px; }
   .evidence-strip { display: grid; grid-template-columns: 1fr; }
   .evidence-item { width: 100%; }
 }
@@ -1039,7 +1040,7 @@
 .launcher-heading__copy { min-width: 0; }
 .task-launcher .launcher-heading h1 { display: inline-grid; margin: 0; color: #1e2023; font-family: "Aptos Display", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif; font-size: 42px; font-weight: 560; line-height: 1.16; letter-spacing: 0; }
 .launcher-heading h1::before, .launcher-heading h1 > span { grid-area: 1 / 1; white-space: nowrap; }
-.launcher-heading h1::before { visibility: hidden; content: "心念为引，一言功毕"; }
+.launcher-heading h1::before { visibility: hidden; content: "Think it. Build it."; }
 .launcher-heading h1 > span { width: 0; overflow: hidden; border-right: 2px solid #25282c; animation: launcher-title-type 1.35s steps(18, end) 180ms forwards, launcher-title-caret 450ms step-end 3 180ms forwards; }
 @keyframes launcher-title-type { to { width: 100%; } }
 @keyframes launcher-title-caret { 50%, 100% { border-color: transparent; } }
