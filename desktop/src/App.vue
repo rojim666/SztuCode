@@ -1544,7 +1544,16 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // run 刚好结束时 steer 会被服务拒绝，此时转入队列；其它错误不能静默吞掉草稿。
-        if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
+        const runStillActive = sessionId ? ensureSessionView(sessionId).runActive : false;
+        if (!runStillActive && sessionId) {
+          // 追加提交与 run.finished 同时到达时，直接启动一个新的 run，
+          // 避免输入框一直停留在追加模式且任务没有进入运行态。
+          const sent = await startSessionRun(sessionId, payload, images);
+          if (sent) {
+            prompt.value = "";
+            attachedFiles.value = [];
+          }
+        } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
           enqueueSubmission(sessionId, content, payload, images, attachmentCount);
           prompt.value = "";
           attachedFiles.value = [];

@@ -455,7 +455,7 @@
 .task-intro b { display: block; margin: 1px 0 6px; color: #292d31; font-size: 16px; }
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
 .task-conversation > .kimi-composer { border-radius: 14px; border-color: #d9dcdf; box-shadow: 0 7px 24px rgb(28 36 44 / 8%); }
-.task-conversation > .kimi-composer.append-mode { width: min(620px, calc(100% - 72px)); border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
+.task-conversation > .kimi-composer.append-mode { border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
 .task-conversation > .kimi-composer.append-mode textarea { padding-top: 7px; }
 .task-conversation > .kimi-composer .attachment-strip { padding-top: 8px; }
 .task-conversation > .kimi-composer textarea { min-height: 52px; padding: 10px 12px 5px; }
