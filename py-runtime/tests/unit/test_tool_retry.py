@@ -27,16 +27,28 @@ class _FailNTimes(BaseTool):
     description = "Fails n times then succeeds"
     input_schema: dict[str, object] = {"type": "object", "properties": {}, "required": []}
 
-    def __init__(self, n: int, *, error_type: str = "runtime_error") -> None:
+    def __init__(self, n: int, *, error_type: str = "runtime_error", retry_safe: bool = False) -> None:
         self._remaining = n
         self._error_type = error_type
+        self.retry_safe = retry_safe
         self.calls = 0
 
     async def invoke(self, params: dict[str, object]) -> ToolResult:
         self.calls += 1
         if self._remaining > 0:
             self._remaining -= 1
-            return ToolResult(content="transient error", is_error=True, error_type=self._error_type)
+            # 声明 retry_safe 时同步声明结果可重试且执行状态未开始，构成完整重试条件
+            return ToolResult(
+                content="transient error",
+                is_error=True,
+                error_type=self._error_type,
+                retryable=self.retry_safe,
+                execution_state=(
+                    ToolExecutionState.NOT_STARTED
+                    if self.retry_safe
+                    else ToolExecutionState.COMPLETED
+                ),
+            )
         return ToolResult(content="ok")
 
 
@@ -100,11 +112,22 @@ class _AlwaysFails(BaseTool):
     description = "Always fails"
     input_schema: dict[str, object] = {"type": "object", "properties": {}, "required": []}
 
-    def __init__(self, error_type: str = "runtime_error") -> None:
+    def __init__(self, error_type: str = "runtime_error", *, retry_safe: bool = False) -> None:
         self._error_type = error_type
+        self.retry_safe = retry_safe
 
     async def invoke(self, params: dict[str, object]) -> ToolResult:
-        return ToolResult(content="permanent error", is_error=True, error_type=self._error_type)
+        return ToolResult(
+            content="permanent error",
+            is_error=True,
+            error_type=self._error_type,
+            retryable=self.retry_safe,
+            execution_state=(
+                ToolExecutionState.NOT_STARTED
+                if self.retry_safe
+                else ToolExecutionState.COMPLETED
+            ),
+        )
 
 
 # --- helper ------------------------------------------------------------------
@@ -152,8 +175,8 @@ async def test_runtime_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> 
     assert result.error_type == "runtime_error"
     assert tool.calls == 1
     assert result.metadata["retry_decision"] == "stop"
-    assert result.metadata["retry_reason"] == "error_is_not_explicitly_transient"
-    assert "not explicitly transient" in result.content
+    assert result.metadata["retry_reason"] == "failure_is_not_explicitly_retryable"
+    assert "not marked retryable" in result.content
     assert len(_failed_events(events)) == 1
 
 
@@ -199,6 +222,8 @@ async def test_safe_retry_uses_exponential_backoff(monkeypatch: pytest.MonkeyPat
         delays.append(delay)
 
     monkeypatch.setattr(inv_mod.asyncio, "sleep", _record_sleep)
+    # 默认 _MAX_RETRIES=1 只有一次退避；这里提高上限以完整验证 2s→4s 指数序列
+    monkeypatch.setattr(inv_mod, "_MAX_RETRIES", 2)
     tool = _RateLimitedNTimes(2, retry_safe=True)
 
     result, events = await _run(tool, monkeypatch=monkeypatch, retry_base_s=2.0)
@@ -216,9 +241,11 @@ async def test_write_tool_rate_limit_is_not_retried(monkeypatch: pytest.MonkeyPa
     result, events = await _run(tool, monkeypatch=monkeypatch)
 
 # 功能：验证 runtime_error 只重试一次后最终返回失败
-# 设计：_AlwaysFails 两次都失败；断言最终结果 is_error + 收到 2 个 failed 事件
+# 设计：_AlwaysFails 声明 retry_safe 并持续失败；断言最终结果 is_error + 收到 2 个 failed 事件
 async def test_runtime_error_exhausts_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    result, events = await _run(_AlwaysFails("runtime_error"), monkeypatch=monkeypatch)
+    result, events = await _run(
+        _AlwaysFails("runtime_error", retry_safe=True), monkeypatch=monkeypatch
+    )
     assert result.is_error
     assert result.error_type == "runtime_error"
     failed_events = [e for e in events if e.type == "tool.call_failed"]  # type: ignore[attr-defined]
@@ -249,9 +276,9 @@ async def test_safe_rate_limit_exhausts_retries(monkeypatch: pytest.MonkeyPatch)
     result, events = await _run(tool, monkeypatch=monkeypatch)
 
 # 功能：验证 rate_limited 只重试一次后最终返回失败
-# 设计：_RateLimitedNTimes(10) 始终抛异常，断言 2 个 failed 事件且 error_class 统一
+# 设计：声明 retry_safe 的工具始终抛限流异常，断言 2 个 failed 事件且 error_class 统一
 async def test_rate_limited_exhausts_retries(monkeypatch: pytest.MonkeyPatch) -> None:
-    result, events = await _run(_RateLimitedNTimes(10), monkeypatch=monkeypatch)
+    result, events = await _run(_RateLimitedNTimes(10, retry_safe=True), monkeypatch=monkeypatch)
     assert result.is_error
     assert result.error_type == "rate_limited"
     failed_events = [e for e in events if e.type == "tool.call_failed"]  # type: ignore[attr-defined]
@@ -274,7 +301,7 @@ async def test_schema_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 # 功能：验证 timeout 不触发通用重试
 # 设计：SlowTool 配合极短超时，断言只执行一次并发出一个 failed 事件
 async def test_timeout_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
-    import asyncio
+    pass
 
 # 功能：timeout 的未知执行状态不触发第二次执行
 # 设计：短超时中断慢工具；断言调用一次且结果显式标记 UNKNOWN
@@ -316,10 +343,10 @@ async def test_timeout_with_unknown_execution_state_is_not_retried(
 
 
 # 功能：失败事件的 error_class 保持在约定枚举内
-# 设计：运行一次普通错误并检查事件字段
+# 设计：声明 retry_safe 的工具失败一次后成功，运行并检查事件字段
 async def test_failed_event_has_valid_error_class(monkeypatch: pytest.MonkeyPatch) -> None:
     valid_classes = {"runtime_error", "timeout", "schema_error", "permission_denied", "rate_limited"}
-    result, events = await _run(_FailNTimes(1), monkeypatch=monkeypatch)
+    result, events = await _run(_FailNTimes(1, retry_safe=True), monkeypatch=monkeypatch)
     assert not result.is_error
     for e in events:
         if e.type == "tool.call_failed":  # type: ignore[attr-defined]

@@ -369,7 +369,11 @@ class WorkspaceManager:
         workspace = self.get(workspace_id)
         root = Path(workspace.path)
         git_paths = [self._git_relative_path(workspace_id, path) for path in paths]
-        tracked = [path for path in git_paths if self._git(root, ["ls-files", "--error-unmatch", "--", path]).strip()]
+        tracked = [
+            path
+            for path in git_paths
+            if self._git(root, ["ls-files", "--error-unmatch", "--", path]).strip()
+        ]
         if tracked:
             self._git(root, ["restore", "--source=HEAD", "--staged", "--worktree", "--", *tracked])
         return paths
@@ -486,7 +490,9 @@ class WorkspaceManager:
                 try:
                     data = file_path.read_bytes()
                     _content, _encoding, binary = self._decode_text(data)
-                    line_count = 0 if binary else len(data.decode("utf-8", errors="replace").splitlines())
+                    line_count = (
+                        0 if binary else len(data.decode("utf-8", errors="replace").splitlines())
+                    )
                 except OSError:
                     line_count = 0
                 stats[relative_path] = (line_count, 0)
@@ -554,21 +560,36 @@ class WorkspaceManager:
                     path = Path(value["path"]).expanduser()
                     archived = bool(value.get("archived", False))
                     pinned = bool(value.get("pinned", False))
+                    # 旧版记录文件没有 name 字段，回退为目录名
+                    stored_name = value.get("name")
+                    name = (
+                        stored_name.strip()
+                        if isinstance(stored_name, str) and stored_name.strip()
+                        else None
+                    )
                 else:
                     continue
             else:
                 path = Path(value).expanduser()
                 archived = False
                 pinned = False
+                name = None
             if path.is_dir():
-                workspace = self._make_workspace(path.resolve(), archived=archived, pinned=pinned)
+                workspace = self._make_workspace(
+                    path.resolve(), archived=archived, pinned=pinned, name=name
+                )
                 self._workspaces[workspace.id] = workspace
 
     # 将当前工作区目录写入最近记录文件
     def _save_recent(self) -> None:
         self._recent_file.parent.mkdir(parents=True, exist_ok=True)
         paths = [
-            {"path": workspace.path, "archived": workspace.archived, "pinned": workspace.pinned}
+            {
+                "path": workspace.path,
+                "name": workspace.name,
+                "archived": workspace.archived,
+                "pinned": workspace.pinned,
+            }
             for workspace in self._workspaces.values()
         ]
         self._recent_file.write_text(
@@ -578,12 +599,19 @@ class WorkspaceManager:
 
     # 从目录绝对路径生成稳定且不可歧义的工作区标识
     @staticmethod
-    def _make_workspace(path: Path, *, archived: bool = False, pinned: bool = False) -> Workspace:
+    def _make_workspace(
+        path: Path,
+        *,
+        archived: bool = False,
+        pinned: bool = False,
+        name: str | None = None,
+    ) -> Workspace:
         workspace_id = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
         return Workspace(
             id=f"ws-{workspace_id}",
             path=str(path),
-            name=path.name or str(path),
+            # name 必须持久化，否则重启后用户重命名会被目录名覆盖（issue #132）
+            name=name or path.name or str(path),
             archived=archived,
             pinned=pinned,
         )

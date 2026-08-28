@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from sztu_code.core.runner import modification_status_summary
 from sztu_code.core.verification import (
     CompletionCondition,
     CompletionContract,
@@ -13,6 +12,7 @@ from sztu_code.core.verification import (
     VerificationExecutor,
     VerificationOutcome,
     aggregate_outcomes,
+    modification_status_summary,
 )
 
 
