@@ -193,6 +193,8 @@ const permissionSettingsError = ref("");
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
 const projectPreviewId = ref<string | null>(null);
+const projectPreviewStyle = ref<Record<string, string>>({});
+let projectPreviewCloseTimer: number | undefined;
 const projectEditingId = ref<string | null>(null);
 const projectEditName = ref("");
 const projectEditError = ref("");
@@ -282,6 +284,24 @@ const allProjects = computed(() => activeWorkspaces.value
     return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id && (item.pinned || !task.pinned)).slice(0, 6), projectMatches };
   })
   .filter((item) => !normalizedTaskQuery.value || item.projectMatches || item.tasks.length));
+const previewProject = computed(() => allProjects.value.find((item) => item.workspace_id === projectPreviewId.value) ?? null);
+
+function showProjectPreview(item: Workspace, event: MouseEvent | FocusEvent) {
+  window.clearTimeout(projectPreviewCloseTimer);
+  const anchor = event.currentTarget as HTMLElement | null;
+  if (!anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const width = 254;
+  projectPreviewStyle.value = {
+    left: `${Math.min(rect.right, window.innerWidth - width - 8)}px`,
+    top: `${Math.max(8, Math.min(rect.top, window.innerHeight - 150))}px`,
+  };
+  projectPreviewId.value = item.workspace_id;
+}
+function scheduleProjectPreviewClose() {
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewCloseTimer = window.setTimeout(() => { projectPreviewId.value = null; }, 350);
+}
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
 const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
 const projects = computed(() => allProjects.value.filter((item) => !item.pinned));
@@ -2192,6 +2212,7 @@ onMounted(() => {
   void refreshRuntime(true);
 });
 onBeforeUnmount(() => {
+  window.clearTimeout(projectPreviewCloseTimer);
   if (autoScrollFrame !== undefined) window.cancelAnimationFrame(autoScrollFrame);
   tokenBatcher.clear();
   discardAllPendingTimeline();
@@ -2366,17 +2387,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           </div>
           <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
-            <div class="project-row-shell" @mouseenter="projectPreviewId = item.workspace_id" @mouseleave="projectPreviewId = null" @focusin="projectPreviewId = item.workspace_id" @focusout="(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) projectPreviewId = null; }" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
+            <div class="project-row-shell" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="scheduleProjectPreviewClose" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
               <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
                 <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
-              <div v-if="projectPreviewId === item.workspace_id" class="project-preview-card" role="tooltip">
-                <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ item.name }}</b><button type="button" title="编辑项目" aria-label="编辑项目" @mousedown.prevent @click.stop="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.7" /></button></header>
-                <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ item.tasks.length }} 个任务</span></div>
-                <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ item.path }}</span></div>
-                <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
-              </div>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="`${item.name} 项目操作`">
                 <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? '取消置顶' : '置顶' }}</button>
                 <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />编辑</button>
@@ -2423,6 +2438,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <button ref="settingsButton" class="settings-link" title="设置" aria-label="设置" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
       </footer>
       </aside>
+      <Teleport to="body">
+        <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @mouseenter="window.clearTimeout(projectPreviewCloseTimer)" @mouseleave="scheduleProjectPreviewClose">
+          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" title="编辑项目" aria-label="编辑项目" @mousedown.prevent @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" /></button></header>
+          <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ previewProject.tasks.length }} 个任务</span></div>
+          <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ previewProject.path }}</span></div>
+          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
+        </div>
+      </Teleport>
     </div>
     <div
       class="sidebar-resizer"

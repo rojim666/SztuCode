@@ -582,14 +582,11 @@
 .project-row-toggle:hover { color: #202124; background: transparent; }
 
 .project-preview-card {
-  position: absolute;
+  position: fixed;
   z-index: 50;
   top: 0;
-  /* 紧贴项目条，避免鼠标移入卡片时触发父级 mouseleave 把卡片立即关闭。 */
-  left: 100%;
-  margin-left: 2px;
   display: grid;
-  width: 310px;
+  width: 254px;
   overflow: hidden;
   color: #30353a;
   background: #fff;
@@ -598,16 +595,16 @@
   box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
   animation: sidebar-menu-in 140ms ease-out;
 }
-.project-preview-card > header { display: flex; min-width: 0; padding: 14px 14px 11px; align-items: center; gap: 9px; }
-.project-preview-card > header > svg { flex: 0 0 auto; color: #4d555c; }
-.project-preview-card > header b { min-width: 0; overflow: hidden; font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.project-preview-card > header button { display: grid; width: 28px; height: 28px; margin-left: auto; flex: 0 0 auto; place-items: center; color: #8a9095; background: transparent; border-radius: 7px; }
+.project-preview-card > header { display: flex; min-width: 0; padding: 10px 11px 8px; align-items: center; gap: 7px; }
+.project-preview-card > header > svg { flex: 0 0 auto; color: #4d555c; width: 18px; height: 18px; }
+.project-preview-card > header b { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.project-preview-card > header button { display: grid; width: 24px; height: 24px; margin-left: auto; flex: 0 0 auto; place-items: center; color: #8a9095; background: transparent; border-radius: 6px; }
 .project-preview-card > header button:hover { color: #3e454b; background: #f0f1f2; }
-.project-preview-card__meta, .project-preview-card__path { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid #e6e8e9; font-size: 12px; }
+.project-preview-card__meta, .project-preview-card__path { display: flex; align-items: center; gap: 7px; padding: 7px 11px; border-top: 1px solid #e6e8e9; font-size: 11px; }
 .project-preview-card__meta { color: #444b51; }
-.project-preview-card__path { min-width: 0; color: #3f464c; }
+.project-preview-card__path { min-width: 0; color: #292f34; font-size: 12px; font-weight: 550; }
 .project-preview-card__path span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.project-preview-card__edit { display: flex; align-items: center; gap: 8px; padding: 10px 14px; color: #4a5157; background: #fafafa; border-top: 1px solid #e6e8e9; text-align: left; font-size: 12px; }
+.project-preview-card__edit { display: flex; align-items: center; gap: 7px; padding: 8px 11px; color: #4a5157; background: #fafafa; border-top: 1px solid #e6e8e9; text-align: left; font-size: 11px; }
 .project-preview-card__edit:hover { background: #f0f1f2; }
 
 .project-action-menu {

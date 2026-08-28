@@ -29,6 +29,7 @@ test("OpenAI Responses provider uses /responses and parses text and function cal
 test("OpenAI chat provider parses SSE deltas and emits incremental text", async () => {
   const originalFetch = globalThis.fetch;
   const tokens: string[] = [];
+  const thinking: string[] = [];
   globalThis.fetch = (async () => {
     const encoder = new TextEncoder();
     const chunks = [
@@ -45,12 +46,54 @@ test("OpenAI chat provider parses SSE deltas and emits incremental text", async 
   try {
     const tools = new ToolRegistry();
     tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object" }, invoke: async () => ({ ok: true, output: "" }) });
-    const result = await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", stream: true }).complete([{ role: "user", content: "hi" }], tools, undefined, (token) => tokens.push(token));
+    const result = await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", stream: true }).complete([{ role: "user", content: "hi" }], tools, undefined, (token) => tokens.push(token), undefined, (delta) => thinking.push(delta));
     assert.deepEqual(tokens, ["hel", "lo"]);
+    assert.deepEqual(thinking, ["think-"]);
     assert.equal(result.text, "hello");
     assert.equal(result.reasoning_content, "think-");
     assert.deepEqual(result.tool_calls, [{ id: "call-1", name: "read_file", input: { path: "a.txt" } }]);
     assert.equal(result.streamed, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider sends reasoning effort and emits non-streaming reasoning", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  const thinking: string[] = [];
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "done", reasoning_content: "checked the repository" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const result = await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "reasoning-model", reasoningEffort: "high" }).complete([{ role: "user", content: "hi" }], new ToolRegistry(), undefined, undefined, undefined, (value) => thinking.push(value));
+    assert.equal(requestBody.reasoning_effort, "high");
+    assert.deepEqual(thinking, ["checked the repository"]);
+    assert.equal(result.reasoning_content, "checked the repository");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI Responses provider emits streamed reasoning summaries", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  const thinking: string[] = [];
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    const encoder = new TextEncoder();
+    const frames = [
+      `data: ${JSON.stringify({ type: "response.reasoning_summary_text.delta", delta: "inspect " })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.reasoning_summary_text.delta", delta: "files" })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "done" })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.completed", response: { usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`,
+    ];
+    const body = new ReadableStream({ start(controller) { for (const frame of frames) controller.enqueue(encoder.encode(frame)); controller.close(); } });
+    return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const result = await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", apiFormat: "openai_responses", reasoningEffort: "medium", stream: true }).complete([{ role: "user", content: "hi" }], new ToolRegistry(), undefined, undefined, undefined, (value) => thinking.push(value));
+    assert.deepEqual(requestBody.reasoning, { effort: "medium", summary: "auto" });
+    assert.deepEqual(thinking, ["inspect ", "files"]);
+    assert.equal(result.reasoning_content, "inspect files");
+    assert.equal(result.text, "done");
   } finally { globalThis.fetch = originalFetch; }
 });
 
