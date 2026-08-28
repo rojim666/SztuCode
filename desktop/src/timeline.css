@@ -170,7 +170,6 @@
 .turn-tail-metrics { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0 0; padding: 4px 0 2px; color: #9aa0a7; font-size: 10px; line-height: 1.5; }
 .turn-tail-metrics span { white-space: nowrap; }
 .turn-tail-metrics b { color: #7c8288; font-weight: 500; }
-.turn-status { min-height: 23px; gap: 6px; margin-bottom: 5px; }
 .turn-status b { font-size: 14px; }
 .thinking-panel { margin-bottom: 3px; }
 .thinking-panel button { padding: 4px 0; font-size: 12px; }

@@ -2,7 +2,7 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
-  GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
+  GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
   ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -2498,7 +2498,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       title="拖动调整导航宽度"
       @pointerdown="startSidebarDrag"
       @keydown="resizeSidebarWithKeyboard"
-    ><span><GripVertical :size="13" :stroke-width="1.8" /></span></div>
+    ></div>
 
     <div v-if="sessionPreview" class="session-preview" :style="{ top: `${sessionPreview.top}px`, left: `${sessionPreview.left}px` }" role="tooltip">
       <b class="session-preview__title">{{ sessionPreview.task.title || '未命名任务' }}</b>
@@ -2635,9 +2635,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   </div>
                   <p v-else class="project-picker-empty">没有匹配的工作空间</p>
                   <div class="project-picker-actions">
-                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>临时任务<small>不关联项目上下文</small></span></button>
-                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>新建工作空间<small>选择一个空文件夹</small></span></button>
-                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>打开本地文件夹<small>添加已有项目</small></span></button>
+                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>临时任务</span></button>
+                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>新建工作空间</span></button>
+                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>打开本地文件夹</span></button>
                   </div>
                 </div>
               </div>
