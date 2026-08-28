@@ -476,10 +476,10 @@
 .task-conversation > .kimi-composer .round:focus-visible,
 .task-conversation > .kimi-composer .permission:hover,
 .task-conversation > .kimi-composer .permission:focus-visible { background: #f3f5f5; }
-.task-conversation > .kimi-composer .send { width: 40px; height: 40px; border-radius: 50%; font-size: 22px; font-weight: 600; }
-.task-conversation > .kimi-composer .send:not(.stop) svg { width: 21px; height: 21px; stroke-width: 3; }
+.task-conversation > .kimi-composer .send { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: 600; }
+.task-conversation > .kimi-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .task-conversation > .kimi-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
-.task-conversation > .kimi-composer .permission { padding: 5px 7px; font-size: 11px; }
+.task-conversation > .kimi-composer .permission { padding: 6px 8px; font-size: 13px; }
 
 @media (max-width: 620px) {
   .task-stream { width: 100%; }
@@ -560,6 +560,7 @@
   gap: 2px;
   min-height: 36px;
   border-radius: 8px;
+  cursor: pointer;
   transition: background-color 140ms ease;
 }
 
@@ -569,6 +570,7 @@
   gap: 7px;
   align-items: center;
   min-width: 0;
+  width: 100%;
   min-height: 36px;
   padding: 0 6px;
   color: #202124;
@@ -593,15 +595,17 @@
   border: 1px solid rgb(25 32 41 / 11%);
   border-radius: 12px;
   box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
-  animation: sidebar-menu-in 140ms ease-out;
+  animation: sidebar-preview-in 80ms ease-out;
 }
 .project-preview-card > header { display: flex; min-width: 0; padding: 10px 11px 8px; align-items: center; gap: 7px; }
 .project-preview-card > header > svg { flex: 0 0 auto; color: #4d555c; width: 18px; height: 18px; }
 .project-preview-card > header b { min-width: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.project-preview-card > header button { display: grid; width: 24px; height: 24px; margin-left: auto; flex: 0 0 auto; place-items: center; color: #8a9095; background: transparent; border-radius: 6px; }
+.project-preview-card > header button { display: flex; width: 24px; height: 24px; margin-left: auto; padding: 0; flex: 0 0 auto; align-items: center; justify-content: center; color: #8a9095; background: transparent; border-radius: 6px; line-height: 0; }
+.project-preview-card > header button svg { display: block; flex: 0 0 auto; margin: 0; }
 .project-preview-card > header button:hover { color: #3e454b; background: #f0f1f2; }
 .project-preview-card__meta, .project-preview-card__path { display: flex; align-items: center; gap: 7px; padding: 7px 11px; border-top: 1px solid #e6e8e9; font-size: 11px; }
 .project-preview-card__meta { color: #444b51; }
+.project-preview-card__meta span { display: inline-flex; align-items: center; gap: 7px; }
 .project-preview-card__path { min-width: 0; color: #292f34; font-size: 12px; font-weight: 550; }
 .project-preview-card__path span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-preview-card__edit { display: flex; align-items: center; gap: 7px; padding: 8px 11px; color: #4a5157; background: #fafafa; border-top: 1px solid #e6e8e9; text-align: left; font-size: 11px; }
@@ -667,6 +671,7 @@
 .pinned-temporary-list { order: 2; }
 .project-group--pinned { order: 3; }
 .project-tree-label { order: 4; }
+.project-tree-label > button { margin-right: -6px; }
 .project-tree.has-pinned-section .project-tree-label { margin-top: 18px; }
 .project-group:not(.project-group--pinned) { order: 5; }
 .project-tree > .side-empty { order: 6; }
@@ -778,19 +783,21 @@
   z-index: 60;
   display: grid;
   gap: 7px;
-  width: 224px;
-  padding: 10px 12px 11px;
+  width: 254px;
+  padding: 10px 11px;
   background: #fff;
-  border: 1px solid #dfe3e6;
-  border-radius: 10px;
-  box-shadow: 0 10px 28px rgb(20 30 45 / 14%);
-  font-size: 11px;
+  border: 1px solid rgb(25 32 41 / 11%);
+  border-radius: 12px;
+  box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
+  font-size: 12px;
   pointer-events: none;
 }
-.session-preview__title { overflow: hidden; color: #24272c; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.session-preview__row { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); gap: 6px; align-items: center; color: #6d7178; }
-.session-preview__row svg { color: #8b9097; }
-.session-preview__row em { overflow: hidden; color: #3e4248; font-style: normal; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.session-preview__title { overflow: hidden; color: #24272c; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.session-preview__row { display: grid; grid-template-columns: 18px auto minmax(0, 1fr); gap: 7px; align-items: center; color: #5f666d; }
+.session-preview__row svg { width: 18px; height: 18px; color: #7c858d; }
+.session-preview__row em { overflow: hidden; color: #30363b; font-size: 12px; font-style: normal; font-weight: 550; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.session-preview__row:nth-of-type(3) em { color: #171b1f; font-weight: 650; }
+@keyframes sidebar-preview-in { from { opacity: 0; } to { opacity: 1; } }
 .project-empty { margin: 5px 8px 5px 32px; color: #a0a5aa; font-size: 11px; }
 
 .session-menu.session-menu--floating {
@@ -1099,17 +1106,19 @@
 .launcher-heading h1 > span { width: 0; overflow: hidden; border-right: 2px solid #25282c; animation: launcher-title-type 1.35s steps(18, end) 180ms forwards, launcher-title-caret 450ms step-end 3 180ms forwards; }
 @keyframes launcher-title-type { to { width: 100%; } }
 @keyframes launcher-title-caret { 50%, 100% { border-color: transparent; } }
-.task-launcher .landing-composer { width: min(940px, 100%); min-width: 0; margin: 0 auto; overflow: visible; background: #f5f5f5; border: 0; border-radius: 14px; box-shadow: none; }
+.task-launcher .landing-composer { width: min(1100px, 100%); min-width: 0; margin: 0 auto; overflow: visible; background: #f5f5f5; border: 0; border-radius: 14px; box-shadow: none; }
 .task-launcher .landing-composer:focus-within { border-color: transparent; box-shadow: none; }
 .task-launcher .composer-input-shell { position: relative; display: flex; overflow: visible; flex-direction: column; background: #fff; border: 1px solid #d7d9dc; border-radius: 14px; box-shadow: 0 4px 14px #18202b0c; transition: border-color 120ms ease, box-shadow 120ms ease; }
 .task-launcher .composer-input-shell:focus-within { border-color: #aeb3ba; box-shadow: 0 5px 18px #18202b12; }
-.task-launcher .landing-composer textarea { order: 2; min-height: 112px; height: 112px; padding: 17px 18px 10px; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 14px; line-height: 1.55; }
+.task-launcher .landing-composer textarea { order: 2; min-height: 52px; height: 52px; padding: 10px 12px 5px; background: transparent; border: 0; border-radius: 0; box-shadow: none; font-size: 13px; line-height: 1.45; }
 .task-launcher .composer-input-shell > .attachment-strip { order: 1; min-height: 0; }
-.task-launcher .launcher-toolbar { position: relative; z-index: 1; order: 3; min-height: 40px; margin-top: 0; padding: 3px 9px 6px 11px; }
+.task-launcher .launcher-toolbar { position: relative; z-index: 1; order: 3; min-height: 0; margin-top: 0; gap: 4px; padding: 0 7px 5px; }
 .task-launcher .round { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; color: #3d4148; background: transparent; border: 0; border-radius: 6px; }
 .task-launcher .launcher-attachment-trigger { color: #3d4148; }
 .task-launcher .launcher-attachment-trigger svg { display: block; width: 18px; height: 18px; stroke: currentColor; }
-.task-launcher .permission { padding: 5px 6px; background: transparent; border: 0; border-radius: 6px; font-size: 11px; }
+.task-launcher .permission { padding: 6px 8px; background: transparent; border: 0; border-radius: 7px; font-size: 13px; }
+.task-launcher .permission svg,
+.task-conversation > .kimi-composer .permission svg { width: 17px; height: 17px; }
 .task-launcher .round:hover, .task-launcher .permission:hover { background: #f2f3f4; }
 .launcher-permission-control { position: relative; flex: 0 0 auto; }
 .launcher-popover { position: absolute; z-index: 40; color: #292d33; background: #fff; border: 1px solid #dedfe1; border-radius: 10px; box-shadow: 0 14px 38px #20252d1c, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
@@ -1126,7 +1135,7 @@
 .launcher-menu-error { margin: 2px 8px 6px; color: #a74343; font-size: 10px; }
 .task-launcher .model-label { min-width: 0; max-width: 210px; overflow: hidden; color: #5c626b; text-overflow: ellipsis; white-space: nowrap; }
 .model-config-control { position: relative; flex: 0 1 auto; min-width: 0; }
-.model-config-trigger { display: flex; min-width: 0; max-width: 230px; height: 32px; align-items: center; gap: 7px; padding: 0 7px; color: #51575f; background: transparent; border-radius: 6px; font-size: 12px; }
+.model-config-trigger { display: flex; min-width: 0; max-width: 250px; height: 36px; align-items: center; gap: 8px; padding: 0 9px; color: #51575f; background: transparent; border-radius: 7px; font-size: 14px; }
 .model-config-trigger:hover, .model-config-trigger[aria-expanded="true"] { color: #25292e; background: #f0f1f1; }
 .model-config-trigger > i { width: 7px; height: 7px; flex: 0 0 auto; background: #a5aab0; border-radius: 50%; }
 .model-config-trigger > i.online { background: #48a366; box-shadow: 0 0 0 3px #48a36617; }
@@ -1139,7 +1148,7 @@
 .model-picker-list > button { display: grid; width: 100%; min-height: 48px; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 6px 7px; color: #30343a; background: transparent; border-radius: 6px; text-align: left; }
 .model-picker-list > button:hover { background: #f3f4f4; }
 .model-picker-list .model-name-cell { display: grid; min-width: 0; gap: 2px; }
-.model-picker-list b { overflow: hidden; color: #000; font-size: 13px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-list b { overflow: hidden; color: #000; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .model-picker-list small { overflow: hidden; color: #8d9298; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .model-picker-list > button > svg { color: #5366d7; }
 .model-picker-list > p { margin: 0; padding: 24px 10px; color: #969ba1; font-size: 12px; text-align: center; }
@@ -1172,15 +1181,15 @@
 .model-config-popover > footer button:disabled { opacity: .48; }
 .model-config-popover > footer .spin { animation: spin 1s linear infinite; }
 .task-launcher .model-config-fields { grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); }
-.task-launcher .send { width: 42px; height: 42px; border-radius: 50%; font-size: 26px; font-weight: 650; line-height: 1; }
-.task-launcher .send:not(.stop) svg { width: 22px; height: 22px; stroke-width: 3; }
+.task-launcher .send { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: 600; line-height: 1; }
+.task-launcher .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .model-management-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .ccswitch-import-btn.primary { display: flex; align-items: center; gap: 5px; color: #fff; background: #303338; border-color: #303338; }
 .task-launcher button.composer-project { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 4px 14px 6px; color: #555c65; border-radius: 0 0 12px 12px; font-size: 11px; }
 .task-launcher button.composer-project span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-launcher button.composer-project:hover { color: #252a31; background: #efefef; }
 .launcher-project-control { position: relative; }
-.project-picker-popover { top: calc(100% + 8px); left: 0; width: 310px; padding: 6px; }
+.project-picker-popover { top: auto; bottom: calc(100% + 8px); left: 0; width: 310px; padding: 6px; animation-name: launcher-popover-up-in; }
 .project-picker-search { display: flex; align-items: center; gap: 8px; min-height: 35px; padding: 0 9px; color: #848991; background: #f5f5f5; border-radius: 7px; }
 .project-picker-search input { min-width: 0; width: 100%; color: #30343a; background: transparent; border: 0; outline: 0; font-size: 12px; }
 .project-picker-search input::placeholder { color: #969aa0; }
@@ -1324,6 +1333,7 @@
 .permission-confirm > footer button:disabled { cursor: default; opacity: .55; }
 
 @keyframes launcher-popover-in { from { opacity: 0; transform: translateY(-3px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes launcher-popover-up-in { from { opacity: 0; transform: translateY(3px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes confirm-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes confirm-dialog-in { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 

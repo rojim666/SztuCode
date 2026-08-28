@@ -288,6 +288,8 @@ const previewProject = computed(() => allProjects.value.find((item) => item.work
 
 function showProjectPreview(item: Workspace, event: MouseEvent | FocusEvent) {
   window.clearTimeout(projectPreviewCloseTimer);
+  sessionPreview.value = null;
+  projectActionsOpen.value = null;
   const anchor = event.currentTarget as HTMLElement | null;
   if (!anchor) return;
   const rect = anchor.getBoundingClientRect();
@@ -300,7 +302,35 @@ function showProjectPreview(item: Workspace, event: MouseEvent | FocusEvent) {
 }
 function scheduleProjectPreviewClose() {
   window.clearTimeout(projectPreviewCloseTimer);
-  projectPreviewCloseTimer = window.setTimeout(() => { projectPreviewId.value = null; }, 350);
+  const closingId = projectPreviewId.value;
+  if (!closingId) return;
+  projectPreviewCloseTimer = window.setTimeout(() => {
+    if (projectPreviewId.value === closingId) projectPreviewId.value = null;
+  }, 700);
+}
+function keepProjectPreviewOpen() {
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewCloseTimer = undefined;
+}
+function handleProjectPreviewFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as HTMLElement | null;
+  if (next?.closest(".project-preview-card")) {
+    keepProjectPreviewOpen();
+    return;
+  }
+  scheduleProjectPreviewClose();
+}
+function openProjectActions(item: Workspace) {
+  keepProjectPreviewOpen();
+  projectPreviewId.value = null;
+  sessionPreview.value = null;
+  projectActionsOpen.value = item.workspace_id;
+}
+function handleProjectRowPointerDown(item: Workspace, event: PointerEvent) {
+  if (event.button !== 0) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".project-action-menu")) return;
+  beginTask(item);
 }
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
 const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
@@ -421,8 +451,11 @@ function stopTaskTitleScroll(event: FocusEvent) {
 }
 
 function showSessionPreview(task: Session, event: MouseEvent) {
+  keepProjectPreviewOpen();
+  projectPreviewId.value = null;
+  projectActionsOpen.value = null;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  sessionPreview.value = { task, top: Math.max(4, Math.min(rect.top, window.innerHeight - 168)), left: Math.min(rect.right + 8, window.innerWidth - 232) };
+  sessionPreview.value = { task, top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)), left: Math.min(rect.right, window.innerWidth - 262) };
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
 function hideSessionPreview() { sessionPreview.value = null; }
@@ -1293,6 +1326,9 @@ async function submitUserQuestion(pending: PendingUserQuestion, answers: UserQue
 
 function beginTask(project: Workspace | null = workspace.value) {
   if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, prompt.value);
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewId.value = null;
+  sessionPreview.value = null;
   projectActionsOpen.value = null;
   closeLauncherMenus();
   workspace.value = project;
@@ -1636,6 +1672,8 @@ async function decidePermission(toolUseId: string, decision: PermissionDecision)
   await respondPermission(toolUseId, decision, context.runId, context.sessionId);
 }
 function beginProjectEdit(item: Workspace) {
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewId.value = null;
   projectEditingId.value = item.workspace_id;
   projectEditName.value = item.name;
   projectEditError.value = "";
@@ -2387,8 +2425,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           </div>
           <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
-            <div class="project-row-shell" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="scheduleProjectPreviewClose" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
-              <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
+            <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
+              <button class="project-row-toggle" title="在项目中新建临时会话" @click.stop.prevent>
                 <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
@@ -2439,8 +2477,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </footer>
       </aside>
       <Teleport to="body">
-        <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @mouseenter="window.clearTimeout(projectPreviewCloseTimer)" @mouseleave="scheduleProjectPreviewClose">
-          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" title="编辑项目" aria-label="编辑项目" @mousedown.prevent @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" /></button></header>
+        <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @pointerenter="keepProjectPreviewOpen" @pointerdown="keepProjectPreviewOpen" @focusin="keepProjectPreviewOpen" @focusout="handleProjectPreviewFocusOut" @mouseleave="scheduleProjectPreviewClose">
+          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? '取消置顶' : '置顶项目'" :aria-label="previewProject.pinned ? '取消置顶' : '置顶项目'" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><PinOff v-if="previewProject.pinned" :size="16" :stroke-width="1.7" /><Pin v-else :size="16" :stroke-width="1.7" /></button></header>
           <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ previewProject.tasks.length }} 个任务</span></div>
           <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ previewProject.path }}</span></div>
           <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
@@ -2585,7 +2623,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   </div>
                   <span />
                   <ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" />
-                  <button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!connected || !prompt.trim()">↑</button>
+                  <button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!connected || !prompt.trim()"><ArrowUp :size="15" /></button>
                 </div>
               </div>
               <div class="launcher-project-control">
