@@ -5,6 +5,7 @@ import type { PermissionGate } from "./permissions.js";
 import { ContextManager, sanitizeContextMessages, type ContentBlock, type ContextMessage } from "./context.js";
 import { DenialTracker } from "./denial-tracker.js";
 import { StuckLoopTracker, stuckSignature } from "./stuck-tracker.js";
+import { createPhaseTracker } from "./phase.js";
 import path from "node:path";
 import { createReadRefTool, OffloadManager } from "./offload.js";
 import { validateSchema } from "./schema-validator.js";
@@ -87,6 +88,7 @@ export class AgentLoop {
     };
     const denials = new DenialTracker();
     const stuck = new StuckLoopTracker(this.options.stuckMaxFailures ?? nonNegativeEnv("SZTU_STUCK_MAX_FAILURES", 2), this.options.stuckMaxTotal ?? nonNegativeEnv("SZTU_STUCK_MAX_TOTAL", 0));
+    const phases = createPhaseTracker();
     for (let step = 1; maxSteps === 0 || step <= maxSteps; step += 1) {
       signal?.throwIfAborted();
       await applyPendingCompaction();
@@ -125,6 +127,8 @@ export class AgentLoop {
       this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: messages.filter((message) => message.role === "system").reduce((sum, message) => sum + context.counter.countJson(message.content), 0), summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: context.counter.countMessages(messages), tool_tokens: messages.filter((message) => message.role === "tool").reduce((sum, message) => sum + context.counter.countJson(message.content), 0), ts: now() });
       if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
       if (response.stop_reason === "end_turn" || response.tool_calls.length === 0) {
+        const finalPhase = phases.finish();
+        if (finalPhase) this.publish({ type: "phase.changed", run_id: runId, step, phase: finalPhase.to, previous: finalPhase.from, reason: finalPhase.reason, ts: now() });
         this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
         messages.push({ role: "assistant", content: responseContent(response), ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
         return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries };
@@ -139,6 +143,8 @@ export class AgentLoop {
         const toolName = tool?.name ?? call.name;
         const canonicalCall = tool ? { ...call, name: toolName, input } : { ...call, input };
         this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: input, ts: now() });
+        const phaseChange = phases.observeTool(toolName, input);
+        if (phaseChange) this.publish({ type: "phase.changed", run_id: runId, step, phase: phaseChange.to, previous: phaseChange.from, reason: phaseChange.reason, ts: now() });
         if (!tool) {
           stuck.recordFailure(stuckSignature(call));
           this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: call.name, error_class: "unknown_tool", error_message: `Unknown tool: ${call.name}`, elapsed_ms: 0, ts: now() });

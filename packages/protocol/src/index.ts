@@ -255,6 +255,12 @@ export interface RunStartedEvent { type: "run.started"; run_id: string; goal: st
 export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; parent_session_id?: string; ts: string }
 export interface StepStartedEvent { type: "step.started"; run_id: string; step: number; ts: string }
 export interface StepFinishedEvent { type: "step.finished"; run_id: string; step: number; ts: string }
+/**
+ * 一次 run 的执行阶段。粒度刻意做粗——每完成一类动作才推进一次，
+ * 避免逐步跳变让调用方看不出「现在在干嘛」。由 daemon 在 agent-loop 里判定并推送。
+ */
+export type AgentPhase = "understanding" | "executing" | "verifying" | "delivering";
+export interface PhaseChangedEvent { type: "phase.changed"; run_id: string; step: number; phase: AgentPhase; previous?: AgentPhase; reason: string; ts: string }
 export interface LlmTokenEvent { type: "llm.token"; run_id: string; token: string; ts: string }
 export interface LlmThinkingEvent { type: "llm.thinking"; run_id: string; step: number; thinking: string; ts: string }
 export interface LlmUsageEvent { type: "llm.usage"; run_id: string; input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; context_pct: number; model: string; context_window: number; available_tokens: number; reserved_output_tokens: number; system_tokens: number; summary_tokens: number; conversation_tokens: number; tool_tokens: number; ts: string }
@@ -293,7 +299,7 @@ export interface TestResultEvent { type: "test.result"; run_id: string; tool_use
 export interface ChangeAppliedEvent { type: "change.applied"; run_id: string; workspace_path: string; paths: string[]; ts: string }
 export interface PermissionModeChangedEvent { type: "permission.mode_changed"; old_mode: PermissionMode; new_mode: PermissionMode; ts: string }
 
-export type RuntimeEvent = CoreStartedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionSnapshotEvent | SessionAttachedEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
+export type RuntimeEvent = CoreStartedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | PhaseChangedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionSnapshotEvent | SessionAttachedEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
 
 export type ValidationResult<T> =
   | { ok: true; value: T }

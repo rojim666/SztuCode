@@ -57,11 +57,33 @@ export type PipelineSegment = {
   | { kind: "tools"; calls: ToolCallEntry[]; category: ToolCategory }
 );
 
-type RawItem = { step: number } & (
+type RawItem = { step: number; phase: PipelinePhase } & (
   | { kind: "text"; text: string }
   | { kind: "thinking"; text: string; completed: boolean }
-  | { kind: "tool"; call: ToolCallEntry }
+  | { kind: "tool"; call: ToolCallEntry; category: ToolCategory }
 );
+
+/**
+ * 阶段游标。daemon 通过 phase.changed 下发时以它为准（daemon），
+ * 收不到该事件时退化成按工具类型推断（inferred）。
+ */
+type PhaseCursor = { daemon: PipelinePhase | null; inferred: PipelinePhase };
+
+function enterStep(cursor: PhaseCursor, step: TimelineStep): void {
+  if (!step.daemonPhase) return;
+  // 收到权威阶段后同步推断值，避免事件中断时两套口径打架
+  cursor.daemon = step.daemonPhase;
+  cursor.inferred = step.daemonPhase;
+}
+
+function observeTool(cursor: PhaseCursor, category: ToolCategory): void {
+  if (category === "write") cursor.inferred = "executing";
+  else if (category === "verify") cursor.inferred = "verifying";
+}
+
+function currentPhase(cursor: PhaseCursor): PipelinePhase {
+  return cursor.daemon ?? cursor.inferred;
+}
 
 function stepText(step: TimelineStep): string {
   return step.finalText || step.streamText || step.tokens.join("");
@@ -89,9 +111,11 @@ function hasAssistantContent(step: TimelineStep): boolean {
 /** 把若干个 step 摊平成一条按时间顺序排列的流水：文本段、思考段、工具段交错。 */
 export function buildPipelineSegments(steps: TimelineStep[]): PipelineSegment[] {
   const raw: RawItem[] = [];
+  const cursor: PhaseCursor = { daemon: null, inferred: "understanding" };
 
   for (const step of steps) {
     if (step.userMessage && !hasAssistantContent(step)) continue;
+    enterStep(cursor, step);
     const calls = new Map(step.toolCalls.map((call) => [call.id, call]));
 
     if (step.events?.length) {
@@ -102,45 +126,48 @@ export function buildPipelineSegments(steps: TimelineStep[]): PipelineSegment[] 
           const last = raw[raw.length - 1];
           // 相邻的 token 事件合并成一段正文，否则每段正文会被拆成上百张卡片
           if (last && last.kind === "text") last.text += text;
-          else raw.push({ step: step.step, kind: "text", text });
+          else raw.push({ step: step.step, phase: currentPhase(cursor), kind: "text", text });
         } else if (event.kind === "thinking") {
           const text = event.text ?? "";
           if (!text.trim()) continue;
           const last = raw[raw.length - 1];
           if (last && last.kind === "thinking") last.text += text;
-          else raw.push({ step: step.step, kind: "thinking", text, completed: step.status === "done" });
+          else raw.push({ step: step.step, phase: currentPhase(cursor), kind: "thinking", text, completed: step.status === "done" });
         } else if (event.toolCallId) {
           const call = calls.get(event.toolCallId);
-          if (call) raw.push({ step: step.step, kind: "tool", call });
+          if (!call) continue;
+          const category = classifyTool(call.name, call.params);
+          observeTool(cursor, category);
+          raw.push({ step: step.step, phase: currentPhase(cursor), kind: "tool", call, category });
         }
       }
     } else {
       // 兜底路径与 ExecutionTimeline.orderedEvents 保持一致
-      if (step.thinking?.trim()) raw.push({ step: step.step, kind: "thinking", text: step.thinking, completed: step.status === "done" });
+      if (step.thinking?.trim()) raw.push({ step: step.step, phase: currentPhase(cursor), kind: "thinking", text: step.thinking, completed: step.status === "done" });
       const text = stepText(step);
-      if (text.trim()) raw.push({ step: step.step, kind: "text", text });
-      for (const call of step.toolCalls) raw.push({ step: step.step, kind: "tool", call });
+      if (text.trim()) raw.push({ step: step.step, phase: currentPhase(cursor), kind: "text", text });
+      for (const call of step.toolCalls) {
+        const category = classifyTool(call.name, call.params);
+        observeTool(cursor, category);
+        raw.push({ step: step.step, phase: currentPhase(cursor), kind: "tool", call, category });
+      }
     }
   }
 
   const segments: PipelineSegment[] = [];
-  let phase: PipelinePhase = "understanding";
 
   for (const item of raw) {
     if (item.kind === "tool") {
-      const category = classifyTool(item.call.name, item.call.params);
-      if (category === "write") phase = "executing";
-      else if (category === "verify") phase = "verifying";
       const last = segments[segments.length - 1];
       // 连续同类工具收成一组："读取了 5 个文件" 而不是 5 张卡片
-      if (last && last.kind === "tools" && last.category === category) {
+      if (last && last.kind === "tools" && last.category === item.category) {
         last.calls.push(item.call);
         continue;
       }
-      segments.push({ id: `tools-${item.call.id}`, step: item.step, phase, kind: "tools", calls: [item.call], category });
+      segments.push({ id: `tools-${item.call.id}`, step: item.step, phase: item.phase, kind: "tools", calls: [item.call], category: item.category });
       continue;
     }
-    segments.push({ ...item, id: `${item.kind}-${item.step}-${segments.length}`, phase });
+    segments.push({ ...item, id: `${item.kind}-${item.step}-${segments.length}` });
   }
 
   // 收尾：没有工具在跑、且最后是正文，才算进入交付阶段

@@ -100,3 +100,25 @@ test("无事件时按 thinking / 正文 / 工具兜底构造，与经典视图�
   ]);
   assert.deepEqual(segments.map((segment) => segment.kind), ["thinking", "text", "tools"]);
 });
+
+test("daemon 下发阶段时优先采信，前端推断仅作兜底", () => {
+  // 只读工具按推断应停在「理解」，但 daemon 明确说是执行阶段，以 daemon 为准
+  const segments = buildPipelineSegments([
+    step(1, {
+      daemonPhase: "executing",
+      toolCalls: [call("r", "read_file", { path: "a.ts" })],
+      events: [{ id: "e1", kind: "tool", toolCallId: "r" }],
+    }),
+  ]);
+  assert.equal(segments[0].phase, "executing");
+});
+
+test("收不到 daemon 阶段时退回推断", () => {
+  const segments = buildPipelineSegments([
+    step(1, {
+      toolCalls: [call("r", "read_file", { path: "a.ts" })],
+      events: [{ id: "e1", kind: "tool", toolCallId: "r" }],
+    }),
+  ]);
+  assert.equal(segments[0].phase, "understanding");
+});

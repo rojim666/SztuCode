@@ -1003,6 +1003,13 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     setStep(step, (current) => ({ ...current, status: "thinking", runId }));
     return;
   }
+  if (type === "phase.changed") {
+    // daemon 已明确下发阶段，直接采信；前端推断只在收不到该事件时兜底
+    const step = stepFor(timelineEvent);
+    const phase = String(event.phase ?? "");
+    if (phase) setStep(step, (current) => ({ ...current, daemonPhase: phase as TimelineStep["daemonPhase"] }));
+    return;
+  }
   if (type === "llm.token") {
     // 首个 token 打时间戳（TTFT），只记录一次
     if (!firstTokenByRun.has(relatedRunId)) firstTokenByRun.set(relatedRunId, Date.now());

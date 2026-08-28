@@ -108,6 +108,9 @@ export type WorkflowOutcome = {
 export interface TimelineStep {
   step: number;
   runId?: string;  // 所属 run 的全局唯一 ID，标识一轮思考生命周期
+  // daemon 通过 phase.changed 下发的权威阶段。缺省时前端按工具类型自行推断。
+  // 取值需与 packages/protocol 的 AgentPhase 保持一致（桌面端不依赖 protocol 包，故内联）。
+  daemonPhase?: "understanding" | "executing" | "verifying" | "delivering";
   status: TimelineStatus;
   thinking?: string;
   tokens: string[];
