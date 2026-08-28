@@ -87,11 +87,60 @@ const flat = (turns: Turn[]) => turns.flatMap((turn) => turn);
 export type ContextBudget = { maxTokens: number; reservedOutputTokens: number; maxToolResultChars: number };
 export type CompactionOptions = { slidingWindow?: number; minimumOldTokens?: number; compactionCount?: number };
 
+export type UsageSnapshot = { system: number; conversation: number; tool: number };
+
+// 增量计数缓存：记录上次计数时的消息引用前缀，查询时若仍是纯追加则只对新尾部
+// 编码。压缩/截断会整体替换消息对象，引用前缀失配时自动回退全量重数，保证结果
+// 与全量路径一致。约束：已入列消息不得原地修改（只允许 push 追加）——agent-loop
+// 与 compactWithProvider 均满足。
+type UsageCache = { length: number; system: number; conversation: number; tool: number; refs: ContextMessage[] };
+
 export class ContextManager {
   readonly counter: TokenCounter;
+  private _usageCache: UsageCache | null = null;
   constructor(public messages: ContextMessage[] = [], private readonly budget: ContextBudget = { maxTokens: 128_000, reservedOutputTokens: 8_192, maxToolResultChars: 8_000 }, counter = new TokenCounter()) { this.counter = counter; }
   append(message: ContextMessage): void { this.messages.push(message); }
-  tokenEstimate(): number { return this.counter.countMessages(this.messages); }
+
+  // 统计单条消息的对话 token（与 TokenCounter.countMessages 的块语义一致）
+  private countMessageContent(content: ContextMessage["content"]): number {
+    return typeof content === "string" ? this.counter.count(content) : content.reduce((sum, block) => sum + this.counter.count(String(block.text ?? block.content ?? "")), 0);
+  }
+
+  // 分类 token 快照（system/conversation/tool），跨调用增量累积：
+  // - 纯追加：仅对新尾部计数并累加，历史上下文不再重复编码
+  // - 前缀失配（压缩/截断/回放）：全量重数后重建缓存
+  usageSnapshot(): UsageSnapshot {
+    const messages = this.messages;
+    const cache = this._usageCache;
+    if (cache) {
+      const prev = cache.refs;
+      const limit = Math.min(prev.length, messages.length);
+      let overlap = 0;
+      while (overlap < limit && messages[overlap] === prev[overlap]) overlap += 1;
+      if (overlap === prev.length && messages.length >= prev.length) {
+        let { system, conversation, tool } = cache;
+        for (let i = prev.length; i < messages.length; i += 1) {
+          const message = messages[i]!;
+          if (message.role === "system") system += this.counter.countJson(message.content);
+          else if (message.role === "tool") tool += this.counter.countJson(message.content);
+          conversation += this.countMessageContent(message.content);
+        }
+        this._usageCache = { length: messages.length, system, conversation, tool, refs: [...messages] };
+        return { system, conversation, tool };
+      }
+    }
+    let system = 0;
+    let tool = 0;
+    for (const message of messages) {
+      if (message.role === "system") system += this.counter.countJson(message.content);
+      else if (message.role === "tool") tool += this.counter.countJson(message.content);
+    }
+    const conversation = this.counter.countMessages(messages);
+    this._usageCache = { length: messages.length, system, conversation, tool, refs: [...messages] };
+    return { system, conversation, tool };
+  }
+
+  tokenEstimate(): number { return this.usageSnapshot().conversation; }
   availableTokens(): number { return Math.max(0, this.budget.maxTokens - this.budget.reservedOutputTokens - this.tokenEstimate()); }
   budgetMaxToolResultChars(): number { return this.budget.maxToolResultChars; }
   contextPct(inputTokens?: number): number { return Math.max(0, Number(inputTokens ?? this.tokenEstimate())) / Math.max(1, this.budget.maxTokens); }

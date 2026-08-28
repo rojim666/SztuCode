@@ -216,3 +216,33 @@ def test_assistant_message_untouched() -> None:
     msgs = [{"role": "assistant", "content": text}]
     result = truncate_tool_results(msgs, limit=8000, keep=4000)
     assert result[0]["content"] == text
+
+
+# 功能：验证未截断消息保留对象身份，支撑增量 token 估算的前缀匹配
+# 设计：plain user、tool_result user、assistant 三类消息全部未超限，断言返回同一对象
+def test_untruncated_messages_preserve_identity() -> None:
+    msgs = [
+        {"role": "user", "content": "plain"},
+        _make_tool_result_msg("short"),
+        {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
+    ]
+    result = truncate_tool_results(msgs, limit=8000, keep=4000)
+    assert result[0] is msgs[0]
+    assert result[1] is msgs[1]
+    assert result[2] is msgs[2]
+
+
+# 功能：验证截断仅重建受影响消息，且已截断内容二次调用保持身份
+# 设计：混合短/超长 tool_result 与 assistant 消息；首次截断只替换超长那条，
+#      再次截断已截断内容时应保持对象身份（避免每步重建破坏增量计数）
+def test_truncation_only_rebuilds_affected_and_is_idempotent() -> None:
+    short = _make_tool_result_msg("short")
+    long_msg = _make_tool_result_msg("x" * 10_000)
+    assistant = {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}
+    result = truncate_tool_results([short, long_msg, assistant], limit=8000, keep=4000)
+    assert result[0] is short
+    assert result[1] is not long_msg
+    assert result[2] is assistant
+
+    again = truncate_tool_results([short, result[1], assistant], limit=8000, keep=4000)
+    assert again[1] is result[1]

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RuntimeSettings, SettingsStore } from "./settings.js";
+import { ORCAROUTER_BASE_URL, ORCAROUTER_MODELS, ORCAROUTER_VENDOR, isOrcaRouterUrl } from "./providers/orcarouter.js";
 
 type ProfileSettings = Omit<RuntimeSettings, "permission_mode">;
 export type ModelProfile = ProfileSettings & { id: string; name: string; vendor: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
@@ -10,10 +11,16 @@ type ProfileFile = { profiles: StoredProfile[]; active_model_id: string };
 
 const ZEN_BASE_URL = "https://opencode.ai/zen/v1";
 const ZEN_MODELS = ["deepseek-v4-flash-free", "ling-3.0-flash-free", "nemotron-3-ultra-free", "north-mini-code-free", "longcat-2.0-free", "mimo-v2.5-free", "laguna-s-2.1-free"];
-const BUILTIN_PROFILES: StoredProfile[] = ZEN_MODELS.map((model) => ({
+const ZEN_PROFILES: StoredProfile[] = ZEN_MODELS.map((model) => ({
   id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai", api_format: "openai_chat_completions", model, base_url: ZEN_BASE_URL, builtin: true, keyless: true,
   context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true,
 }));
+// OrcaRouter 需要自备 sk-orca- 密钥，因此 keyless 为 false；用户在设置里填入密钥后即可选中。
+const ORCA_PROFILES: StoredProfile[] = ORCAROUTER_MODELS.map(({ id, context_window }) => ({
+  id: `builtin-orcarouter-${id.replace(/\//g, "-")}`, name: id, vendor: ORCAROUTER_VENDOR, provider: "openai", api_format: "openai_chat_completions", model: id, base_url: ORCAROUTER_BASE_URL, builtin: true, keyless: false,
+  context_window, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true,
+}));
+const BUILTIN_PROFILES: StoredProfile[] = [...ZEN_PROFILES, ...ORCA_PROFILES];
 
 export class ModelProfileStore {
   private profiles: StoredProfile[] = []; private activeId = ""; private loaded = false;
@@ -22,7 +29,7 @@ export class ModelProfileStore {
   async list(): Promise<ModelProfile[]> {
     await this.load(); const current = await this.settings.get();
     if (!this.activeId) this.activeId = this.all().find((profile) => profile.provider === current.provider && profile.model === current.model && profile.base_url === current.base_url)?.id ?? "";
-    return this.all().map(({ api_key, keyless, ...profile }) => ({ ...profile, has_api_key: Boolean(keyless || api_key || providerKey(profile.provider)), is_current: profile.id === this.activeId }));
+    return this.all().map(({ api_key, keyless, ...profile }) => ({ ...profile, has_api_key: Boolean(keyless || api_key || providerKey(profile)), is_current: profile.id === this.activeId }));
   }
 
   async save(input: Partial<StoredProfile> & { name: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; select?: boolean }): Promise<{ settings: RuntimeSettings; models: ModelProfile[] }> {
@@ -52,4 +59,8 @@ export class ModelProfileStore {
   private async persist(): Promise<void> { await mkdir(path.dirname(this.filePath), { recursive: true }); await writeFile(this.filePath, `${JSON.stringify({ profiles: this.profiles, active_model_id: this.activeId }, null, 2)}\n`, "utf8"); }
 }
 
-function providerKey(provider: "anthropic" | "openai"): string | undefined { return provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY; }
+function providerKey(profile: { provider: "anthropic" | "openai"; base_url?: string }): string | undefined {
+  if (profile.provider === "anthropic") return process.env.ANTHROPIC_API_KEY;
+  if (isOrcaRouterUrl(profile.base_url)) return process.env.ORCAROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
+  return process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
+}

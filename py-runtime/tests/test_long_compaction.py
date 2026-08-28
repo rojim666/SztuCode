@@ -143,6 +143,7 @@ persist compaction before returning
         *,
         step: int = 0,
         system: str | None = None,
+    )usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._calls += 1
         if self._calls == 1:

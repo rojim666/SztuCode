@@ -100,6 +100,7 @@ class _MockProvider:
         *,
         step: int = 0,
         system: str | None = None,
+    )usage_estimator: object | None = None,
     ) -> LlmResponse:
         self.call_count += 1
         self.last_messages = [dict(m) for m in messages]

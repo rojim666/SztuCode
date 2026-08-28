@@ -133,6 +133,7 @@ class AnthropicProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: Any | None = None,
     ) -> LlmResponse:
         await bus.publish(
             LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
@@ -233,10 +234,12 @@ class AnthropicProvider:
         context_window = _context_window(self._model, self._context_window_override)
         context_pct = usage.input_tokens / context_window
         from sztu_code.core.compact.context_usage import estimate_context_usage
+        # 用原始（未加 cache_control 注解）tool_schemas 作增量键，跨调用内容稳定
         breakdown = estimate_context_usage(
-            messages=messages, tool_schemas=tools, system=system or _SYSTEM_PROMPT,
+            messages=messages, tool_schemas=tool_schemas, system=system or _SYSTEM_PROMPT,
             actual_input_tokens=usage.input_tokens, context_window=context_window,
             reserved_output_tokens=self._max_output_tokens,
+            incremental=usage_estimator,
         )
 
         await bus.publish(

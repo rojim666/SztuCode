@@ -38,6 +38,16 @@ export class SessionStore {
   async setWorkspace(id: string, workspaceId: string | null): Promise<Session> { const session = await this.get(id); session.workspace_id = workspaceId; session.updated_at = new Date().toISOString(); await this.save(session); return session; }
   async close(id: string): Promise<Session> { const session = await this.get(id); session.status = "closed"; session.updated_at = new Date().toISOString(); await this.save(session); return session; }
   async setStatus(id: string, status: SessionStatus): Promise<Session> { const session = await this.get(id); session.status = status; session.updated_at = new Date().toISOString(); await this.save(session); return session; }
+  /** A daemon restart cancels all in-memory runs, so persisted active sessions must be made resumable. */
+  async recoverInterruptedSessions(): Promise<string[]> {
+    const recovered: string[] = [];
+    for (const session of await this.list(true)) {
+      if (session.status !== "active") continue;
+      await this.setStatus(session.id, session.mode === "chat" ? "waiting_for_input" : "closed");
+      recovered.push(session.id);
+    }
+    return recovered;
+  }
   async delete(id: string): Promise<void> { const { rm } = await import("node:fs/promises"); await rm(path.join(this.root, id), { recursive: true, force: true }); }
   async list(includeArchived = false): Promise<Session[]> {
     await mkdir(this.root, { recursive: true }); const result: Session[] = [];

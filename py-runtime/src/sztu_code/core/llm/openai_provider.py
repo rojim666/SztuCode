@@ -468,6 +468,7 @@ class OpenAIProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: Any | None = None,
     ) -> LlmResponse:
         await bus.publish(
             LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
@@ -491,10 +492,12 @@ class OpenAIProvider:
         context_pct = input_tokens / context_window if input_tokens > 0 else 0.0
 
         from sztu_code.core.compact.context_usage import estimate_context_usage
+        # 用原始（未转换/未注解）tool_schemas 作增量键，跨调用内容稳定，避免每步重数
         breakdown = estimate_context_usage(
-            messages=messages, tool_schemas=tools or [], system=system or _SYSTEM_PROMPT,
+            messages=messages, tool_schemas=tool_schemas, system=system or _SYSTEM_PROMPT,
             actual_input_tokens=input_tokens, context_window=context_window,
             reserved_output_tokens=self._max_output_tokens,
+            incremental=usage_estimator,
         )
 
         await bus.publish(

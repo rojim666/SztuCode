@@ -3,7 +3,7 @@ import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, re
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
+  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Workflow, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,11 +12,12 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
-import ModelManager from "./components/ModelConfig/ModelManager.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
-import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
+// 暂时隐藏“修改了 N 个文件”提示，保留组件以便后续恢复。
+// import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
+import PipelineStream from "./components/timeline/pipeline/PipelineStream.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
@@ -49,6 +50,8 @@ type QueuedSubmission = {
   contentSuffix: string;
   images: ImageBlock[];
   attachmentCount: number;
+  // 原样保留入列时的附件，编辑时需要把内容完整退回输入框重来
+  attachments: PendingAttachment[];
 };
 const FULL_SIDEBAR_MIN_WIDTH = 952;
 const FULL_SIDEBAR_MIN_HEIGHT = 640;
@@ -229,12 +232,17 @@ const attachedFiles = ref<PendingAttachment[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const settingsOpen = ref(false);
+const settingsInitialSection = ref<"appearance" | "agent">("appearance");
 const activeAppMenu = ref<AppMenu | null>(null);
 const statusBarVisible = ref(localStorage.getItem("sztu.statusBarVisible") !== "false");
 const webviewZoom = ref(Number(localStorage.getItem("sztu.webviewZoom")) || 1);
 let lastEditableElement: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null = null;
 const settingsButton = ref<HTMLButtonElement | null>(null);
 const appearanceSettings = ref<AppearanceSettings>(loadAppearanceSettings());
+// 时间线渲染方式：classic=按轮次折叠、结束后回放；pipeline=线性流水线、全程就地追加。
+// 两套并存可随时切换对比，跑稳后再移除 classic 分支。
+const timelineView = ref<"classic" | "pipeline">(localStorage.getItem("sztu.timelineView") === "pipeline" ? "pipeline" : "classic");
+watch(timelineView, (value) => localStorage.setItem("sztu.timelineView", value));
 const currentStepByRun = new Map<string, number>();
 const runStepBase = new Map<string, number>(); // 每个 run 的 step 起点偏移，避免跨 run 步号冲突
 const liveRunUsage = new Map<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number }>();
@@ -251,7 +259,6 @@ const questionSubmittingId = ref<string | null>(null);
 const questionErrors = reactive(new Map<string, string>());
 const resolvedQuestionIds = new Set<string>();
 let questionEventVersion = 0;
-const modelManagerOpen = ref(false);
 
 // 未发送的启动器输入按项目持久化；切走或重启应用后再次点击项目仍可继续编辑。
 watch(prompt, (value) => {
@@ -354,15 +361,16 @@ watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
 // 从当前会话 Agent trace 聚合 AI 修改过的文件路径，按路径去重。
-const changeSummaryPaths = computed(() => {
-  const paths = new Set<string>();
-  for (const item of orderedTimeline.value) {
-    for (const entry of item.changes ?? []) {
-      for (const path of entry.paths) if (path) paths.add(path);
-    }
-  }
-  return [...paths];
-});
+// 暂时停用文件修改汇总，保留实现以便恢复右侧提示。
+// const changeSummaryPaths = computed(() => {
+//   const paths = new Set<string>();
+//   for (const item of orderedTimeline.value) {
+//     for (const entry of item.changes ?? []) {
+//       for (const path of entry.paths) if (path) paths.add(path);
+//     }
+//   }
+//   return [...paths];
+// });
 const permissionModeLabel = computed(() => ({
   normal: "标准审批",
   plan: "计划模式",
@@ -996,6 +1004,13 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     setStep(step, (current) => ({ ...current, status: "thinking", runId }));
     return;
   }
+  if (type === "phase.changed") {
+    // daemon 已明确下发阶段，直接采信；前端推断只在收不到该事件时兜底
+    const step = stepFor(timelineEvent);
+    const phase = String(event.phase ?? "");
+    if (phase) setStep(step, (current) => ({ ...current, daemonPhase: phase as TimelineStep["daemonPhase"] }));
+    return;
+  }
   if (type === "llm.token") {
     // 首个 token 打时间戳（TTFT），只记录一次
     if (!firstTokenByRun.has(relatedRunId)) firstTokenByRun.set(relatedRunId, Date.now());
@@ -1421,12 +1436,24 @@ function enqueueSubmission(sessionId: string, text: string, payload: string, ima
     contentSuffix: payload.startsWith(text) ? payload.slice(text.length) : "",
     images: images.map((image) => ({ ...image })),
     attachmentCount,
+    attachments: attachedFiles.value.map((file) => ({ ...file })),
   }];
 }
-function editQueuedSubmission(id: string, text: string) {
+// 编辑待处理任务 = 把它原样退回输入框：文本回到 prompt，附件回到 attachedFiles，
+// 再从队列里移除。这样复用输入框的全部编辑能力，也不会丢掉已附加的文件。
+function editQueuedSubmission(id: string) {
   const view = activeView.value;
-  if (!view) return;
-  view.queue = view.queue.map((item) => item.id === id ? { ...item, text: text.trim() } : item);
+  const item = view?.queue.find((entry) => entry.id === id);
+  if (!view || !item || view.queueBusyId === id) return;
+  prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${item.text}` : item.text;
+  const known = new Set(attachedFiles.value.map((file) => file.path));
+  attachedFiles.value = [
+    ...attachedFiles.value,
+    ...item.attachments.filter((file) => !known.has(file.path)).map((file) => ({ ...file })),
+  ];
+  view.queue = view.queue.filter((entry) => entry.id !== id);
+  slashMenuDismissed.value = false;
+  void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
 }
 function removeQueuedSubmission(id: string) {
   const view = activeView.value;
@@ -1911,8 +1938,9 @@ function handleModelConfigUpdated(settings: RuntimeSettings, status: ProviderSta
   runtimeSettings.value = settings;
   providerStatus.value = status;
 }
-function openModelManager() { modelManagerOpen.value = true; }
+function openModelManager() { settingsInitialSection.value = "agent"; settingsOpen.value = true; }
 function openSettings() {
+  settingsInitialSection.value = "appearance";
   settingsOpen.value = true;
   projectMenuOpen.value = false;
   closeLauncherMenus();
@@ -1985,6 +2013,7 @@ function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
+function toggleTimelineView() { timelineView.value = timelineView.value === "pipeline" ? "classic" : "pipeline"; }
 async function submitChat(content: string) {
   const { content: payload, images } = buildMessagePayload(content);
   await submitTask(payload, null, images);
@@ -2509,6 +2538,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
+                  <button type="button" class="pipeline-view-toggle" :title="timelineView === 'pipeline' ? '流水线视图（点击切回经典）' : '经典视图（点击切到流水线）'" :aria-label="timelineView === 'pipeline' ? '切换到经典视图' : '切换到流水线视图'" :aria-pressed="timelineView === 'pipeline'" :class="{ active: timelineView === 'pipeline' }" @click="toggleTimelineView"><Workflow :size="18" /></button>
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
@@ -2530,16 +2560,18 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <PipelineStream v-if="timelineView === 'pipeline'" :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline v-else :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
+                <!-- 暂时隐藏“修改了 N 个文件”提示。
                 <ChangeSummaryRail
                   v-if="active"
                   :paths="changeSummaryPaths"
-                />
+                /> -->
                 <QueueDock
                   :items="activeQueueItems"
                   :running="isRunActive"
@@ -2547,21 +2579,22 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   @edit="editQueuedSubmission"
                   @remove="removeQueuedSubmission"
                   @steer="steerQueuedSubmission"
-                />
-                <UserQuestionComposer
-                  v-if="activeUserQuestion"
-                  :pending="activeUserQuestion"
-                  :busy="questionSubmittingId === activeUserQuestion.rpc_id"
-                  :error="questionErrors.get(activeUserQuestion.rpc_id)"
-                  @submit="submitUserQuestion(activeUserQuestion, $event)"
-                  @stop="stopActiveRun"
-                />
-                <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
-                  <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                  <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                  <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send queue-send" type="submit" title="加入待处理队列" aria-label="加入待处理队列" :disabled="!prompt.trim() || (sending && !isAppending) || steering"><ListPlus :size="14" /></button><button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!prompt.trim() || active.archived || active.status === 'closed'"><ArrowUp :size="15" /></button></div>
-                </form>
+                >
+                  <UserQuestionComposer
+                    v-if="activeUserQuestion"
+                    :pending="activeUserQuestion"
+                    :busy="questionSubmittingId === activeUserQuestion.rpc_id"
+                    :error="questionErrors.get(activeUserQuestion.rpc_id)"
+                    @submit="submitUserQuestion(activeUserQuestion, $event)"
+                    @stop="stopActiveRun"
+                  />
+                    <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
+                      <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
+                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                      <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive && !prompt.trim()" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                    </form>
+                </QueueDock>
               </div>
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
@@ -2574,7 +2607,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 :attachments="attachedFiles.map((item) => item.path)"
                 :workspace-name="activeWorkspace.name"
                 :workspace-path="activeWorkspace.path"
-                :obscured="modelManagerOpen || permissionConfirmOpen"
+                :obscured="permissionConfirmOpen"
                 :files-request="filesRequest"
                 @close="setInspectorOpen(false)"
               />
@@ -2598,7 +2631,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" title="添加附件" aria-label="添加附件" @click="selectAttachments"><Plus :size="18" /></button>
                   <div class="launcher-permission-control">
-                    <button type="button" class="permission" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><ShieldCheck :size="15" />{{ permissionModeLabel }}<ChevronDown :size="13" /></button>
+                    <button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><ShieldCheck :size="15" />{{ permissionModeLabel }}<ChevronDown :size="13" /></button>
                     <div v-if="launcherPermissionMenuOpen" class="launcher-popover permission-popover" role="menu" aria-label="权限模式">
                       <button type="button" class="full-access-row" role="menuitemcheckbox" :aria-checked="runtimeSettings?.permission_mode === 'auto'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><span><b>允许全部权限</b><small>跳过所有操作确认</small></span><i :class="{ active: runtimeSettings?.permission_mode === 'auto' }"><em /></i></button>
                       <p v-if="permissionSettingsError" class="launcher-menu-error">{{ permissionSettingsError }}</p>
@@ -2632,7 +2665,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <section v-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
 
-      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /></section>
+      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><GitBranch :size="30" /><h1>暂无可用工作区</h1><p>打开或选择一个项目后即可查看源代码管理。</p><button type="button" @click="openPage('work')">返回工作区</button></div></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>全部任务</h1><p>管理项目任务、临时任务与归档记录</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>
@@ -2655,6 +2688,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       :appearance="appearanceSettings"
       :runtime-settings="runtimeSettings"
       :permission-error="permissionSettingsError"
+      :initial-section="settingsInitialSection"
       @close="closeSettings"
       @appearance-change="handleAppearanceChange"
       @permission-change="choosePermissionMode"
@@ -2677,7 +2711,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </form>
     </div>
 
-    <div v-if="modelManagerOpen" class="model-manager-backdrop"><ModelManager @close="modelManagerOpen = false" @updated="handleModelConfigUpdated" /></div>
 
     <div v-if="permissionConfirmOpen" class="permission-confirm-backdrop" role="presentation" @mousedown.self="permissionConfirmOpen = false">
       <section class="permission-confirm" role="alertdialog" aria-modal="true" aria-labelledby="permission-confirm-title" aria-describedby="permission-confirm-description">

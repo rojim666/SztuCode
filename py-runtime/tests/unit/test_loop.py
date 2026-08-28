@@ -46,6 +46,7 @@ class _MockProvider:
         *,
         step: int = 0,
         system: str | None = None,
+    )usage_estimator: object | None = None,
     ) -> LlmResponse:
         if self._exc is not None:
             raise self._exc
@@ -75,6 +76,7 @@ class _CompactingProvider:
         *,
         step: int = 0,
         system: str | None = None,
+    )usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._calls += 1
         if self._calls == 1:
@@ -305,6 +307,7 @@ async def test_steering_received_at_end_turn_continues_loop() -> None:
             *,
             step: int = 0,
             system: str | None = None,
+        )usage_estimator: object | None = None,
         ) -> LlmResponse:
             self.calls.append([dict(message) for message in messages])
             if len(self.calls) == 1:

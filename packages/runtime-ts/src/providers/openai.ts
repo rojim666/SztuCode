@@ -1,12 +1,13 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import type { ToolRegistry } from "../tools.js";
-import { AnthropicMessagesProvider } from "./anthropic.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 
 type OpenAiResponse = { choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; summary?: Array<{ type?: string; text?: string }>; content?: Array<{ type?: string; text?: string }> };
 type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
-export type OpenAiProviderOptions = { apiKey?: string; baseUrl?: string; model: string; timeoutMs?: number; apiFormat?: "openai_chat_completions" | "openai_responses"; maxOutputTokens?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; stream?: boolean; cacheControl?: boolean };
+/** 网关类与部分推理模型对标准 OpenAI 请求存在差异，compat 用于逐项修正而不影响默认行为。 */
+export type ProviderCompat = { headers?: Record<string, string>; extraBody?: Record<string, unknown>; dropTemperature?: boolean; dropTopP?: boolean; disableCacheControl?: boolean };
+export type OpenAiProviderOptions = { apiKey?: string; baseUrl?: string; model: string; timeoutMs?: number; apiFormat?: "openai_chat_completions" | "openai_responses"; maxOutputTokens?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; stream?: boolean; cacheControl?: boolean; compat?: ProviderCompat };
 
 export class OpenAiCompatibleProvider implements ModelProvider {
   constructor(private readonly options: OpenAiProviderOptions) {}
@@ -23,8 +24,8 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 120_000);
     try {
       const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
-      const definitions = tools.list().map((tool, index, all) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }));
-      const apiMessages = messages.map((message) => message.role === "assistant" && message.tool_calls?.length ? { role: "assistant", content: typeof message.content === "string" ? message.content || null : message.content, ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}), tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : message.role === "system" && this.options.cacheControl ? { ...message, cache_control: { type: "ephemeral" } } : message);
+      const definitions = tools.list().map((tool, index, all) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema, ...(this.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }));
+      const apiMessages = messages.map((message) => message.role === "assistant" && message.tool_calls?.length ? { role: "assistant", content: typeof message.content === "string" ? message.content || null : message.content, ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}), tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : message.role === "system" && this.cacheControl ? { ...message, cache_control: { type: "ephemeral" } } : message);
       const responses = this.options.apiFormat === "openai_responses";
       const input: Array<Record<string, unknown>> = [];
       for (const message of messages) {
@@ -38,8 +39,8 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         input.push({ role: message.role, content: typeof message.content === "string" ? message.content : message.content.map((block) => ({ ...block, type: block.type === "text" ? "input_text" : block.type === "image" ? "input_image" : block.type, ...(block.text != null ? { text: block.text } : block.content != null ? { text: block.content } : {}) })) });
       }
       const system = messages.filter((message) => message.role === "system").map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n\n");
-      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(this.options.reasoningEffort ? { reasoning: { effort: this.options.reasoningEffort, summary: "auto" } } : {}) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters }, ...(tool.cache_control ? { cache_control: tool.cache_control } : {}) })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? { max_tokens: this.options.maxOutputTokens } : {}), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}) };
-      const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning: { effort: this.options.reasoningEffort, summary: "auto" } } : {}) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters }, ...(tool.cache_control ? { cache_control: tool.cache_control } : {}) })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? { max_tokens: this.options.maxOutputTokens } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}) };
+      const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
       if (!response.ok) throw new Error(`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
       if (this.options.stream && response.body && response.headers.get("content-type")?.includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking);
       const payload = await response.json() as OpenAiResponse & ResponsesResponse;
@@ -55,6 +56,12 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       if (choice.reasoning_content) onThinking?.(choice.reasoning_content);
       return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: toolCalls.length ? "tool_use" : "end_turn", model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? 0) } };
     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
+  }
+
+  private get cacheControl(): boolean { return Boolean(this.options.cacheControl) && !this.options.compat?.disableCacheControl; }
+  private samplingParams(): Record<string, unknown> {
+    const { temperature, topP, compat } = this.options;
+    return { ...(temperature != null && !compat?.dropTemperature ? { temperature } : {}), ...(topP != null && !compat?.dropTopP ? { top_p: topP } : {}) };
   }
 
   private async parseStream(response: Response, responses: boolean, onToken?: (token: string) => void, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
@@ -90,11 +97,3 @@ export class OpenAiCompatibleProvider implements ModelProvider {
   }
 }
 
-export function providerFromEnvironment(): ModelProvider {
-  if ((process.env.SZTU_PROVIDER ?? "").toLowerCase() === "anthropic" || process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY) {
-    return new AnthropicMessagesProvider({ apiKey: process.env.ANTHROPIC_API_KEY ?? "", baseUrl: process.env.ANTHROPIC_BASE_URL, model: process.env.SZTU_MODEL ?? "claude-3-5-sonnet-latest" });
-  }
-  const apiKey = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) return { async complete() { throw new Error("OPENAI_API_KEY or DEEPSEEK_API_KEY is required"); } };
-  return new OpenAiCompatibleProvider({ apiKey, baseUrl: process.env.OPENAI_BASE_URL ?? process.env.DEEPSEEK_BASE_URL, model: process.env.SZTU_MODEL ?? "gpt-4o-mini" });
-}

@@ -15,6 +15,7 @@ const emit = defineEmits<{
   close: [];
   updated: [settings: RuntimeSettings, status: ProviderStatus | null];
 }>();
+const props = defineProps<{ embedded?: boolean }>();
 
 const vendors = modelVendors;
 
@@ -186,7 +187,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <section ref="managerDialog" class="model-manager" role="dialog" aria-modal="true" aria-label="模型管理" tabindex="-1" @keydown.esc="emit('close')">
+  <section ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : 'true'" aria-label="模型管理" tabindex="-1" @keydown.esc="emit('close')">
     <header><div><h1>模型</h1><p>配置 API Key，添加并管理本机可用模型。</p></div><button type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button></header>
     <div ref="modelManagerBody" class="model-manager-body" tabindex="-1" :inert="Boolean(deleteTarget || deletingId)">
       <button ref="editorTrigger" type="button" class="model-add-button" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)"><Plus :size="15" />添加模型</button>

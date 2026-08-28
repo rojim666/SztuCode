@@ -408,7 +408,7 @@ test("narrow conversation text aligns with the composer edges", async ({ page })
   expect(geometry.messageRight).toBeCloseTo(geometry.composerRight, 0);
 });
 
-test("running-task composer keeps the idle dimensions", async ({ page }) => {
+test("running-task append composer keeps the compact conversation dimensions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator(".kimi-main").evaluate((main) => {
@@ -433,11 +433,21 @@ test("running-task composer keeps the idle dimensions", async ({ page }) => {
   await composer.evaluate((element) => element.classList.add("append-mode"));
   const running = await composer.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    return { width: box.width, height: box.height };
+    const conversation = element.parentElement!.getBoundingClientRect();
+    const textarea = element.querySelector<HTMLTextAreaElement>("textarea")!;
+    return {
+      width: box.width,
+      height: box.height,
+      leftGap: box.left - conversation.left,
+      rightGap: conversation.right - box.right,
+      textareaMinHeight: parseFloat(getComputedStyle(textarea).minHeight),
+    };
   });
 
   expect(running.width).toBeCloseTo(idle.width, 0);
+  expect(running.leftGap).toBeCloseTo(running.rightGap, 0);
   expect(running.height).toBeCloseTo(idle.height, 0);
+  expect(running.textareaMinHeight).toBe(52);
 });
 
 test("task conversation slash menu opens above the composer without clipping", async ({ page }) => {

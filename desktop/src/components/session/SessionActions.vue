@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, LoaderCircle, Pin, PinOff, Pencil } from "@lucide/vue";
+import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
 import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
 
 const props = defineProps<{ session: Session; active?: boolean }>();
@@ -220,9 +220,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'" :aria-label="session.status === 'active' ? '运行中' : undefined">
-    <span v-if="session.status === 'active'" class="session-running-indicator" role="status" aria-label="运行中"><LoaderCircle :size="17" :stroke-width="1.8" /></span>
-    <button v-else ref="trigger" class="icon-button" title="归档会话" aria-label="归档会话" :disabled="busy" @click="archive"><Archive :size="17" /></button>
+  <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'">
+    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? '任务运行中，暂不能归档' : '归档会话'" aria-label="归档会话" :disabled="busy || session.status === 'active'" @click="archive"><Archive :size="17" /></button>
     <Teleport to="body">
       <div v-if="open" ref="menu" class="session-menu session-menu--floating" :style="menuStyle" role="menu" @contextmenu.stop>
         <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" aria-label="会话名称" maxlength="120" autofocus /><button :disabled="busy">保存</button></form>

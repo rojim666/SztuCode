@@ -145,7 +145,7 @@ p {
 .token-stream,
 .turn-result .token-stream,
 .markdown-body,
-.task-conversation > .kimi-composer textarea,
+.task-conversation .kimi-composer textarea,
 .chat-composer > textarea,
 .task-launcher .landing-composer textarea {
   font-family: var(--font-ui);
