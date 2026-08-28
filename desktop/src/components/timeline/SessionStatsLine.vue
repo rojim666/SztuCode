@@ -13,10 +13,8 @@ const groups = computed<string[]>(() => {
 
   if (stats.steps > 0) g.push(`${stats.turns} 轮 · ${stats.steps} 步`);
 
-  const times: string[] = [];
-  if (stats.llmMs > 0) times.push(`LLM ${formatDuration(stats.llmMs / 1000)}`);
-  if (stats.toolMs > 0) times.push(`工具调用 ${formatDuration(stats.toolMs / 1000)}`);
-  if (times.length) g.push(times.join(" · "));
+  // 不展示 LLM 单独计算耗时，避免与轮次总耗时重复；仅保留工具调用耗时。
+  if (stats.toolMs > 0) g.push(`工具调用 ${formatDuration(stats.toolMs / 1000)}`);
 
   if (stats.ttftSteps > 0) {
     const averageSeconds = stats.ttftMsTotal / stats.ttftSteps / 1000;

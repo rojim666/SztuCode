@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
-import { listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
+import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
+import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
 
 const props = defineProps<{ session: Session; active?: boolean }>();
 const emit = defineEmits<{ changed: []; closed: [] }>();
@@ -88,6 +88,11 @@ async function togglePinned() {
   } finally {
     busy.value = false;
   }
+}
+
+async function archive() {
+  if (props.session.archived || busy.value) return;
+  await run(() => archiveSession(props.session.session_id), true);
 }
 
 async function openContextMenu(event: MouseEvent) {
@@ -216,7 +221,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'" :aria-label="session.status === 'active' ? '运行中' : undefined">
-    <button ref="trigger" class="icon-button" title="会话操作" aria-label="会话操作" :aria-expanded="open" @click="toggleMenu"><Ellipsis :size="18" /></button>
+    <button ref="trigger" class="icon-button" title="归档会话" aria-label="归档会话" :disabled="busy" @click="archive"><Archive :size="17" /></button>
     <Teleport to="body">
       <div v-if="open" ref="menu" class="session-menu session-menu--floating" :style="menuStyle" role="menu" @contextmenu.stop>
         <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" aria-label="会话名称" maxlength="120" autofocus /><button :disabled="busy">保存</button></form>

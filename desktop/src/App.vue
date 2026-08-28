@@ -168,6 +168,16 @@ function scrollTaskStreamToBottom() {
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   streamScrolledUp.value = false;
 }
+let autoScrollFrame: number | undefined;
+function keepTaskStreamAtBottom() {
+  if (streamScrolledUp.value || autoScrollFrame !== undefined) return;
+  autoScrollFrame = window.requestAnimationFrame(() => {
+    autoScrollFrame = undefined;
+    const el = taskStreamEl.value;
+    if (!el || streamScrolledUp.value) return;
+    el.scrollTop = el.scrollHeight;
+  });
+}
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
@@ -182,6 +192,7 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+const projectPreviewId = ref<string | null>(null);
 const projectEditingId = ref<string | null>(null);
 const projectEditName = ref("");
 const projectEditError = ref("");
@@ -259,7 +270,9 @@ const liveSessions = computed(() => sessions.value.filter((item) => !item.archiv
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
-const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || item.title.toLocaleLowerCase().includes(normalizedTaskQuery.value);
+// 历史会话的标题可能为空（例如旧版本创建的临时会话）；搜索弹窗首次打开时
+// 会立即计算结果，因此这里必须把空标题按空字符串处理，避免点击搜索直接抛异常。
+const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || String(item.title ?? "").toLocaleLowerCase().includes(normalizedTaskQuery.value);
 const visibleSessions = computed(() => liveSessions.value.filter(matchesTaskQuery));
 const temporaryTasks = computed(() => visibleSessions.value.filter((item) => !item.workspace_id).slice(0, 5));
 const allProjects = computed(() => activeWorkspaces.value
@@ -280,6 +293,8 @@ const filteredLauncherWorkspaces = computed(() => {
   return activeWorkspaces.value.filter((item) => `${item.name} ${item.path}`.toLocaleLowerCase().includes(query)).slice(0, 8);
 });
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
+// 流式输出和思考动画不断改变内容高度；用户未主动上滑时持续跟随最新输出。
+watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
@@ -2177,6 +2192,7 @@ onMounted(() => {
   void refreshRuntime(true);
 });
 onBeforeUnmount(() => {
+  if (autoScrollFrame !== undefined) window.cancelAnimationFrame(autoScrollFrame);
   tokenBatcher.clear();
   discardAllPendingTimeline();
   for (const timer of sessionLoadingTimers.values()) window.clearTimeout(timer);
@@ -2303,14 +2319,16 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </button>
       </header>
 
-      <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" aria-label="搜索任务或项目" @pointerdown.stop>
-        <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
-        <p class="task-search-popover__hint">{{ taskQuery ? `搜索结果 · ${visibleSessions.length}` : '最近会话' }}</p>
-        <div class="task-search-popover__results">
-          <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || '未命名任务' }}</span><small>{{ taskStatusLabel(task) }}</small></button>
-          <p v-if="taskQuery && !visibleSessions.length">没有匹配的会话</p>
+      <Teleport to="body">
+        <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" aria-label="搜索任务或项目" @pointerdown.stop>
+          <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
+          <p class="task-search-popover__hint">{{ taskQuery ? `搜索结果 · ${visibleSessions.length}` : '最近会话' }}</p>
+          <div class="task-search-popover__results">
+            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || '未命名任务' }}</span><small>{{ taskStatusLabel(task) }}</small></button>
+            <p v-if="taskQuery && !visibleSessions.length">没有匹配的会话</p>
+          </div>
         </div>
-      </div>
+      </Teleport>
 
       <div class="sidebar-command">
         <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />新建任务</button>
@@ -2348,11 +2366,17 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           </div>
           <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
-            <div class="project-row-shell" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
+            <div class="project-row-shell" @mouseenter="projectPreviewId = item.workspace_id" @mouseleave="projectPreviewId = null" @focusin="projectPreviewId = item.workspace_id" @focusout="(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) projectPreviewId = null; }" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
               <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
                 <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
+              <div v-if="projectPreviewId === item.workspace_id" class="project-preview-card" role="tooltip">
+                <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ item.name }}</b><button type="button" title="编辑项目" aria-label="编辑项目" @mousedown.prevent @click.stop="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.7" /></button></header>
+                <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ item.tasks.length }} 个任务</span></div>
+                <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ item.path }}</span></div>
+                <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
+              </div>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="`${item.name} 项目操作`">
                 <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? '取消置顶' : '置顶' }}</button>
                 <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />编辑</button>
@@ -2454,7 +2478,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <button type="button" class="open" @click="chooseTask(pending.session_id)">打开任务</button>
                 </div>
               </div>
-              <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length }">
+              <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
