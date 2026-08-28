@@ -19,6 +19,7 @@ import {
   type AccentColor, type AppearanceSettings, type CodeFont, type ThemePreference,
   type WallpaperStyle, uiFontOptions,
 } from "../../services/appearance";
+import AgentLogo from "../timeline/AgentLogo.vue";
 
 type SettingsSection = "appearance" | "general" | "agent" | "integrations" | "about";
 
@@ -437,7 +438,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <header class="settings-pane-title"><div><h2>关于</h2><p>SztuCode Desktop 项目信息</p></div><Info :size="20" /></header>
             <section class="settings-block about-product">
               <div class="about-product__identity">
-                <span class="about-product__mark" aria-hidden="true">SZ</span>
+                <AgentLogo class="about-product__mark" aria-hidden="true" size="small" />
                 <div><h3>SztuCode Desktop</h3><p>本地优先的智能编码工作台</p></div>
               </div>
               <dl class="about-details">
@@ -584,7 +585,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 .integration-row em { color: var(--text-faint); font-size: 11px; font-style: normal; }.integration-row em.online { color: #36825a; }
 .about-product { padding: 0; overflow: hidden; }
 .about-product__identity { display: flex; min-height: 112px; padding: 22px; align-items: center; gap: 15px; background: color-mix(in srgb, var(--surface) 68%, transparent); border-bottom: 1px solid var(--border); }
-.about-product__mark { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; color: var(--accent-contrast); background: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 74%, var(--border)); border-radius: 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 9%); font-size: 14px; font-weight: 750; }
+.about-product__mark { width: 48px; height: 48px; flex: 0 0 auto; color: inherit; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .about-product__identity h3 { margin: 0; color: var(--text); font-size: var(--text-section-title); font-weight: 650; }
 .about-product__identity p { margin: 6px 0 0; color: var(--text-faint); font-size: var(--text-caption); }
 .about-details { margin: 0; padding: 4px 22px 8px; }

@@ -222,7 +222,9 @@
 .files-preview-placeholder { align-self: stretch; display: grid; place-content: center; justify-items: center; gap: 8px; color: #8b938e; text-align: center; }
 .files-preview-placeholder svg { color: #737b76; }
 .files-preview-placeholder b,
-.files-preview-placeholder p { margin: 0; color: #202421; font-size: 14px; font-weight: 400; line-height: 1.4; }
+.files-preview-placeholder p { margin: 0; font-size: 12px; font-weight: 400; line-height: 1.4; }
+.files-preview-placeholder b { color: #4b5258; }
+.files-preview-placeholder p { color: #8b9299; }
 .files-workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 /* 左右分栏：左预览自适应、右文件树（宽度可拖拽调整） */
 .file-tree-view { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr) 6px 200px; }

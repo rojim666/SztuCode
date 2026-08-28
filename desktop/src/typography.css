@@ -59,7 +59,7 @@ p {
 }
 
 .agent-sidebar .sidebar-brand h1 {
-  font-size: var(--text-brand-title);
+  font-size: calc(var(--text-brand-title) - 2px);
 }
 
 /* Page-level headings */

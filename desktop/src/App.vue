@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Wrench, X,
+  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -171,7 +171,6 @@ function scrollTaskStreamToBottom() {
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
-const selectedStarterTask = ref("");
 const sending = ref(false);
 const projectMenuOpen = ref(false);
 const launcherProjectMenuOpen = ref(false);
@@ -1267,7 +1266,6 @@ function beginTask(project: Workspace | null = workspace.value) {
   attachedFiles.value = [];
   page.value = "work";
   prompt.value = loadComposerDraft(project?.workspace_id ?? null);
-  selectedStarterTask.value = "";
   void nextTick(() => launcherPrompt.value?.focus());
 }
 function insertProvisionalSession(sessionId: string, title: string, project: Workspace | null) {
@@ -1436,6 +1434,7 @@ async function stopActiveRun() {
   }
 }
 async function chooseTask(id: string) {
+  taskSearchOpen.value = false;
   try {
     const stored = JSON.parse(localStorage.getItem("sztu.unreadSessions") ?? "[]");
     if (Array.isArray(stored) && stored.includes(id)) {
@@ -1820,14 +1819,8 @@ function chooseSkill(name: string) {
   void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
 }
 function handlePromptInput() {
-  selectedStarterTask.value = "";
   slashMenuDismissed.value = false;
   slashMenuActiveIndex.value = 0;
-}
-function chooseStarterTask(id: string, value: string) {
-  selectedStarterTask.value = id;
-  prompt.value = value;
-  void nextTick(() => launcherPrompt.value?.focus());
 }
 function closeActiveSession() { activeId.value = null; launcherTimeline.value = new Map(); void refreshIndex(false); }
 async function applyPermissionMode(value: RuntimeSettings["permission_mode"]) {
@@ -2112,6 +2105,7 @@ function handleGlobalShortcut(event: KeyboardEvent) {
 function handleDocumentPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (!target?.closest(".app-menu-bar")) closeAppMenu();
+  if (!target?.closest(".task-search-popover, .task-search-toggle")) clearTaskSearch();
   if (!target?.closest(".project-row-shell")) projectActionsOpen.value = null;
   if (!target?.closest(".launcher-project-control")) launcherProjectMenuOpen.value = false;
   if (!target?.closest(".launcher-permission-control")) launcherPermissionMenuOpen.value = false;
@@ -2304,16 +2298,19 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
       <header class="sidebar-brand">
         <h1>SztuCode</h1>
-        <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-field" @click="toggleTaskSearch">
+        <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
       </header>
 
-      <label v-if="taskSearchOpen || taskQuery" id="task-search-field" class="task-search">
-        <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
-        <input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" />
-        <button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="clearTaskSearch"><X :size="16" :stroke-width="1.8" /></button>
-      </label>
+      <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" aria-label="搜索任务或项目" @pointerdown.stop>
+        <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
+        <p class="task-search-popover__hint">{{ taskQuery ? `搜索结果 · ${visibleSessions.length}` : '最近会话' }}</p>
+        <div class="task-search-popover__results">
+          <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || '未命名任务' }}</span><small>{{ taskStatusLabel(task) }}</small></button>
+          <p v-if="taskQuery && !visibleSessions.length">没有匹配的会话</p>
+        </div>
+      </div>
 
       <div class="sidebar-command">
         <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />新建任务</button>
@@ -2333,7 +2330,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </nav>
 
       <div class="sidebar-workspace">
-        <section v-if="normalizedTaskQuery" class="side-section search-results">
+        <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
           <span class="side-label">搜索结果 <small>{{ visibleSessions.length }}</small></span>
           <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
@@ -2561,15 +2558,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </form>
 
-            <section class="starter-tasks" aria-label="任务起步项">
-              <span>从常见开发任务开始</span>
-              <div>
-                <button type="button" :class="{ selected: selectedStarterTask === 'understand' }" :aria-pressed="selectedStarterTask === 'understand'" @click="chooseStarterTask('understand', '分析当前项目结构、技术栈和关键模块，并给出一份简洁的项目导览。')"><FolderSearch :size="15" />理解项目</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'fix' }" :aria-pressed="selectedStarterTask === 'fix'" @click="chooseStarterTask('fix', '检查当前项目中最值得优先修复的问题，说明原因并直接完成修复。')"><Wrench :size="15" />排查并修复</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'review' }" :aria-pressed="selectedStarterTask === 'review'" @click="chooseStarterTask('review', '审查当前未提交的代码变更，重点检查缺陷、回归风险和缺失测试。')"><ShieldCheck :size="15" />审查变更</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'plan' }" :aria-pressed="selectedStarterTask === 'plan'" @click="chooseStarterTask('plan', '根据当前项目状态，为下一项开发工作制定可执行的实现计划。')"><LayoutDashboard :size="15" />制定计划</button>
-              </div>
-            </section>
           </div>
         </section>
       </div>
