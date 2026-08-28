@@ -67,6 +67,7 @@ def truncate_tool_results(
             result.append(msg)
             continue
         new_blocks = []
+        changed = False
         for block in content:
             if block.get("type") == "tool_result" and isinstance(block.get("content"), str):
                 text = block["content"]
@@ -81,6 +82,9 @@ def truncate_tool_results(
                         _result_budget(limit, keep),
                         is_error=block.get("is_error") is True,
                     )
+                    changed = True
             new_blocks.append(block)
-        result.append({**msg, "content": new_blocks})
+        # 未发生截断时保留原消息对象身份，使 IncrementalUsageEstimator
+        # 的前缀匹配（is 比较）跨步骤生效，避免每次 LLM 调用全量重数 token
+        result.append({**msg, "content": new_blocks} if changed else msg)
     return result

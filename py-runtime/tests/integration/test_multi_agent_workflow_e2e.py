@@ -177,6 +177,7 @@ class _DeterministicEvaluationProvider:
         *,
         step: int = 0,
         system: str | None = None,
+    )usage_estimator: object | None = None,
     ) -> LlmResponse:
         del tool_schemas, bus, run_id, step, system
         goal = _initial_goal(messages)

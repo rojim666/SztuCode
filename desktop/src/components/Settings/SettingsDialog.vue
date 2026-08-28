@@ -20,6 +20,7 @@ import {
   type WallpaperStyle, uiFontOptions,
 } from "../../services/appearance";
 import AgentLogo from "../timeline/AgentLogo.vue";
+import ModelManager from "../ModelConfig/ModelManager.vue";
 
 type SettingsSection = "appearance" | "general" | "agent" | "integrations" | "about";
 
@@ -29,6 +30,7 @@ const props = defineProps<{
   appearance: AppearanceSettings;
   runtimeSettings: RuntimeSettings | null;
   permissionError: string;
+  initialSection?: SettingsSection;
 }>();
 
 const emit = defineEmits<{
@@ -39,7 +41,7 @@ const emit = defineEmits<{
   runtimeUpdated: [settings: RuntimeSettings];
 }>();
 
-const activeSection = ref<SettingsSection>("appearance");
+const activeSection = ref<SettingsSection>(props.initialSection ?? "appearance");
 const dialog = ref<HTMLElement | null>(null);
 const wallpaperInput = ref<HTMLInputElement | null>(null);
 const localAppearance = ref<AppearanceSettings>({ ...props.appearance });
@@ -66,6 +68,9 @@ const lineHeightLabel = computed(() => `${localAppearance.value.paragraphLineHei
 watch(() => props.appearance, (value) => {
   localAppearance.value = { ...value };
 }, { deep: true });
+watch(() => props.initialSection, (value) => {
+  if (value) activeSection.value = value;
+});
 
 watch(notifications, (enabled) => localStorage.setItem("sztu.notifications", String(enabled)));
 
@@ -77,6 +82,9 @@ onMounted(() => {
 
 function close() {
   emit("close");
+}
+function handleModelUpdated(settings: RuntimeSettings) {
+  emit("runtimeUpdated", settings);
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -433,8 +441,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             </section>
             <section class="settings-block">
               <div class="settings-block__heading"><div><h3>模型管理</h3><p>当前会话使用的模型与供应商</p></div><Cpu :size="17" /></div>
-              <div class="model-current"><span class="model-current__mark">AI</span><div><b>{{ runtimeSettings?.model || '未配置模型' }}</b><p>{{ runtimeSettings?.base_url || '尚未设置服务地址' }}</p></div><i :class="{ online: runtimeSettings?.model }" /></div>
-              <div class="button-row"><button type="button" class="primary" @click="emit('manageModel')"><Plus :size="15" />添加和管理模型</button><button type="button" :disabled="ccswitchLoading" @click="ccswitchOpen ? (ccswitchOpen = false) : loadCcswitchProviders()"><Download :size="15" />{{ ccswitchLoading ? '加载中' : '从 cc-switch 导入' }}</button></div>
+              <ModelManager embedded @close="close" @updated="handleModelUpdated" />
+              <div class="button-row"><button type="button" :disabled="ccswitchLoading" @click="ccswitchOpen ? (ccswitchOpen = false) : loadCcswitchProviders()"><Download :size="15" />{{ ccswitchLoading ? '加载中' : '从 cc-switch 导入' }}</button></div>
               <div v-if="ccswitchOpen" class="provider-list"><article v-for="item in ccswitchProviders" :key="item.id"><i :class="{ online: item.has_api_key }" /><div><b>{{ item.name }}</b><span>{{ item.model }}</span><small>{{ item.base_url }}</small></div><button type="button" :disabled="ccswitchApplying === item.id" @click="useCcswitchProvider(item.id)">{{ ccswitchApplying === item.id ? '应用中' : '使用' }}</button></article><p v-if="!ccswitchProviders.length && !ccswitchLoading">未发现可导入的供应商</p></div>
               <p v-if="ccswitchError" class="settings-error">{{ ccswitchError }}</p>
             </section>

@@ -44,6 +44,26 @@ SZTU_LLM_KEYLESS=true
 
 桌面模型管理页也提供 opencode Zen 内置 profile。选择内置项会自动设置 keyless，无需手工编辑 `.env`。
 
+OrcaRouter（多厂商网关，需自备 `sk-orca-` 密钥）：
+
+```dotenv
+SZTU_LLM_PROVIDER=openai
+SZTU_LLM_DEFAULT_MODEL=deepseek/deepseek-v4-flash
+ORCAROUTER_API_KEY=sk-orca-<your-key>
+ORCAROUTER_BASE_URL=https://api.orcarouter.ai/v1
+```
+
+模型 ID 一律带厂商前缀，例如 `openai/gpt-5.4`、`anthropic/claude-sonnet-4.6`、`deepseek/deepseek-v4-flash`。桌面模型管理页内置了常用的 OrcaRouter 模型，选中后只需在设置里填入密钥即可，无需手工编辑 `.env`。
+
+runtime 会自动完成以下适配，无需手工干预：
+
+- `gpt-5*`、`o*`、`claude-opus-4.5+`、`claude-fable`、`deepseek-reasoner` 等模型拒绝 `temperature`，请求会自动剥离该参数（Kimi K3 连 `top_p` 一并剥离）；
+- `cache_control` 是 Anthropic 专有字段，仅对 `anthropic/` 前缀的模型发送，避免网关转发到其他上游时报未知字段；
+- 自动附加 `HTTP-Referer` 与 `X-Title` 归属头，便于在 OrcaRouter 控制台区分流量来源。
+
+> [!WARNING]
+> `orcarouter/auto` 默认按最低价路由，可能选中不支持工具调用的模型。Agent 编码场景请固定到具体的工具调用模型，例如 `openai/gpt-5.2-codex` 或 `deepseek/deepseek-v4-flash`。
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -67,6 +87,8 @@ SZTU_LLM_KEYLESS=true
 | `SZTU_PERMISSION_MODE` | `normal` | `normal`、`plan`、`accept_edits`、`auto` |
 | `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` | 未设置 | OpenAI-compatible 凭据 |
 | `OPENAI_BASE_URL` / `DEEPSEEK_BASE_URL` | Provider 默认 | OpenAI-compatible 端点 |
+| `ORCAROUTER_API_KEY` | 未设置 | OrcaRouter 凭据，端点指向 OrcaRouter 时优先于上面两项 |
+| `ORCAROUTER_BASE_URL` | `https://api.orcarouter.ai/v1` | OrcaRouter 端点 |
 | `ANTHROPIC_API_KEY` | 未设置 | Anthropic 凭据 |
 | `ANTHROPIC_BASE_URL` | Provider 默认 | Anthropic 端点 |
 | `SZTU_MCP_CONFIG` | 未设置 | MCP JSON 配置文件 |
