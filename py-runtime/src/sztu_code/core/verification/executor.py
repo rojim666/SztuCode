@@ -4,6 +4,7 @@ import asyncio
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sztu_code.core.verification.models import (
     CompletionCondition,
@@ -164,3 +165,12 @@ class VerificationExecutor:
         except OSError:
             return ""
         return str(path)
+
+
+# 将 workspace 变更记录汇总为验证门禁可读的状态摘要：
+# None 透传（未执行变更统计）、空记录 clean、有记录 modified:N。
+# 原 runner 端门禁在 New-main 重写中丢失后，函数随验证逻辑归属本模块（issue #132）。
+def modification_status_summary(records: list[dict[str, Any]] | None) -> str | None:
+    if records is None:
+        return None
+    return f"modified:{len(records)}" if records else "clean"

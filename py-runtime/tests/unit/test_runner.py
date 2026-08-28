@@ -136,7 +136,6 @@ class _CancelableCompactingProvider:
     def __init__(self) -> None:
         self._calls = 0
         self.compact_started = asyncio.Event()
-        self.main_waiting = asyncio.Event()
         self.compact_cancelled = False
 
     async def chat(
@@ -169,8 +168,7 @@ class _CancelableCompactingProvider:
                 ),
             )
 
-        self.main_waiting.set()
-        await asyncio.Future()
+        return LlmResponse(stop_reason="end_turn", text="done")
 
 
 class _AsyncCompactingProvider:
@@ -178,7 +176,6 @@ class _AsyncCompactingProvider:
         self._calls = 0
         self.compact_started = asyncio.Event()
         self.compact_completed = asyncio.Event()
-        self._allow_compact = asyncio.Event()
         self._summary = """\
 ## 1. Original Goal
 finish without session
@@ -206,7 +203,8 @@ finish without session
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
-            await self._allow_compact.wait()
+            # 主循环会在下一次模型请求前等待压缩完成，因此压缩必须能独立完成，
+            # 不能依赖主循环的后续调用解锁
             await asyncio.sleep(0)
             self.compact_completed.set()
             return LlmResponse(
@@ -227,7 +225,6 @@ finish without session
                 ),
             )
 
-        self._allow_compact.set()
         return LlmResponse(
             stop_reason="end_turn",
             text="done",
@@ -240,7 +237,6 @@ class _FailingCompactingProvider:
         self._calls = 0
         self.compact_started = asyncio.Event()
         self.compact_completed = asyncio.Event()
-        self.main_failed = asyncio.Event()
         self._summary = """\
 ## 1. Original Goal
 survive failure
@@ -268,7 +264,9 @@ survive failure
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
-            await self.main_failed.wait()
+            # 新语义下主循环等压缩完成才会进入下一步（随后才失败），
+            # 因此压缩分支必须能独立完成，不能等待主循环事件
+            await asyncio.sleep(0)
             self.compact_completed.set()
             return LlmResponse(
                 stop_reason="end_turn",
@@ -288,7 +286,6 @@ survive failure
                 ),
             )
 
-        self.main_failed.set()
         raise RuntimeError("boom")
 
 
@@ -804,7 +801,9 @@ async def test_cancelled_run_cancels_pending_compaction(tmp_path: Path) -> None:
     )
 
     await provider.compact_started.wait()
-    await provider.main_waiting.wait()
+    # 压缩触发起，主循环在下一次模型请求前会等待压缩完成（wait_pending），
+    # 因此此刻主任务阻塞在 wait_pending——直接取消整个 run 即可覆盖
+    # "取消运行时连带取消挂起压缩"的路径
     task.cancel()
 
     with pytest.raises(asyncio.CancelledError):

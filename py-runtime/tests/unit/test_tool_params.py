@@ -10,12 +10,12 @@ from sztu_code.core.tools.builtin.read_file import ReadFileParams
 from sztu_code.core.tools.builtin.write_file import WriteFileParams
 
 
-# 功能：验证 BashParams 接受合法参数，缺省 timeout 为 60
+# 功能：验证 BashParams 接受合法参数，缺省 timeout 为 30（与代码和 schema 描述一致）
 # 设计：直接 model_validate 字典，覆盖必填字段存在和可选字段默认值两种路径
 def test_bash_params_valid() -> None:
     p = BashParams.model_validate({"command": "echo hi"})
     assert p.command == "echo hi"
-    assert p.timeout == 60
+    assert p.timeout == 30
 
 
 # 功能：验证 BashParams timeout 上限被 pydantic le=120 约束

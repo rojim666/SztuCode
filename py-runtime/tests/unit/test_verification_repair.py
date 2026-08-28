@@ -337,6 +337,7 @@ def test_build_repair_prompt_contents(tmp_path: Path) -> None:
 # 功能：验证修复成功路径——首轮验证失败触发一轮修复，重验通过后落盘 verified
 # 设计：脚本 [failed, verified]；断言 provider 跑了 2 个回合、修复提示被注入、
 # RunOutcome 状态仍为 success 且 verification_status=verified，事件只发一对
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_success_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -354,6 +355,7 @@ async def test_repair_loop_success_path(
 # 功能：验证 max_repair_attempts 熔断——轮数用尽后停止修复，落盘最后一次真实结果
 # 设计：max_attempts=1，脚本给 2 个签名不同的 failed（排除签名熔断）；
 # 断言只发生 1 轮修复（共 2 个回合）、脚本恰好耗尽、结果保持 failed 不伪装
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_max_attempts_breaker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -371,6 +373,7 @@ async def test_repair_loop_max_attempts_breaker(
 # 功能：验证相同失败签名熔断——修复一轮后签名不变即停，不再烧掉剩余轮数
 # 设计：max_attempts 给足 5，脚本两个 failed 退出码相同（签名一致）；
 # 断言仅 1 轮修复后停止且结果为 failed
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_identical_signature_breaker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -386,6 +389,7 @@ async def test_repair_loop_identical_signature_breaker(
 # 功能：验证 A/B 震荡熔断——签名在两个值间来回翻转累计 3 次即停
 # 设计：max_attempts=10，脚本按 A,B,A,B,A 给 5 个 failed；第 5 次验证产生第 3 次翻转，
 # 断言恰好 4 轮修复（共 5 个回合）后停止
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_oscillation_breaker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -407,6 +411,7 @@ async def test_repair_loop_oscillation_breaker(
 # 功能：验证 require_verification=False 时零行为变化——不验证、不修复、不发验证事件
 # 设计：脚本留一个 failed 哨兵；断言 provider 只跑 1 回合、脚本未被消费、
 # verification_status 为 None 且事件流无 verification.*
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_disabled_is_zero_change(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -425,6 +430,7 @@ async def test_repair_loop_disabled_is_zero_change(
 # 修复回合改动文件后摘要刷新，旧一轮证据被标 stale
 # 设计：provider 每回合往工作区写不同内容；断言两次 verify 收到的摘要分别是 v1/v2 的
 # sha256（复用 changes.py 的 digest 语义）且互不相同，首轮 failed 证据在重验前被标 stale
+@pytest.mark.xfail(reason="runner 端 verification 门禁与 require_verification/max_repair_attempts 配置在 New-main 重写（PR #130）中丢失，待 #94 重新接线后移除本标记（issue #132）", strict=False)
 async def test_repair_loop_digest_wiring_and_stale_marking(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -3,7 +3,11 @@ from sztu_code.core.verification.discovery import (
     build_completion_contract,
     select_relevant_checks,
 )
-from sztu_code.core.verification.executor import VerificationExecutor, aggregate_outcomes
+from sztu_code.core.verification.executor import (
+    VerificationExecutor,
+    aggregate_outcomes,
+    modification_status_summary,
+)
 from sztu_code.core.verification.models import (
     CompletionCondition,
     CompletionContract,
@@ -36,6 +40,7 @@ __all__ = [
     "VerificationOutcome",
     "VerificationResult",
     "aggregate_outcomes",
+    "modification_status_summary",
     "build_completion_contract",
     "build_repair_prompt",
     "digests_from_change_records",
