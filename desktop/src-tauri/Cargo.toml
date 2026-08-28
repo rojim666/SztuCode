@@ -1,6 +1,6 @@
 [package]
 name = "sztucode-desktop"
-version = "0.1.1"
+version = "1.0.0"
 description = "Local-first SztuCode agent workbench"
 authors = ["SztuCode"]
 edition = "2021"

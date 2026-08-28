@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 
-defineProps<{ active?: boolean }>();
+const props = defineProps<{ active?: boolean; size?: "small" | "large" }>();
 const root = ref<HTMLElement | null>(null);
 function trackPointer(event: PointerEvent) {
   const el = root.value;
@@ -19,7 +19,7 @@ onBeforeUnmount(() => window.removeEventListener("pointermove", trackPointer));
 </script>
 
 <template>
-  <div ref="root" class="app-icon theme-light" :class="{ active }">
+  <div ref="root" class="app-icon" :class="[{ active: props.active }, `app-icon--${props.size ?? 'small'}`]">
     <div class="logo" role="img" aria-label="SztuCode Agent">
       <div class="dots"><i /><i /><i /></div>
       <div class="eyes">
@@ -31,9 +31,10 @@ onBeforeUnmount(() => window.removeEventListener("pointermove", trackPointer));
 </template>
 
 <style scoped>
-.app-icon { --logo-size: 38px; --look-x: 0px; --look-y: 0px; position: relative; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; }
-.logo { position: relative; width: var(--logo-size); height: var(--logo-size); color: #1c2330; border: 3.2px solid currentColor; border-radius: 22%; background: #f4f6fa; }
-.dots { position: absolute; top: 9%; left: 10%; display: flex; gap: calc(var(--logo-size) * .045); }
+.app-icon { --logo-size: 32px; --look-x: 0px; --look-y: 0px; position: relative; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; }
+.logo { position: relative; width: var(--logo-size); height: var(--logo-size); color: #fff; border: 0; border-radius: 26%; background: #000; box-shadow: none; }
+.app-icon--large { --logo-size: 48px; width: 62px; height: 62px; }
+.dots { position: absolute; top: 15%; left: 13%; display: flex; gap: calc(var(--logo-size) * .045); }
 .dots i { width: calc(var(--logo-size) * .085); height: calc(var(--logo-size) * .085); border-radius: 50%; background: currentColor; }
 .dots i:nth-child(2) { animation-delay: .22s; } .dots i:nth-child(3) { animation-delay: .44s; }
 .eyes { position: absolute; top: 38%; right: 0; left: 0; height: 34%; display: flex; align-items: center; justify-content: center; gap: calc(var(--logo-size) * .10); }
@@ -43,5 +44,4 @@ onBeforeUnmount(() => window.removeEventListener("pointermove", trackPointer));
 @keyframes dot-pulse { 0%,100% { opacity: .72; transform: scale(.9); } 16% { opacity: 1; transform: scale(1.08); box-shadow: 0 0 5px currentColor; } 32%,72% { opacity: .78; transform: scale(1); } }
 @keyframes blink { 0%,43% { transform: translateY(0) scaleY(1) scaleX(1); } 46% { transform: translateY(2%) scaleY(.72) scaleX(.98); } 48.5%,51% { transform: translateY(5%) scaleY(.08) scaleX(.92); } 54% { transform: translateY(1%) scaleY(.78) scaleX(.98); } 58%,100% { transform: translateY(0) scaleY(1) scaleX(1); } }
 @media (prefers-reduced-motion: reduce) { .dots i, .eye, .pupil { animation: none; } }
-:global(:root[data-app-theme="dark"]) .logo { color: #eef2f8; background: #0b0e14; }
 </style>

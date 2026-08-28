@@ -315,3 +315,17 @@ button.composer-project:hover { color: #1a70cf; }
 .task-stream::-webkit-scrollbar-track { background: transparent; }
 .task-stream::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 .task-stream:hover::-webkit-scrollbar-thumb, .task-stream:focus-within::-webkit-scrollbar-thumb { background: #E3E3E3; }
+
+/* 会话区右上角工具：聚焦与选中统一为纯灰底，不使用蓝色或细线描边。 */
+.work-header__tools .source-control-toggle:hover:not(:disabled),
+.work-header__tools .source-control-toggle:focus-visible,
+.work-header__tools .source-control-toggle:active,
+.work-header__tools .workspace-panel-toggle:hover,
+.work-header__tools .workspace-panel-toggle:focus-visible,
+.work-header__tools .workspace-panel-toggle.active {
+  color: #4f555c;
+  background: #eceeef;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}

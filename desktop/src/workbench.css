@@ -408,7 +408,7 @@
 
 /* Outcome-first task conversation. */
 .timeline-step { padding-bottom: 18px; }
-.timeline-assistant { grid-template-columns: 38px minmax(0, 1fr); gap: 12px; }
+.timeline-assistant { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
 
 .turn-status { display: flex; min-height: 23px; align-items: center; gap: 6px; margin-bottom: 5px; }
 .turn-status b { color: #767779; font-size: 12px; font-weight: 620; }
@@ -481,8 +481,8 @@
   .bottom-diff-preview__files { max-height: 120px; border-right: 0; border-bottom: 1px solid var(--border); }
   .bottom-diff-preview__diff { max-height: 180px; }
   .timeline-user-message { max-width: 90%; }
-  .timeline-assistant { grid-template-columns: 32px minmax(0, 1fr); gap: 9px; }
-  .agent-logo { width: 32px; height: 32px; padding: 5px 4px; border-radius: 9px; }
+  .timeline-assistant { grid-template-columns: 36px minmax(0, 1fr); gap: 8px; }
+  .agent-logo { width: 36px; height: 36px; }
   .evidence-strip { display: grid; grid-template-columns: 1fr; }
   .evidence-item { width: 100%; }
 }

@@ -2519,7 +2519,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <section v-else class="landing-page task-launcher" :class="{ 'slash-open': slashMenuOpen }">
           <div class="launcher-content">
             <header class="launcher-heading">
-              <AgentLogo class="launcher-mark" />
+              <AgentLogo class="launcher-mark" size="large" />
               <div class="launcher-heading__copy">
                 <h1 aria-label="Think it. Build it."><span aria-hidden="true">Think it. Build it.</span></h1>
               </div>

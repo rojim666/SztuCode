@@ -231,6 +231,14 @@
   border-color: var(--border) !important;
 }
 
+:root[data-app-theme="dark"] .work-header__tools :is(.source-control-toggle, .workspace-panel-toggle):is(:hover, :focus-visible, .active) {
+  color: #e5e7eb;
+  background: #3b4047;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
 :root[data-app-theme="dark"] .starter-tasks button:hover,
 :root[data-app-theme="dark"] .starter-tasks button.selected {
   color: var(--text) !important;

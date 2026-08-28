@@ -1,7 +1,7 @@
 {
   "name": "sztucode-desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "predev": "node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
