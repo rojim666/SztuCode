@@ -13,11 +13,6 @@ const groups = computed<string[]>(() => {
 
   if (stats.steps > 0) g.push(`${stats.turns} 轮 · ${stats.steps} 步`);
 
-  const times: string[] = [];
-  if (stats.llmMs > 0) times.push(`LLM ${formatDuration(stats.llmMs / 1000)}`);
-  if (stats.toolMs > 0) times.push(`工具调用 ${formatDuration(stats.toolMs / 1000)}`);
-  if (times.length) g.push(times.join(" · "));
-
   if (stats.ttftSteps > 0) {
     const averageSeconds = stats.ttftMsTotal / stats.ttftSteps / 1000;
     // 吞吐 = 输出 token / decode 墙钟（LLM 用时扣除首 token 前的等待）

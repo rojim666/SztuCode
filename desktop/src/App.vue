@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
-  GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Wrench, X,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
+  GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
+  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -15,7 +15,7 @@ import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import ModelManager from "./components/ModelConfig/ModelManager.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
-import BottomDiffPreview from "./components/Diff/BottomDiffPreview.vue";
+import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
@@ -168,10 +168,19 @@ function scrollTaskStreamToBottom() {
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   streamScrolledUp.value = false;
 }
+let autoScrollFrame: number | undefined;
+function keepTaskStreamAtBottom() {
+  if (streamScrolledUp.value || autoScrollFrame !== undefined) return;
+  autoScrollFrame = window.requestAnimationFrame(() => {
+    autoScrollFrame = undefined;
+    const el = taskStreamEl.value;
+    if (!el || streamScrolledUp.value) return;
+    el.scrollTop = el.scrollHeight;
+  });
+}
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
-const selectedStarterTask = ref("");
 const sending = ref(false);
 const projectMenuOpen = ref(false);
 const launcherProjectMenuOpen = ref(false);
@@ -183,6 +192,9 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+const projectPreviewId = ref<string | null>(null);
+const projectPreviewStyle = ref<Record<string, string>>({});
+let projectPreviewCloseTimer: number | undefined;
 const projectEditingId = ref<string | null>(null);
 const projectEditName = ref("");
 const projectEditError = ref("");
@@ -254,13 +266,20 @@ const isRunActive = computed(() => sending.value || runActive.value);
 // 追加模式只代表当前会话已有一个实际运行中的 run；发送请求的短暂窗口仍使用普通发送状态。
 const isAppending = computed(() => Boolean(activeId.value && activeView.value?.runActive));
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
+// IDE 操作必须跟随当前会话绑定的工作区，不能回退到新建任务启动器残留的项目。
+const activeSessionWorkspace = computed(() => {
+  const workspaceId = active.value?.workspace_id;
+  return workspaceId ? workspaces.value.find((item) => item.workspace_id === workspaceId) ?? null : null;
+});
 const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.archived));
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
-const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || item.title.toLocaleLowerCase().includes(normalizedTaskQuery.value);
+// 历史会话的标题可能为空（例如旧版本创建的临时会话）；搜索弹窗首次打开时
+// 会立即计算结果，因此这里必须把空标题按空字符串处理，避免点击搜索直接抛异常。
+const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || String(item.title ?? "").toLocaleLowerCase().includes(normalizedTaskQuery.value);
 const visibleSessions = computed(() => liveSessions.value.filter(matchesTaskQuery));
 const temporaryTasks = computed(() => visibleSessions.value.filter((item) => !item.workspace_id).slice(0, 5));
 const allProjects = computed(() => activeWorkspaces.value
@@ -270,6 +289,54 @@ const allProjects = computed(() => activeWorkspaces.value
     return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id && (item.pinned || !task.pinned)).slice(0, 6), projectMatches };
   })
   .filter((item) => !normalizedTaskQuery.value || item.projectMatches || item.tasks.length));
+const previewProject = computed(() => allProjects.value.find((item) => item.workspace_id === projectPreviewId.value) ?? null);
+
+function showProjectPreview(item: Workspace, event: MouseEvent | FocusEvent) {
+  window.clearTimeout(projectPreviewCloseTimer);
+  sessionPreview.value = null;
+  projectActionsOpen.value = null;
+  const anchor = event.currentTarget as HTMLElement | null;
+  if (!anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const width = 254;
+  projectPreviewStyle.value = {
+    left: `${Math.min(rect.right, window.innerWidth - width - 8)}px`,
+    top: `${Math.max(8, Math.min(rect.top, window.innerHeight - 150))}px`,
+  };
+  projectPreviewId.value = item.workspace_id;
+}
+function scheduleProjectPreviewClose() {
+  window.clearTimeout(projectPreviewCloseTimer);
+  const closingId = projectPreviewId.value;
+  if (!closingId) return;
+  projectPreviewCloseTimer = window.setTimeout(() => {
+    if (projectPreviewId.value === closingId) projectPreviewId.value = null;
+  }, 700);
+}
+function keepProjectPreviewOpen() {
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewCloseTimer = undefined;
+}
+function handleProjectPreviewFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as HTMLElement | null;
+  if (next?.closest(".project-preview-card")) {
+    keepProjectPreviewOpen();
+    return;
+  }
+  scheduleProjectPreviewClose();
+}
+function openProjectActions(item: Workspace) {
+  keepProjectPreviewOpen();
+  projectPreviewId.value = null;
+  sessionPreview.value = null;
+  projectActionsOpen.value = item.workspace_id;
+}
+function handleProjectRowPointerDown(item: Workspace, event: PointerEvent) {
+  if (event.button !== 0) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".project-action-menu")) return;
+  beginTask(item);
+}
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
 const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
 const projects = computed(() => allProjects.value.filter((item) => !item.pinned));
@@ -281,38 +348,21 @@ const filteredLauncherWorkspaces = computed(() => {
   return activeWorkspaces.value.filter((item) => `${item.name} ${item.path}`.toLocaleLowerCase().includes(query)).slice(0, 8);
 });
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
+// 流式输出和思考动画不断改变内容高度；用户未主动上滑时持续跟随最新输出。
+watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
-// 聚合出最近一个已完成且有文件改动的 run，供会话区底部常驻 diff 预览使用（分组规则与时间线一致：新用户消息开新组，组内最后一步非末态视为运行中）
-const latestChangedRun = computed(() => {
-  let group: { runId?: string; paths: string[]; lastStatus?: TimelineStep["status"] } | null = null;
-  let latest: { runId: string; paths: string[] } | null = null;
+// 从当前会话 Agent trace 聚合 AI 修改过的文件路径，按路径去重。
+const changeSummaryPaths = computed(() => {
+  const paths = new Set<string>();
   for (const item of orderedTimeline.value) {
-    if (item.userMessage) group = { runId: undefined, paths: [], lastStatus: undefined };
-    if (!group) group = { runId: undefined, paths: [], lastStatus: undefined };
-    if (item.runId) group.runId = item.runId;
-    group.lastStatus = item.status;
     for (const entry of item.changes ?? []) {
-      for (const path of entry.paths) {
-        if (!group.paths.includes(path)) group.paths.push(path);
-      }
-    }
-    const running =
-      group.lastStatus === "thinking" || group.lastStatus === "acting" || group.lastStatus === "observing";
-    if (!running && group.runId && group.paths.length) {
-      latest = { runId: group.runId, paths: [...group.paths] };
+      for (const path of entry.paths) if (path) paths.add(path);
     }
   }
-  return latest;
+  return [...paths];
 });
-// 历史会话不会重放 workspace.changed 事件；此时使用会话记录的最近 run
-// 重新查询变更清单，让底部 Diff 在刷新或重新打开任务后仍可恢复。
-const bottomDiffRun = computed(() => latestChangedRun.value ?? (
-  active.value?.latest_run_id
-    ? { runId: active.value.latest_run_id, paths: [] as string[] }
-    : null
-));
 const permissionModeLabel = computed(() => ({
   normal: "标准审批",
   plan: "计划模式",
@@ -387,8 +437,11 @@ function stopTaskTitleScroll(event: FocusEvent) {
 }
 
 function showSessionPreview(task: Session, event: MouseEvent) {
+  keepProjectPreviewOpen();
+  projectPreviewId.value = null;
+  projectActionsOpen.value = null;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  sessionPreview.value = { task, top: Math.max(4, Math.min(rect.top, window.innerHeight - 168)), left: Math.min(rect.right + 8, window.innerWidth - 232) };
+  sessionPreview.value = { task, top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)), left: Math.min(rect.right, window.innerWidth - 262) };
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
 function hideSessionPreview() { sessionPreview.value = null; }
@@ -1259,6 +1312,9 @@ async function submitUserQuestion(pending: PendingUserQuestion, answers: UserQue
 
 function beginTask(project: Workspace | null = workspace.value) {
   if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, prompt.value);
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewId.value = null;
+  sessionPreview.value = null;
   projectActionsOpen.value = null;
   closeLauncherMenus();
   workspace.value = project;
@@ -1267,7 +1323,6 @@ function beginTask(project: Workspace | null = workspace.value) {
   attachedFiles.value = [];
   page.value = "work";
   prompt.value = loadComposerDraft(project?.workspace_id ?? null);
-  selectedStarterTask.value = "";
   void nextTick(() => launcherPrompt.value?.focus());
 }
 function insertProvisionalSession(sessionId: string, title: string, project: Workspace | null) {
@@ -1436,6 +1491,7 @@ async function stopActiveRun() {
   }
 }
 async function chooseTask(id: string) {
+  taskSearchOpen.value = false;
   try {
     const stored = JSON.parse(localStorage.getItem("sztu.unreadSessions") ?? "[]");
     if (Array.isArray(stored) && stored.includes(id)) {
@@ -1602,6 +1658,8 @@ async function decidePermission(toolUseId: string, decision: PermissionDecision)
   await respondPermission(toolUseId, decision, context.runId, context.sessionId);
 }
 function beginProjectEdit(item: Workspace) {
+  window.clearTimeout(projectPreviewCloseTimer);
+  projectPreviewId.value = null;
   projectEditingId.value = item.workspace_id;
   projectEditName.value = item.name;
   projectEditError.value = "";
@@ -1820,14 +1878,8 @@ function chooseSkill(name: string) {
   void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
 }
 function handlePromptInput() {
-  selectedStarterTask.value = "";
   slashMenuDismissed.value = false;
   slashMenuActiveIndex.value = 0;
-}
-function chooseStarterTask(id: string, value: string) {
-  selectedStarterTask.value = id;
-  prompt.value = value;
-  void nextTick(() => launcherPrompt.value?.focus());
 }
 function closeActiveSession() { activeId.value = null; launcherTimeline.value = new Map(); void refreshIndex(false); }
 async function applyPermissionMode(value: RuntimeSettings["permission_mode"]) {
@@ -1905,8 +1957,9 @@ async function applyZoom(next: number) {
   catch { document.documentElement.style.zoom = String(zoom); }
 }
 async function openWorkspaceInIde() {
-  if (!activeWorkspace.value) return;
-  try { await invoke("open_workspace_in_ide", { workspacePath: activeWorkspace.value.path }); }
+  const target = activeSessionWorkspace.value;
+  if (!target) return;
+  try { await invoke("open_workspace_in_ide", { workspaceId: target.workspace_id, workspacePath: target.path }); }
   catch (error) { await message(String(error), { title: "无法打开 IDE", kind: "error" }); }
 }
 async function openProjectHomepage() {
@@ -2112,6 +2165,7 @@ function handleGlobalShortcut(event: KeyboardEvent) {
 function handleDocumentPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (!target?.closest(".app-menu-bar")) closeAppMenu();
+  if (!target?.closest(".task-search-popover, .task-search-toggle")) clearTaskSearch();
   if (!target?.closest(".project-row-shell")) projectActionsOpen.value = null;
   if (!target?.closest(".launcher-project-control")) launcherProjectMenuOpen.value = false;
   if (!target?.closest(".launcher-permission-control")) launcherPermissionMenuOpen.value = false;
@@ -2183,6 +2237,8 @@ onMounted(() => {
   void refreshRuntime(true);
 });
 onBeforeUnmount(() => {
+  window.clearTimeout(projectPreviewCloseTimer);
+  if (autoScrollFrame !== undefined) window.cancelAnimationFrame(autoScrollFrame);
   tokenBatcher.clear();
   discardAllPendingTimeline();
   for (const timer of sessionLoadingTimers.values()) window.clearTimeout(timer);
@@ -2244,7 +2300,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>新建终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
             <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>新建浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
+            <button type="button" role="menuitem" :disabled="!activeSessionWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
             <div class="app-menu-separator" role="separator" />
             <button type="button" role="menuitem" @click="runAppMenuAction(closeWindow)"><span>退出</span></button>
           </div>
@@ -2304,16 +2360,21 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
       <header class="sidebar-brand">
         <h1>SztuCode</h1>
-        <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-field" @click="toggleTaskSearch">
+        <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
       </header>
 
-      <label v-if="taskSearchOpen || taskQuery" id="task-search-field" class="task-search">
-        <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
-        <input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" />
-        <button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="clearTaskSearch"><X :size="16" :stroke-width="1.8" /></button>
-      </label>
+      <Teleport to="body">
+        <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" aria-label="搜索任务或项目" @pointerdown.stop>
+          <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
+          <p class="task-search-popover__hint">{{ taskQuery ? `搜索结果 · ${visibleSessions.length}` : '最近会话' }}</p>
+          <div class="task-search-popover__results">
+            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || '未命名任务' }}</span><small>{{ taskStatusLabel(task) }}</small></button>
+            <p v-if="taskQuery && !visibleSessions.length">没有匹配的会话</p>
+          </div>
+        </div>
+      </Teleport>
 
       <div class="sidebar-command">
         <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />新建任务</button>
@@ -2333,7 +2394,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </nav>
 
       <div class="sidebar-workspace">
-        <section v-if="normalizedTaskQuery" class="side-section search-results">
+        <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
           <span class="side-label">搜索结果 <small>{{ visibleSessions.length }}</small></span>
           <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
@@ -2351,8 +2412,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           </div>
           <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
-            <div class="project-row-shell" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
-              <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
+            <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
+              <button class="project-row-toggle" title="在项目中新建临时会话" @click.stop.prevent>
                 <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
@@ -2402,6 +2463,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <button ref="settingsButton" class="settings-link" title="设置" aria-label="设置" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
       </footer>
       </aside>
+      <Teleport to="body">
+        <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @pointerenter="keepProjectPreviewOpen" @pointerdown="keepProjectPreviewOpen" @focusin="keepProjectPreviewOpen" @focusout="handleProjectPreviewFocusOut" @mouseleave="scheduleProjectPreviewClose">
+          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? '取消置顶' : '置顶项目'" :aria-label="previewProject.pinned ? '取消置顶' : '置顶项目'" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><PinOff v-if="previewProject.pinned" :size="16" :stroke-width="1.7" /><Pin v-else :size="16" :stroke-width="1.7" /></button></header>
+          <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ previewProject.tasks.length }} 个任务</span></div>
+          <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ previewProject.path }}</span></div>
+          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
+        </div>
+      </Teleport>
     </div>
     <div
       class="sidebar-resizer"
@@ -2416,7 +2485,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       title="拖动调整导航宽度"
       @pointerdown="startSidebarDrag"
       @keydown="resizeSidebarWithKeyboard"
-    ><span><GripVertical :size="13" :stroke-width="1.8" /></span></div>
+    ></div>
 
     <div v-if="sessionPreview" class="session-preview" :style="{ top: `${sessionPreview.top}px`, left: `${sessionPreview.left}px` }" role="tooltip">
       <b class="session-preview__title">{{ sessionPreview.task.title || '未命名任务' }}</b>
@@ -2457,7 +2526,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <button type="button" class="open" @click="chooseTask(pending.session_id)">打开任务</button>
                 </div>
               </div>
-              <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length }">
+              <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
@@ -2467,13 +2536,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
-                <BottomDiffPreview
-                  v-if="bottomDiffRun"
-                  :workspace-id="activeWorkspace?.workspace_id ?? null"
-                  :run-id="bottomDiffRun.runId"
-                  :paths="bottomDiffRun.paths"
-                  @reverted="handleReverted"
-                  @review="handleReview"
+                <ChangeSummaryRail
+                  v-if="active"
+                  :paths="changeSummaryPaths"
                 />
                 <QueueDock
                   :items="activeQueueItems"
@@ -2494,7 +2559,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                   <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                   <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                   <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send queue-send" type="submit" title="加入待处理队列" aria-label="加入待处理队列" :disabled="!prompt.trim() || (sending && !isAppending) || steering"><ListPlus :size="14" /></button><button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!prompt.trim() || active.archived || active.status === 'closed'"><ArrowUp :size="15" /></button></div>
                 </form>
               </div>
@@ -2541,7 +2606,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   </div>
                   <span />
                   <ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" />
-                  <button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!connected || !prompt.trim()">↑</button>
+                  <button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!connected || !prompt.trim()"><ArrowUp :size="15" /></button>
                 </div>
               </div>
               <div class="launcher-project-control">
@@ -2553,23 +2618,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   </div>
                   <p v-else class="project-picker-empty">没有匹配的工作空间</p>
                   <div class="project-picker-actions">
-                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>临时任务<small>不关联项目上下文</small></span></button>
-                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>新建工作空间<small>选择一个空文件夹</small></span></button>
-                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>打开本地文件夹<small>添加已有项目</small></span></button>
+                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>临时任务</span></button>
+                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>新建工作空间</span></button>
+                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>打开本地文件夹</span></button>
                   </div>
                 </div>
               </div>
             </form>
 
-            <section class="starter-tasks" aria-label="任务起步项">
-              <span>从常见开发任务开始</span>
-              <div>
-                <button type="button" :class="{ selected: selectedStarterTask === 'understand' }" :aria-pressed="selectedStarterTask === 'understand'" @click="chooseStarterTask('understand', '分析当前项目结构、技术栈和关键模块，并给出一份简洁的项目导览。')"><FolderSearch :size="15" />理解项目</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'fix' }" :aria-pressed="selectedStarterTask === 'fix'" @click="chooseStarterTask('fix', '检查当前项目中最值得优先修复的问题，说明原因并直接完成修复。')"><Wrench :size="15" />排查并修复</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'review' }" :aria-pressed="selectedStarterTask === 'review'" @click="chooseStarterTask('review', '审查当前未提交的代码变更，重点检查缺陷、回归风险和缺失测试。')"><ShieldCheck :size="15" />审查变更</button>
-                <button type="button" :class="{ selected: selectedStarterTask === 'plan' }" :aria-pressed="selectedStarterTask === 'plan'" @click="chooseStarterTask('plan', '根据当前项目状态，为下一项开发工作制定可执行的实现计划。')"><LayoutDashboard :size="15" />制定计划</button>
-              </div>
-            </section>
           </div>
         </section>
       </div>

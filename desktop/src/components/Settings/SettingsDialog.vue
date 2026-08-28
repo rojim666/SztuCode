@@ -19,6 +19,7 @@ import {
   type AccentColor, type AppearanceSettings, type CodeFont, type ThemePreference,
   type WallpaperStyle, uiFontOptions,
 } from "../../services/appearance";
+import AgentLogo from "../timeline/AgentLogo.vue";
 
 type SettingsSection = "appearance" | "general" | "agent" | "integrations" | "about";
 
@@ -59,6 +60,8 @@ const aboutError = ref("");
 const { setInitialFocus, trapTab } = useFocusTrap();
 
 const fontSizeLabel = computed(() => `${localAppearance.value.fontSize}px`);
+const paragraphSpacingLabel = computed(() => `${localAppearance.value.paragraphSpacing.toFixed(2)}em`);
+const lineHeightLabel = computed(() => `${localAppearance.value.paragraphLineHeight.toFixed(2)}x`);
 
 watch(() => props.appearance, (value) => {
   localAppearance.value = { ...value };
@@ -390,6 +393,19 @@ const accents: Array<{ id: AccentColor; label: string }> = [
                 <div><b>界面字号</b><p>调整正文与控件的基础字号</p></div>
                 <div class="stepper"><button type="button" title="减小字号" aria-label="减小字号" :disabled="localAppearance.fontSize <= MIN_UI_FONT_SIZE" @click="changeFontSize(-1)">−</button><output>{{ fontSizeLabel }}</output><button type="button" title="增大字号" aria-label="增大字号" :disabled="localAppearance.fontSize >= MAX_UI_FONT_SIZE" @click="changeFontSize(1)"><Plus :size="14" /></button></div>
               </div>
+              <label class="range-row">
+                <span><b>段落间距</b><small>段落与列表之间的空隙 · {{ paragraphSpacingLabel }}</small></span>
+                <input aria-label="段落间距" :value="localAppearance.paragraphSpacing" type="range" min="0.2" max="2" step="0.04" @input="updateAppearance({ paragraphSpacing: Number(($event.target as HTMLInputElement).value) })" />
+              </label>
+              <label class="range-row">
+                <span><b>行高</b><small>段落内每行文字之间的行距 · {{ lineHeightLabel }}</small></span>
+                <input aria-label="行高" :value="localAppearance.paragraphLineHeight" type="range" min="1" max="2" step="0.05" @input="updateAppearance({ paragraphLineHeight: Number(($event.target as HTMLInputElement).value) })" />
+              </label>
+              <div class="paragraph-spacing-preview" aria-label="行距预览">
+                <p>调整上方滑块，下面两段文字之间的空隙会实时变化，与任务区 AI 输出的段落间距一致。</p>
+                <p>列表项之间的间距会按固定比例同步缩放。</p>
+                <ul><li>列表项示例一</li><li>列表项示例二</li></ul>
+              </div>
               <div class="setting-row">
                 <div><b>紧凑布局</b><p>缩短导航与列表行高，显示更多内容</p></div>
                 <button class="switch" type="button" role="switch" :aria-checked="localAppearance.compact" :class="{ enabled: localAppearance.compact }" @click="updateAppearance({ compact: !localAppearance.compact })"><span /></button>
@@ -437,7 +453,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <header class="settings-pane-title"><div><h2>关于</h2><p>SztuCode Desktop 项目信息</p></div><Info :size="20" /></header>
             <section class="settings-block about-product">
               <div class="about-product__identity">
-                <span class="about-product__mark" aria-hidden="true">SZ</span>
+                <AgentLogo class="about-product__mark" aria-hidden="true" size="small" />
                 <div><h3>SztuCode Desktop</h3><p>本地优先的智能编码工作台</p></div>
               </div>
               <dl class="about-details">
@@ -524,6 +540,11 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 .transparency-controls .range-row { min-height: 48px; padding: 8px 0; margin-top: 0; grid-template-columns: 170px minmax(0, 1fr); border-top: 1px solid var(--border); }
 .transparency-controls .range-row:first-child { border-top: 0; }
 .transparency-controls .range-row > span { min-width: 0; justify-content: space-between; }
+.paragraph-spacing-preview { margin-top: 14px; padding: 12px 14px; color: var(--text-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; font-size: var(--text-caption); line-height: var(--markdown-line-height, 1.55); }
+.paragraph-spacing-preview p { margin: 0 0 var(--markdown-paragraph-spacing, .72em); }
+.paragraph-spacing-preview ul { margin: 0 0 var(--markdown-paragraph-spacing, .72em); padding-left: 1.4em; }
+.paragraph-spacing-preview li { margin-bottom: var(--markdown-list-item-spacing, .28em); }
+.paragraph-spacing-preview li:last-child { margin-bottom: 0; }
 .transparency-controls.disabled { opacity: .48; }
 .appearance-split { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 20px; }
 .accent-options { display: flex; gap: 9px; }
@@ -584,7 +605,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 .integration-row em { color: var(--text-faint); font-size: 11px; font-style: normal; }.integration-row em.online { color: #36825a; }
 .about-product { padding: 0; overflow: hidden; }
 .about-product__identity { display: flex; min-height: 112px; padding: 22px; align-items: center; gap: 15px; background: color-mix(in srgb, var(--surface) 68%, transparent); border-bottom: 1px solid var(--border); }
-.about-product__mark { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; color: var(--accent-contrast); background: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 74%, var(--border)); border-radius: 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 9%); font-size: 14px; font-weight: 750; }
+.about-product__mark { width: 48px; height: 48px; flex: 0 0 auto; color: inherit; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .about-product__identity h3 { margin: 0; color: var(--text); font-size: var(--text-section-title); font-weight: 650; }
 .about-product__identity p { margin: 6px 0 0; color: var(--text-faint); font-size: var(--text-caption); }
 .about-details { margin: 0; padding: 4px 22px 8px; }

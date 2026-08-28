@@ -140,7 +140,6 @@
   .composer-input-shell,
   .project-popover,
   .launcher-popover,
-  .bottom-diff-preview,
   .simple-page,
   .session-board article,
   .permission-confirm,
@@ -153,7 +152,6 @@
 }
 
 :root[data-app-theme="dark"] :is(
-  .sidebar-brand h1,
   .workspace-trigger,
   .task-head h1,
   .task-intro,
@@ -167,6 +165,8 @@
   .bridge-card h2,
   .session-board b
 ) { color: var(--text) !important; }
+
+:root[data-app-theme="dark"] .project-popover small { color: var(--text-muted) !important; }
 
 :root[data-app-theme="dark"] :is(
   .task-kicker,
@@ -225,12 +225,6 @@
   color: var(--text) !important;
 }
 
-:root[data-app-theme="dark"] .starter-tasks button {
-  color: var(--text-muted) !important;
-  background: color-mix(in srgb, var(--surface) 82%, transparent) !important;
-  border-color: var(--border) !important;
-}
-
 :root[data-app-theme="dark"] .work-header__tools :is(.source-control-toggle, .workspace-panel-toggle):is(:hover, :focus-visible, .active) {
   color: #e5e7eb;
   background: #3b4047;
@@ -239,12 +233,17 @@
   box-shadow: none;
 }
 
-:root[data-app-theme="dark"] .starter-tasks button:hover,
-:root[data-app-theme="dark"] .starter-tasks button.selected {
-  color: var(--text) !important;
-  background: var(--surface-raised) !important;
-  border-color: var(--border-strong) !important;
-}
+:root[data-app-theme="dark"] .turn-usage { color: #aeb5bf; background: #252a30; }
+:root[data-app-theme="dark"] .turn-usage small { color: #818a96; }
+:root[data-app-theme="dark"] .turn-usage i { background: #3c434b; }
+:root[data-app-theme="dark"] .turn-usage strong { color: #e0e4e8; }
+:root[data-app-theme="dark"] .task-search-popover { color: #e7e9ec; background: #23272d; border-color: #3b424a; }
+:root[data-app-theme="dark"] .task-search-popover__input { color: #b5bdc7; background: #2d333a; border-color: #424a53; }
+:root[data-app-theme="dark"] .task-search-popover__input input { color: #eef1f4; }
+:root[data-app-theme="dark"] .task-search-popover__input kbd { color: #a7b0ba; background: #252a30; border-color: #4a525b; }
+:root[data-app-theme="dark"] .task-search-popover__results button { color: #e2e6ea; }
+:root[data-app-theme="dark"] .task-search-popover__results button:hover,
+:root[data-app-theme="dark"] .task-search-popover__results button:focus-visible { background: #343b43; }
 
 :root[data-app-theme="dark"] .sidebar-session:has(.status-task-row.active),
 :root[data-app-theme="dark"] .sidebar-session:has(.project-task.active),
