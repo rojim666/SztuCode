@@ -13,6 +13,7 @@ from sztu_code.core.bus.events import (
     ToolSchedulerMode,
 )
 from sztu_code.core.compact.budget import truncate_tool_results
+from sztu_code.core.compact.context_usage import IncrementalUsageEstimator
 from sztu_code.core.context import ContinueReason, ExecutionContext, TerminationReason
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
@@ -226,6 +227,8 @@ class AgentLoop:
         self._pricing_catalog = pricing_catalog
         self._unknown_pricing_policy = unknown_pricing_policy
         # 压缩冷却期：两次压缩之间至少间隔 N 步；冷启动即可触发
+        # 跨 LLM 调用增量估算 token 分类用量，避免每步全量重数上下文
+        self._usage_estimator = IncrementalUsageEstimator()
         self._last_compact_step: int = -15
         # 熔断器日志去重：避免每步都刷屏
         self._circuit_breaker_logged: bool = False
@@ -335,6 +338,7 @@ class AgentLoop:
                     bus=self._bus,
                     run_id=context.run_id,
                     step=context.step,
+                    usage_estimator=self._usage_estimator,
                     system=context.system_prompt(
                         context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
                     ),
@@ -705,6 +709,7 @@ class AgentLoop:
                 bus=self._bus,
                 run_id=context.run_id,
                 step=context.step,
+                usage_estimator=self._usage_estimator,
                 system=context.system_prompt(
                     context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
                 ),
@@ -754,6 +759,7 @@ class AgentLoop:
                 bus=self._bus,
                 run_id=context.run_id,
                 step=context.step,
+                usage_estimator=self._usage_estimator,
                 system=context.system_prompt(
                     context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
                 ),

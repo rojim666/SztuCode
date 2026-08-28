@@ -136,7 +136,7 @@
   overflow: visible;
 }
 
-/* 会话区右侧的修改摘要：仅在当前 run 有文件变化时显示。 */
+/* 暂时隐藏会话区右侧的“修改了 N 个文件”提示；恢复组件时一并取消注释。
 .change-summary-rail {
   position: absolute;
   top: 42%;
@@ -343,7 +343,8 @@
 @media (max-width: 620px) {
   .task-stream { width: 100%; }
   .task-stream > .execution-timeline { padding: 0 16px; }
-  .task-conversation > .kimi-composer { width: calc(100% - 24px); }
+  .task-conversation .kimi-composer { width: calc(100% - 24px); }
+  /* 暂时停用文件修改摘要的移动端定位。
   .change-summary-rail { top: auto; right: 12px; bottom: 96px; min-height: 126px; }
   */
   .timeline-user-message { max-width: 90%; }
@@ -615,17 +616,6 @@
   opacity: 0;
   transition: opacity 140ms ease, background-color 140ms ease;
 }
-
-.sidebar-session .session-actions .session-running-indicator {
-  display: grid;
-  width: 26px;
-  height: 27px;
-  place-items: center;
-  color: #3785dc;
-}
-.sidebar-session .session-actions .session-running-indicator svg { animation: session-running-spin .8s linear infinite; }
-@keyframes session-running-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .sidebar-session .session-actions .session-running-indicator svg { animation: none; } }
 
 .sidebar-session:hover .session-actions .icon-button,
 .sidebar-session:focus-within .session-actions .icon-button { opacity: 1; }
@@ -1130,8 +1120,8 @@
 .model-delete-dialog > footer button.danger { color: #fff; background: #b43b3b; border-color: #b43b3b; }
 .model-delete-dialog > footer button.danger:hover { background: #9f3030; }
 .model-delete-dialog > footer button:disabled { cursor: default; opacity: .55; }
-.model-editor-backdrop { position: absolute; z-index: 2; inset: 0; display: grid; padding: 7px; place-items: center; background: #20242a4d; }
-.model-editor { display: grid; width: min(560px, 100%); max-height: calc(100vh - 28px); grid-template-rows: 55px minmax(0, 1fr) auto; overflow: hidden; background: #fff; border: 1px solid #d8dade; border-radius: 8px; box-shadow: 0 22px 64px #181c2238; }
+.model-editor-backdrop { position: fixed; z-index: 2; inset: 0; display: grid; padding: 7px; place-items: center; background: #20242a4d; }
+.model-editor { display: grid; width: min(560px, 100%); max-height: calc(100vh - 14px); grid-template-rows: 55px minmax(0, 1fr) auto; overflow-y: auto; overflow-x: hidden; background: #fff; border: 1px solid #d8dade; border-radius: 8px; box-shadow: 0 22px 64px #181c2238; }
 .model-editor > header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #e4e6e8; }
 .model-editor h2 { margin: 0; font-size: 15px; font-weight: 650; }
 .model-vendor-grid { display: grid; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 15px 16px; overflow-y: auto; background: #fafafa; }

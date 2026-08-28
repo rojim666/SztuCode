@@ -259,3 +259,37 @@ async def test_thinking_deltas_are_published_immediately() -> None:
         "structure",
     ]
     assert result.thinking_blocks[0]["thinking"] == "inspect project structure"
+
+
+# 功能：验证 usage_estimator 被透传给 estimate_context_usage（Anthropic 路径）
+# 设计：monkeypatch estimate_context_usage 捕获 incremental 参数，
+#      断言与调用方传入的 estimator 为同一实例（增量链路接线正确）
+async def test_usage_estimator_forwarded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from sztu_code.core.compact import context_usage as context_usage_mod
+
+    captured: dict[str, object] = {}
+
+    def _fake_estimate(**kwargs: object) -> object:
+        captured["incremental"] = kwargs.get("incremental")
+        return context_usage_mod.ContextUsageBreakdown(
+            context_window=128_000,
+            available_tokens=100_000,
+            reserved_output_tokens=8192,
+            system_tokens=100,
+            summary_tokens=0,
+            conversation_tokens=500,
+            tool_tokens=200,
+        )
+
+    monkeypatch.setattr(context_usage_mod, "estimate_context_usage", _fake_estimate)
+    provider, _ = _make_provider()
+    estimator = context_usage_mod.IncrementalUsageEstimator()
+    bus = EventBus()
+    await provider.chat(
+        messages=[{"role": "user", "content": "hello"}],
+        tool_schemas=[{"name": "read", "description": "Read a file"}],
+        bus=bus,
+        run_id="r1",
+        usage_estimator=estimator,
+    )
+    assert captured["incremental"] is estimator

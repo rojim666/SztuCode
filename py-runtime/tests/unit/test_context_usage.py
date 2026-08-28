@@ -1,4 +1,9 @@
-from sztu_code.core.compact.context_usage import estimate_context_usage
+from sztu_code.core.compact.context_usage import (
+    IncrementalUsageEstimator,
+    _count_all,
+    estimate_context_usage,
+)
+from sztu_code.core.compact.token_counter import TokenCounter
 
 
 def test_context_usage_categories_reconcile_to_provider_input() -> None:
@@ -77,3 +82,77 @@ def test_context_usage_categories_always_reconcile_when_uneven() -> None:
             )
         )
         assert usage.available_tokens == 100_000 - 7777 - 8192
+
+
+# 功能：验证增量估算与全量重数在逐步追加消息时结果一致
+# 设计：模拟 AgentLoop 每步追加 assistant + tool_result，断言增量结果与
+#      从头全量重数完全一致（否则用量分类统计会偏离）
+def test_incremental_matches_full_recount_across_steps() -> None:
+    counter = TokenCounter()
+    estimator = IncrementalUsageEstimator()
+    system = "You are an agent."
+    tools = [{"name": "read", "description": "Read a file"}]
+
+    msgs: list[dict[str, object]] = [
+        {"role": "user", "content": "goal"},
+        {"role": "assistant", "content": [{"type": "text", "text": "plan"}]},
+    ]
+    assert estimator.raw_counts(
+        messages=msgs, system=system, tool_schemas=tools
+    ) == _count_all(counter, msgs, system, tools)
+
+    for i in range(3):
+        msgs.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": f"t{i}",
+                        "name": "read",
+                        "input": {"path": "a.py"},
+                    }
+                ],
+            }
+        )
+        msgs.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": f"t{i}",
+                        "content": f"body {i} " * 200,
+                    }
+                ],
+            }
+        )
+    assert estimator.raw_counts(
+        messages=msgs, system=system, tool_schemas=tools
+    ) == _count_all(counter, msgs, system, tools)
+
+
+# 功能：验证消息整体替换（压缩/截断命中）时增量估算自动回退全量重数
+# 设计：第二步消息列表元素全部为新对象，身份前缀无重叠，结果必须等于全量重数
+def test_incremental_falls_back_on_message_replacement() -> None:
+    counter = TokenCounter()
+    estimator = IncrementalUsageEstimator()
+    system = "s"
+    tools: list[dict[str, object]] = []
+
+    step1 = [{"role": "user", "content": "hello world"}]
+    estimator.raw_counts(messages=step1, system=system, tool_schemas=tools)
+
+    step2 = [
+        {
+            "role": "user",
+            "content": "This session is being continued from a previous conversation.\nSummary:\nWorked.",
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Understood, I will continue."}],
+        },
+    ]
+    assert estimator.raw_counts(
+        messages=step2, system=system, tool_schemas=tools
+    ) == _count_all(counter, step2, system, tools)

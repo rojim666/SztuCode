@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse
@@ -17,4 +17,5 @@ class LLMProvider(Protocol):
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: Any | None = None,
     ) -> LlmResponse: ...

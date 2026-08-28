@@ -89,6 +89,9 @@ export class RuntimeServer {
   }
 
   async listen(): Promise<string> {
+    // Runs live only in this daemon process. Any persisted active status therefore
+    // represents an interrupted run after a restart, not work still in progress.
+    await this.sessions.recoverInterruptedSessions();
     await this.mcp.load();
     const configuredExtensions = (process.env.SZTU_EXTENSIONS ?? "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
     if (configuredExtensions.length) await loadExtensionModules(this.extensions, configuredExtensions, "global", process.cwd());

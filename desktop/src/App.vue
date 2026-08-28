@@ -15,7 +15,8 @@ import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import ModelManager from "./components/ModelConfig/ModelManager.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
-import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
+// 暂时隐藏“修改了 N 个文件”提示，保留组件以便后续恢复。
+// import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import PipelineStream from "./components/timeline/pipeline/PipelineStream.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
@@ -361,15 +362,16 @@ watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
 // 从当前会话 Agent trace 聚合 AI 修改过的文件路径，按路径去重。
-const changeSummaryPaths = computed(() => {
-  const paths = new Set<string>();
-  for (const item of orderedTimeline.value) {
-    for (const entry of item.changes ?? []) {
-      for (const path of entry.paths) if (path) paths.add(path);
-    }
-  }
-  return [...paths];
-});
+// 暂时停用文件修改汇总，保留实现以便恢复右侧提示。
+// const changeSummaryPaths = computed(() => {
+//   const paths = new Set<string>();
+//   for (const item of orderedTimeline.value) {
+//     for (const entry of item.changes ?? []) {
+//       for (const path of entry.paths) if (path) paths.add(path);
+//     }
+//   }
+//   return [...paths];
+// });
 const permissionModeLabel = computed(() => ({
   normal: "标准审批",
   plan: "计划模式",
@@ -2564,6 +2566,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
+                <!-- 暂时隐藏“修改了 N 个文件”提示。
                 <ChangeSummaryRail
                   v-if="active"
                   :paths="changeSummaryPaths"
