@@ -3,7 +3,7 @@ import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, re
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
+  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Workflow, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,6 +17,7 @@ import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
+import PipelineStream from "./components/timeline/pipeline/PipelineStream.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
@@ -49,6 +50,8 @@ type QueuedSubmission = {
   contentSuffix: string;
   images: ImageBlock[];
   attachmentCount: number;
+  // 原样保留入列时的附件，编辑时需要把内容完整退回输入框重来
+  attachments: PendingAttachment[];
 };
 const FULL_SIDEBAR_MIN_WIDTH = 952;
 const FULL_SIDEBAR_MIN_HEIGHT = 640;
@@ -235,6 +238,10 @@ const webviewZoom = ref(Number(localStorage.getItem("sztu.webviewZoom")) || 1);
 let lastEditableElement: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null = null;
 const settingsButton = ref<HTMLButtonElement | null>(null);
 const appearanceSettings = ref<AppearanceSettings>(loadAppearanceSettings());
+// 时间线渲染方式：classic=按轮次折叠、结束后回放；pipeline=线性流水线、全程就地追加。
+// 两套并存可随时切换对比，跑稳后再移除 classic 分支。
+const timelineView = ref<"classic" | "pipeline">(localStorage.getItem("sztu.timelineView") === "pipeline" ? "pipeline" : "classic");
+watch(timelineView, (value) => localStorage.setItem("sztu.timelineView", value));
 const currentStepByRun = new Map<string, number>();
 const runStepBase = new Map<string, number>(); // 每个 run 的 step 起点偏移，避免跨 run 步号冲突
 const liveRunUsage = new Map<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number }>();
@@ -1421,12 +1428,24 @@ function enqueueSubmission(sessionId: string, text: string, payload: string, ima
     contentSuffix: payload.startsWith(text) ? payload.slice(text.length) : "",
     images: images.map((image) => ({ ...image })),
     attachmentCount,
+    attachments: attachedFiles.value.map((file) => ({ ...file })),
   }];
 }
-function editQueuedSubmission(id: string, text: string) {
+// 编辑待处理任务 = 把它原样退回输入框：文本回到 prompt，附件回到 attachedFiles，
+// 再从队列里移除。这样复用输入框的全部编辑能力，也不会丢掉已附加的文件。
+function editQueuedSubmission(id: string) {
   const view = activeView.value;
-  if (!view) return;
-  view.queue = view.queue.map((item) => item.id === id ? { ...item, text: text.trim() } : item);
+  const item = view?.queue.find((entry) => entry.id === id);
+  if (!view || !item || view.queueBusyId === id) return;
+  prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${item.text}` : item.text;
+  const known = new Set(attachedFiles.value.map((file) => file.path));
+  attachedFiles.value = [
+    ...attachedFiles.value,
+    ...item.attachments.filter((file) => !known.has(file.path)).map((file) => ({ ...file })),
+  ];
+  view.queue = view.queue.filter((entry) => entry.id !== id);
+  slashMenuDismissed.value = false;
+  void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
 }
 function removeQueuedSubmission(id: string) {
   const view = activeView.value;
@@ -2509,6 +2528,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
+                  <button class="pipeline-view-toggle" :title="timelineView === 'pipeline' ? '流水线视图（点击切回经典）' : '经典视图（点击切到流水线）'" :aria-label="timelineView === 'pipeline' ? '切换到经典视图' : '切换到流水线视图'" :aria-pressed="timelineView === 'pipeline'" :class="{ active: timelineView === 'pipeline' }" @click="timelineView = timelineView === 'pipeline' ? 'classic' : 'pipeline'"><Workflow :size="18" /></button>
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
@@ -2530,7 +2550,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <PipelineStream v-if="timelineView === 'pipeline'" :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline v-else :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
@@ -2539,7 +2560,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <ChangeSummaryRail
                   v-if="active"
                   :paths="changeSummaryPaths"
-                />
+                /> -->
                 <QueueDock
                   :items="activeQueueItems"
                   :running="isRunActive"
@@ -2547,21 +2568,22 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   @edit="editQueuedSubmission"
                   @remove="removeQueuedSubmission"
                   @steer="steerQueuedSubmission"
-                />
-                <UserQuestionComposer
-                  v-if="activeUserQuestion"
-                  :pending="activeUserQuestion"
-                  :busy="questionSubmittingId === activeUserQuestion.rpc_id"
-                  :error="questionErrors.get(activeUserQuestion.rpc_id)"
-                  @submit="submitUserQuestion(activeUserQuestion, $event)"
-                  @stop="stopActiveRun"
-                />
-                <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
-                  <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                  <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                  <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send queue-send" type="submit" title="加入待处理队列" aria-label="加入待处理队列" :disabled="!prompt.trim() || (sending && !isAppending) || steering"><ListPlus :size="14" /></button><button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!prompt.trim() || active.archived || active.status === 'closed'"><ArrowUp :size="15" /></button></div>
-                </form>
+                >
+                  <UserQuestionComposer
+                    v-if="activeUserQuestion"
+                    :pending="activeUserQuestion"
+                    :busy="questionSubmittingId === activeUserQuestion.rpc_id"
+                    :error="questionErrors.get(activeUserQuestion.rpc_id)"
+                    @submit="submitUserQuestion(activeUserQuestion, $event)"
+                    @stop="stopActiveRun"
+                  />
+                    <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
+                      <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
+                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                      <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive && !prompt.trim()" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                    </form>
+                </QueueDock>
               </div>
             </section>
             <template v-if="inspectorRendered && activeWorkspace">

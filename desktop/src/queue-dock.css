@@ -1,12 +1,43 @@
-/* 待处理任务条：与输入框同宽（不超出）、紧贴输入框上方连接、灰色底、无框线 */
+/* 任务输入卡片：外层同时包住待处理队列与输入框，两者恒等宽、共用同一张卡片 */
 .queue-dock {
-  width: min(800px, calc(100% - 48px)); /* 与 .kimi-composer 同款宽度公式，恒不宽于输入框 */
-  margin: 0 auto 0; /* 紧贴输入框顶部，无间隙连接 */
-  padding: 6px 10px;
+  position: relative;
+  z-index: 6;
+  width: min(660px, calc(100% - 64px)); /* 与 .task-conversation .kimi-composer 同款宽度公式 */
+  margin: 0 auto 17px;
+  overflow: visible; /* 斜杠菜单与模型气泡需要溢出显示 */
   color: var(--text-muted);
-  background: var(--surface-soft); /* 灰色底，深浅主题自适应 */
-  border-radius: 14px 14px 0 0; /* 上圆角、下平直，直接连接输入框 */
-  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 7px 24px rgb(28 36 44 / 8%);
+  font-size: 13px; /* 与输入框正文同号，队列条不再显得比输入框小一号 */
+}
+
+.queue-dock:focus-within {
+  border-color: #a9aeb5;
+  box-shadow: 0 5px 18px #18222e14;
+}
+
+/* 队列区：与下方输入框同处一张卡片，仅用一条分隔线划开 */
+.queue-dock__queue {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 被卡片包住后，内层的输入框与问答框不再单独描边，避免出现双边框与双重阴影 */
+.task-conversation > .queue-dock > .kimi-composer,
+.task-conversation > .queue-dock > .user-question-composer {
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.task-conversation > .queue-dock > .kimi-composer:focus-within {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .queue-dock__summary,
@@ -19,50 +50,81 @@
 .queue-dock__summary {
   display: flex;
   width: 100%;
-  min-height: 31px;
+  min-height: 36px;
   align-items: center;
-  gap: 7px;
-  padding: 5px 4px;
-  border-radius: 7px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
   text-align: left;
+  transition: background-color 140ms ease;
 }
 
+.queue-dock__summary:hover { background: var(--surface-soft); }
 .queue-dock__summary span { flex: 1; }
 .queue-dock__summary > svg:last-child { transition: transform 140ms ease; }
 .queue-dock__summary[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-.queue-dock__items { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.queue-dock__items { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
 .queue-dock__item {
   display: flex;
   min-width: 0;
-  min-height: 34px;
+  min-height: 40px;
   align-items: center;
-  gap: 7px;
-  padding: 4px 0 4px 4px;
+  gap: 9px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 9px;
+}
+
+/* 序号做成小徽标，与右侧按钮组在视觉上呼应 */
+.queue-dock__lead {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--text-muted);
+  background: var(--surface-soft);
   border-radius: 7px;
 }
 
-.queue-dock__lead { flex: 0 0 auto; color: var(--text-faint); }
-.queue-dock__text { overflow: hidden; min-width: 0; flex: 1; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.queue-dock__item small { flex: 0 0 auto; color: var(--text-faint); }
-.queue-dock__actions { display: flex; flex: 0 0 auto; align-items: center; gap: 1px; }
-
-.queue-dock__actions button,
-.queue-dock__edit button {
-  display: grid;
-  width: 25px;
-  height: 25px;
-  place-items: center;
+.queue-dock__text { overflow: hidden; min-width: 0; flex: 1; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.queue-dock__item small {
+  flex: 0 0 auto;
+  padding: 2px 7px;
   color: var(--text-muted);
+  background: var(--surface-soft);
   border-radius: 5px;
+  font-size: 11px;
 }
 
-.queue-dock__actions button:hover:not(:disabled),
-.queue-dock__edit button:hover:not(:disabled) { color: var(--text); background: var(--surface-raised); }
+/* 按钮组：统一落在一条柔性底槽里，三个操作视觉上归为一组 */
+.queue-dock__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-soft);
+  border-radius: 9px;
+}
+
+.queue-dock__actions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--text-muted);
+  border-radius: 7px;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.queue-dock__actions button:hover:not(:disabled) { color: var(--text); background: var(--surface-raised); }
+.queue-dock__actions button:focus-visible { outline: 0; box-shadow: 0 0 0 2px var(--accent-soft); }
 .queue-dock__actions button:disabled { opacity: .34; }
-.queue-dock__edit { display: flex; min-width: 0; flex: 1; align-items: center; gap: 2px; }
-.queue-dock__edit input { min-width: 0; flex: 1; padding: 5px 7px; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 5px; outline: 0; font-size: 11px; }
-.queue-dock__edit input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* 删除用警示色、转入当前轮用强调色，三个操作不再长得一模一样 */
+.queue-dock__action--danger:hover:not(:disabled) { color: var(--danger); }
+.queue-dock__action--accent:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
 
 @media (max-width: 700px) {
   /* 窄屏仍与输入框同宽，不单独放宽 */

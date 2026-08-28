@@ -129,7 +129,7 @@
   max-width: min(82%, 720px);
 }
 
-.task-conversation > .kimi-composer {
+.task-conversation .kimi-composer {
   position: relative;
   z-index: 6;
   width: min(660px, calc(100% - 64px));
@@ -156,6 +156,7 @@
 }
 .change-summary-rail__line { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; line-height: 1.15; writing-mode: vertical-rl; text-orientation: upright; }
 .change-summary-rail__line strong { color: var(--accent); font-size: 22px; font-weight: 700; line-height: 1; }
+*/
 
 .layout-divider {
   position: relative;
@@ -320,28 +321,31 @@
 .task-intro { align-items: flex-start; max-width: 600px; padding-top: 34px; }
 .task-intro b { display: block; margin: 1px 0 6px; color: #292d31; font-size: 16px; }
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
-.task-conversation > .kimi-composer { border-radius: 14px; border-color: #d9dcdf; box-shadow: 0 7px 24px rgb(28 36 44 / 8%); }
-.task-conversation > .kimi-composer.append-mode { border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
-.task-conversation > .kimi-composer .attachment-strip { padding-top: 8px; }
-.task-conversation > .kimi-composer textarea { min-height: 52px; padding: 10px 12px 5px; }
-.task-conversation > .kimi-composer textarea { font-size: 13px; line-height: 1.45; }
-.task-conversation > .kimi-composer .round,
-.task-conversation > .kimi-composer .permission { border: 0; background: transparent; border-radius: 8px; }
-.task-conversation > .kimi-composer .round { width: 25px; height: 25px; }
-.task-conversation > .kimi-composer .round:hover,
-.task-conversation > .kimi-composer .round:focus-visible,
-.task-conversation > .kimi-composer .permission:hover,
-.task-conversation > .kimi-composer .permission:focus-visible { background: #f3f5f5; }
-.task-conversation > .kimi-composer .send { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: 600; }
-.task-conversation > .kimi-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
-.task-conversation > .kimi-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
-.task-conversation > .kimi-composer .permission { padding: 6px 8px; font-size: 13px; }
+.task-conversation .kimi-composer { border-radius: 14px; border-color: #d9dcdf; box-shadow: 0 7px 24px rgb(28 36 44 / 8%); }
+/* 运行态（追加模式）不再单独定尺寸：宽度、圆角、内外边距、字号、按钮尺寸全部沿用未运行态，
+   避免 run 起停时输入框尺寸跳动。这里只保留权限入口的橙色作为「本轮正在运行」的状态提示。 */
+.task-conversation .kimi-composer.append-mode .permission { color: #e65d18; }
+.task-conversation .kimi-composer .attachment-strip { padding-top: 8px; }
+.task-conversation .kimi-composer textarea { min-height: 52px; padding: 10px 12px 5px; }
+.task-conversation .kimi-composer textarea { font-size: 13px; line-height: 1.45; }
+.task-conversation .kimi-composer .round,
+.task-conversation .kimi-composer .permission { border: 0; background: transparent; border-radius: 8px; }
+.task-conversation .kimi-composer .round { width: 25px; height: 25px; }
+.task-conversation .kimi-composer .round:hover,
+.task-conversation .kimi-composer .round:focus-visible,
+.task-conversation .kimi-composer .permission:hover,
+.task-conversation .kimi-composer .permission:focus-visible { background: #f3f5f5; }
+.task-conversation .kimi-composer .send { width: 32px; height: 32px; border-radius: 50%; font-size: 18px; font-weight: 600; }
+.task-conversation .kimi-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
+.task-conversation .kimi-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
+.task-conversation .kimi-composer .permission { padding: 6px 8px; font-size: 13px; }
 
 @media (max-width: 620px) {
   .task-stream { width: 100%; }
   .task-stream > .execution-timeline { padding: 0 16px; }
   .task-conversation > .kimi-composer { width: calc(100% - 24px); }
   .change-summary-rail { top: auto; right: 12px; bottom: 96px; min-height: 126px; }
+  */
   .timeline-user-message { max-width: 90%; }
   .timeline-assistant { grid-template-columns: 36px minmax(0, 1fr); gap: 8px; }
   .agent-logo { width: 36px; height: 36px; }
@@ -964,7 +968,7 @@
 .task-launcher .launcher-attachment-trigger svg { display: block; width: 18px; height: 18px; stroke: currentColor; }
 .task-launcher .permission { padding: 6px 8px; background: transparent; border: 0; border-radius: 7px; font-size: 13px; }
 .task-launcher .permission svg,
-.task-conversation > .kimi-composer .permission svg { width: 17px; height: 17px; }
+.task-conversation .kimi-composer .permission svg { width: 17px; height: 17px; }
 .task-launcher .round:hover, .task-launcher .permission:hover { background: #f2f3f4; }
 .launcher-permission-control { position: relative; flex: 0 0 auto; }
 .launcher-popover { position: absolute; z-index: 40; color: #292d33; background: #fff; border: 1px solid #dedfe1; border-radius: 10px; box-shadow: 0 14px 38px #20252d1c, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }

@@ -1,0 +1,48 @@
+/* 流水线视图：一次回答 = 文本段 / 思考段 / 工具段按时间顺序交错的线性流。
+   与 ExecutionTimeline 的「运行中折叠、结束后回放」不同，这里全程就地追加。 */
+
+.pipeline-stream { display: grid; gap: 26px; padding: 6px 0 10px; }
+.pipeline-turn { display: grid; gap: 12px; }
+
+/* —— 用户消息：与既有 timeline-user-message 同款靠右气泡 —— */
+.pipeline-user { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.pipeline-user__bubble { max-width: min(76%, 620px); padding: 10px 13px; color: var(--text); background: var(--surface-soft); border-radius: 11px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.pipeline-user__time { flex: 0 0 auto; color: var(--text-faint); font-size: 11px; }
+
+.pipeline-turn__body { display: grid; gap: 10px; min-width: 0; }
+.pipeline-turn__head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pipeline-turn__elapsed { margin-left: auto; color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* —— 阶段轴 —— */
+.phase-rail { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.phase-rail__item { display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 6px; color: var(--text-faint); border-radius: 20px; font-size: 11px; }
+.phase-rail__dot { display: grid; width: 13px; height: 13px; flex: 0 0 auto; place-items: center; color: var(--text-faint); border: 1.5px solid currentColor; border-radius: 50%; }
+.phase-rail__item.is-reached { color: var(--text-muted); }
+.phase-rail__item.is-reached .phase-rail__dot { color: var(--surface); background: var(--text-muted); border-color: var(--text-muted); }
+.phase-rail__item.is-active { color: var(--text); background: var(--surface-soft); }
+.phase-rail__item.is-active .phase-rail__dot { color: var(--surface); background: var(--text); border-color: var(--text); }
+/* 提示语只给当前阶段显示，避免四个阶段同时铺开占满一行 */
+.phase-rail__hint { display: none; }
+.phase-rail__item.is-active .phase-rail__hint { display: inline; color: var(--text-faint); }
+
+.pipeline-thinking,
+.pipeline-text,
+.pipeline-tool,
+.pipeline-tool-group { min-width: 0; }
+
+/* —— 同类工具成组：「修改了 3 个文件」而不是 3 张卡片 —— */
+.pipeline-tool-group { overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.pipeline-tool-group__trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 0 10px; color: var(--text-muted); background: var(--surface-soft); text-align: left; font-size: 12px; }
+.pipeline-tool-group__trigger:hover { color: var(--text); }
+.pipeline-tool-group__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipeline-tool-group__meta { flex: 0 0 auto; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pipeline-tool-group__trigger > svg:last-child { flex: 0 0 auto; margin-left: auto; transition: transform 140ms ease; }
+.pipeline-tool-group__trigger > svg.is-open:last-child { transform: rotate(180deg); }
+.pipeline-tool-group__body { display: grid; gap: 6px; padding: 8px; }
+
+.pipeline-pending { margin: 0; color: var(--text-faint); font-size: 13px; }
+.pipeline-failure { margin: 0; padding: 8px 10px; color: var(--danger); background: var(--surface-soft); border-radius: 8px; font-size: 12px; }
+
+.pipeline-turn__foot { display: flex; flex-wrap: wrap; gap: 6px; color: var(--text-faint); font-size: 11px; }
+.pipeline-continue { display: inline-flex; align-items: center; gap: 5px; justify-self: start; padding: 6px 11px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.pipeline-continue:hover { background: var(--surface-soft); }

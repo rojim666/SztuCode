@@ -137,6 +137,7 @@
   .work-header,
   .task-canvas,
   .kimi-composer,
+  .queue-dock
   .composer-input-shell,
   .project-popover,
   .launcher-popover,
@@ -803,7 +804,7 @@
 }
 
 :root:not([data-wallpaper="none"]) :is(
-  .task-conversation > .kimi-composer,
+  .task-conversation > .queue-dock,
   .task-launcher .composer-input-shell,
   .chat-composer > textarea
 ) {
