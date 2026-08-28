@@ -13,9 +13,6 @@ const groups = computed<string[]>(() => {
 
   if (stats.steps > 0) g.push(`${stats.turns} 轮 · ${stats.steps} 步`);
 
-  // 不展示 LLM 单独计算耗时，避免与轮次总耗时重复；仅保留工具调用耗时。
-  if (stats.toolMs > 0) g.push(`工具调用 ${formatDuration(stats.toolMs / 1000)}`);
-
   if (stats.ttftSteps > 0) {
     const averageSeconds = stats.ttftMsTotal / stats.ttftSteps / 1000;
     // 吞吐 = 输出 token / decode 墙钟（LLM 用时扣除首 token 前的等待）

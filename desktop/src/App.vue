@@ -15,7 +15,7 @@ import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import ModelManager from "./components/ModelConfig/ModelManager.vue";
 import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
-import BottomDiffPreview from "./components/Diff/BottomDiffPreview.vue";
+import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
@@ -266,6 +266,11 @@ const isRunActive = computed(() => sending.value || runActive.value);
 // 追加模式只代表当前会话已有一个实际运行中的 run；发送请求的短暂窗口仍使用普通发送状态。
 const isAppending = computed(() => Boolean(activeId.value && activeView.value?.runActive));
 const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
+// IDE 操作必须跟随当前会话绑定的工作区，不能回退到新建任务启动器残留的项目。
+const activeSessionWorkspace = computed(() => {
+  const workspaceId = active.value?.workspace_id;
+  return workspaceId ? workspaces.value.find((item) => item.workspace_id === workspaceId) ?? null : null;
+});
 const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.archived));
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
@@ -1971,8 +1976,9 @@ async function applyZoom(next: number) {
   catch { document.documentElement.style.zoom = String(zoom); }
 }
 async function openWorkspaceInIde() {
-  if (!activeWorkspace.value) return;
-  try { await invoke("open_workspace_in_ide", { workspacePath: activeWorkspace.value.path }); }
+  const target = activeSessionWorkspace.value;
+  if (!target) return;
+  try { await invoke("open_workspace_in_ide", { workspaceId: target.workspace_id, workspacePath: target.path }); }
   catch (error) { await message(String(error), { title: "无法打开 IDE", kind: "error" }); }
 }
 async function openProjectHomepage() {
@@ -2313,7 +2319,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>新建终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
             <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>新建浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
+            <button type="button" role="menuitem" :disabled="!activeSessionWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
             <div class="app-menu-separator" role="separator" />
             <button type="button" role="menuitem" @click="runAppMenuAction(closeWindow)"><span>退出</span></button>
           </div>
@@ -2549,7 +2555,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
-                <BottomDiffPreview
+                <ChangeSummaryRail
                   v-if="bottomDiffRun"
                   :workspace-id="activeWorkspace?.workspace_id ?? null"
                   :run-id="bottomDiffRun.runId"

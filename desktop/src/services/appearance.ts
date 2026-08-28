@@ -7,6 +7,14 @@ export type CodeFont = "cascadia" | "jetbrains" | "consolas";
 export const MIN_UI_FONT_SIZE = 12;
 export const MAX_UI_FONT_SIZE = 18;
 
+// AI 输出正文的段落间距（em）：下限 0.2 保证段落仍有可辨分隔，上限 2 足够宽松
+export const MIN_PARAGRAPH_SPACING = 0.2;
+export const MAX_PARAGRAPH_SPACING = 2;
+
+// AI 输出正文的行高（行内行距倍率）：1.0 单倍紧凑，2.0 宽松
+export const MIN_LINE_HEIGHT = 1;
+export const MAX_LINE_HEIGHT = 2;
+
 export const uiFontOptions: ReadonlyArray<{ id: UiFont; label: string; family: string }> = [
   { id: "yahei", label: "微软雅黑", family: '"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif' },
   { id: "source", label: "思源黑体", family: '"Noto Sans SC", "Source Han Sans SC", "Noto Sans CJK SC", "Microsoft YaHei UI", sans-serif' },
@@ -34,6 +42,8 @@ export type AppearanceSettings = {
   codeFont: CodeFont;
   fontSize: number;
   compact: boolean;
+  paragraphSpacing: number; // AI 输出正文段落间距（em），驱动 --markdown-paragraph-spacing
+  paragraphLineHeight: number; // AI 输出正文行高倍率，驱动 --markdown-line-height
 };
 
 const STORAGE_KEY = "sztu.appearance";
@@ -53,6 +63,8 @@ export const defaultAppearanceSettings: AppearanceSettings = {
   codeFont: "cascadia",
   fontSize: 14,
   compact: false,
+  paragraphSpacing: 0.72,
+  paragraphLineHeight: 1.2,
 };
 
 const uiFonts = Object.fromEntries(uiFontOptions.map((font) => [font.id, font.family])) as Record<UiFont, string>;
@@ -89,6 +101,8 @@ function normalizedAppearance(value: Partial<AppearanceSettings>): AppearanceSet
     codeFont: ["cascadia", "jetbrains", "consolas"].includes(merged.codeFont) ? merged.codeFont : "cascadia",
     fontSize: clamp(Number(merged.fontSize) || 14, MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE),
     compact: Boolean(merged.compact),
+    paragraphSpacing: clamp(Number(merged.paragraphSpacing) || 0.72, MIN_PARAGRAPH_SPACING, MAX_PARAGRAPH_SPACING),
+    paragraphLineHeight: clamp(Number(merged.paragraphLineHeight) || 1.2, MIN_LINE_HEIGHT, MAX_LINE_HEIGHT),
   };
 }
 
@@ -123,6 +137,10 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
   root.style.setProperty("--text-control", `${Math.max(11, settings.fontSize - 1)}px`);
   root.style.setProperty("--text-caption", `${Math.max(10, settings.fontSize - 2)}px`);
   root.style.setProperty("--text-micro", `${Math.max(9, settings.fontSize - 3)}px`);
+  // AI 输出正文段落间距（em）；列表项间距按 0.39 比例同步缩放（默认 .28em ≈ .72em × .39）
+  root.style.setProperty("--markdown-paragraph-spacing", `${settings.paragraphSpacing}em`);
+  root.style.setProperty("--markdown-list-item-spacing", `${(settings.paragraphSpacing * 0.39).toFixed(3)}em`);
+  root.style.setProperty("--markdown-line-height", String(settings.paragraphLineHeight));
   const wallpaperOpacity = settings.wallpaperIntensity / 100;
   root.style.setProperty("--wallpaper-opacity", String(wallpaperOpacity));
   // Dark surfaces absorb substantially more of the wallpaper, so compensate before

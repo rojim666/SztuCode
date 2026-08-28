@@ -896,6 +896,113 @@ fn create_persistent_worktree(workspace_path: String, worktree_id: String, label
     Ok(serde_json::json!({ "path": target.to_string_lossy().to_string(), "branch": branch }))
 }
 
+#[cfg(windows)]
+fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
+    let mut candidates = Vec::new();
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let programs = PathBuf::from(local_app_data).join("Programs");
+        candidates.push((programs.join("Microsoft VS Code").join("Code.exe"), Vec::new()));
+        candidates.push((programs.join("Cursor").join("Cursor.exe"), Vec::new()));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        for directory in std::env::split_paths(&path) {
+            for launcher in ["code.cmd", "code.exe", "code", "cursor.cmd", "cursor.exe", "cursor"] {
+                let entry = directory.join(launcher);
+                if !entry.is_file() {
+                    continue;
+                }
+                for ancestor in entry.ancestors().skip(1).take(5) {
+                    for executable in ["Code.exe", "Cursor.exe"] {
+                        let candidate = ancestor.join(executable);
+                        if candidate.is_file() && !candidates.iter().any(|(path, _)| path == &candidate) {
+                            candidates.push((candidate, Vec::new()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    candidates.push((PathBuf::from("code.exe"), Vec::new()));
+    candidates.push((PathBuf::from("cursor.exe"), Vec::new()));
+    candidates
+}
+
+#[cfg(target_os = "macos")]
+fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
+    vec![
+        (PathBuf::from("open"), vec!["-a".into(), "Visual Studio Code".into()]),
+        (PathBuf::from("open"), vec!["-a".into(), "Cursor".into()]),
+        (PathBuf::from("code"), Vec::new()),
+        (PathBuf::from("cursor"), Vec::new()),
+    ]
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
+    vec![
+        (PathBuf::from("code"), Vec::new()),
+        (PathBuf::from("cursor"), Vec::new()),
+        (PathBuf::from("codium"), Vec::new()),
+    ]
+}
+
+#[derive(Deserialize)]
+struct WorkspacePathRecord {
+    workspace_id: String,
+    path: String,
+}
+
+fn workspace_path_for_id(workspace_id: &str) -> Option<PathBuf> {
+    let data_root = std::env::var_os("SZTU_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".sztu")))
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".sztu")))?;
+    let records = fs::read_to_string(data_root.join("workspaces.json")).ok()?;
+    let records = serde_json::from_str::<Vec<WorkspacePathRecord>>(&records).ok()?;
+    records
+        .into_iter()
+        .find(|record| record.workspace_id == workspace_id)
+        .map(|record| PathBuf::from(record.path))
+}
+
+#[tauri::command]
+fn open_workspace_in_ide(workspace_path: String, workspace_id: Option<String>) -> Result<(), String> {
+    let workspace_id = workspace_id.and_then(|id| {
+        let trimmed = id.trim().to_string();
+        (!trimmed.is_empty()).then_some(trimmed)
+    });
+    let workspace = workspace_id
+        .as_deref()
+        .and_then(workspace_path_for_id)
+        .unwrap_or_else(|| PathBuf::from(&workspace_path));
+    if !workspace.is_dir() {
+        return Err(format!("项目目录不存在：{}", workspace.display()));
+    }
+
+    let mut errors = Vec::new();
+    for (executable, args) in ide_candidates() {
+        if executable.is_absolute() && !executable.is_file() {
+            continue;
+        }
+        let mut command = StdCommand::new(&executable);
+        command
+            .args(&args)
+            .arg(&workspace)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000);
+        match command.spawn() {
+            Ok(_) => return Ok(()),
+            Err(error) => errors.push(format!("{}: {error}", executable.display())),
+        }
+    }
+
+    let detail = errors.last().map(String::as_str).unwrap_or("未找到可用的 IDE");
+    Err(format!("无法启动 VS Code 或 Cursor。请先安装其中一个并确保命令可用。{detail}"))
+}
+
 // 主入口：注册受控 IPC 桥与系统目录选择能力。
 fn main() {
     tauri::Builder::default()
@@ -916,6 +1023,7 @@ fn main() {
             sandbox_pty_close,
             read_attachment,
             create_persistent_worktree,
+            open_workspace_in_ide,
             macos_toggle_work_area
         ])
         .setup(|app| {

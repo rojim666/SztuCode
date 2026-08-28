@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ChevronDown, CircleAlert, FilePenLine, FileText, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
+import { ChevronDown, FilePenLine, FileText, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
 import type { ToolCallEntry } from "./types";
 
-const props = defineProps<{ call: ToolCallEntry }>();
+const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean }>(), { expanded: false });
 const open = ref(false);
+const isOpen = computed(() => props.expanded || open.value);
 const request = computed(() => JSON.stringify(props.call.params, null, 2));
 const detail = computed(() => {
   const value = props.call.params.command ?? props.call.params.cmd ?? props.call.params.path ?? props.call.params.query ?? props.call.params.description;
@@ -31,8 +32,7 @@ const actionLabel = computed(() => {
   return props.call.name;
 });
 const title = computed(() => {
-  if (props.call.status === "failed") return `运行失败 ${detail.value}`;
-  const prefix = props.call.status === "running" ? "正在" : props.call.status === "failed" ? "运行失败" : "已运行";
+  const prefix = props.call.status === "running" ? "正在" : "已运行";
   if (kind.value === "edit") return `${props.call.status === "running" ? "正在编辑" : "已编辑"} ${detail.value}`;
   if (kind.value === "search" || kind.value === "glob") return `${props.call.status === "running" ? "正在搜索" : "已搜索"} ${detail.value}`;
   if (kind.value === "file") return `${props.call.status === "running" ? "正在读取" : "已读取"} ${detail.value}`;
@@ -79,7 +79,7 @@ const outputSummary = computed(() => {
 
 <template>
   <section class="tool-call-event" :class="call.status">
-    <button :aria-label="title" :aria-expanded="open" @click="open = !open">
+    <button :aria-label="title" :aria-expanded="isOpen" @click="open = !open">
       <FilePenLine v-if="kind === 'edit'" :size="16" />
       <Search v-else-if="kind === 'search' || kind === 'glob'" :size="16" />
       <FileText v-else-if="isFileTool" :size="16" />
@@ -89,12 +89,11 @@ const outputSummary = computed(() => {
       <span class="tool-call-event__detail" :class="{ 'is-path': isPathLike }">{{ detail }}</span>
       <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="11" />{{ elapsed }}</span>
       <LoaderCircle v-if="call.status === 'running'" class="spin" :size="14" />
-      <CircleAlert v-else-if="call.status === 'failed'" :size="14" />
       <ChevronDown class="timeline-row__chevron" :size="13" />
     </button>
-    <div v-if="open" class="tool-call-event__details">
-      <b>输入</b><pre>{{ request }}</pre>
-      <template v-if="outputSummary"><b>{{ call.error ? '错误' : '输出' }}</b><pre>{{ outputSummary }}</pre></template>
+    <div v-if="isOpen" class="tool-call-event__details">
+      <b>{{ call.status === 'running' ? '本次参数' : '输入参数' }}</b><pre>{{ request }}</pre>
+      <template v-if="outputSummary"><b>执行返回</b><pre>{{ outputSummary }}</pre></template>
     </div>
   </section>
 </template>

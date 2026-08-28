@@ -7,8 +7,7 @@ import type { ToolCallEntry } from "./types";
 const props = defineProps<{ calls: ToolCallEntry[] }>();
 const open = ref(false);
 const running = computed(() => props.calls.some((call) => call.status === "running"));
-const failed = computed(() => props.calls.filter((call) => call.status === "failed").length);
-const summary = computed(() => failed.value ? `${props.calls.length} 项操作，${failed.value} 项失败` : `${props.calls.length} 项操作`);
+const summary = computed(() => `${props.calls.length} 项操作`);
 </script>
 
 <template>

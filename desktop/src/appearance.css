@@ -140,7 +140,6 @@
   .composer-input-shell,
   .project-popover,
   .launcher-popover,
-  .bottom-diff-preview,
   .simple-page,
   .session-board article,
   .permission-confirm,
@@ -166,6 +165,8 @@
   .bridge-card h2,
   .session-board b
 ) { color: var(--text) !important; }
+
+:root[data-app-theme="dark"] .project-popover small { color: var(--text-muted) !important; }
 
 :root[data-app-theme="dark"] :is(
   .task-kicker,

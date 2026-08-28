@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play, TerminalSquare } from "@lucide/vue";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, Play } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import ThinkingPanel from "./ThinkingPanel.vue";
@@ -39,6 +39,7 @@ type TurnView = {
   summaryText: string;
   thinkingText: string;
   allToolCalls: ToolCallEntry[];
+  liveToolCall?: ToolCallEntry;
   aggregatedStep: TimelineStep;
   steps: TimelineStep[];
   events: Array<TimelineEvent & { tool?: ToolCallEntry }>;
@@ -150,10 +151,8 @@ function isTurnExpanded(turn: TurnView): boolean {
   return turn.state !== "running" && turn.state !== "waiting" && expandedTurns.value.has(turn.key);
 }
 
-function liveCallSummary(turn: TurnView): string {
-  const failed = turn.allToolCalls.filter((call) => call.status === "failed").length;
-  if (failed) return `运行失败 ${failed} 项操作`;
-  return `已运行 ${turn.allToolCalls.length} 项操作`;
+function liveToolCallOf(calls: ToolCallEntry[]): ToolCallEntry | undefined {
+  return [...calls].reverse().find((call) => call.status === "running" || call.status === "awaiting_permission");
 }
 
 function toggleTurn(turn: TurnView) {
@@ -239,6 +238,7 @@ const turns = computed<TurnView[]>(() => {
     const runStartedAt = steps.find((step) => step.runStartedAt)?.runStartedAt ?? group.userMessageTime;
     const text = steps.map((step) => step.finalText || step.streamText || step.tokens.join("")).filter(Boolean).join("\n\n");
     const allToolCalls = toolCallsOf(steps);
+    const liveToolCall = liveToolCallOf(allToolCalls);
     const thinkingText = thinkingTextOf(steps);
     const aggregatedStep = aggregateStep(steps);
     const events = orderedEvents(steps);
@@ -269,6 +269,7 @@ const turns = computed<TurnView[]>(() => {
       summaryText,
       thinkingText,
       allToolCalls,
+      liveToolCall,
       aggregatedStep,
       steps,
       events,
@@ -290,7 +291,7 @@ const turns = computed<TurnView[]>(() => {
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
       class="timeline-step"
     >
       <div v-if="turn.userMessage" class="timeline-user-message">
@@ -315,15 +316,8 @@ const turns = computed<TurnView[]>(() => {
             <ChevronDown :size="15" />
           </button>
 
-          <div
-            v-if="(turn.state === 'running' || turn.state === 'waiting') && turn.allToolCalls.length"
-            class="turn-call-summary"
-            :class="{ failed: turn.allToolCalls.some((call) => call.status === 'failed') }"
-            role="status"
-          >
-            <TerminalSquare :size="12" />
-            <span>{{ liveCallSummary(turn) }}</span>
-            <LoaderCircle v-if="turn.state === 'running'" class="spin" :size="12" />
+          <div v-if="turn.liveToolCall" class="turn-live-action" role="status">
+            <ToolCallCard :call="turn.liveToolCall" :expanded="true" />
           </div>
 
           <!-- 折叠态思考行：运行中跟随增量输出；结算后继续保留到历史区展开，
