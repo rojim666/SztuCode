@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 # 每写满 N 个事件才 flush 一次：高频流式事件（llm.token/llm.thinking）不再逐条触发磁盘 syscall
 _FLUSH_INTERVAL = 32
+# 流式增量事件走批量 flush；其余事件视为生命周期关键事件，写入后立即 flush（落盘 barrier）
+_STREAM_EVENT_TYPES = frozenset({"llm.token", "llm.thinking"})
 
 
 class EventWriter:
@@ -47,7 +49,11 @@ class EventWriter:
         try:
             self._file.write(event.model_dump_json() + "\n")
             self._pending += 1
-            if self._pending >= _FLUSH_INTERVAL:
+            if getattr(event, "type", "") not in _STREAM_EVENT_TYPES:
+                # 生命周期事件即时落盘，崩溃后 events.jsonl 也保有完整的事件序列
+                self._pending = 0
+                self._file.flush()
+            elif self._pending >= _FLUSH_INTERVAL:
                 self._pending = 0
                 self._file.flush()
         except (OSError, ValueError) as e:

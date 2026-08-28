@@ -1818,7 +1818,8 @@ class CoreApp:
             trace_path = Path(self._config.trace.file).expanduser()
             self._trace = TraceWriter(trace_path)
             await self._trace.start()
-            self._bus.subscribe(self._trace_event_handler)
+            # trace 是 best-effort 遥测：走观测订阅，磁盘慢不拖累核心 loop
+            self._bus.subscribe_observer(self._trace_event_handler)
 
         policy_file = Path("~/.sztu/policy.toml").expanduser()
         self._permission_manager = PermissionManager(
@@ -1833,7 +1834,9 @@ class CoreApp:
         )
 
         self._broadcaster = IpcEventBroadcaster(trace=self._trace)
-        self._bus.subscribe(self._broadcaster.handle)
+        # 桌面/客户端广播是观测订阅：慢客户端只能拖慢自己的投递 worker（有界队列 +
+        # 流式事件合并/丢弃），不再阻塞 Agent Loop 或其他订阅者
+        self._bus.subscribe_observer(self._broadcaster.handle)
         sessions_root = Path("~/.sztu/sessions").expanduser()
         store = SessionStore(
             sessions_root,
@@ -1980,6 +1983,12 @@ class CoreApp:
         if self._mcp_manager is not None:
             await self._mcp_manager.stop_all()
         await server.stop()
+        # 有界 drain 观测订阅队列，把 shutdown 时未投递的事件数量暴露出来
+        undelivered = await self._bus.close_observers()
+        if undelivered:
+            logger.warning(
+                "event bus shutdown: %d observer event(s) undelivered", undelivered
+            )
         if self._trace is not None:
             await self._trace.stop()
 
