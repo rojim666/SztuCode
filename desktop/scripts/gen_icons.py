@@ -12,8 +12,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 SIZE = 1024
-INK = (233, 238, 246, 255)  # #e9eef6
-BACK = (13, 17, 23, 255)  # #0d1117
+INK = (28, 35, 48, 255)  # #1c2330
+BACK = (244, 246, 250, 255)  # #f4f6fa
 
 OUT = Path(__file__).resolve().parent.parent / "src-tauri" / "icons"
 
@@ -24,15 +24,13 @@ def draw_terminal(img: Image.Image) -> None:
     d.rounded_rectangle([0, 0, SIZE - 1, SIZE - 1], radius=210, fill=BACK)
     # window frame
     frame = [192, 208, 831, 815]
-    d.rounded_rectangle(frame, radius=112, outline=INK, width=48)
+    d.rounded_rectangle(frame, radius=112, outline=INK, width=58)
     # title bar dots
     for cx in (296, 388, 480):
-        d.ellipse([cx - 30, 290, cx + 30, 350], fill=(INK[0], INK[1], INK[2], 205))
-    # prompt chevron: >  (M 300 600 L 402 540 L 300 480)
-    d.line([(300, 600), (402, 540)], fill=INK, width=56, joint="curve")
-    d.line([(402, 540), (300, 480)], fill=INK, width=56, joint="curve")
-    # cursor bar (blinking underline)
-    d.rounded_rectangle([462, 480, 532, 600], radius=26, fill=INK)
+        d.ellipse([cx - 32, 288, cx + 32, 352], fill=(INK[0], INK[1], INK[2], 205))
+    # paired rounded eyes
+    d.rounded_rectangle([314, 405, 431, 580], radius=52, fill=INK)
+    d.rounded_rectangle([489, 405, 606, 580], radius=52, fill=INK)
 
 
 def main() -> None:

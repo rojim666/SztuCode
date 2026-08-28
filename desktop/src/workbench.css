@@ -408,7 +408,7 @@
 
 /* Outcome-first task conversation. */
 .timeline-step { padding-bottom: 18px; }
-.timeline-assistant { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.timeline-assistant { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; }
 
 .turn-status { display: flex; min-height: 23px; align-items: center; gap: 6px; margin-bottom: 5px; }
 .turn-status b { color: #767779; font-size: 12px; font-weight: 620; }
@@ -455,10 +455,7 @@
 .task-intro b { display: block; margin: 1px 0 6px; color: #292d31; font-size: 16px; }
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
 .task-conversation > .kimi-composer { border-radius: 14px; border-color: #d9dcdf; box-shadow: 0 7px 24px rgb(28 36 44 / 8%); }
-.task-conversation > .kimi-composer.append-mode { width: min(620px, calc(100% - 72px)); border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
-.composer-append-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 25px; padding: 8px 12px 0; color: #7b8794; font-size: 10px; line-height: 1.2; }
-.composer-append-status b { color: #2d6da4; font-size: 10px; font-weight: 600; }
-.composer-append-status span + span { padding-left: 8px; border-left: 1px solid #d8e1ea; }
+.task-conversation > .kimi-composer.append-mode { border-color: #cbd9e7; background: #fbfcfe; box-shadow: 0 7px 22px rgb(39 78 116 / 9%); }
 .task-conversation > .kimi-composer.append-mode textarea { padding-top: 7px; }
 .task-conversation > .kimi-composer .attachment-strip { padding-top: 8px; }
 .task-conversation > .kimi-composer textarea { min-height: 52px; padding: 10px 12px 5px; }
@@ -484,7 +481,8 @@
   .bottom-diff-preview__files { max-height: 120px; border-right: 0; border-bottom: 1px solid var(--border); }
   .bottom-diff-preview__diff { max-height: 180px; }
   .timeline-user-message { max-width: 90%; }
-  .timeline-assistant { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .timeline-assistant { grid-template-columns: 36px minmax(0, 1fr); gap: 8px; }
+  .agent-logo { width: 36px; height: 36px; }
   .evidence-strip { display: grid; grid-template-columns: 1fr; }
   .evidence-item { width: 100%; }
 }
@@ -547,8 +545,7 @@
 /* Sidebar project and conversation controls. */
 .project-row-shell {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 27px;
+  display: block;
   align-items: center;
   gap: 2px;
   min-height: 36px;
@@ -574,57 +571,69 @@
 .project-row-toggle span { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .project-row-toggle:hover { color: #202124; background: transparent; }
 
-.side-item-action {
-  display: grid;
-  width: 25px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  color: #858b92;
-  background: transparent;
-  border-radius: 6px;
-}
-
-.side-item-action:hover { color: #2c3137; background: #dde1e4; }
-
-.side-item-action {
-  opacity: 0;
-  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
-}
-
-.project-row-shell:hover .side-item-action,
-.project-row-shell:focus-within .side-item-action { opacity: 1; }
-
 .project-action-menu {
   position: absolute;
   z-index: 45;
   top: 34px;
   right: 0;
   display: grid;
-  width: 176px;
-  padding: 5px;
+  width: 194px;
+  padding: 7px;
   background: #fff;
-  border: 1px solid #dadddf;
-  border-radius: 8px;
-  box-shadow: 0 12px 28px rgb(25 32 41 / 17%);
+  border: 1px solid rgb(25 32 41 / 11%);
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
   animation: sidebar-menu-in 140ms ease-out;
 }
 
 .project-action-menu button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 36px;
+  padding: 7px 10px;
   color: #373c42;
   background: transparent;
-  border-radius: 5px;
+  border-radius: 9px;
   text-align: left;
-  font-size: 11px;
+  font-size: 13px;
 }
 
-.project-action-menu button:hover { color: #176fd1; background: #eef5fd; }
+.project-action-menu button:hover,
+.project-action-menu button:focus-visible { color: #30353a; background: #f0f1f2; outline: 0; }
+
+.project-action-menu button svg { flex: 0 0 auto; color: #555b61; }
+
+.project-action-menu__separator { height: 1px; margin: 5px -7px; background: #e5e7e9; }
+.project-edit-backdrop { position: fixed; z-index: 930; inset: 0; display: grid; padding: 24px; place-items: center; background: rgb(20 24 29 / 38%); backdrop-filter: blur(5px); }
+.project-edit-dialog { display: grid; width: min(480px, 100%); overflow: hidden; color: #292d32; background: #fff; border: 1px solid rgb(27 32 38 / 10%); border-radius: 18px; box-shadow: 0 28px 80px rgb(15 20 27 / 25%), 0 4px 14px rgb(15 20 27 / 9%); }
+.project-edit-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 23px 24px 18px; }
+.project-edit-dialog > header h2 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.2px; }
+.project-edit-dialog > header p { margin: 6px 0 0; color: #7c8289; font-size: 12px; line-height: 1.5; }
+.project-edit-dialog > header button { display: grid; width: 31px; height: 31px; flex: 0 0 auto; padding: 0; place-items: center; color: #686e75; background: #f2f3f4; border-radius: 9px; }
+.project-edit-dialog > header button:hover { color: #33383e; background: #e9ebed; }
+.project-edit-dialog__body { display: grid; gap: 15px; padding: 3px 24px 23px; }
+.project-edit-dialog__body label { display: grid; gap: 7px; color: #555b62; font-size: 12px; font-weight: 550; }
+.project-edit-dialog__body input { width: 100%; height: 41px; padding: 0 12px; color: #2d3237; background: #f8f9f9; border: 1px solid #dfe2e4; border-radius: 10px; outline: 0; font-size: 13px; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
+.project-edit-dialog__body input:focus { background: #fff; border-color: #8c9298; box-shadow: 0 0 0 3px rgb(55 62 70 / 8%); }
+.project-edit-dialog__body input[readonly] { color: #8a9096; background: #f3f4f5; font-family: Consolas, "Cascadia Mono", monospace; font-size: 11px; }
+.project-edit-dialog__error { margin: -3px 0 0; color: #ad3d38; font-size: 11px; }
+.project-edit-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 24px; background: #f7f7f7; border-top: 1px solid #e8eaeb; }
+.project-edit-dialog > footer button { min-width: 72px; height: 35px; padding: 0 14px; color: #464c52; background: #fff; border: 1px solid #dde0e2; border-radius: 9px; font-size: 12px; }
+.project-edit-dialog > footer button:hover:not(:disabled) { background: #f0f1f2; }
+.project-edit-dialog > footer button.primary { color: #fff; background: #3d4248; border-color: #3d4248; }
+.project-edit-dialog > footer button.primary:hover:not(:disabled) { background: #292e33; }
+.project-edit-dialog button:disabled { cursor: default; opacity: .5; }
+
+.agent-sidebar .project-tree { display: flex; flex-direction: column; }
+.pinned-tree-label { order: 1; }
+.pinned-temporary-list { order: 2; }
+.project-group--pinned { order: 3; }
+.project-tree-label { order: 4; }
+.project-tree.has-pinned-section .project-tree-label { margin-top: 18px; }
+.project-group:not(.project-group--pinned) { order: 5; }
+.project-tree > .side-empty { order: 6; }
 
 .archived-projects {
   margin-top: 20px;
@@ -767,7 +776,7 @@
 
 /* Agent workbench sidebar: attention first, project context second. */
 .kimi-shell { position: relative; grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr); background: #f2f2f2; border-color: transparent; }
-.kimi-shell.sidebar-collapsed { grid-template-columns: var(--sidebar-collapsed-width, 44px) minmax(0, 1fr); }
+.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .kimi-shell.sidebar-resizing { transition: none; cursor: col-resize; }
 .kimi-titlebar { background: #f2f2f2; }
 .nav-toggle { background: transparent; border-color: transparent; box-shadow: none; }
@@ -1031,7 +1040,7 @@
 .launcher-heading__copy { min-width: 0; }
 .task-launcher .launcher-heading h1 { display: inline-grid; margin: 0; color: #1e2023; font-family: "Aptos Display", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif; font-size: 42px; font-weight: 560; line-height: 1.16; letter-spacing: 0; }
 .launcher-heading h1::before, .launcher-heading h1 > span { grid-area: 1 / 1; white-space: nowrap; }
-.launcher-heading h1::before { visibility: hidden; content: "心念为引，一言功毕"; }
+.launcher-heading h1::before { visibility: hidden; content: "Think it. Build it."; }
 .launcher-heading h1 > span { width: 0; overflow: hidden; border-right: 2px solid #25282c; animation: launcher-title-type 1.35s steps(18, end) 180ms forwards, launcher-title-caret 450ms step-end 3 180ms forwards; }
 @keyframes launcher-title-type { to { width: 100%; } }
 @keyframes launcher-title-caret { 50%, 100% { border-color: transparent; } }

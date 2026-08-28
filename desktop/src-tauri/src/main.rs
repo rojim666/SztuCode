@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
+    fs,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
+    process::Command as StdCommand,
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -12,7 +14,11 @@ use std::{
 use base64::Engine;
 use portable_pty::{CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
-use tauri::{path::BaseDirectory, Emitter, Manager, State, WebviewWindow, Window};
+use tauri::{
+    path::BaseDirectory,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Listener, Manager, State, WebviewWindow, Window,
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{tcp::OwnedWriteHalf, TcpStream},
@@ -863,6 +869,33 @@ fn macos_toggle_work_area(window: WebviewWindow) -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn create_persistent_worktree(workspace_path: String, worktree_id: String, label: String) -> Result<serde_json::Value, String> {
+    let root = Path::new(&workspace_path);
+    if !root.is_dir() { return Err("项目目录不存在".into()); }
+    let short_id: String = worktree_id.chars().filter(|ch| ch.is_ascii_alphanumeric()).take(12).collect();
+    if short_id.is_empty() { return Err("聊天 ID 无效".into()); }
+    let project_name = root.file_name().and_then(|name| name.to_str()).unwrap_or("project");
+    let worktree_root = root.parent().unwrap_or(root).join(".sztu-worktrees").join(project_name);
+    fs::create_dir_all(&worktree_root).map_err(|error| format!("无法创建工作树目录：{error}"))?;
+    let safe_label: String = label.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').take(24).collect();
+    let safe_label = if safe_label.is_empty() { "worktree".to_string() } else { safe_label };
+    let target = worktree_root.join(format!("{safe_label}-{short_id}"));
+    let branch = format!("sztucode/{safe_label}-{short_id}");
+    if target.exists() { return Err(format!("该聊天的永久工作树已存在：{}", target.display())); }
+    let output = StdCommand::new("git")
+        .args(["-C", &workspace_path, "worktree", "add", "-b", &branch])
+        .arg(&target)
+        .arg("HEAD")
+        .output()
+        .map_err(|error| format!("无法执行 Git：{error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if detail.is_empty() { "创建永久工作树失败".into() } else { format!("创建永久工作树失败：{detail}") });
+    }
+    Ok(serde_json::json!({ "path": target.to_string_lossy().to_string(), "branch": branch }))
+}
+
 // 主入口：注册受控 IPC 桥与系统目录选择能力。
 fn main() {
     tauri::Builder::default()
@@ -882,6 +915,7 @@ fn main() {
             sandbox_pty_resize,
             sandbox_pty_close,
             read_attachment,
+            create_persistent_worktree,
             macos_toggle_work_area
         ])
         .setup(|app| {
@@ -889,6 +923,77 @@ fn main() {
             if let Some(icon) = app.default_window_icon() {
                 window.set_icon(icon.clone())?;
             }
+
+            let tray_window = window.clone();
+            let app_handle = app.handle().clone();
+            app.listen("tray://quit", move |_| app_handle.exit(0));
+            if let Some(menu_window) = app.get_webview_window("tray-menu") {
+                let menu_for_events = menu_window.clone();
+                menu_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        let _ = menu_for_events.hide();
+                    }
+                });
+            }
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().expect("application icon").clone())
+                .tooltip("SztuCode")
+                .show_menu_on_left_click(false)
+                .on_tray_icon_event(move |_tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                            let _ = menu.hide();
+                        }
+                        let _ = tray_window.show();
+                        let _ = tray_window.set_focus();
+                    } else if let TrayIconEvent::Click {
+                        button: MouseButton::Right,
+                        button_state: MouseButtonState::Up,
+                        position,
+                        ..
+                    } = event {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                            if menu.is_visible().unwrap_or(false) {
+                                let _ = menu.hide();
+                                return;
+                            }
+                            // 以托盘图标右上角为锚点，菜单贴在图标左上侧；
+                            // 同时限制在当前屏幕工作区内，避免任务栏/多屏时跑出屏幕。
+                            // 托盘事件给出物理像素坐标；窗口配置是逻辑像素，需要按 DPI 换算。
+                            let scale = menu.scale_factor().unwrap_or(1.0);
+                            let size = tauri::PhysicalSize::new(
+                                (300.0 * scale).round() as u32,
+                                (338.0 * scale).round() as u32,
+                            );
+                            let monitor = menu.current_monitor().ok().flatten();
+                            let (left, top, right, bottom) = monitor
+                                .map(|m| {
+                                    let p = m.position(); let s = m.size();
+                                    (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
+                                })
+                                .unwrap_or((0, 0, i32::MAX, i32::MAX));
+                            let x = ((position.x as i32) - size.width as i32).clamp(left, right - size.width as i32);
+                            let y = ((position.y as i32) - size.height as i32 - 4).clamp(top, bottom - size.height as i32);
+                            let _ = menu.set_position(tauri::PhysicalPosition::new(x, y));
+                            let _ = menu.show();
+                            let _ = menu.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            let close_window = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = close_window.hide();
+                }
+            });
             #[cfg(target_os = "macos")]
             {
                 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};

@@ -83,6 +83,7 @@ class WorkspaceSummary(BaseModel):
     path: str
     name: str
     archived: bool = False
+    pinned: bool = False
 
 
 class WorkspaceOpenCommand(BaseModel):
@@ -108,6 +109,26 @@ class WorkspaceArchiveCommand(BaseModel):
 
 
 class WorkspaceArchiveResult(BaseModel):
+    workspace: WorkspaceSummary
+
+
+class WorkspacePinCommand(BaseModel):
+    type: Literal["workspace.pin"] = "workspace.pin"
+    workspace_id: str
+    pinned: bool
+
+
+class WorkspacePinResult(BaseModel):
+    workspace: WorkspaceSummary
+
+
+class WorkspaceRenameCommand(BaseModel):
+    type: Literal["workspace.rename"] = "workspace.rename"
+    workspace_id: str
+    name: str = Field(min_length=1, max_length=120)
+
+
+class WorkspaceRenameResult(BaseModel):
     workspace: WorkspaceSummary
 
 
@@ -913,6 +934,8 @@ Command = Annotated[
     | WorkspaceOpenCommand
     | WorkspaceListCommand
     | WorkspaceArchiveCommand
+    | WorkspacePinCommand
+    | WorkspaceRenameCommand
     | WorkspaceResumeCommand
     | WorkspaceDeleteCommand
     | WorkspaceStatusCommand

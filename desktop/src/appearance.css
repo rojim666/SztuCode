@@ -231,6 +231,14 @@
   border-color: var(--border) !important;
 }
 
+:root[data-app-theme="dark"] .work-header__tools :is(.source-control-toggle, .workspace-panel-toggle):is(:hover, :focus-visible, .active) {
+  color: #e5e7eb;
+  background: #3b4047;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+
 :root[data-app-theme="dark"] .starter-tasks button:hover,
 :root[data-app-theme="dark"] .starter-tasks button.selected {
   color: var(--text) !important;
@@ -248,7 +256,6 @@
   .new-task-button,
   .sidebar-tools button,
   .project-row-toggle,
-  .side-item-action,
   .status-task-row,
   .account,
   .window-actions,
@@ -267,7 +274,6 @@
   .sidebar-tools button,
   .project-row-shell,
   .project-row-toggle,
-  .side-item-action,
   .status-task-row,
   .work-header__tools button,
   .icon-button,
@@ -313,6 +319,13 @@
 ):hover { background: var(--surface-soft) !important; }
 
 :root[data-app-theme="dark"] .session-menu__submenu { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
+:root[data-app-theme="dark"] .app-menu-item > button { color: var(--text-muted); }
+:root[data-app-theme="dark"] .app-menu-item > button:hover,
+:root[data-app-theme="dark"] .app-menu-item > button[aria-expanded="true"] { color: var(--text); background: rgb(255 255 255 / 9%); }
+:root[data-app-theme="dark"] .app-menu-popover { color: var(--text); background: var(--surface-raised); border-color: var(--border); box-shadow: 0 14px 32px rgb(0 0 0 / 38%); }
+:root[data-app-theme="dark"] .app-menu-popover button:hover,
+:root[data-app-theme="dark"] .app-menu-popover button:focus-visible { background: rgb(255 255 255 / 8%); }
+:root[data-app-theme="dark"] .app-menu-separator { background: var(--border); }
 
 :root[data-app-theme="dark"] :is(
   .turn-history-toggle,

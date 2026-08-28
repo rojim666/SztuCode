@@ -1,7 +1,7 @@
 {
     "$schema": "https://schema.tauri.app/config/2",
     "productName": "SztuCode",
-    "version": "0.1.1",
+    "version": "1.0.0",
     "identifier": "dev.sztucode.desktop",
     "build": {
         "beforeDevCommand": "npm run dev",
@@ -23,19 +23,17 @@
                 "transparent": true
             },
             {
-                "label": "splashscreen",
-                "visible": false,
+                "label": "tray-menu",
                 "title": "SztuCode",
-                "width": 460,
-                "height": 300,
+                "width": 300,
+                "height": 338,
                 "resizable": false,
-                "maximizable": false,
-                "minimizable": false,
+                "focusable": true,
                 "decorations": false,
-                "backgroundColor": "#0d1117",
-                "alwaysOnTop": true,
+                "transparent": true,
+                "visible": false,
                 "skipTaskbar": true,
-                "center": true,
+                "alwaysOnTop": true,
                 "shadow": false
             }
         ],

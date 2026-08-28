@@ -28,13 +28,13 @@ export const PROTOCOL_METHODS = [
   "request.cancel", "$/cancelRequest", "permission.respond", "permission.set_mode",
   "session.create", "session.attach", "session.detach", "session.command", "session.get", "session.list",
   "session.history", "session.get_history", "session.send_message", "session.steer_message",
-  "session.archive", "session.close", "session.compact", "session.delete", "session.fork", "session.pin", "session.rename", "session.resume",
+  "session.archive", "session.close", "session.compact", "session.delete", "session.fork", "session.pin", "session.rename", "session.resume", "session.set_workspace",
   "change.diff", "change.discard", "change.list", "change.revert", "change.stage", "change.unstage",
   "file.read", "file.search", "git.commit", "git.history",
   "plugin.catalog", "plugin.catalog_install", "plugin.install", "plugin.list", "plugin.marketplace_add", "plugin.marketplace_refresh", "plugin.marketplace_remove", "plugin.set_enabled", "plugin.uninstall",
   "provider.ccswitch_apply", "provider.ccswitch_list", "provider.model_benchmark", "provider.model_delete", "provider.model_list", "provider.model_save", "provider.model_select", "provider.model_test", "provider.status",
   "question.pending", "question.respond", "settings.get", "settings.update", "skill.install", "skill.list", "skill.set_enabled", "workflow.run",
-  "workspace.archive", "workspace.delete", "workspace.list", "workspace.open", "workspace.profile", "workspace.resume", "workspace.status", "workspace.tree",
+  "workspace.archive", "workspace.delete", "workspace.list", "workspace.open", "workspace.pin", "workspace.profile", "workspace.rename", "workspace.resume", "workspace.status", "workspace.tree",
 ] as const;
 export type ProtocolMethod = (typeof PROTOCOL_METHODS)[number];
 
@@ -138,7 +138,7 @@ export interface RunCancelResult { run_id: string; status: "cancelling" | "not_r
 export interface RunGetResult { run_id: string; status: "running" | "completed" | "cancelled" | "unknown" }
 export interface RunReplayResult { run_id: string; events: RuntimeEvent[] }
 export interface RequestCancelResult { request_id: RequestId; status: "cancelling" | "not_running" }
-export interface WorkspaceSummary { workspace_id: string; path: string; name: string; archived: boolean }
+export interface WorkspaceSummary { workspace_id: string; path: string; name: string; archived: boolean; pinned?: boolean }
 export interface WorkspaceOpenResult { workspace: WorkspaceSummary }
 export interface WorkspaceListResult { workspaces: WorkspaceSummary[] }
 export interface SessionCreateParams { type?: "session.create"; mode?: "one_shot" | "chat"; title?: string; workspace_id?: string | null }

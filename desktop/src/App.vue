@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, BookOpen, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
-  GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus, FolderSearch,
+  GitBranch, Globe2, GripVertical, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
   ListPlus, Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Wrench, X,
 } from "@lucide/vue";
-import { confirm, open as openDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import ModelManager from "./components/ModelConfig/ModelManager.vue";
@@ -15,6 +17,7 @@ import SessionActions from "./components/session/SessionActions.vue";
 import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 import BottomDiffPreview from "./components/Diff/BottomDiffPreview.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
+import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
@@ -28,15 +31,17 @@ import { isMacOSPlatform } from "./lib/platform";
 import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "./utils/timelineStream";
 import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
+import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listPendingUserQuestions, listSessions,
-  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, readAttachments, respondPermission, respondUserQuestion,
+  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listPendingUserQuestions, listSessions,
+  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion,
   resumeWorkspace, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "source-control";
+type AppMenu = "file" | "edit" | "view" | "help";
 type RuntimeEvent = Record<string, unknown>;
 type QueuedSubmission = {
   id: string;
@@ -178,8 +183,11 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+const projectEditingId = ref<string | null>(null);
+const projectEditName = ref("");
+const projectEditError = ref("");
+const projectActionBusy = ref(false);
 const sidebarToolsExpanded = ref(false);
-const collapsedProjects = ref(new Set<string>());
 const taskQuery = ref("");
 const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
@@ -196,6 +204,7 @@ const filesRequest = ref<{ workspaceId: string; seq: number } | null>(null);
 let filesRequestSeq = 0;
 let inspectorCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let inspectorOpenFrame: number | undefined;
+let trayListeners: Array<() => void> = [];
 // 待发送附件：图片走 base64 内容块，文本把内容注入消息
 type PendingAttachment = {
   path: string; name: string; size: number;
@@ -208,6 +217,10 @@ const attachedFiles = ref<PendingAttachment[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const settingsOpen = ref(false);
+const activeAppMenu = ref<AppMenu | null>(null);
+const statusBarVisible = ref(localStorage.getItem("sztu.statusBarVisible") !== "false");
+const webviewZoom = ref(Number(localStorage.getItem("sztu.webviewZoom")) || 1);
+let lastEditableElement: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null = null;
 const settingsButton = ref<HTMLButtonElement | null>(null);
 const appearanceSettings = ref<AppearanceSettings>(loadAppearanceSettings());
 const currentStepByRun = new Map<string, number>();
@@ -228,6 +241,11 @@ const resolvedQuestionIds = new Set<string>();
 let questionEventVersion = 0;
 const modelManagerOpen = ref(false);
 
+// 未发送的启动器输入按项目持久化；切走或重启应用后再次点击项目仍可继续编辑。
+watch(prompt, (value) => {
+  if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, value);
+});
+
 const active = computed(() => sessions.value.find((item) => item.session_id === activeId.value) ?? null);
 const activeUserQuestion = computed(() => pendingUserQuestions.value.find((item) => item.session_id === activeId.value) ?? null);
 const backgroundUserQuestions = computed(() => pendingUserQuestions.value.filter((item) => item.session_id !== activeId.value));
@@ -245,13 +263,18 @@ const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerC
 const matchesTaskQuery = (item: Session) => !normalizedTaskQuery.value || item.title.toLocaleLowerCase().includes(normalizedTaskQuery.value);
 const visibleSessions = computed(() => liveSessions.value.filter(matchesTaskQuery));
 const temporaryTasks = computed(() => visibleSessions.value.filter((item) => !item.workspace_id).slice(0, 5));
-const projects = computed(() => activeWorkspaces.value
+const allProjects = computed(() => activeWorkspaces.value
   .map((item) => {
     const projectMatches = item.name.toLocaleLowerCase().includes(normalizedTaskQuery.value);
     const candidates = normalizedTaskQuery.value && !projectMatches ? visibleSessions.value : liveSessions.value;
-    return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id).slice(0, 6), projectMatches };
+    return { ...item, tasks: candidates.filter((task) => task.workspace_id === item.workspace_id && (item.pinned || !task.pinned)).slice(0, 6), projectMatches };
   })
   .filter((item) => !normalizedTaskQuery.value || item.projectMatches || item.tasks.length));
+const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
+const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
+const projects = computed(() => allProjects.value.filter((item) => !item.pinned));
+const pinnedTemporaryTasks = computed(() => visibleSessions.value.filter((item) => item.pinned && (!item.workspace_id || !pinnedProjects.value.some((project) => project.workspace_id === item.workspace_id))));
+const ordinaryTemporaryTasks = computed(() => temporaryTasks.value.filter((item) => !item.pinned));
 const filteredLauncherWorkspaces = computed(() => {
   const query = launcherProjectQuery.value.trim().toLocaleLowerCase();
   if (!query) return activeWorkspaces.value.slice(0, 6);
@@ -1235,6 +1258,7 @@ async function submitUserQuestion(pending: PendingUserQuestion, answers: UserQue
 }
 
 function beginTask(project: Workspace | null = workspace.value) {
+  if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, prompt.value);
   projectActionsOpen.value = null;
   closeLauncherMenus();
   workspace.value = project;
@@ -1242,7 +1266,7 @@ function beginTask(project: Workspace | null = workspace.value) {
   launcherTimeline.value = new Map();
   attachedFiles.value = [];
   page.value = "work";
-  prompt.value = "";
+  prompt.value = loadComposerDraft(project?.workspace_id ?? null);
   selectedStarterTask.value = "";
   void nextTick(() => launcherPrompt.value?.focus());
 }
@@ -1323,6 +1347,7 @@ async function submitTask(content: string, project: Workspace | null = workspace
     view.loaded = true;
     activeId.value = sessionId;
     page.value = "work";
+    saveComposerDraft(project?.workspace_id ?? null, "");
     prompt.value = "";
     sending.value = false;
     const sent = await startSessionRun(sessionId, trimmed, images);
@@ -1437,14 +1462,6 @@ async function chooseTask(id: string) {
   await loadSessionHistory(id);
 }
 async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
-function isProjectCollapsed(workspaceId: string) { return collapsedProjects.value.has(workspaceId); }
-function toggleProject(workspaceId: string) {
-  const next = new Set(collapsedProjects.value);
-  if (next.has(workspaceId)) next.delete(workspaceId);
-  else next.add(workspaceId);
-  collapsedProjects.value = next;
-  projectActionsOpen.value = null;
-}
 async function createProjectTask(item: Workspace) {
   projectActionsOpen.value = null;
   beginTask(item);
@@ -1527,7 +1544,16 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // run 刚好结束时 steer 会被服务拒绝，此时转入队列；其它错误不能静默吞掉草稿。
-        if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
+        const runStillActive = sessionId ? ensureSessionView(sessionId).runActive : false;
+        if (!runStillActive && sessionId) {
+          // 追加提交与 run.finished 同时到达时，直接启动一个新的 run，
+          // 避免输入框一直停留在追加模式且任务没有进入运行态。
+          const sent = await startSessionRun(sessionId, payload, images);
+          if (sent) {
+            prompt.value = "";
+            attachedFiles.value = [];
+          }
+        } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
           enqueueSubmission(sessionId, content, payload, images, attachmentCount);
           prompt.value = "";
           attachedFiles.value = [];
@@ -1574,6 +1600,64 @@ async function decidePermission(toolUseId: string, decision: PermissionDecision)
   const context = permissionContexts.get(toolUseId);
   if (!context) throw new Error("Permission request is no longer active");
   await respondPermission(toolUseId, decision, context.runId, context.sessionId);
+}
+function beginProjectEdit(item: Workspace) {
+  projectEditingId.value = item.workspace_id;
+  projectEditName.value = item.name;
+  projectEditError.value = "";
+  projectActionsOpen.value = null;
+}
+function closeProjectEdit() {
+  if (projectActionBusy.value) return;
+  projectEditingId.value = null;
+  projectEditError.value = "";
+}
+async function saveProjectEdit() {
+  const item = projectBeingEdited.value;
+  if (!item) return;
+  if (!projectEditName.value.trim() || projectActionBusy.value) return;
+  projectActionBusy.value = true;
+  projectEditError.value = "";
+  try {
+    const updated = await renameWorkspace(item.workspace_id, projectEditName.value);
+    workspaces.value = workspaces.value.map((entry) => entry.workspace_id === updated.workspace_id ? updated : entry);
+    projectEditingId.value = null;
+    projectActionsOpen.value = null;
+  } catch (error) { projectEditError.value = error instanceof Error ? error.message : String(error); }
+  finally { projectActionBusy.value = false; }
+}
+async function toggleProjectPinned(item: Workspace) {
+  if (projectActionBusy.value) return;
+  projectActionBusy.value = true;
+  try {
+    const updated = await pinWorkspace(item.workspace_id, !item.pinned);
+    workspaces.value = workspaces.value.map((entry) => entry.workspace_id === updated.workspace_id ? updated : entry);
+    projectActionsOpen.value = null;
+  } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  finally { projectActionBusy.value = false; }
+}
+async function openProjectExplorer(item: Workspace) {
+  try { const { openPath } = await import("@tauri-apps/plugin-opener"); await openPath(item.path); projectActionsOpen.value = null; }
+  catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+}
+async function createProjectWorktree(item: Workspace) {
+  if (projectActionBusy.value) return;
+  projectActionBusy.value = true;
+  try {
+    const result = await invoke<{ path: string }>("create_persistent_worktree", { workspacePath: item.path, worktreeId: item.workspace_id, label: "project" });
+    window.alert(`已创建永久工作树：${result.path}`);
+    projectActionsOpen.value = null;
+  } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  finally { projectActionBusy.value = false; }
+}
+async function archiveProjectChats(item: Workspace) {
+  if (projectActionBusy.value) return;
+  const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id && !session.archived);
+  if (!chats.length) { projectActionsOpen.value = null; return; }
+  projectActionBusy.value = true;
+  try { await Promise.all(chats.map((session) => archiveSession(session.session_id))); projectActionsOpen.value = null; await refreshIndex(false); }
+  catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  finally { projectActionBusy.value = false; }
 }
 // 撤销后清除该 run 的全部改动，使变更卡片随之消失
 function handleReverted(runId: string) {
@@ -1781,6 +1865,65 @@ function openSettings() {
   projectMenuOpen.value = false;
   closeLauncherMenus();
 }
+function closeAppMenu() { activeAppMenu.value = null; }
+function toggleAppMenu(menu: AppMenu) {
+  const focused = document.activeElement;
+  if (focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement || focused instanceof HTMLElement && focused.isContentEditable) lastEditableElement = focused;
+  activeAppMenu.value = activeAppMenu.value === menu ? null : menu;
+}
+function runAppMenuAction(action: () => void | Promise<void>) { closeAppMenu(); void action(); }
+function currentComposer() { return activeId.value ? activePrompt.value : launcherPrompt.value; }
+function editCurrentField(command: "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll") {
+  const target = lastEditableElement ?? currentComposer();
+  closeAppMenu();
+  void nextTick(() => {
+    target?.focus();
+    if (command === "selectAll" && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) target.select();
+    else document.execCommand(command);
+  });
+}
+function openInspectorTool(tool: "files" | "browser" | "terminal") {
+  if (!activeWorkspace.value) return;
+  setInspectorOpen(true);
+  void nextTick(() => inspectorRef.value?.[tool === "files" ? "openFiles" : tool === "browser" ? "openBrowser" : "openTerminal"]?.());
+}
+function openCommandPalette() {
+  prompt.value = "/";
+  slashMenuDismissed.value = false;
+  slashMenuActiveIndex.value = 0;
+  void nextTick(() => currentComposer()?.focus());
+}
+function toggleStatusBar() {
+  statusBarVisible.value = !statusBarVisible.value;
+  localStorage.setItem("sztu.statusBarVisible", String(statusBarVisible.value));
+}
+async function applyZoom(next: number) {
+  const zoom = Math.min(2, Math.max(.6, Math.round(next * 10) / 10));
+  webviewZoom.value = zoom;
+  localStorage.setItem("sztu.webviewZoom", String(zoom));
+  try { await getCurrentWebview().setZoom(zoom); }
+  catch { document.documentElement.style.zoom = String(zoom); }
+}
+async function openWorkspaceInIde() {
+  if (!activeWorkspace.value) return;
+  try { await invoke("open_workspace_in_ide", { workspacePath: activeWorkspace.value.path }); }
+  catch (error) { await message(String(error), { title: "无法打开 IDE", kind: "error" }); }
+}
+async function openProjectHomepage() {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl("https://github.com/rojim666/SztuCode");
+}
+async function openLicense() {
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl("https://github.com/rojim666/SztuCode/blob/main/LICENSE");
+}
+async function showKeyboardShortcuts() {
+  const mod = isMacOS ? "⌘" : "Ctrl";
+  await message(`${mod} + N  新建任务\n${mod} + O  打开文件夹\n${mod} + K  命令面板\n${mod} + E  查看变更\n${mod} + J  打开终端\n${mod} + B  切换侧栏\nEsc  关闭菜单或弹窗`, { title: "键盘快捷键", kind: "info" });
+}
+async function showAbout() {
+  await message("SztuCode Desktop\n本地优先、事件驱动的 AI Coding Agent 工作台", { title: "关于 SztuCode", kind: "info" });
+}
 function closeSettings() {
   settingsOpen.value = false;
   void nextTick(() => settingsButton.value?.focus());
@@ -1947,15 +2090,29 @@ function handleWindowResize() {
   }, 120);
 }
 function handleGlobalShortcut(event: KeyboardEvent) {
+  const mod = event.ctrlKey || event.metaKey;
+  if (mod && event.key.toLowerCase() === "n") { event.preventDefault(); beginTask(); }
+  if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); void openLocalProject(); }
+  if (mod && event.key.toLowerCase() === "e") { event.preventDefault(); openPage("source-control"); }
+  if (mod && event.key.toLowerCase() === "j") { event.preventDefault(); openInspectorTool("terminal"); }
+  if (mod && event.key.toLowerCase() === "g") { event.preventDefault(); openInspectorTool("files"); }
+  if (mod && event.shiftKey && event.key.toLowerCase() === "b") { event.preventDefault(); openInspectorTool("browser"); }
+  if (mod && event.shiftKey && event.key === "/") { event.preventDefault(); void showKeyboardShortcuts(); }
+  if (mod && event.key === "=") { event.preventDefault(); void applyZoom(webviewZoom.value + .1); }
+  if (mod && event.key === "-") { event.preventDefault(); void applyZoom(webviewZoom.value - .1); }
+  if (mod && event.key === "0") { event.preventDefault(); void applyZoom(1); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") { event.preventDefault(); toggleSidebar(); }
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); beginTask(); }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openCommandPalette(); }
   if (event.key === "Escape") {
-    if (permissionConfirmOpen.value) permissionConfirmOpen.value = false;
+    if (activeAppMenu.value) closeAppMenu();
+    else if (permissionConfirmOpen.value) permissionConfirmOpen.value = false;
     else closeLauncherMenus();
   }
 }
 function handleDocumentPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
+  if (!target?.closest(".app-menu-bar")) closeAppMenu();
+  if (!target?.closest(".project-row-shell")) projectActionsOpen.value = null;
   if (!target?.closest(".launcher-project-control")) launcherProjectMenuOpen.value = false;
   if (!target?.closest(".launcher-permission-control")) launcherPermissionMenuOpen.value = false;
 }
@@ -2016,6 +2173,13 @@ onMounted(() => {
     scheduleRuntimeReconnect();
   });
   stopEvents = onRuntimeEvent(applyRuntimeEvent);
+  if ("__TAURI_INTERNALS__" in window) {
+    void Promise.all([
+      listen("tray://new_chat", () => beginTask()),
+      listen("tray://workspaces", () => { page.value = "work"; }),
+      listen("tray://settings", () => { settingsOpen.value = true; }),
+    ]).then((unlisteners) => { trayListeners = unlisteners; });
+  }
   void refreshRuntime(true);
 });
 onBeforeUnmount(() => {
@@ -2033,6 +2197,8 @@ onBeforeUnmount(() => {
   if (inspectorCloseTimer) clearTimeout(inspectorCloseTimer);
   if (inspectorOpenFrame !== undefined) cancelAnimationFrame(inspectorOpenFrame);
   window.removeEventListener("keydown", handleGlobalShortcut);
+  trayListeners.forEach((stop) => stop());
+  trayListeners = [];
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
@@ -2068,6 +2234,63 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </button>
         <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? '\u5c55\u5f00\u5bfc\u822a' : '\u6536\u8d77\u5bfc\u822a' }}</span><kbd>Ctrl</kbd><kbd>B</kbd></div>
       </div>
+      <nav class="app-menu-bar" aria-label="应用菜单" @pointerdown.stop @dblclick.stop>
+        <div class="app-menu-item">
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'file'" @click="toggleAppMenu('file')">文件</button>
+          <div v-if="activeAppMenu === 'file'" class="app-menu-popover" role="menu" aria-label="文件菜单">
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => beginTask())"><span>新建任务</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} N</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openLocalProject)"><span>打开文件夹</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} O</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>新建终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>新建浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="runAppMenuAction(closeWindow)"><span>退出</span></button>
+          </div>
+        </div>
+        <div class="app-menu-item">
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'edit'" @click="toggleAppMenu('edit')">编辑</button>
+          <div v-if="activeAppMenu === 'edit'" class="app-menu-popover" role="menu" aria-label="编辑菜单">
+            <button type="button" role="menuitem" @click="editCurrentField('undo')"><span>撤销</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Z</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('redo')"><span>重做</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Y</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="editCurrentField('cut')"><span>剪切</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} X</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('copy')"><span>复制</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} C</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('paste')"><span>粘贴</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} V</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="editCurrentField('selectAll')"><span>全选</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} A</kbd></button>
+          </div>
+        </div>
+        <div class="app-menu-item">
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'view'" @click="toggleAppMenu('view')">视图</button>
+          <div v-if="activeAppMenu === 'view'" class="app-menu-popover" role="menu" aria-label="视图菜单">
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => openPage('source-control'))"><span>变更</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} E</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('files'))"><span>文件</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} G</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitemcheckbox" :aria-checked="statusBarVisible" @click="runAppMenuAction(toggleStatusBar)"><span><i class="app-menu-check">{{ statusBarVisible ? '✓' : '' }}</i>状态栏</span></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom + .1))"><span>放大</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} =</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom - .1))"><span>缩小</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} -</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(1))"><span>重置缩放</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} 0</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="runAppMenuAction(openSettings)"><span>设置</span></button>
+          </div>
+        </div>
+        <div class="app-menu-item">
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'help'" @click="toggleAppMenu('help')">帮助</button>
+          <div v-if="activeAppMenu === 'help'" class="app-menu-popover app-menu-popover--help" role="menu" aria-label="帮助菜单">
+            <button type="button" role="menuitem" @click="runAppMenuAction(openCommandPalette)"><span>命令面板</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} K</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(showKeyboardShortcuts)"><span>键盘快捷键</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ /</kbd></button>
+            <div class="app-menu-separator" role="separator" />
+            <button type="button" role="menuitem" @click="runAppMenuAction(openLicense)"><span>查看许可证</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openProjectHomepage)"><span>项目主页</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(showAbout)"><span>关于 SztuCode</span></button>
+          </div>
+        </div>
+      </nav>
       <div v-if="isMacOS" class="titlebar-drag-region" @pointerdown="onMacTitlebandPointerDown" @dblclick="onMacTitlebandDblClick" />
       <div v-else class="titlebar-drag-region" data-tauri-drag-region @dblclick="toggleMaximizeWindow" />
       <div v-if="!isMacOS" class="window-actions" aria-label="Window controls">
@@ -2121,24 +2344,29 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <p v-if="!visibleSessions.length" class="side-empty">没有匹配的任务</p>
         </section>
 
-        <section class="side-section project-tree">
-          <span class="side-label side-label--action">项目<button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
-          <div v-for="item in projects" :key="item.workspace_id" class="project-group">
-            <div class="project-row-shell" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }">
-              <button class="project-row-toggle" :title="isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目'" :aria-expanded="!isProjectCollapsed(item.workspace_id)" @click="toggleProject(item.workspace_id)">
-                <FolderOpen v-if="!isProjectCollapsed(item.workspace_id)" :size="16" :stroke-width="1.8" />
-                <Folder v-else :size="16" :stroke-width="1.8" />
+        <section class="side-section project-tree" :class="{ 'has-pinned-section': !normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length) }">
+          <span v-if="!normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length)" class="side-label pinned-tree-label">置顶</span>
+          <div v-if="pinnedTemporaryTasks.length && !normalizedTaskQuery" class="pinned-temporary-list">
+            <div v-for="task in pinnedTemporaryTasks" :key="`pinned-temporary-${task.session_id}`" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><span>{{ task.title || '未命名任务' }}</span></button><SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" /></div>
+          </div>
+          <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
+          <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
+            <div class="project-row-shell" @contextmenu.prevent.stop="projectActionsOpen = item.workspace_id">
+              <button class="project-row-toggle" title="在项目中新建临时会话" @click="beginTask(item)">
+                <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
-              <button class="side-item-action" title="项目操作" aria-label="项目操作" @click="projectActionsOpen = projectActionsOpen === item.workspace_id ? null : item.workspace_id"><Ellipsis :size="16" :stroke-width="1.8" /></button>
-              <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu">
-                <button @click="createProjectTask(item)"><Plus :size="16" :stroke-width="1.8" />新建任务</button>
-                <button @click="showProjectFiles(item)"><FolderSearch :size="16" :stroke-width="1.8" />查看项目文件</button>
-                <button @click="deleteProject(item)"><Trash2 :size="16" :stroke-width="1.8" />删除项目</button>
-                <button @click="toggleProject(item.workspace_id)"><FolderOpen v-if="isProjectCollapsed(item.workspace_id)" :size="16" :stroke-width="1.8" /><Folder v-else :size="16" :stroke-width="1.8" />{{ isProjectCollapsed(item.workspace_id) ? '展开项目' : '收起项目' }}</button>
+              <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="`${item.name} 项目操作`">
+                <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? '取消置顶' : '置顶' }}</button>
+                <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />编辑</button>
+                <div class="project-action-menu__separator" />
+                <button role="menuitem" @click="openProjectExplorer(item)"><FolderOpen :size="16" :stroke-width="1.8" />在资源管理器中打开</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />创建永久工作树</button>
+                <div class="project-action-menu__separator" />
+                <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />归档聊天</button>
               </div>
             </div>
-            <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item.workspace_id) }">
+            <div class="project-task-list">
               <div class="project-task-list__inner">
                 <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
@@ -2150,12 +2378,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </div>
           </div>
-          <p v-if="!projects.length && !normalizedTaskQuery" class="side-empty">打开本地目录以建立项目上下文</p>
+          <p v-if="!allProjects.length && !normalizedTaskQuery" class="side-empty">打开本地目录以建立项目上下文</p>
         </section>
 
-        <section v-if="temporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
+        <section v-if="ordinaryTemporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
           <span class="side-label">临时任务</span>
-          <div v-for="task in temporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span></button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
@@ -2169,7 +2397,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </details>
       </div>
 
-      <footer class="sidebar-footer">
+      <footer v-if="statusBarVisible" class="sidebar-footer">
         <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>本地服务</b><small>{{ connected ? '已连接' : runtimeConnectionError || '未连接' }}</small></span></div>
         <button ref="settingsButton" class="settings-link" title="设置" aria-label="设置" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
       </footer>
@@ -2266,8 +2494,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                   <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                   <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                  <div v-if="isAppending" class="composer-append-status" aria-live="polite"><b>追加模式</b><span>Enter 排队</span><span>Ctrl/⌘ + Enter 转入当前轮</span></div>
-                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '追加任务：Enter 排队，Ctrl+Enter 转入当前轮' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                   <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send queue-send" type="submit" title="加入待处理队列" aria-label="加入待处理队列" :disabled="!prompt.trim() || (sending && !isAppending) || steering"><ListPlus :size="14" /></button><button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!prompt.trim() || active.archived || active.status === 'closed'"><ArrowUp :size="15" /></button></div>
                 </form>
               </div>
@@ -2292,9 +2519,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <section v-else class="landing-page task-launcher" :class="{ 'slash-open': slashMenuOpen }">
           <div class="launcher-content">
             <header class="launcher-heading">
-              <span class="launcher-mark" aria-hidden="true"><BookOpen :size="42" :stroke-width="1.8" /></span>
+              <AgentLogo class="launcher-mark" size="large" />
               <div class="launcher-heading__copy">
-                <h1 aria-label="心念为引，一言功毕"><span aria-hidden="true">心念为引，一言功毕</span></h1>
+                <h1 aria-label="Think it. Build it."><span aria-hidden="true">Think it. Build it.</span></h1>
               </div>
             </header>
 
@@ -2378,6 +2605,21 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       @manage-model="openModelManager"
       @runtime-updated="runtimeSettings = $event"
     />
+
+    <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
+      <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
+        <header>
+          <div><h2 id="project-edit-title">编辑项目</h2><p>修改项目在侧边栏中显示的名称。</p></div>
+          <button type="button" aria-label="关闭编辑窗口" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
+        </header>
+        <div class="project-edit-dialog__body">
+          <label><span>项目名称</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus placeholder="输入项目名称" /></label>
+          <label><span>项目位置</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
+          <p v-if="projectEditError" class="project-edit-dialog__error" role="alert">{{ projectEditError }}</p>
+        </div>
+        <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
+      </form>
+    </div>
 
     <div v-if="modelManagerOpen" class="model-manager-backdrop"><ModelManager @close="modelManagerOpen = false" @updated="handleModelConfigUpdated" /></div>
 

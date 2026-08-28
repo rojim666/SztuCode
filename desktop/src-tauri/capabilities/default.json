@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default desktop capability set",
-  "webviews": ["main", "splashscreen"],
+  "webviews": ["main", "tray-menu"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview",
@@ -21,6 +21,7 @@
     "core:window:allow-close",
     "dialog:default",
     "opener:allow-default-urls",
+    "opener:allow-open-path",
     "opener:allow-open-url"
   ]
 }

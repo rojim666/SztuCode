@@ -1,0 +1,41 @@
+diff --git a/desktop/tests/visual/workbench.spec.ts b/desktop/tests/visual/workbench.spec.ts
+index aa99fe9..648deae 100644
+--- a/desktop/tests/visual/workbench.spec.ts
++++ b/desktop/tests/visual/workbench.spec.ts
+@@ -1,6 +1,33 @@
+-import { expect, test } from "@playwright/test";
+-
+-test("agent workbench sidebar prioritizes tasks and project context", async ({ page }) => {
++import { expect, test } from "@playwright/test";
++
++test("application title bar exposes file edit view and help menus", async ({ page }) => {
++  await page.setViewportSize({ width: 680, height: 640 });
++  await page.goto("/", { waitUntil: "domcontentloaded" });
++
++  const menuBar = page.getByRole("navigation", { name: "应用菜单" });
++  await expect(menuBar.locator(":scope > .app-menu-item > button")).toHaveText(["文件", "编辑", "视图", "帮助"]);
++
++  await page.getByRole("button", { name: "文件", exact: true }).click();
++  const fileMenu = page.getByRole("menu", { name: "文件菜单" });
++  await expect(fileMenu).toBeVisible();
++  await expect(fileMenu.getByRole("menuitem")).toHaveText([/新建任务/, "打开文件夹"]);
++  await page.keyboard.press("Escape");
++  await expect(fileMenu).toBeHidden();
++
++  await page.getByRole("button", { name: "视图", exact: true }).click();
++  await expect(page.getByRole("menu", { name: "视图菜单" })).toBeVisible();
++  await page.locator(".task-launcher").click({ position: { x: 10, y: 10 } });
++  await expect(page.getByRole("menu", { name: "视图菜单" })).toBeHidden();
++
++  const geometry = await page.evaluate(() => {
++    const menu = document.querySelector<HTMLElement>(".app-menu-bar")!.getBoundingClientRect();
++    const controls = document.querySelector<HTMLElement>(".window-actions")!.getBoundingClientRect();
++    return { menuRight: menu.right, controlsLeft: controls.left };
++  });
++  expect(geometry.menuRight).toBeLessThan(geometry.controlsLeft);
++});
++
++test("agent workbench sidebar prioritizes tasks and project context", async ({ page }) => {
+   await page.setViewportSize({ width: 1280, height: 800 });
+   await page.goto("/", { waitUntil: "domcontentloaded" });
+   await expect(page.getByRole("button", { name: /新建任务/ })).toBeVisible();

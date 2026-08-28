@@ -1,0 +1,140 @@
+/* Shared entry motion for menus, popovers and dialogs. Keep movement restrained
+   so the interface feels responsive while still making layered UI feel alive. */
+:root {
+  --motion-fast: 150ms;
+  --motion-popover: 180ms;
+  --motion-dialog: 240ms;
+  --motion-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --motion-ease-soft: cubic-bezier(.22, .72, .22, 1);
+}
+
+:is(
+  .app-menu-popover,
+  .project-action-menu,
+  .project-popover,
+  .session-menu--floating,
+  .session-menu__submenu,
+  .skill-add__menu,
+  .workspace-tool-menu
+) {
+  transform-origin: top left;
+  animation: ui-menu-in var(--motion-popover) var(--motion-ease-out) both !important;
+}
+
+.session-menu:not(.session-menu--floating) {
+  transform-origin: top right;
+  animation: ui-menu-in var(--motion-popover) var(--motion-ease-out) both !important;
+}
+
+:is(.permission-menu, .link-context-menu) {
+  transform-origin: bottom right;
+  animation: ui-menu-up-in var(--motion-fast) var(--motion-ease-out) both !important;
+}
+
+:is(
+  .slash-menu,
+  .launcher-popover,
+  .model-picker-popover,
+  .model-config-popover
+) {
+  transform-origin: bottom center;
+  animation: ui-popover-up-in var(--motion-popover) var(--motion-ease-out) both !important;
+}
+
+:is(
+  .settings-backdrop,
+  .model-manager-backdrop,
+  .model-editor-backdrop,
+  .model-delete-backdrop,
+  .permission-confirm-backdrop,
+  .skill-dialog-backdrop,
+  .project-edit-backdrop,
+  .preview-modal-backdrop
+) {
+  animation: ui-backdrop-in 200ms var(--motion-ease-soft) both !important;
+}
+
+:is(
+  .settings-dialog,
+  .model-manager,
+  .model-editor,
+  .model-delete-dialog,
+  .permission-confirm,
+  .skill-dialog,
+  .project-edit-dialog
+) {
+  transform-origin: center;
+  animation: ui-dialog-in var(--motion-dialog) var(--motion-ease-out) both !important;
+}
+
+.preview-modal {
+  transform-origin: center;
+  animation: ui-preview-in var(--motion-dialog) var(--motion-ease-out) both !important;
+}
+
+@keyframes ui-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-menu-up-in {
+  from { opacity: 0; transform: translateY(5px) scale(.975); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-popover-up-in {
+  from { opacity: 0; transform: translateY(6px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-preview-in {
+  from { opacity: 0; transform: translate(-50%, -50%) translateY(8px) scale(.97); }
+  to { opacity: 1; transform: translate(-50%, -50%) translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    .app-menu-popover,
+    .project-action-menu,
+    .project-popover,
+    .session-menu,
+    .session-menu__submenu,
+    .skill-add__menu,
+    .workspace-tool-menu,
+    .permission-menu,
+    .link-context-menu,
+    .slash-menu,
+    .launcher-popover,
+    .model-picker-popover,
+    .model-config-popover,
+    .settings-backdrop,
+    .settings-dialog,
+    .model-manager-backdrop,
+    .model-manager,
+    .model-editor-backdrop,
+    .model-editor,
+    .model-delete-backdrop,
+    .model-delete-dialog,
+    .permission-confirm-backdrop,
+    .permission-confirm,
+    .skill-dialog-backdrop,
+    .skill-dialog,
+    .project-edit-backdrop,
+    .project-edit-dialog,
+    .preview-modal-backdrop,
+    .preview-modal
+  ) {
+    animation: none !important;
+    transition: none !important;
+  }
+}

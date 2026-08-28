@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { Workspace } from "./workspace.js";
 
 const execFileAsync = promisify(execFile);
-export type WorkspaceRecord = { workspace_id: string; path: string; name: string; archived: boolean };
+export type WorkspaceRecord = { workspace_id: string; path: string; name: string; archived: boolean; pinned: boolean };
 
 export class WorkspaceManager {
   private records = new Map<string, WorkspaceRecord>();
@@ -18,19 +18,21 @@ export class WorkspaceManager {
     this.loaded = true;
     try {
       const data = JSON.parse(await readFile(this.filePath, "utf8")) as WorkspaceRecord[];
-      for (const item of data) if (item.workspace_id && item.path) this.records.set(item.workspace_id, item);
+      for (const item of data) if (item.workspace_id && item.path) this.records.set(item.workspace_id, { ...item, pinned: Boolean(item.pinned) });
     } catch { /* first run */ }
   }
   private async persist(): Promise<void> { await mkdir(path.dirname(this.filePath), { recursive: true }); await writeFile(this.filePath, `${JSON.stringify([...this.records.values()], null, 2)}\n`, "utf8"); }
-  async list(): Promise<WorkspaceRecord[]> { await this.ensureLoaded(); return [...this.records.values()]; }
+  async list(): Promise<WorkspaceRecord[]> { await this.ensureLoaded(); return [...this.records.values()].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name)); }
   async open(rawPath: string): Promise<WorkspaceRecord> {
     await this.ensureLoaded(); const resolved = path.resolve(rawPath); const existing = [...this.records.values()].find((item) => path.resolve(item.path) === resolved);
     if (existing) { existing.archived = false; await this.persist(); return existing; }
-    const record = { workspace_id: randomUUID(), path: resolved, name: path.basename(resolved) || resolved, archived: false }; this.records.set(record.workspace_id, record); await this.persist(); return record;
+    const record = { workspace_id: randomUUID(), path: resolved, name: path.basename(resolved) || resolved, archived: false, pinned: false }; this.records.set(record.workspace_id, record); await this.persist(); return record;
   }
   async get(id: string): Promise<WorkspaceRecord> { await this.ensureLoaded(); const item = this.records.get(id); if (!item) throw new Error(`Unknown workspace: ${id}`); return item; }
   async archive(id: string): Promise<WorkspaceRecord> { const item = await this.get(id); item.archived = true; await this.persist(); return item; }
   async resume(id: string): Promise<WorkspaceRecord> { const item = await this.get(id); item.archived = false; await this.persist(); return item; }
+  async rename(id: string, name: string): Promise<WorkspaceRecord> { const item = await this.get(id); const next = name.trim().slice(0, 120); if (!next) throw new Error("workspace name is required"); item.name = next; await this.persist(); return item; }
+  async pin(id: string, pinned: boolean): Promise<WorkspaceRecord> { const item = await this.get(id); item.pinned = pinned; await this.persist(); return item; }
   async delete(id: string): Promise<void> { await this.get(id); this.records.delete(id); await this.persist(); }
   async status(id: string): Promise<{ branch: string | null; is_git_repository: boolean; changed_file_count: number }> {
     const workspace = await this.get(id);
