@@ -353,35 +353,16 @@ watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
-// 聚合出最近一个已完成且有文件改动的 run，供会话区底部常驻 diff 预览使用（分组规则与时间线一致：新用户消息开新组，组内最后一步非末态视为运行中）
-const latestChangedRun = computed(() => {
-  let group: { runId?: string; paths: string[]; lastStatus?: TimelineStep["status"] } | null = null;
-  let latest: { runId: string; paths: string[] } | null = null;
+// 从当前会话 Agent trace 聚合 AI 修改过的文件路径，按路径去重。
+const changeSummaryPaths = computed(() => {
+  const paths = new Set<string>();
   for (const item of orderedTimeline.value) {
-    if (item.userMessage) group = { runId: undefined, paths: [], lastStatus: undefined };
-    if (!group) group = { runId: undefined, paths: [], lastStatus: undefined };
-    if (item.runId) group.runId = item.runId;
-    group.lastStatus = item.status;
     for (const entry of item.changes ?? []) {
-      for (const path of entry.paths) {
-        if (!group.paths.includes(path)) group.paths.push(path);
-      }
-    }
-    const running =
-      group.lastStatus === "thinking" || group.lastStatus === "acting" || group.lastStatus === "observing";
-    if (!running && group.runId && group.paths.length) {
-      latest = { runId: group.runId, paths: [...group.paths] };
+      for (const path of entry.paths) if (path) paths.add(path);
     }
   }
-  return latest;
+  return [...paths];
 });
-// 历史会话不会重放 workspace.changed 事件；此时使用会话记录的最近 run
-// 重新查询变更清单，让底部 Diff 在刷新或重新打开任务后仍可恢复。
-const bottomDiffRun = computed(() => latestChangedRun.value ?? (
-  active.value?.latest_run_id
-    ? { runId: active.value.latest_run_id, paths: [] as string[] }
-    : null
-));
 const permissionModeLabel = computed(() => ({
   normal: "标准审批",
   plan: "计划模式",
@@ -2556,12 +2537,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
                 <ChangeSummaryRail
-                  v-if="bottomDiffRun"
-                  :workspace-id="activeWorkspace?.workspace_id ?? null"
-                  :run-id="bottomDiffRun.runId"
-                  :paths="bottomDiffRun.paths"
-                  @reverted="handleReverted"
-                  @review="handleReview"
+                  v-if="active"
+                  :paths="changeSummaryPaths"
                 />
                 <QueueDock
                   :items="activeQueueItems"
@@ -2582,7 +2559,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                   <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                   <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                  <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                   <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send queue-send" type="submit" title="加入待处理队列" aria-label="加入待处理队列" :disabled="!prompt.trim() || (sending && !isAppending) || steering"><ListPlus :size="14" /></button><button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!prompt.trim() || active.archived || active.status === 'closed'"><ArrowUp :size="15" /></button></div>
                 </form>
               </div>

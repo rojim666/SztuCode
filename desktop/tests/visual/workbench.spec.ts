@@ -408,6 +408,38 @@ test("narrow conversation text aligns with the composer edges", async ({ page })
   expect(geometry.messageRight).toBeCloseTo(geometry.composerRight, 0);
 });
 
+test("running-task composer keeps the idle dimensions", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator(".kimi-main").evaluate((main) => {
+    main.innerHTML = `
+      <section class="work-page">
+        <div class="work-layout no-inspector">
+          <section class="task-canvas">
+            <div class="task-conversation">
+              <div class="task-stream"></div>
+              <form class="kimi-composer"><textarea rows="3"></textarea></form>
+            </div>
+          </section>
+        </div>
+      </section>`;
+  });
+
+  const composer = page.locator(".kimi-composer");
+  const idle = await composer.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+  await composer.evaluate((element) => element.classList.add("append-mode"));
+  const running = await composer.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return { width: box.width, height: box.height };
+  });
+
+  expect(running.width).toBeCloseTo(idle.width, 0);
+  expect(running.height).toBeCloseTo(idle.height, 0);
+});
+
 test("task conversation slash menu opens above the composer without clipping", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
