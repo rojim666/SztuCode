@@ -519,6 +519,24 @@ class AgentRunner:
                 await asyncio.gather(*pending_publishes, return_exceptions=False)
                 pending_publishes.clear()
 
+            # 所有实质清理（子代理取消、压缩排空、会话持久化）完成后，在
+            # EventWriter 作用域内发布终态事件：events.jsonl 才能落盘 run.finished，
+            # extra_handlers 消费者也才能收到。发布不能移出作用域或晚于退订（issue #132）。
+            await bus.publish(
+                RunFinishedEvent(
+                    run_id=run_id,
+                    status=context.status,
+                    reason=context.reason,
+                    steps=context.step,
+                    total_input_tokens=final_stats.input_tokens,
+                    total_output_tokens=final_stats.output_tokens,
+                    cache_read_input_tokens=final_stats.cache_read_input_tokens,
+                    elapsed_s=final_stats.elapsed_s,
+                    context_pct=final_stats.context_pct,
+                    ts=_now(),
+                )
+            )
+
         # run 结束注销本次订阅的额外处理器，防止共享 bus 的订阅者随 run 次数无限累积
         if self._extra_handlers:
             for h in self._extra_handlers:
@@ -529,22 +547,6 @@ class AgentRunner:
         self._task_registry.prune()
         # 注销本 run 的终态 sink，避免多 run 复用时 sink 字典无限增长
         self._task_registry.unregister_sink(run_id)
-
-        # 现在所有清理工作已完成，才发布终态事件
-        await bus.publish(
-            RunFinishedEvent(
-                run_id=run_id,
-                status=context.status,
-                reason=context.reason,
-                steps=context.step,
-                total_input_tokens=final_stats.input_tokens,
-                total_output_tokens=final_stats.output_tokens,
-                cache_read_input_tokens=final_stats.cache_read_input_tokens,
-                elapsed_s=final_stats.elapsed_s,
-                context_pct=final_stats.context_pct,
-                ts=_now(),
-            )
-        )
 
         if cancelled:
             raise asyncio.CancelledError()

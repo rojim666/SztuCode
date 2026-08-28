@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sztu_code.core.bus.events import RunFinishedEvent, RunStartedEvent
+from sztu_code.core.bus.events import LlmTokenEvent, RunFinishedEvent, RunStartedEvent
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.events.writer import EventWriter
 
@@ -98,3 +98,20 @@ async def test_event_writer_oserror_is_logged(
             await writer.handle(event)
 
     assert any("failed to write" in r.message for r in caplog.records)
+
+
+# 功能：验证流式 token 事件走批量缓冲、生命周期事件立即 flush（落盘 barrier）
+# 设计：先发 token（仍在缓冲区，读文件为空），再发生命周期事件后立刻能读到该事件；
+# 依赖真实文件与即时读取，模拟"崩溃后 events.jsonl 保有完整生命周期序列"的场景
+async def test_lifecycle_event_flushes_immediately(tmp_path: Path) -> None:
+    path = tmp_path / "events.jsonl"
+    token = LlmTokenEvent(run_id="r1", token="hello", ts="2026-05-11T00:00:00Z")
+    started = RunStartedEvent(run_id="r1", goal="g", ts="2026-05-11T00:00:00Z")
+
+    async with EventWriter(path) as writer:
+        await writer.handle(token)
+        assert path.read_text() == ""  # 流式事件仍缓冲，未触发 flush
+        await writer.handle(started)
+        text = path.read_text()  # 生命周期事件立即落盘
+        assert "run.started" in text
+        assert "run_id" in text and "r1" in text
