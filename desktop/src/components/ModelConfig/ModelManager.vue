@@ -232,10 +232,6 @@ onMounted(() => {
 <template>
   <section ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : 'true'" aria-label="模型管理" tabindex="-1" @keydown.esc="addStep !== 'idle' ? closeEditor() : emit('close')">
     <header>
-      <div class="model-manager-heading">
-        <h1>模型</h1>
-        <p class="model-manager-desc">配置 API key 添加更多可用模型，预置模型默认使用稳定版本。</p>
-      </div>
       <button v-if="addStep === 'idle'" type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button>
     </header>
 

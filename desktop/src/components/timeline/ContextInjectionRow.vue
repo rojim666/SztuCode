@@ -1,6 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Braces, ChevronDown, CornerUpLeft, FileText, FileClock, Folder, Info, ShieldAlert } from "@lucide/vue";
+import {
+  Braces,
+  ChevronDown,
+  CornerUpLeft,
+  FileCode2,
+  FileJson,
+  FileLock2,
+  FileText,
+  FileClock,
+  Folder,
+  Image as FileImage,
+  Info,
+  Settings2,
+  ShieldAlert,
+} from "@lucide/vue";
 import type { ContextInjectionEntry } from "./types";
 
 const props = defineProps<{ entry: ContextInjectionEntry }>();
@@ -22,7 +36,9 @@ const sourceConfig = computed(() => {
 });
 
 const body = computed(() => props.entry.text ?? props.entry.preview);
-const charLabel = computed(() => props.entry.chars >= 1000 ? `${(props.entry.chars / 1000).toFixed(1)}k` : String(props.entry.chars));
+const charLabel = computed(() =>
+  props.entry.chars >= 1000 ? `${(props.entry.chars / 1000).toFixed(1)}k` : String(props.entry.chars),
+);
 
 // 解析文件列表
 const files = computed(() => {
@@ -34,14 +50,91 @@ const files = computed(() => {
   return [...new Set([...explicit, ...inferred, ...gitFiles])];
 });
 
-// 区分文件和目录
-const fileItems = computed(() => files.value.filter(f => !f.endsWith('/') && !f.endsWith('\\')));
-const dirItems = computed(() => files.value.filter(f => f.endsWith('/') || f.endsWith('\\')));
-
 // 取文件名
 const fileName = (path: string) => {
-  const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+  const parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
   return parts[parts.length - 1] || path;
+};
+
+// 根据文件扩展名返回图标和颜色
+const getFileIcon = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith("/") || lower.endsWith("\\")) {
+    return { icon: Folder, color: "#d97706" };
+  }
+  const ext = lower.includes(".") ? lower.split(".").pop()! : "";
+  const base = lower.split(/[\\/]/).pop()!;
+
+  // 目录
+  if (!ext && base.length > 0) {
+    return { icon: Folder, color: "#d97706" };
+  }
+
+  // lock 文件
+  if (ext === "lock") {
+    return { icon: FileLock2, color: "#9ca3af" };
+  }
+  // 图片
+  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp"].includes(ext)) {
+    return { icon: FileImage, color: "#059669" };
+  }
+  // JSON 专用
+  if (ext === "json") {
+    return { icon: FileJson, color: "#ca8a04" };
+  }
+  // 文档
+  if (["md", "mdx", "txt", "rst", "adoc"].includes(ext)) {
+    return { icon: FileText, color: "#2563eb" };
+  }
+  // 代码文件（不同语言用不同颜色）
+  if (["ts", "tsx"].includes(ext)) return { icon: FileCode2, color: "#3178c6" };
+  if (["js", "jsx"].includes(ext)) return { icon: FileCode2, color: "#d4a017" };
+  if (ext === "vue") return { icon: FileCode2, color: "#42b883" };
+  if (ext === "py") return { icon: FileCode2, color: "#3776ab" };
+  if (ext === "rs") return { icon: FileCode2, color: "#ce422b" };
+  if (ext === "go") return { icon: FileCode2, color: "#00add8" };
+  if (ext === "bzl") return { icon: FileCode2, color: "#43a047" };
+  if (["css", "scss", "sass", "less", "styl"].includes(ext)) return { icon: FileCode2, color: "#e96329" };
+  if (["html", "htm"].includes(ext)) return { icon: FileCode2, color: "#e34c26" };
+  if (
+    [
+      "java",
+      "kt",
+      "c",
+      "cpp",
+      "h",
+      "hpp",
+      "cs",
+      "rb",
+      "php",
+      "swift",
+      "scala",
+      "sh",
+      "bash",
+      "zsh",
+      "fish",
+      "ps1",
+      "bat",
+      "cmd",
+      "sql",
+      "graphql",
+      "gql",
+    ].includes(ext)
+  ) {
+    return { icon: FileCode2, color: "#6366f1" };
+  }
+  // 配置文件（yaml/toml/ini/env/点文件等）
+  if (
+    ["yaml", "yml", "toml", "ini", "env", "cfg", "conf", "bazel", "bazelrc", "bazelignore", "bazelversion"].includes(ext) ||
+    base.startsWith(".") ||
+    base === "justfile" ||
+    base === "makefile" ||
+    base === "dockerfile" ||
+    base.startsWith("build")
+  ) {
+    return { icon: Settings2, color: "#6b7280" };
+  }
+  return { icon: FileText, color: "#6b7280" };
 };
 
 const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.label}）`);
@@ -49,34 +142,49 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 
 <template>
   <section class="ctx-row" :class="[`ctx-${entry.source}`, { open }]">
-    <button type="button" class="ctx-row__trigger" :aria-label="ariaLabel" :aria-expanded="open" @click="open = !open">
+    <button
+      type="button"
+      class="ctx-row__trigger"
+      :aria-label="ariaLabel"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
       <span class="ctx-row__icon" :style="{ color: sourceConfig.color, background: sourceConfig.bg }">
-        <component :is="sourceConfig.icon" :size="12" />
+        <component :is="sourceConfig.icon" :size="13" />
       </span>
       <span class="ctx-row__title">{{ entry.label }}</span>
       <span class="ctx-row__badge">{{ charLabel }}字符</span>
       <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ files.length }}个文件</span>
-      <ChevronDown class="ctx-row__chevron" :size="12" />
+      <ChevronDown class="ctx-row__chevron" :size="13" />
     </button>
 
     <transition name="ctx-expand">
       <div v-if="open" class="ctx-row__body">
         <div v-if="files.length" class="ctx-row__section">
           <div class="ctx-row__section-header">
-            <Folder :size="11" />
+            <Folder :size="14" />
             <span>上下文文件</span>
             <span class="ctx-row__section-count">{{ files.length }} 个</span>
           </div>
           <div class="ctx-row__file-grid">
-            <div v-for="file in files.slice(0, 48)" :key="file" class="ctx-row__file-chip" :title="file">
-              <FileText :size="11" />
+            <div
+              v-for="file in files.slice(0, 48)"
+              :key="file"
+              class="ctx-row__file-chip"
+              :title="file"
+            >
+              <component
+                :is="getFileIcon(fileName(file)).icon"
+                :size="14"
+                :style="{ color: getFileIcon(fileName(file)).color }"
+              />
               <span>{{ fileName(file) }}</span>
             </div>
           </div>
         </div>
         <div v-if="body" class="ctx-row__section ctx-row__section--content">
           <div class="ctx-row__section-header">
-            <component :is="sourceConfig.icon" :size="11" />
+            <component :is="sourceConfig.icon" :size="14" />
             <span>注入内容</span>
           </div>
           <pre class="ctx-row__content">{{ body }}</pre>
@@ -89,35 +197,35 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 <style scoped>
 .ctx-row {
   margin: 6px 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ctx-row__trigger {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 7px;
-  min-height: 28px;
-  padding: 3px 4px;
-  margin: 0 -4px;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 6px;
+  margin: 0 -6px;
   color: #6b7280;
   background: transparent;
   border: 0;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 5px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
   transition: background 0.12s ease;
 }
 
 .ctx-row__trigger:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .ctx-row__icon {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   flex: 0 0 auto;
   border-radius: 5px;
@@ -127,17 +235,17 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
   flex: 0 0 auto;
   color: #374151;
   font-weight: 500;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .ctx-row__badge {
-  padding: 1px 7px;
+  padding: 2px 8px;
   color: #6b7280;
   background: #f3f4f6;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
-  line-height: 16px;
+  line-height: 17px;
 }
 
 .ctx-row__badge--files {
@@ -162,64 +270,60 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 }
 
 .ctx-row__body {
-  margin: 4px 0 6px 0;
-  padding: 10px 12px;
+  margin: 5px 0 7px 0;
+  padding: 14px 16px;
   background: #fafafa;
   border: 1px solid #f0f0f0;
-  border-radius: 6px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 
 .ctx-row__section-header {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin-bottom: 7px;
-  color: #6b7280;
-  font-size: 10px;
+  gap: 6px;
+  margin-bottom: 9px;
+  color: #4b5563;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .ctx-row__section-count {
   margin-left: auto;
   color: #9ca3af;
   font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0;
+  font-size: 12px;
 }
 
 .ctx-row__file-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .ctx-row__file-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  max-width: 180px;
-  padding: 3px 8px;
+  gap: 6px;
+  max-width: 220px;
+  padding: 5px 10px;
   color: #374151;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  font: 11px/1.4 "SF Mono", Consolas, monospace;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  border-radius: 6px;
+  font: 12px/1.5 "SF Mono", "JetBrains Mono", Consolas, "Microsoft YaHei Mono", monospace;
+  transition: all 0.12s ease;
+  cursor: default;
 }
 
 .ctx-row__file-chip:hover {
-  border-color: #d1d5db;
+  border-color: #c7cdd4;
   background: #f9fafb;
-}
-
-.ctx-row__file-chip svg {
-  flex: 0 0 auto;
-  color: #9ca3af;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transform: translateY(-0.5px);
 }
 
 .ctx-row__file-chip span {
@@ -231,28 +335,42 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 
 .ctx-row__section--content {
   margin-top: 2px;
-  padding-top: 10px;
+  padding-top: 14px;
   border-top: 1px solid #f0f0f0;
 }
 
 .ctx-row__content {
-  max-height: 200px;
+  max-height: 280px;
   margin: 0;
-  padding: 8px 10px;
+  padding: 12px 14px;
   overflow: auto;
-  color: #4b5563;
+  color: #374151;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  font: 11px/1.6 "SF Mono", Consolas, monospace;
+  border-radius: 6px;
+  font: 12px/1.7 "SF Mono", "JetBrains Mono", Consolas, "Microsoft YaHei Mono", monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.ctx-row__content::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ctx-row__content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.ctx-row__content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* 展开/折叠动画 */
 .ctx-expand-enter-active,
 .ctx-expand-leave-active {
-  transition: all 0.18s ease;
+  transition: all 0.2s ease;
   overflow: hidden;
 }
 
@@ -269,12 +387,12 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 .ctx-expand-leave-from {
   opacity: 1;
   transform: translateY(0);
-  max-height: 600px;
+  max-height: 800px;
 }
 
 /* 暗色主题 */
 :global(.dark) .ctx-row__trigger:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 :global(.dark) .ctx-row__title {
@@ -283,7 +401,7 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 
 :global(.dark) .ctx-row__badge {
   color: #9ca3af;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 :global(.dark) .ctx-row__badge--files {
@@ -314,12 +432,9 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 }
 
 :global(.dark) .ctx-row__file-chip:hover {
-  border-color: #404040;
+  border-color: #444;
   background: #2a2a2a;
-}
-
-:global(.dark) .ctx-row__file-chip svg {
-  color: #6b7280;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 :global(.dark) .ctx-row__section--content {
@@ -327,15 +442,27 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
 }
 
 :global(.dark) .ctx-row__content {
-  color: #9ca3af;
+  color: #d1d5db;
   background: #171717;
   border-color: #333;
+}
+
+:global(.dark) .ctx-row__content::-webkit-scrollbar-thumb {
+  background: #404040;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ctx-expand-enter-active,
   .ctx-expand-leave-active {
     transition: none;
+  }
+
+  .ctx-row__file-chip {
+    transition: none;
+  }
+
+  .ctx-row__file-chip:hover {
+    transform: none;
   }
 }
 </style>

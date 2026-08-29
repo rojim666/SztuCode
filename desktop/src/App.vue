@@ -182,13 +182,50 @@ function keepTaskStreamAtBottom() {
 }
 
 // 会话轮次圆点导航（Trae Work风格）
+const TURN_DOT_VISIBLE = 11; // 固定可见圆点数量（奇数，中间为active）
+const TURN_DOT_SIZE = 8;     // 圆点直径
+const TURN_DOT_GAP = 8;      // 圆点间距
+const TURN_DOT_PAD = 16;     // rail 上下 padding
+const TURN_DOT_STEP = TURN_DOT_SIZE + TURN_DOT_GAP; // 每个圆点占用高度
+
 const turnDotActive = ref(-1);
 const turnDotCount = ref(0);
 const turnDotRailEl = ref<HTMLElement | null>(null);
+const turnDotWrapEl = ref<HTMLElement | null>(null);
+const turnDotHoverIdx = ref(-1);
+const turnDotBubbleTop = ref(0);
+const turnLabels = ref<string[]>([]);
 let turnObserver: IntersectionObserver | undefined;
 let turnElements: HTMLElement[] = [];
 let isScrollingToTurn = false;
 let scrollToTurnTimer: number | undefined;
+let turnScrollRaf: number | undefined;
+
+function extractTurnLabels(steps: TimelineStep[]): string[] {
+  const labels: string[] = [];
+  for (const step of steps) {
+    const msg = (step.userMessage ?? "").trim();
+    if (!msg) continue;
+    // 取第一行，去除markdown，截断为简短摘要
+    const firstLine = msg.split(/\r?\n/)[0]?.replace(/[#*`_~\[\]]/g, "").trim() ?? "";
+    labels.push(firstLine.length > 60 ? firstLine.slice(0, 57) + "…" : firstLine || `第 ${labels.length + 1} 轮`);
+  }
+  return labels;
+}
+
+function scrollRailToActive() {
+  const rail = turnDotRailEl.value;
+  if (!rail) return;
+  const idx = turnDotActive.value;
+  if (idx < 0) return;
+  // 让 active 圆点位于 rail 垂直居中位置：dotCenter - (railHeight/2 - dotRadius)
+  const dotCenter = TURN_DOT_PAD + idx * TURN_DOT_STEP + TURN_DOT_SIZE / 2;
+  const targetScroll = dotCenter - rail.clientHeight / 2;
+  if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf);
+  turnScrollRaf = requestAnimationFrame(() => {
+    rail.scrollTo({ top: Math.max(0, targetScroll), behavior: "smooth" });
+  });
+}
 
 function refreshTurnObserver() {
   turnObserver?.disconnect();
@@ -197,11 +234,11 @@ function refreshTurnObserver() {
   const steps = el.querySelectorAll<HTMLElement>(".execution-timeline > .timeline-step");
   turnElements = Array.from(steps);
   turnDotCount.value = turnElements.length;
+  turnLabels.value = extractTurnLabels(orderedTimeline.value);
   if (!turnElements.length) { turnDotActive.value = -1; return; }
 
   turnObserver = new IntersectionObserver((entries) => {
     if (isScrollingToTurn) return;
-    // 找到最接近视口顶部且可见的轮次作为当前活动轮次
     let bestIdx = -1;
     let bestTop = Infinity;
     for (const entry of entries) {
@@ -216,7 +253,6 @@ function refreshTurnObserver() {
         }
       }
     }
-    // 若没有完全可见的，找第一个部分可见的
     if (bestIdx === -1) {
       for (let i = 0; i < turnElements.length; i++) {
         const rect = turnElements[i].getBoundingClientRect();
@@ -227,32 +263,16 @@ function refreshTurnObserver() {
         }
       }
     }
-    // 滚动到底部时激活最后一个
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
       bestIdx = turnElements.length - 1;
     }
-    // 滚动到顶部时激活第一个
     if (el.scrollTop < 30 && turnElements.length) {
       bestIdx = 0;
     }
     if (bestIdx >= 0) {
+      const changed = turnDotActive.value !== bestIdx;
       turnDotActive.value = bestIdx;
-      // 让圆点 rail 滚动到 active 圆点可见
-      nextTick(() => {
-        const rail = turnDotRailEl.value;
-        if (!rail) return;
-        const dots = rail.querySelectorAll<HTMLElement>(".turn-dot");
-        const dot = dots[bestIdx];
-        if (dot) {
-          const railRect = rail.getBoundingClientRect();
-          const dotRect = dot.getBoundingClientRect();
-          if (dotRect.top < railRect.top + 8) {
-            rail.scrollBy({ top: dotRect.top - railRect.top - 20, behavior: "smooth" });
-          } else if (dotRect.bottom > railRect.bottom - 8) {
-            rail.scrollBy({ top: dotRect.bottom - railRect.bottom + 20, behavior: "smooth" });
-          }
-        }
-      });
+      if (changed) nextTick(scrollRailToActive);
     }
   }, {
     root: el,
@@ -260,19 +280,36 @@ function refreshTurnObserver() {
     rootMargin: "-10% 0px -40% 0px",
   });
   for (const step of turnElements) turnObserver.observe(step);
+  nextTick(scrollRailToActive);
 }
 
 function scrollToTurn(idx: number) {
   const el = taskStreamEl.value;
   if (!el || !turnElements[idx]) return;
   isScrollingToTurn = true;
+  const prev = turnDotActive.value;
   turnDotActive.value = idx;
+  if (prev !== idx) nextTick(scrollRailToActive);
   const target = turnElements[idx];
   const containerTop = el.getBoundingClientRect().top;
   const targetTop = target.getBoundingClientRect().top;
   el.scrollBy({ top: targetTop - containerTop - 24, behavior: "smooth" });
   window.clearTimeout(scrollToTurnTimer);
   scrollToTurnTimer = window.setTimeout(() => { isScrollingToTurn = false; }, 700);
+}
+
+function handleDotHover(idx: number, event: FocusEvent | MouseEvent) {
+  turnDotHoverIdx.value = idx;
+  // 用相对于wrap的位置定位气泡（垂直居中于圆点）
+  nextTick(() => {
+    const wrap = turnDotWrapEl.value;
+    const dot = event.currentTarget as HTMLElement | null;
+    if (!wrap || !dot) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const dotRect = dot.getBoundingClientRect();
+    // 气泡top值 = 圆点中心 - 气泡高度一半。先用圆点中心 - 14px（约为单行文本半高）
+    turnDotBubbleTop.value = dotRect.top - wrapRect.top + dotRect.height / 2 - 14;
+  });
 }
 
 // 监听 orderedTimeline 和 DOM 变化，刷新观察器（在 orderedTimeline 定义后注册，见下方）
@@ -2371,6 +2408,7 @@ onBeforeUnmount(() => {
   window.clearTimeout(windowResizeEndTimer);
   window.clearTimeout(runtimeReconnectTimer);
   window.clearTimeout(scrollToTurnTimer);
+  if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf);
   turnObserver?.disconnect();
   document.body.style.cursor = "";
   document.body.style.userSelect = "";
@@ -2657,20 +2695,39 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
-                <!-- Trae Work 风格：会话轮次圆点导航 -->
-                <nav v-if="turnDotCount > 1" ref="turnDotRailEl" class="turn-dot-rail" :data-count="turnDotCount > 40 ? 'crowded' : turnDotCount > 20 ? 'many' : ''" aria-label="对话轮次导航">
-                  <button
-                    v-for="i in turnDotCount"
-                    :key="i - 1"
-                    type="button"
-                    class="turn-dot"
-                    :class="{ active: turnDotActive === i - 1 }"
-                    :title="`第 ${i} 轮`"
-                    :aria-label="`跳转到第 ${i} 轮对话`"
-                    :aria-current="turnDotActive === i - 1 ? 'true' : 'false'"
-                    @click="scrollToTurn(i - 1)"
-                  />
-                </nav>
+                <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->
+                <div v-if="turnDotCount > 1" ref="turnDotWrapEl" class="turn-dot-wrap" aria-label="对话轮次导航">
+                  <nav class="turn-dot-rail" role="tablist" @mouseleave="turnDotHoverIdx = -1">
+                    <div ref="turnDotRailEl" class="turn-dot-scroll">
+                      <button
+                        v-for="(label, idx) in turnLabels"
+                        :key="idx"
+                        :data-idx="idx"
+                        type="button"
+                        role="tab"
+                        class="turn-dot"
+                        :class="{ active: turnDotActive === idx }"
+                        :aria-selected="turnDotActive === idx"
+                        :aria-label="`第 ${idx + 1} 轮：${label}`"
+                        @click="scrollToTurn(idx)"
+                        @mouseenter="handleDotHover(idx, $event)"
+                        @focus="handleDotHover(idx, $event)"
+                        @blur="turnDotHoverIdx = -1"
+                      />
+                    </div>
+                  </nav>
+                  <!-- 上下渐变遮罩 -->
+                  <div class="turn-dot-fade turn-dot-fade--top" />
+                  <div class="turn-dot-fade turn-dot-fade--bottom" />
+                  <!-- 悬浮气泡（rail兄弟节点，不受任何overflow裁剪） -->
+                  <span
+                    v-if="turnDotHoverIdx >= 0 && turnLabels[turnDotHoverIdx]"
+                    class="turn-dot-bubble"
+                    :style="{ top: turnDotBubbleTop + 'px' }"
+                  >
+                    <span class="turn-dot-bubble-inner">{{ turnLabels[turnDotHoverIdx] }}</span>
+                  </span>
+                </div>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />

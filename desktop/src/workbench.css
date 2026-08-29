@@ -83,77 +83,152 @@
   display: none; /* Chrome/Safari: 完全隐藏滚动条 */
 }
 
-/* 会话轮次圆点导航（Trae Work风格） */
-.turn-dot-rail {
+/* 会话轮次圆点导航（Trae Work风格：固定可视数量，居中active，hover气泡） */
+.turn-dot-wrap {
   position: absolute;
   left: 10px;
-  top: 24px;
-  bottom: 120px;
-  z-index: 5;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 28px;
+  height: 200px;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.turn-dot-rail {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  overflow: visible;
+}
+
+.turn-dot-scroll {
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
-  padding: 8px 6px;
+  padding: 16px 0;
   overflow-y: auto;
   overflow-x: hidden;
-  pointer-events: auto;
   scrollbar-width: none;
+  scroll-behavior: smooth;
 }
-.turn-dot-rail::-webkit-scrollbar { width: 0; display: none; }
+.turn-dot-scroll::-webkit-scrollbar { width: 0; display: none; }
 
 .turn-dot {
-  width: 7px;
-  height: 7px;
+  position: relative;
+  width: 8px;
+  height: 8px;
   flex-shrink: 0;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: #d1d5db;
   cursor: pointer;
-  pointer-events: auto;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  opacity: 0.55;
+  transition: background 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .turn-dot:hover {
-  background: #9ca3af;
-  opacity: 1;
-  transform: scale(1.3);
+  background: #6b7280;
+  transform: scale(1.25);
 }
 
 .turn-dot.active {
   background: #374151;
-  opacity: 1;
-  transform: scale(1.4);
-  box-shadow: 0 0 0 3px rgba(55, 65, 81, 0.12);
+  transform: scale(1.5);
 }
 
-/* 轮次较多时缩小间距和圆点 */
-.turn-dot-rail[data-count="many"] { gap: 5px; }
-.turn-dot-rail[data-count="many"] .turn-dot { width: 6px; height: 6px; }
-.turn-dot-rail[data-count="crowded"] { gap: 4px; }
-.turn-dot-rail[data-count="crowded"] .turn-dot { width: 5px; height: 5px; }
+/* 气泡tooltip：rail的兄弟节点，绝对定位在wrap中，完全不受overflow裁剪 */
+.turn-dot-bubble {
+  position: absolute;
+  left: 28px;
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: turnBubbleIn 0.12s ease-out;
+}
+.turn-dot-bubble-inner {
+  display: inline-block;
+  max-width: 260px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #1f2937;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.15);
+}
+/* 气泡小三角精确指向圆点中心（圆点中心在wrap左边缘+14px，气泡从left:28px开始，三角在left:-5px指向14px+8/2=18px处...实际三角在气泡左边5px，指向rail右侧边缘） */
+.turn-dot-bubble::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  margin-top: -5px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-right: 5px solid #1f2937;
+}
 
-/* 小窗口下缩小圆点 */
-@media (max-height: 700px) {
-  .turn-dot-rail { gap: 6px; }
-  .turn-dot { width: 6px; height: 6px; }
+@keyframes turnBubbleIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* 上下渐变遮罩：顶部淡出、底部淡出，仅覆盖圆点列区域 */
+.turn-dot-fade {
+  position: absolute;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  z-index: 2;
+}
+.turn-dot-fade--top {
+  top: 0;
+  background: linear-gradient(to bottom, #fff 0%, rgba(255,255,255,0) 100%);
+}
+.turn-dot-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(to top, #fff 0%, rgba(255,255,255,0) 100%);
 }
 
 :root[data-app-theme="dark"] .turn-dot {
   background: #4b5563;
 }
 :root[data-app-theme="dark"] .turn-dot:hover {
-  background: #6b7280;
+  background: #9ca3af;
 }
 :root[data-app-theme="dark"] .turn-dot.active {
-  background: #d1d5db;
-  box-shadow: 0 0 0 3px rgba(209, 213, 219, 0.15);
+  background: #e5e7eb;
+}
+:root[data-app-theme="dark"] .turn-dot-bubble-inner {
+  color: #1f2937;
+  background: #f3f4f6;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+}
+:root[data-app-theme="dark"] .turn-dot-bubble::before {
+  border-right-color: #f3f4f6;
+}
+:root[data-app-theme="dark"] .turn-dot-fade--top {
+  background: linear-gradient(to bottom, #1a1a1a 0%, rgba(26,26,26,0) 100%);
+}
+:root[data-app-theme="dark"] .turn-dot-fade--bottom {
+  background: linear-gradient(to top, #1a1a1a 0%, rgba(26,26,26,0) 100%);
 }
 
 /* 空会话不显示圆点导航 */
-.task-conversation--empty .turn-dot-rail { display: none; }
+.task-conversation--empty .turn-dot-wrap { display: none; }
 
 /* 发送后预留空间，让流式回答有舒适的落点，不必手动下滑。 */
 .task-conversation--running .task-stream {
@@ -1153,7 +1228,7 @@
 
 .permission-confirm-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; padding: 24px; place-items: center; background: #15181d6b; backdrop-filter: blur(2px); animation: confirm-backdrop-in 140ms ease-out; }
 .model-manager-backdrop { position: fixed; z-index: 120; inset: 0; display: grid; padding: 7px; place-items: center; background: #20242a4f; backdrop-filter: blur(1px); }
-.model-manager { display: grid; width: min(920px, 100%); height: min(720px, calc(100vh - 14px)); grid-template-rows: 104px minmax(0, 1fr); overflow: visible; color: #272b30; background: #fff; border: 1px solid #dfe1e3; border-radius: 8px; box-shadow: 0 24px 70px #181c2233; }
+.model-manager { display: grid; width: min(920px, 100%); height: min(720px, calc(100vh - 14px)); grid-template-rows: 52px minmax(0, 1fr); overflow: visible; color: #272b30; background: #fff; border: 1px solid #dfe1e3; border-radius: 8px; box-shadow: 0 24px 70px #181c2233; }
 .model-manager--embedded { display: block; width: 100%; height: auto; overflow: visible; border: 0; border-radius: 0; box-shadow: none; }
 .model-manager--embedded > header { display: none; }
 .model-manager--embedded .model-manager-body { padding: 0; overflow: visible; }
@@ -1162,7 +1237,7 @@
 .model-manager-eyebrow { color: #7b8188; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 .model-manager > header h1 { margin: 0; font-size: 21px; font-weight: 680; letter-spacing: 0; }
 .model-manager > header p { margin: 2px 0 0; color: #858b92; font-size: 12px; }
-.model-manager > header > button, .model-editor > header button { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; color: #636970; background: transparent; border-radius: 6px; }
+.model-manager > header > button, .model-editor > header button { display: grid; width: 30px; height: 30px; padding: 0; margin-left: auto; place-items: center; color: #636970; background: transparent; border-radius: 6px; }
 .model-manager > header > button:hover, .model-editor > header button:hover { background: #f0f1f2; }
 .model-manager > header > button:disabled, .model-add-button:disabled { cursor: default; opacity: .42; }
 .model-manager-body { min-height: 0; padding: 22px 32px 44px; overflow-y: auto; }
