@@ -1,25 +1,62 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import DOMPurify from "dompurify";
-import { marked } from "marked";
+import { marked, Renderer } from "marked";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isTauri } from "@tauri-apps/api/core";
 import { useThrottledVisualUpdate } from "../../composables/useThrottledVisualUpdate";
 
 const props = defineProps<{ tokens: string[]; finalText?: string }>();
 const text = computed(() => props.finalText || props.tokens.join(""));
-// 流式 Markdown 重解析按 3 帧节流（借鉴 dsh 流式正文管线）：
-// 一帧内 N 次文本更新合并为一次 marked 解析 + DOMPurify 清洗，
-// 渲染滞后 ≤3 帧（约 50ms）不可感知，长文本流式时解析频率降为 1/3
 const rendered = ref(text.value);
 const scheduleRender = useThrottledVisualUpdate(() => { rendered.value = text.value; });
 watch(text, () => scheduleRender());
-const html = computed(() => DOMPurify.sanitize(marked.parse(rendered.value, { async: false }) as string));
 
-// —— 链接安全打开 ——
-// v-html 渲染的 <a> 在 Tauri webview 中点击会导航当前窗口（整窗跳走且无法返回），
-// 这里通过容器事件委托统一拦截：左键用系统默认浏览器打开；
-// 右键提供「默认浏览器 / 右侧浏览器栏 / 复制链接」菜单。
+// 常见代码/文本文件扩展名（用于识别文件路径）
+const FILE_EXT_RE = /\.(?:ts|tsx|js|jsx|vue|svelte|py|rb|go|rs|java|kt|c|cpp|h|hpp|cs|php|swift|scala|sh|bash|zsh|fish|ps1|bat|cmd|json|jsonc|yaml|yml|toml|ini|env|xml|html|htm|css|scss|sass|less|md|mdx|txt|log|sql|graphql|gql|proto|dockerfile|makefile|cmake|gradle|lock|cfg|conf|gitignore|npmrc|eslintrc|prettierrc|editorconfig|babelrc|stylelintrc|toml|svg|png|jpg|jpeg|gif|webp|bmp|ico|pdf|zip|tar|gz|rar|7z|mp3|mp4|wav|avi|mov|mjs|cjs|cts|d\.ts|test\.ts|spec\.ts|astro|deno|wasm)$/i;
+
+// 判断一个字符串是否像文件路径
+function looksLikeFilePath(raw: string): string | null {
+  const str = raw.trim();
+  if (!str) return null;
+  // 过长或包含空白/明显非路径字符
+  if (str.length > 200 || /[\s<>{}[\]"']/.test(str)) return null;
+  // 排除 URL
+  if (/^[a-z]+:\/\//i.test(str)) return null;
+  // 必须包含路径分隔符或以 ./ ../ 开头 或 包含文件扩展名
+  const hasSep = /[\\/]/.test(str) || str.startsWith("./") || str.startsWith("../");
+  const hasExt = FILE_EXT_RE.test(str);
+  if (!hasSep && !hasExt) return null;
+  // 提取行号（如 foo.ts:25 或 foo.ts:25-30）
+  const lineMatch = str.match(/^(.+?)(?::(\d+)(?:-\d+)?)?$/);
+  if (!lineMatch) return null;
+  return lineMatch[1];
+}
+
+// 自定义 marked renderer：拦截 codespan（行内 `code`），把识别为文件路径的渲染为可点击链接
+class FileLinkRenderer extends Renderer {
+  override codespan({ text }: { text: string }): string {
+    const path = looksLikeFilePath(text);
+    if (path) {
+      const escaped = path.replace(/"/g, "&quot;");
+      return `<code class="file-link" data-file="${escaped}" tabindex="0" role="link" title="点击打开文件">${text}</code>`;
+    }
+    return `<code>${text}</code>`;
+  }
+}
+
+const fileLinkRenderer = new FileLinkRenderer();
+
+const html = computed(() => {
+  const rawMarkdown = rendered.value;
+  // 使用自定义 renderer 解析 markdown
+  const parsed = marked.parse(rawMarkdown, { async: false, renderer: fileLinkRenderer }) as string;
+  return DOMPurify.sanitize(parsed, {
+    ADD_ATTR: ["data-file", "tabindex", "role", "title"],
+  });
+});
+
+// —— 链接与文件链接统一处理 ——
 const nativeRuntime = isTauri();
 const menu = ref<{ url: string; x: number; y: number } | null>(null);
 
@@ -28,6 +65,13 @@ function anchorFrom(event: Event): HTMLAnchorElement | null {
   if (!(target instanceof Element)) return null;
   const anchor = target.closest("a");
   return anchor instanceof HTMLAnchorElement ? anchor : null;
+}
+
+function fileLinkFrom(event: Event): HTMLElement | null {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  const el = target.closest(".file-link");
+  return el instanceof HTMLElement ? el : null;
 }
 
 function safeUrl(raw: string): string {
@@ -46,7 +90,11 @@ async function openDefaultBrowser(url: string) {
   }
 }
 
-// 右键菜单项：先关闭菜单再打开系统浏览器，避免浮层残留
+async function openFilePath(path: string) {
+  // 统一派发全局事件，由 App.vue 解析相对路径并打开（需要当前 workspace 路径）
+  window.dispatchEvent(new CustomEvent("sztu:open-file", { detail: { path } }));
+}
+
 async function openDefaultBrowserFromMenu() {
   const url = menu.value?.url;
   closeMenu();
@@ -54,26 +102,44 @@ async function openDefaultBrowserFromMenu() {
 }
 
 function onLinkClick(event: MouseEvent) {
-  // 只处理左键（click, button=0）与中键（auxclick, button=1）：
-  // 右键会先触发 contextmenu（弹出菜单）再触发 auxclick(button=2)，
-  // 若不过滤会导致菜单弹出的同时误打开系统浏览器。
   if (event.type === "auxclick" && event.button !== 1) return;
+  // 优先处理文件链接
+  const fileEl = fileLinkFrom(event);
+  if (fileEl) {
+    const path = fileEl.dataset.file;
+    if (path) {
+      event.preventDefault();
+      void openFilePath(path);
+    }
+    return;
+  }
   const anchor = anchorFrom(event);
   if (!anchor) return;
   const url = safeUrl(anchor.href);
   if (!url) return;
-  // 无论左/中键或修饰键组合，一律阻止 webview 内导航
   event.preventDefault();
   void openDefaultBrowser(url);
 }
 
+// 键盘可访问性：Enter/Space 触发文件链接
+function onKeyDown(event: KeyboardEvent) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const fileEl = fileLinkFrom(event);
+  if (!fileEl) return;
+  const path = fileEl.dataset.file;
+  if (!path) return;
+  event.preventDefault();
+  void openFilePath(path);
+}
+
 function onLinkContextMenu(event: MouseEvent) {
+  // 文件链接暂不处理右键菜单
+  if (fileLinkFrom(event)) return;
   const anchor = anchorFrom(event);
   if (!anchor) return;
   const url = safeUrl(anchor.href);
   if (!url) return;
   event.preventDefault();
-  // 菜单浮层 clamp 到视口内：靠近窗口右/下边缘时向左上收缩，避免被裁切
   const menuWidth = 260; const menuHeight = 150;
   const x = Math.max(4, Math.min(event.clientX, window.innerWidth - menuWidth - 8));
   const y = Math.max(4, Math.min(event.clientY, window.innerHeight - menuHeight - 8));
@@ -109,7 +175,6 @@ async function copyLink() {
   }
 }
 
-// 菜单为 Teleport 到 body 的浮层：点击菜单外 / 滚动 / 窗口缩放 / Esc 均关闭
 function onWindowPointerDown(event: MouseEvent) {
   if (menu.value && !(event.target as Element | null)?.closest?.(".link-context-menu")) closeMenu();
 }
@@ -128,7 +193,6 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", onWindowKeydown);
 });
 
-// 注册时机依赖 v-html 内容挂载，组件卸载时同步清理
 watch(menu, () => {
   if (menu.value) {
     window.addEventListener("pointerdown", onWindowPointerDown, true);
@@ -149,6 +213,7 @@ watch(menu, () => {
     :class="{ streaming: !finalText }"
     @click="onLinkClick"
     @auxclick="onLinkClick"
+    @keydown="onKeyDown"
     @contextmenu="onLinkContextMenu"
   >
     <div v-html="html" />

@@ -275,6 +275,65 @@
 
 .sandbox-workspace { min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); border-radius: 0; }
 .workspace-empty-view { min-width: 0; min-height: 0; background: var(--surface); border-radius: 0; }
+
+/* ── 工作区首页导航 ───────────────────────────────── */
+.workspace-home-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: #fff;
+  border: 0;
+  border-radius: 0;
+}
+.workspace-home-header__right { display: flex; align-items: center; gap: 2px; }
+
+.home-workspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  background: #fff;
+  border-radius: 0;
+}
+.home-launcher {
+  display: grid;
+  gap: 10px;
+  text-align: center;
+}
+.home-launcher__prompt {
+  margin: 0 0 8px;
+  color: #8a8f8c;
+  font-size: 12px;
+}
+.home-launcher__button {
+  display: flex;
+  min-width: 180px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  color: #3a3f3c;
+  background: #f6f7f6;
+  border: 1px solid #eceeec;
+  border-radius: 10px;
+  font-size: 13px;
+  text-align: left;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.home-launcher__button:hover {
+  background: #eff1ef;
+  border-color: #dfe2df;
+}
+.home-launcher__button:active {
+  transform: scale(0.98);
+}
+.home-launcher__button svg {
+  flex: 0 0 auto;
+  color: #5c625e;
+}
 .xterm-shell {
   display: flex;
   flex-direction: column;

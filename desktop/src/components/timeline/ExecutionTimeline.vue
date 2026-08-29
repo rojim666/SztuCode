@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, Play } from "@lucide/vue";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
-import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
+import ThinkingBlock from "./ThinkingBlock.vue";
+import ToolSummaryRow from "./ToolSummaryRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import AgentLogo from "./AgentLogo.vue";
@@ -205,69 +206,77 @@ function isFirstToolEvent(turn: TurnView, event: TimelineEvent): boolean {
 
 type InlineSegment =
   | { type: "text"; text: string; isFinal?: boolean }
-  | { type: "phase"; thinking?: string; calls: ToolCallEntry[]; running: boolean; completed: boolean };
+  | { type: "thinking"; text: string }
+  | { type: "tools"; calls: ToolCallEntry[] };
 
 function inlineSegments(turn: TurnView): InlineSegment[] {
   const segments: InlineSegment[] = [];
-
-  // 收集所有可见工具：已完成 + 当前运行中
+  const isRunning = turn.state === "running" || turn.state === "waiting";
   const visibleCalls = new Map<string, ToolCallEntry>();
   for (const c of turn.completedCalls) visibleCalls.set(c.id, c);
   if (turn.liveToolCall) visibleCalls.set(turn.liveToolCall.id, turn.liveToolCall);
 
-  const isRunning = turn.state === "running" || turn.state === "waiting";
-  const thinkingText = turn.thinkingText;
+  // 按事件顺序穿插：思考块、文本块、工具摘要块
+  // 连续相同类型的事件合并为一个 segment
+  let pendingCalls: ToolCallEntry[] = [];
+  let pendingThinking = "";
+  let pendingText = "";
 
-  // 策略：思考过程和工具调用合并成一个phase块（Codex风格：一次操作=一个可折叠行）
-  // 文本段在phase之前或之后显示
-  const callsInOrder: ToolCallEntry[] = [];
+  const flushCalls = () => {
+    if (pendingCalls.length) {
+      segments.push({ type: "tools", calls: [...pendingCalls] });
+      pendingCalls = [];
+    }
+  };
+  const flushThinking = () => {
+    if (pendingThinking.trim()) {
+      segments.push({ type: "thinking", text: pendingThinking.trim() });
+      pendingThinking = "";
+    }
+  };
+  const flushText = () => {
+    if (pendingText.trim()) {
+      segments.push({ type: "text", text: pendingText.trim() });
+      pendingText = "";
+    }
+  };
 
-  // 先收集事件流中出现的工具调用（按顺序）
   for (const event of turn.events) {
-    if (event.kind === "tool" && event.tool && visibleCalls.has(event.tool.id)) {
-      callsInOrder.push(event.tool);
+    if (event.kind === "thinking") {
+      flushCalls();
+      flushText();
+      if (event.text) pendingThinking += (pendingThinking ? "\n\n" : "") + event.text;
+    } else if (event.kind === "text") {
+      flushCalls();
+      flushThinking();
+      if (event.text) pendingText += (pendingText ? "\n\n" : "") + event.text;
+    } else if (event.kind === "tool" && event.tool && visibleCalls.has(event.tool.id)) {
+      flushText();
+      flushThinking();
+      pendingCalls.push(event.tool);
       visibleCalls.delete(event.tool.id);
     }
   }
-  // 剩余的工具（通常是liveToolCall）追加
-  for (const c of visibleCalls.values()) callsInOrder.push(c);
+  // 追加剩余未在events中出现的调用（通常是liveToolCall）
+  for (const c of visibleCalls.values()) pendingCalls.push(c);
 
-  // 收集历史文本（非最终的）
-  const historicalTexts: string[] = [];
-  for (const event of turn.events) {
-    if (event.kind === "text" && event.text) {
-      historicalTexts.push(event.text);
-    }
-  }
-
-  // 如果有历史文本，先显示（但避免重复显示最终文本）
-  const finalText = isRunning ? turn.text : turn.summaryText;
-  let lastHistoricalText = "";
-  for (const t of historicalTexts) {
-    if (t !== finalText) {
-      segments.push({ type: "text", text: t, isFinal: false });
-      lastHistoricalText = t;
-    }
-  }
-
-  // 核心：一个统一的操作阶段块，包含思考 + 所有工具
-  const hasAnyActivity = (thinkingText && thinkingText.trim()) || callsInOrder.length > 0;
-  if (hasAnyActivity) {
-    segments.push({
-      type: "phase",
-      thinking: thinkingText,
-      calls: callsInOrder,
-      running: isRunning,
-      completed: !isRunning,
-    });
-  }
-
-  // 最后追加最终文本
-  if (finalText && finalText !== lastHistoricalText) {
-    segments.push({ type: "text", text: finalText, isFinal: true });
-  }
+  flushText();
+  flushThinking();
+  flushCalls();
 
   return segments;
+}
+
+// 判断是否应该显示"正在规划下一步"（运行中且当前没有文本输出、没有活跃工具调用时）
+function shouldShowPlanningHint(turn: TurnView): boolean {
+  if (turn.state !== "running" && turn.state !== "waiting") return false;
+  // 有 liveToolCall 说明正在执行工具，显示"正在执行..."由工具摘要行自己处理
+  if (turn.liveToolCall) return false;
+  // 如果最后一个segment是文本且有streaming内容，说明LLM正在输出文字，不显示规划提示
+  const segs = inlineSegments(turn);
+  const lastSeg = segs[segs.length - 1];
+  if (lastSeg?.type === "text") return false;
+  return true;
 }
 
 function latestTextOf(events: Array<TimelineEvent & { tool?: ToolCallEntry }>, steps: TimelineStep[]): string {
@@ -388,22 +397,32 @@ const turns = computed<TurnView[]>(() => {
             <ChevronDown :size="15" />
           </button>
 
-          <!-- Codex风格：事件流内联渲染，文本与操作阶段交替出现 -->
+          <!-- Trae Work 风格：事件流内联渲染，思考块/文本/工具摘要交替穿插 -->
           <div class="turn-event-stream">
             <template v-for="(segment, segIdx) in inlineSegments(turn)" :key="segIdx">
+              <!-- 思考块：独立折叠行 -->
+              <ThinkingBlock
+                v-if="segment.type === 'thinking'"
+                :text="segment.text"
+                :running="turn.state === 'running' || turn.state === 'waiting'"
+                :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
+              />
               <!-- 文本块：Agent输出的文字内容 -->
-              <div v-if="segment.type === 'text'" class="turn-inline-text" :class="{ final: segment.isFinal }">
+              <div v-else-if="segment.type === 'text'" class="turn-inline-text">
                 <TokenStream :tokens="[]" :final-text="segment.text" />
               </div>
-              <!-- 操作阶段：思考过程 + 所有工具调用合并为一个可折叠块 -->
-              <ActivityPhase
-                v-else-if="segment.type === 'phase'"
-                :thinking="segment.thinking"
+              <!-- 工具摘要：灰色折叠行，点击展开详情 -->
+              <ToolSummaryRow
+                v-else-if="segment.type === 'tools'"
                 :calls="segment.calls"
-                :running="segment.running"
-                :completed="segment.completed"
+                :running="turn.state === 'running' || turn.state === 'waiting'"
               />
             </template>
+            <!-- 进行中提示："正在规划下一步" -->
+            <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">
+              <LoaderCircle class="spin" :size="14" />
+              <span>正在规划下一步</span>
+            </div>
           </div>
 
           <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />

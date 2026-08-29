@@ -135,6 +135,24 @@
 .turn-inline-text.final .token-stream {
   font-weight: 400;
 }
+
+/* 进行中提示："正在规划下一步" */
+.turn-planning-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  color: #9ca3af;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.turn-planning-hint .spin {
+  animation: planning-spin 1s linear infinite;
+}
+@keyframes planning-spin {
+  to { transform: rotate(360deg); }
+}
+
 .tool-call-group { min-width: 0; margin-bottom: 4px; }
 .tool-call-group__trigger { min-height: 25px; padding: 4px 0; font-size: 12px; }
 .tool-call-group__icon { width: 18px; height: 18px; box-shadow: none; }
@@ -214,4 +232,38 @@
 @media (prefers-reduced-motion: reduce) {
   .thinking-panel[data-state='running']::after,
   .token-stream.streaming i { animation: none; }
+}
+
+/* AI 输出中的文件路径链接（蓝色可点击，打开文件） */
+.markdown-body code.file-link,
+.token-stream code.file-link {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  text-decoration: none;
+}
+.markdown-body code.file-link:hover,
+.token-stream code.file-link:hover {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.14);
+  border-bottom-color: rgba(37, 99, 235, 0.5);
+}
+.markdown-body code.file-link:focus-visible,
+.token-stream code.file-link:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 1px;
+}
+:root[data-app-theme="dark"] .markdown-body code.file-link,
+:root[data-app-theme="dark"] .token-stream code.file-link {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.12);
+  border-bottom-color: rgba(96, 165, 250, 0.3);
+}
+:root[data-app-theme="dark"] .markdown-body code.file-link:hover,
+:root[data-app-theme="dark"] .token-stream code.file-link:hover {
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.2);
+  border-bottom-color: rgba(96, 165, 250, 0.5);
 }

@@ -159,25 +159,70 @@ const activePrompt = ref<HTMLTextAreaElement | null>(null);
 // 会话流“回到底部”悬浮按钮：离开底部超过阈值时显示，点击平滑回底
 const taskStreamEl = ref<HTMLElement | null>(null);
 const streamScrolledUp = ref(false);
+let userScrollPaused = false; // 用户主动向上滚动时暂停自动跟随
+let lastScrollTop = 0;
+
+function isNearBottom(el: HTMLElement, threshold = 40) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+}
+
 function handleTaskStreamScroll() {
   const el = taskStreamEl.value;
   if (!el) return;
-  streamScrolledUp.value = el.scrollHeight - el.scrollTop - el.clientHeight > 120;
+  const st = el.scrollTop;
+
+  if (userScrollPaused) {
+    // 用户滚回到底部附近时恢复自动跟随
+    if (isNearBottom(el, 60)) {
+      userScrollPaused = false;
+      streamScrolledUp.value = false;
+    }
+  } else {
+    // 检测用户是否主动向上滚动：scrollTop 减小（拖拽滚动条、键盘等）
+    // 阈值2px避免自动滚动时的微小抖动误判
+    if (st < lastScrollTop - 2 && !isNearBottom(el, 150)) {
+      userScrollPaused = true;
+      streamScrolledUp.value = true;
+    } else {
+      streamScrolledUp.value = !isNearBottom(el, 120);
+    }
+  }
+
+  lastScrollTop = st;
 }
+
+// 用户通过wheel/touch主动滚动时暂停自动跟随
+function markUserScrolling() {
+  const el = taskStreamEl.value;
+  if (!el) return;
+  if (isNearBottom(el, 80)) return;
+  userScrollPaused = true;
+  streamScrolledUp.value = true;
+}
+
 function scrollTaskStreamToBottom() {
   const el = taskStreamEl.value;
   if (!el) return;
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   streamScrolledUp.value = false;
+  userScrollPaused = false;
+  lastScrollTop = el.scrollHeight;
 }
+
 let autoScrollFrame: number | undefined;
 function keepTaskStreamAtBottom() {
-  if (streamScrolledUp.value || autoScrollFrame !== undefined) return;
+  if (userScrollPaused || autoScrollFrame !== undefined) return;
   autoScrollFrame = window.requestAnimationFrame(() => {
     autoScrollFrame = undefined;
     const el = taskStreamEl.value;
-    if (!el || streamScrolledUp.value) return;
+    if (!el || userScrollPaused) return;
+    // 双重检查：只在接近底部时才自动滚，避免在用户阅读中间内容时强行拉回
+    if (!isNearBottom(el, 150)) {
+      streamScrolledUp.value = true;
+      return;
+    }
     el.scrollTop = el.scrollHeight;
+    lastScrollTop = el.scrollHeight;
   });
 }
 
@@ -2374,11 +2419,31 @@ function onOpenInAppBrowser(event: Event) {
   }
 }
 
+// AI 输出中的文件链接 → 用系统默认程序打开（拼接 workspace 绝对路径）
+async function onOpenFileLink(event: Event) {
+  const rawPath = (event as CustomEvent<{ path: string }>).detail?.path;
+  if (!rawPath) return;
+  // 绝对路径（以 / 或盘符开头）直接打开
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(rawPath)) {
+    void import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(rawPath));
+    return;
+  }
+  const ws = activeWorkspace.value;
+  if (!ws?.path) return;
+  // 拼接 workspace 路径
+  const sep = ws.path.includes("\\") ? "\\" : "/";
+  const base = ws.path.replace(/[\\/]+$/, "");
+  const rel = rawPath.replace(/^[./\\]+/, "");
+  const full = `${base}${sep}${rel}`;
+  void import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(full));
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
   handleWindowResize(); // 初始化窗口宽度与窄窗自动收起状态
   window.addEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
+  window.addEventListener("sztu:open-file", onOpenFileLink);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
@@ -2419,6 +2484,7 @@ onBeforeUnmount(() => {
   trayListeners = [];
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
+  window.removeEventListener("sztu:open-file", onOpenFileLink);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
   stopDisconnect?.();
@@ -2689,7 +2755,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 </div>
               </div>
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
-                <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
+                <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />

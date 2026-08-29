@@ -464,6 +464,7 @@
 }
 
 :root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tab-strip,
+:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-home-header,
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-preview--files > header,
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta,
 :root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
@@ -537,7 +538,8 @@
   .file-preview--files > header b,
   .file-row,
   .files-preview-placeholder b,
-  .code-preview-empty b
+  .code-preview-empty b,
+  .home-launcher__button
 ) { color: var(--text); }
 
 :root[data-app-theme="dark"] .project-inspector.file-rail :is(
@@ -546,8 +548,22 @@
   .files-empty,
   .files-preview-placeholder p,
   .code-preview-empty,
-  .code-preview-empty svg
+  .code-preview-empty svg,
+  .home-launcher__prompt,
+  .home-launcher__button svg
 ) { color: var(--text-muted); }
+
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button {
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:hover {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-workspace {
+  background: transparent;
+}
 
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-row:hover {
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
