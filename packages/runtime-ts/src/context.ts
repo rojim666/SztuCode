@@ -108,11 +108,14 @@ export class ContextManager {
   // 单条消息 token 缓存：避免同一条消息被重复计数（压缩/截断时清空）
   private _messageTokenCache = new WeakMap<ContextMessage, { conversation: number; category: "system" | "tool" | "other"; categoryTokens: number }>();
 
-  constructor(public messages: ContextMessage[] = [], private readonly budget: ContextBudget = { maxTokens: 128_000, reservedOutputTokens: 8_192, maxToolResultChars: 8_000 }, counter = new TokenCounter()) { this.counter = counter; }
+  constructor(public messages: ContextMessage[] = [], private readonly _budget: ContextBudget = { maxTokens: 128_000, reservedOutputTokens: 8_192, maxToolResultChars: 8_000 }, counter = new TokenCounter()) { this.counter = counter; }
   append(message: ContextMessage): void { this.messages.push(message); }
 
   // 通知上下文消息数组被外部修改（如 sanitize、splice 替换等），清空增量缓存
   notifyMutated(): void { this.invalidateCache(); }
+
+  // 暴露预算配置（只读）
+  get budget(): Readonly<ContextBudget> { return this._budget; }
 
   // 统计单条消息的完整对话 token（包含 content、tool_calls、reasoning_content）
   private countMessageTokens(message: ContextMessage): { conversation: number; category: "system" | "tool" | "other"; categoryTokens: number } {
