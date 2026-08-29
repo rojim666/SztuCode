@@ -146,6 +146,10 @@ function isTurnExpanded(turn: TurnView): boolean {
   return turn.state !== "running" && turn.state !== "waiting" && expandedTurns.value.has(turn.key);
 }
 
+function isTurnRunning(turn: TurnView): boolean {
+  return turn.state === "running" || turn.state === "waiting";
+}
+
 function liveToolCallOf(calls: ToolCallEntry[]): ToolCallEntry | undefined {
   return [...calls].reverse().find((call) => call.status === "running" || call.status === "awaiting_permission");
 }
@@ -394,20 +398,26 @@ const turns = computed<TurnView[]>(() => {
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
           <ContextInjectionRow v-for="entry in turn.contextInjections" :key="entry.id" :entry="entry" />
           <button
-            v-if="turn.hasActivity || turn.runStats"
+            v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"
             class="turn-history-toggle"
             :class="{ expanded: isTurnExpanded(turn) }"
             :aria-expanded="isTurnExpanded(turn)"
-            :disabled="turn.state === 'running' || turn.state === 'waiting'"
             @click="toggleTurn(turn)"
           >
-            <span>{{ elapsedLabel(turn) }}</span>
+            <span>{{ isTurnExpanded(turn) ? '收起过程' : `查看过程 · ${elapsedLabel(turn)}` }}</span>
             <ChevronDown :size="15" />
           </button>
 
-          <!-- Trae Work 风格：事件流内联渲染，思考块/文本/工具摘要交替穿插 -->
-          <div class="turn-event-stream">
+          <!-- 折叠态（已完成且未展开）：只展示最终输出文字 -->
+          <div v-if="!isTurnRunning(turn) && !isTurnExpanded(turn)" class="turn-event-stream turn-event-stream--collapsed">
+            <div v-if="turn.text || turn.summaryText" class="turn-inline-text">
+              <TokenStream :tokens="[]" :final-text="turn.text || turn.summaryText" />
+            </div>
+          </div>
+
+          <!-- 展开态 / 运行中：事件流内联渲染，思考块/文本/工具摘要交替穿插 -->
+          <div v-else class="turn-event-stream">
             <template v-for="(segment, segIdx) in inlineSegments(turn)" :key="segIdx">
               <!-- 思考块：独立折叠行 -->
               <ThinkingBlock
@@ -415,18 +425,16 @@ const turns = computed<TurnView[]>(() => {
                 :text="segment.text"
                 :running="turn.state === 'running' || turn.state === 'waiting'"
                 :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
-                :default-open="isTurnExpanded(turn)"
               />
               <!-- 文本块：Agent输出的文字内容 -->
               <div v-else-if="segment.type === 'text'" class="turn-inline-text">
                 <TokenStream :tokens="[]" :final-text="segment.text" />
               </div>
-              <!-- 工具摘要：灰色折叠行，点击展开详情；历史展开态默认打开详情 -->
+              <!-- 工具摘要：灰色折叠行，点击展开详情 -->
               <ToolSummaryRow
                 v-else-if="segment.type === 'tools'"
                 :calls="segment.calls"
                 :running="turn.state === 'running' || turn.state === 'waiting'"
-                :default-open="isTurnExpanded(turn)"
               />
             </template>
             <!-- 进行中提示："正在规划下一步" -->

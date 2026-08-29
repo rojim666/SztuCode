@@ -575,3 +575,18 @@ export async function respondUserQuestion(
     answers,
   });
 }
+
+export interface ExternalAppInfo {
+  id: string;
+  name: string;
+  icon: string;
+  available: boolean;
+}
+
+export async function listExternalApps(): Promise<ExternalAppInfo[]> {
+  return invoke("list_external_apps");
+}
+
+export async function openPathWithApp(path: string, appId: string): Promise<void> {
+  await invoke("open_path_with_app", { path, appId });
+}

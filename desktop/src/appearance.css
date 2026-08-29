@@ -553,6 +553,84 @@
   .home-launcher__button svg
 ) { color: var(--text-muted); }
 
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error svg { color: #e07858; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error b { color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error p { color: var(--text-muted); }
+
+/* 文件标签栏 + Open 按钮 暗色主题 */
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-bar {
+  background: var(--surface-soft);
+  border-bottom-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-actions {
+  background: var(--surface-soft);
+  border-left-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab:hover { background: rgba(255,255,255,.06); color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.active {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 0 0 1px var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.has-error { color: #e07858; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close:hover { color: var(--text); background: rgba(255,255,255,.1); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn:hover { background: var(--surface-soft); border-color: var(--border-strong); box-shadow: 0 1px 3px rgb(0 0 0 / 20%); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:first-child { color: #6ea1ff; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:last-child { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-menu {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 45%), 0 3px 10px rgb(0 0 0 / 25%);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item { color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) { background: rgba(255,255,255,.06); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item.disabled { color: var(--text-disabled); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-icon {
+  background: rgba(255,255,255,.06);
+  color: var(--text-muted);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) .file-open-icon {
+  background: rgba(255,255,255,.1);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.06);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo:hover {
+  background: var(--surface-soft);
+  border-color: var(--border-strong);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview,
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-scroll { background: var(--surface); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta { border-bottom-color: var(--border); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta > span {
+  color: var(--text-muted);
+  background: rgba(255,255,255,.04);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
+  color: var(--text-muted);
+  border-bottom-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb i { color: var(--text-disabled); }
+
 :root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button {
   background: transparent;
   border-color: transparent;

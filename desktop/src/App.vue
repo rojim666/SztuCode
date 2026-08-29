@@ -388,6 +388,7 @@ const inspectorRendered = ref(true);
 // 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
 const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
+const inspectorResizing = ref(false);
 // 响应式窗口宽度 + 窄窗自动收起右侧功能栏的追踪标志
 const windowWidth = ref(window.innerWidth);
 let inspectorAutoCollapsed = false;
@@ -700,25 +701,43 @@ function setInspectorOpen(next: boolean) {
 }
 function toggleInspector() { setInspectorOpen(!inspectorOpen.value); }
 // 拖拽分割线调整左右面板宽度比，并限制最小/最大宽度
-function startDividerDrag(event: MouseEvent) {
+function startDividerDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
   event.preventDefault();
   const startX = event.clientX;
   const startWidth = inspectorWidth.value;
-  const container = (event.currentTarget as HTMLElement).parentElement;
-  const maxWidth = Math.max(340, (container?.clientWidth ?? 1200) - 360); // 左侧对话区至少保留 360
+  const target = event.currentTarget as HTMLElement;
+  const container = target.parentElement;
+  const maxWidth = Math.max(340, (container?.clientWidth ?? 1200) - CONVERSATION_MIN_WIDTH);
   const minWidth = 340;
-  function onMove(ev: MouseEvent) {
-    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, startWidth + (startX - ev.clientX)));
-  }
-  function onUp() {
-    localStorage.setItem("sztu.inspectorWidth", String(inspectorWidth.value));
-    document.body.style.cursor = "";
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  }
+  let rafId = 0;
+  let pendingWidth = startWidth;
+  inspectorResizing.value = true;
   document.body.style.cursor = "col-resize";
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
+  document.body.style.userSelect = "none";
+  target.setPointerCapture?.(event.pointerId);
+  const flush = () => {
+    rafId = 0;
+    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, pendingWidth));
+  };
+  function onMove(ev: PointerEvent) {
+    pendingWidth = startWidth + (startX - ev.clientX);
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  }
+  function finish() {
+    if (rafId) { cancelAnimationFrame(rafId); flush(); }
+    inspectorResizing.value = false;
+    localStorage.setItem("sztu.inspectorWidth", String(Math.round(inspectorWidth.value)));
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    target.releasePointerCapture?.(event.pointerId);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", finish);
+    document.removeEventListener("pointercancel", finish);
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", finish, { once: true });
+  document.addEventListener("pointercancel", finish, { once: true });
 }
 const slashQuery = computed(() => {
   const match = prompt.value.match(/^\/([^\s]*)$/);
@@ -2270,24 +2289,37 @@ function startSidebarDrag(event: PointerEvent) {
   if (sidebarCollapsed.value || event.button !== 0) return;
   event.preventDefault();
   stopSidebarDragListeners?.();
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture?.(event.pointerId);
   const startX = event.clientX;
   const startWidth = sidebarWidth.value;
   sidebarResizing.value = true;
   sidebarAutoCollapsed = false;
   document.body.style.cursor = "col-resize";
   document.body.style.userSelect = "none";
+  let rafId = 0;
+  let pendingWidth = startWidth;
+  let pendingOverPull = 0;
+  let pendingArmed = false;
+  const flush = () => {
+    rafId = 0;
+    sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, pendingWidth));
+    sidebarPull.value = -Math.min(14, pendingOverPull * .28);
+    sidebarCollapseArmed.value = pendingArmed;
+  };
   const onMove = (moveEvent: PointerEvent) => {
-    const rawWidth = startWidth + moveEvent.clientX - startX;
-    const overPull = Math.max(0, SIDEBAR_MIN_WIDTH - rawWidth);
-    sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, rawWidth));
-    sidebarPull.value = -Math.min(14, overPull * .28);
-    sidebarCollapseArmed.value = overPull >= SIDEBAR_COLLAPSE_PULL;
+    pendingWidth = startWidth + moveEvent.clientX - startX;
+    pendingOverPull = Math.max(0, SIDEBAR_MIN_WIDTH - pendingWidth);
+    pendingArmed = pendingOverPull >= SIDEBAR_COLLAPSE_PULL;
+    if (!rafId) rafId = requestAnimationFrame(flush);
   };
   const finish = () => {
+    if (rafId) { cancelAnimationFrame(rafId); flush(); }
     stopSidebarDragListeners?.();
     sidebarResizing.value = false;
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
+    target.releasePointerCapture?.(event.pointerId);
     if (sidebarCollapseArmed.value) sidebarCollapsed.value = true;
     else localStorage.setItem("sztu.sidebarWidth", String(Math.round(sidebarWidth.value)));
     sidebarCollapseArmed.value = false;
@@ -2435,23 +2467,30 @@ function onOpenInAppBrowser(event: Event) {
   }
 }
 
-// AI 输出中的文件链接 → 用系统默认程序打开（拼接 workspace 绝对路径）
+// AI 输出中的文件链接 → 在右侧功能栏「文件」标签页中预览
 async function onOpenFileLink(event: Event) {
   const rawPath = (event as CustomEvent<{ path: string }>).detail?.path;
   if (!rawPath) return;
-  // 绝对路径（以 / 或盘符开头）直接打开
-  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(rawPath)) {
-    void import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(rawPath));
-    return;
-  }
   const ws = activeWorkspace.value;
   if (!ws?.path) return;
-  // 拼接 workspace 路径
-  const sep = ws.path.includes("\\") ? "\\" : "/";
-  const base = ws.path.replace(/[\\/]+$/, "");
-  const rel = rawPath.replace(/^[./\\]+/, "");
-  const full = `${base}${sep}${rel}`;
-  void import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(full));
+  // 确保右侧功能栏是打开的
+  setInspectorOpen(true);
+  // 拼接 workspace 绝对路径，交给 Inspector 的 FileTree 解析和预览
+  let targetPath = rawPath.trim();
+  // 去掉行号后缀，如 foo.ts:25
+  targetPath = targetPath.replace(/:\d+(?:-\d+)?$/, "");
+  let fullPath: string;
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(targetPath)) {
+    fullPath = targetPath;
+  } else {
+    const sep = ws.path.includes("\\") ? "\\" : "/";
+    const base = ws.path.replace(/[\\/]+$/, "");
+    const rel = targetPath.replace(/^[./\\]+/, "");
+    fullPath = `${base}${sep}${rel}`;
+  }
+  // 等待 inspector 渲染后调用 previewFile
+  await nextTick();
+  inspectorRef.value?.previewFile(fullPath);
 }
 
 onMounted(() => {
@@ -2742,7 +2781,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <main class="kimi-main" :class="{ 'chat-main': page === 'chat', 'work-active': page === 'work' }">
       <div v-show="page === 'work'" class="work-page-host">
         <section v-if="active" class="work-page">
-          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }" :style="workLayoutStyle">
+          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div v-if="sessionLoading" class="session-loading" role="status" aria-label="正在加载会话">
                 <Terminal :size="40" :stroke-width="1.5" />
@@ -2844,7 +2883,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
-              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
+              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" style="touch-action: none;" @pointerdown="startDividerDrag" />
               <ProjectInspector
                 ref="inspectorRef"
                 :workspace-id="activeWorkspace.workspace_id"

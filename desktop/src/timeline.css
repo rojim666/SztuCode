@@ -267,21 +267,21 @@
   .token-stream.streaming i { animation: none; }
 }
 
-/* AI 输出中的文件路径链接（蓝色可点击，打开文件） */
+/* AI 输出中的文件路径链接（蓝色文字 + 灰色底，在右侧功能栏预览文件） */
 .markdown-body code.file-link,
 .token-stream code.file-link {
   color: #2563eb;
-  background: rgba(37, 99, 235, 0.08);
-  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  background: #f3f4f6;
+  border-bottom: 1px solid #d1d5db;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
   text-decoration: none;
 }
 .markdown-body code.file-link:hover,
 .token-stream code.file-link:hover {
   color: #1d4ed8;
-  background: rgba(37, 99, 235, 0.14);
-  border-bottom-color: rgba(37, 99, 235, 0.5);
+  background: #e5e7eb;
+  border-bottom-color: #9ca3af;
 }
 .markdown-body code.file-link:focus-visible,
 .token-stream code.file-link:focus-visible {
@@ -291,12 +291,12 @@
 :root[data-app-theme="dark"] .markdown-body code.file-link,
 :root[data-app-theme="dark"] .token-stream code.file-link {
   color: #60a5fa;
-  background: rgba(96, 165, 250, 0.12);
-  border-bottom-color: rgba(96, 165, 250, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom-color: rgba(255, 255, 255, 0.15);
 }
 :root[data-app-theme="dark"] .markdown-body code.file-link:hover,
 :root[data-app-theme="dark"] .token-stream code.file-link:hover {
   color: #93c5fd;
-  background: rgba(96, 165, 250, 0.2);
-  border-bottom-color: rgba(96, 165, 250, 0.5);
+  background: rgba(255, 255, 255, 0.14);
+  border-bottom-color: rgba(255, 255, 255, 0.25);
 }

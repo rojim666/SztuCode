@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, Circle, EllipsisVertical,
   ExternalLink, FileCode2, FileText, FolderOpen, Globe2,
@@ -68,6 +68,7 @@ const previewMimeType = ref<string | null>(null);
 const previewLanguage = ref("");
 // 代码预览弹窗：fixed + CSS 居中，脱离父级滚动/裁剪上下文，固定尺寸不被遮挡
 const previewModalRef = ref<HTMLElement | null>(null);
+const fileTreeRef = ref<InstanceType<typeof FileTree> | null>(null);
 
 // 点击弹窗外部关闭预览（点击遮罩或弹窗外任意处）
 function closePreviewOnOutside(event: PointerEvent) {
@@ -246,6 +247,16 @@ function openFiles() {
   activeTab.value = "files";
   selectedPath.value = "";
   toolMenuOpen.value = false;
+}
+
+// 在右侧「文件」标签页中预览指定路径的文件（供 AI 输出中的文件链接调用）
+async function previewFile(filePath: string) {
+  if (!workspaceTabs.value.some((tab) => tab.kind === "files")) workspaceTabs.value.push({ key: "files", kind: "files" });
+  activeTab.value = "files";
+  toolMenuOpen.value = false;
+  // 等待 DOM 更新后调用 FileTree 的 previewFileAtPath
+  await nextTick();
+  fileTreeRef.value?.previewFileAtPath(filePath);
 }
 
 function openBrowser() {
@@ -443,7 +454,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closePreviewOnOutside);
   document.removeEventListener("keydown", closeToolMenuOnEscape);
 });
-defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
+defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previewFile });
 </script>
 
 <template>
@@ -671,7 +682,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
       </div>
     </main>
 
-    <main v-else-if="activeTab === 'files'" class="files-workspace"><FileTree :workspace-id="filesRequest?.workspaceId || workspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
+    <main v-else-if="activeTab === 'files'" class="files-workspace"><FileTree ref="fileTreeRef" :workspace-id="filesRequest?.workspaceId || workspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
     <main v-for="tab in sandboxTabs" v-show="activeTab === tab.key" :key="`${workspacePath}-${tab.key}`" class="sandbox-workspace"><SandboxTerminal :workspace-path="workspacePath || ''" /></main>
     <main v-if="!activeTab" class="workspace-empty-view" />
 

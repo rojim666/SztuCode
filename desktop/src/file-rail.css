@@ -216,15 +216,223 @@
 /* 高特异性压过 kimi.css 基类 .file-preview 的 position:absolute，让预览作为普通网格列参与左右分栏 */
 .file-tree-view .file-preview--files { position: relative; inset: auto; display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: #fff; }
 .file-tree-view .file-preview--files.empty { grid-template-rows: minmax(0, 1fr); }
-.file-tree-view .file-preview--files > header { display: flex; align-items: center; min-height: 44px; gap: 8px; padding: 0 13px; border-bottom: 1px solid #e7e9e7; }
-.file-tree-view .file-preview--files > header b { margin-right: auto; color: #2b3035; font: 12px "Microsoft YaHei UI", sans-serif; }
-.file-tree-view .file-preview--files > header small { overflow: hidden; color: #9aa09b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 文件标签栏 ────────────────────────────── */
+.file-tabs-bar {
+  position: relative;
+  z-index: 120;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 42px;
+  padding: 0;
+  background: #f7f8f7;
+  border-bottom: 1px solid #e5e7e5;
+  overflow: visible;
+}
+.file-tabs-bar--empty {
+  justify-content: flex-end;
+  padding: 0 8px;
+}
+.file-tabs-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+  padding: 0 4px 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.file-tabs-scroll::-webkit-scrollbar { display: none; }
+.file-tab {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  margin: 6px 0;
+  color: #5f6662;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 13px;
+  transition: background-color 120ms ease, color 120ms ease;
+  white-space: nowrap;
+}
+.file-tab:hover { background: #ebedeb; color: #2f3531; }
+.file-tab.active {
+  color: #1d221f;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(20 28 24 / 6%), 0 0 0 1px #e2e5e2;
+}
+.file-tab.has-error { color: #c0573f; }
+.file-tab.has-error.active { color: #c0573f; }
+.file-tab svg { flex: 0 0 auto; opacity: .8; }
+.file-tab.active svg { opacity: 1; }
+.file-tab-name { min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; }
+.file-tab-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  color: #8b938d;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.file-tab:hover .file-tab-close, .file-tab.active .file-tab-close { opacity: 1; }
+.file-tab-close:hover { color: #2a302c; background: #e4e7e4; }
+
+/* ── 操作按钮组（Open + 折叠） ────────────── */
+.file-tabs-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-left: 1px solid #e5e7e5;
+  background: #f7f8f7;
+  position: relative;
+  z-index: 121;
+}
+
+/* ── Open 按钮与下拉菜单 ───────────────────── */
+.file-open-wrap { position: relative; }
+.file-open-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  color: #252a27;
+  background: #fff;
+  border: 1px solid #d5d9d6;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.file-open-btn:hover { background: #f2f4f2; border-color: #bfc6c1; box-shadow: 0 1px 3px rgb(20 28 24 / 6%); }
+.file-open-btn svg:first-child { color: #3b6fd8; }
+.file-open-btn svg:last-child { color: #6a726d; transition: transform 150ms ease; }
+.file-open-btn svg.rotated { transform: rotate(180deg); }
+.file-open-menu {
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 260px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e0e3e0;
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgb(20 28 24 / 14%), 0 3px 10px rgb(20 28 24 / 7%);
+  animation: open-menu-in 140ms cubic-bezier(.2,.8,.2,1);
+}
+@keyframes open-menu-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.file-open-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  color: #1f2421;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.file-open-item:hover:not(.disabled) { background: #f2f5f2; }
+.file-open-item.disabled { color: #b0b6b2; cursor: default; }
+.file-open-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f2f4f2;
+  color: #555d58;
+  overflow: hidden;
+}
+.file-open-item:hover:not(.disabled) .file-open-icon { background: #e7ebe7; }
+.file-open-item[data-icon]:focus-visible,
+.file-open-item:focus-visible { outline: 2px solid rgb(59 111 216 / 40%); outline-offset: 1px; }
+.file-open-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  letter-spacing: .01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Teleport 到 body 的下拉菜单（使用 fixed 定位，避免被任何 overflow 裁剪） */
+.file-open-menu--teleport {
+  position: fixed;
+  z-index: 10000;
+  top: 0;
+  right: 0;
+}
+
+/* ── 文件树折叠/展开按钮（在 Open 按钮右侧） ─ */
+.tree-toggle-btn {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  color: #5f6662;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.tree-toggle-btn:hover { color: #252a27; background: #eef0ee; border-color: #dde1dd; }
+.tree-toggle-btn--solo { position: static; margin: 6px 0; background: #fff; border-color: #d5d9d6; }
+.tree-toggle-btn--solo:hover { background: #f2f4f2; border-color: #bfc6c1; }
+
 .files-preview-placeholder { align-self: stretch; display: grid; place-content: center; justify-items: center; gap: 8px; color: #8b938e; text-align: center; }
 .files-preview-placeholder svg { color: #737b76; }
 .files-preview-placeholder b,
 .files-preview-placeholder p { margin: 0; font-size: 12px; font-weight: 400; line-height: 1.4; }
 .files-preview-placeholder b { color: #4b5258; }
 .files-preview-placeholder p { color: #8b9299; }
+/* 文件预览错误状态：友好提示，显示在左侧预览面板 */
+.preview-error {
+  align-self: stretch;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: #9ca3a0;
+  text-align: center;
+}
+.preview-error svg { color: #c0573f; }
+.preview-error b { margin: 0; font-size: 13px; font-weight: 600; color: #5b3a33; }
+.preview-error p { margin: 0; max-width: 240px; font-size: 11px; line-height: 1.5; color: #8a6e68; word-break: break-all; }
 .files-workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 /* 左右分栏：左预览自适应、右文件树（宽度可拖拽调整） */
 .file-tree-view { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr) 6px 200px; }
@@ -386,6 +594,7 @@
 .preview-tab i { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: #367058; }
 .preview-tab b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .code-preview { display: grid; grid-template-rows: 31px 29px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; background: #fbfcfd; }
+.code-preview.code-preview--bare { grid-template-rows: minmax(0, 1fr); }
 .code-preview-meta { display: flex; align-items: center; gap: 6px; padding: 0 13px; border-bottom: 1px solid #eef0f2; }
 .code-preview-meta > span { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; color: #596169; background: #f7f8f9; border: 1px solid #dfe3e6; border-radius: 4px; font: 10px/1 "Microsoft YaHei UI", sans-serif; }
 .code-preview-meta .format-badge { color: #1769b0; border-color: #c9ddf0; background: #edf6fd; font-weight: 600; }
