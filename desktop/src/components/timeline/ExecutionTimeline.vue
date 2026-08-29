@@ -2,11 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, Play } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
+import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
-import ThinkingPanel from "./ThinkingPanel.vue";
 import TokenStream from "./TokenStream.vue";
-import ToolCallCard from "./ToolCallCard.vue";
-import ToolCallGroup from "./ToolCallGroup.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import AgentLogo from "./AgentLogo.vue";
 import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
@@ -39,6 +37,7 @@ type TurnView = {
   summaryText: string;
   thinkingText: string;
   allToolCalls: ToolCallEntry[];
+  completedCalls: ToolCallEntry[];
   liveToolCall?: ToolCallEntry;
   aggregatedStep: TimelineStep;
   steps: TimelineStep[];
@@ -155,6 +154,10 @@ function liveToolCallOf(calls: ToolCallEntry[]): ToolCallEntry | undefined {
   return [...calls].reverse().find((call) => call.status === "running" || call.status === "awaiting_permission");
 }
 
+function completedToolCalls(calls: ToolCallEntry[]): ToolCallEntry[] {
+  return calls.filter((call) => call.status === "done" || call.status === "failed");
+}
+
 function toggleTurn(turn: TurnView) {
   const next = new Set(expandedTurns.value);
   if (next.has(turn.key)) next.delete(turn.key);
@@ -200,6 +203,73 @@ function isFirstToolEvent(turn: TurnView, event: TimelineEvent): boolean {
   return turn.events.find((item) => item.kind === "tool" && item.tool)?.id === event.id;
 }
 
+type InlineSegment =
+  | { type: "text"; text: string; isFinal?: boolean }
+  | { type: "phase"; thinking?: string; calls: ToolCallEntry[]; running: boolean; completed: boolean };
+
+function inlineSegments(turn: TurnView): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+
+  // 收集所有可见工具：已完成 + 当前运行中
+  const visibleCalls = new Map<string, ToolCallEntry>();
+  for (const c of turn.completedCalls) visibleCalls.set(c.id, c);
+  if (turn.liveToolCall) visibleCalls.set(turn.liveToolCall.id, turn.liveToolCall);
+
+  const isRunning = turn.state === "running" || turn.state === "waiting";
+  const thinkingText = turn.thinkingText;
+
+  // 策略：思考过程和工具调用合并成一个phase块（Codex风格：一次操作=一个可折叠行）
+  // 文本段在phase之前或之后显示
+  const callsInOrder: ToolCallEntry[] = [];
+
+  // 先收集事件流中出现的工具调用（按顺序）
+  for (const event of turn.events) {
+    if (event.kind === "tool" && event.tool && visibleCalls.has(event.tool.id)) {
+      callsInOrder.push(event.tool);
+      visibleCalls.delete(event.tool.id);
+    }
+  }
+  // 剩余的工具（通常是liveToolCall）追加
+  for (const c of visibleCalls.values()) callsInOrder.push(c);
+
+  // 收集历史文本（非最终的）
+  const historicalTexts: string[] = [];
+  for (const event of turn.events) {
+    if (event.kind === "text" && event.text) {
+      historicalTexts.push(event.text);
+    }
+  }
+
+  // 如果有历史文本，先显示（但避免重复显示最终文本）
+  const finalText = isRunning ? turn.text : turn.summaryText;
+  let lastHistoricalText = "";
+  for (const t of historicalTexts) {
+    if (t !== finalText) {
+      segments.push({ type: "text", text: t, isFinal: false });
+      lastHistoricalText = t;
+    }
+  }
+
+  // 核心：一个统一的操作阶段块，包含思考 + 所有工具
+  const hasAnyActivity = (thinkingText && thinkingText.trim()) || callsInOrder.length > 0;
+  if (hasAnyActivity) {
+    segments.push({
+      type: "phase",
+      thinking: thinkingText,
+      calls: callsInOrder,
+      running: isRunning,
+      completed: !isRunning,
+    });
+  }
+
+  // 最后追加最终文本
+  if (finalText && finalText !== lastHistoricalText) {
+    segments.push({ type: "text", text: finalText, isFinal: true });
+  }
+
+  return segments;
+}
+
 function latestTextOf(events: Array<TimelineEvent & { tool?: ToolCallEntry }>, steps: TimelineStep[]): string {
   return [...events].reverse().find((event) => event.kind === "text" && event.text?.trim())?.text?.trim()
     ?? [...steps].reverse().map(stepText).find(Boolean)
@@ -238,6 +308,7 @@ const turns = computed<TurnView[]>(() => {
     const runStartedAt = steps.find((step) => step.runStartedAt)?.runStartedAt ?? group.userMessageTime;
     const text = steps.map((step) => step.finalText || step.streamText || step.tokens.join("")).filter(Boolean).join("\n\n");
     const allToolCalls = toolCallsOf(steps);
+    const completedCalls = completedToolCalls(allToolCalls);
     const liveToolCall = liveToolCallOf(allToolCalls);
     const thinkingText = thinkingTextOf(steps);
     const aggregatedStep = aggregateStep(steps);
@@ -269,6 +340,7 @@ const turns = computed<TurnView[]>(() => {
       summaryText,
       thinkingText,
       allToolCalls,
+      completedCalls,
       liveToolCall,
       aggregatedStep,
       steps,
@@ -291,7 +363,7 @@ const turns = computed<TurnView[]>(() => {
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
       class="timeline-step"
     >
       <div v-if="turn.userMessage" class="timeline-user-message">
@@ -316,42 +388,31 @@ const turns = computed<TurnView[]>(() => {
             <ChevronDown :size="15" />
           </button>
 
-          <div v-if="turn.liveToolCall" class="turn-live-action" role="status">
-            <ToolCallCard :call="turn.liveToolCall" :expanded="true" />
+          <!-- Codex风格：事件流内联渲染，文本与操作阶段交替出现 -->
+          <div class="turn-event-stream">
+            <template v-for="(segment, segIdx) in inlineSegments(turn)" :key="segIdx">
+              <!-- 文本块：Agent输出的文字内容 -->
+              <div v-if="segment.type === 'text'" class="turn-inline-text" :class="{ final: segment.isFinal }">
+                <TokenStream :tokens="[]" :final-text="segment.text" />
+              </div>
+              <!-- 操作阶段：思考过程 + 所有工具调用合并为一个可折叠块 -->
+              <ActivityPhase
+                v-else-if="segment.type === 'phase'"
+                :thinking="segment.thinking"
+                :calls="segment.calls"
+                :running="segment.running"
+                :completed="segment.completed"
+              />
+            </template>
           </div>
-
-          <!-- 折叠态思考行：运行中跟随增量输出；结算后继续保留到历史区展开，
-               让一次到达的大块 thinking 也能按顺序播放完，不会在 run.finished 时被直接卸载。 -->
-          <ThinkingPanel
-            v-if="turn.thinkingText && !isTurnExpanded(turn)"
-            :text="turn.thinkingText"
-            :completed="turn.state !== 'running'"
-          />
 
           <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
 
-          <section v-if="isTurnExpanded(turn)" class="turn-history" aria-label="历史输出与调用">
-            <template v-for="event in turn.events" :key="event.id">
-              <div v-if="event.kind === 'text' && event.text && event.text !== turn.summaryText" class="turn-history-text"><TokenStream :tokens="[]" :final-text="event.text" /></div>
-              <ThinkingPanel v-else-if="event.kind === 'thinking' && event.text" :text="event.text" :completed="turn.state !== 'running'" />
-              <div
-                v-else-if="event.kind === 'tool' && event.tool && (turn.allToolCalls.length <= 2 || isFirstToolEvent(turn, event))"
-                class="turn-history-actions"
-              >
-                <ToolCallGroup v-if="turn.allToolCalls.length > 2" :calls="turn.allToolCalls" />
-                <ToolCallCard v-else :call="event.tool" />
-              </div>
-            </template>
-          </section>
-
-          <section v-if="turn.summaryText" class="turn-result" aria-label="任务结果">
-            <!-- 运行中展示整轮累计输出，避免下一段 token 到达后把上一段从视图中替换掉。 -->
-            <TokenStream :tokens="[]" :final-text="turn.state === 'running' || turn.state === 'waiting' ? turn.text : turn.summaryText" />
-            <button v-if="turn.text || turn.summaryText" type="button" class="turn-copy" :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'" :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'" @click="copyTurnSummary(turn)">
-              <Check v-if="copiedTurn === turn.key" :size="15" :stroke-width="1.8" />
-              <Copy v-else :size="15" :stroke-width="1.8" />
-            </button>
-          </section>
+          <!-- 复制按钮 -->
+          <button v-if="turn.text || turn.summaryText" type="button" class="turn-copy" :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'" :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'" @click="copyTurnSummary(turn)">
+            <Check v-if="copiedTurn === turn.key" :size="15" :stroke-width="1.8" />
+            <Copy v-else :size="15" :stroke-width="1.8" />
+          </button>
 
           <!-- 每轮 Token 消耗与缓存命中：展开历史时展示，运行中轮次不渲染 -->
           <div v-if="turn.runStats && isTurnExpanded(turn)" class="turn-usage" aria-label="本轮 Token 消耗与缓存命中">

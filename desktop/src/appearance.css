@@ -137,7 +137,7 @@
   .work-header,
   .task-canvas,
   .kimi-composer,
-  .queue-dock
+  .queue-dock,
   .composer-input-shell,
   .project-popover,
   .launcher-popover,
@@ -150,6 +150,13 @@
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
+}
+
+/* 排队态/追加态：暗色下也使用灰色底、无边框 */
+:root[data-app-theme="dark"] .queue-dock--queued {
+  background: var(--surface-soft) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :root[data-app-theme="dark"] :is(
@@ -811,6 +818,13 @@
   background: color-mix(in srgb, var(--surface) var(--composer-surface-opacity), transparent) !important;
   backdrop-filter: blur(12px) saturate(108%);
   -webkit-backdrop-filter: blur(12px) saturate(108%);
+}
+
+/* 壁纸模式下排队态/追加态使用 soft 灰色底 */
+:root:not([data-wallpaper="none"]) .task-conversation > .queue-dock--queued {
+  background: color-mix(in srgb, var(--surface-soft) var(--composer-surface-opacity), transparent) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :root:not([data-wallpaper="none"]) :is(.work-header, .workspace-tab-strip) {

@@ -114,6 +114,27 @@
 .turn-history-actions .tool-call-group__body { margin-top: 0; padding-bottom: 0; }
 .turn-live-action { min-width: 0; margin: -3px 0 10px; }
 .turn-live-action .tool-call-event__details { margin-bottom: 8px; }
+
+/* Codex风格内联事件流：文本与工具交替显示 */
+.turn-event-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.turn-inline-text {
+  margin: 4px 0;
+}
+
+.turn-inline-text .token-stream {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #2b2e34;
+}
+
+.turn-inline-text.final .token-stream {
+  font-weight: 400;
+}
 .tool-call-group { min-width: 0; margin-bottom: 4px; }
 .tool-call-group__trigger { min-height: 25px; padding: 4px 0; font-size: 12px; }
 .tool-call-group__icon { width: 18px; height: 18px; box-shadow: none; }
