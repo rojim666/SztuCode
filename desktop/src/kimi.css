@@ -309,8 +309,14 @@ button.composer-project:hover { color: #1a70cf; }
   .user-question-pager { grid-row: 2; }
   .user-question-stop, .user-question-skip, .user-question-submit { grid-row: 2; }
 }
-/* 面板滚动条：细窄、半透明、圆角，悬停时滑块透明度提升 */
-.inspector-panel, .diff-review__files, .diff-review__view { scrollbar-gutter: auto; scrollbar-width: thin; }.inspector-panel::-webkit-scrollbar, .diff-review__files::-webkit-scrollbar, .diff-review__view::-webkit-scrollbar { width: 8px; }.inspector-panel::-webkit-scrollbar-track, .diff-review__files::-webkit-scrollbar-track, .diff-review__view::-webkit-scrollbar-track { background: transparent; }.inspector-panel::-webkit-scrollbar-thumb, .diff-review__files::-webkit-scrollbar-thumb, .diff-review__view::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 18%); border-radius: 4px; }.inspector-panel:hover::-webkit-scrollbar-thumb, .diff-review__files:hover::-webkit-scrollbar-thumb, .diff-review__view:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 40%); }
+/* 面板滚动条：6px 细窄、默认全透明、hover 容器时显现滑块，不挤占内容空间 */
+.inspector-panel, .diff-review__files, .diff-review__view { scrollbar-gutter: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.inspector-panel:hover, .diff-review__files:hover, .diff-review__view:hover { scrollbar-color: rgb(120 130 145 / 22%) transparent; }
+.inspector-panel::-webkit-scrollbar, .diff-review__files::-webkit-scrollbar, .diff-review__view::-webkit-scrollbar { width: 6px; height: 6px; }
+.inspector-panel::-webkit-scrollbar-track, .diff-review__files::-webkit-scrollbar-track, .diff-review__view::-webkit-scrollbar-track { background: transparent; }
+.inspector-panel::-webkit-scrollbar-thumb, .diff-review__files::-webkit-scrollbar-thumb, .diff-review__view::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.inspector-panel:hover::-webkit-scrollbar-thumb, .diff-review__files:hover::-webkit-scrollbar-thumb, .diff-review__view:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 22%); }
+.inspector-panel::-webkit-scrollbar-thumb:hover, .diff-review__files::-webkit-scrollbar-thumb:hover, .diff-review__view::-webkit-scrollbar-thumb:hover { background: rgb(120 130 145 / 45%); }
 /* 会话区滚动条：已由圆点导航替代，完全隐藏 */
 .task-stream { scrollbar-width: none; }
 .task-stream::-webkit-scrollbar { width: 0; display: none; }

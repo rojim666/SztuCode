@@ -185,6 +185,12 @@ function setTabError(path: string, errMsg: string) {
 
 function switchTab(path: string) {
   activeTabPath.value = path;
+  nextTick(() => {
+    const el = tabsScrollRef.value;
+    if (!el) return;
+    const active = el.querySelector<HTMLElement>(".file-tab.active");
+    if (active) active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  });
 }
 
 function closeTab(path: string, event?: MouseEvent) {
@@ -247,6 +253,7 @@ const openMenuOpen = ref(false);
 const externalApps = ref<ExternalAppInfo[]>([]);
 let openMenuCleanup: (() => void) | null = null;
 const openBtnRef = ref<HTMLElement | null>(null);
+const tabsScrollRef = ref<HTMLElement | null>(null);
 const openMenuStyle = ref({ top: "0px", right: "0px" });
 
 async function loadExternalApps() {
@@ -270,7 +277,11 @@ function toggleOpenMenu() {
   openMenuOpen.value = !openMenuOpen.value;
   if (openMenuOpen.value) {
     if (!externalApps.value.length) void loadExternalApps();
+    // 立即计算 + 多次重试，防止首次打开时布局尚未稳定
+    updateMenuPosition();
     nextTick(updateMenuPosition);
+    setTimeout(updateMenuPosition, 0);
+    setTimeout(updateMenuPosition, 100);
     setTimeout(() => {
       const onDocClick = (e: MouseEvent) => {
         const menuEl = document.getElementById("file-open-menu-teleport");
@@ -278,32 +289,48 @@ function toggleOpenMenu() {
           !openBtnRef.value?.contains(e.target as Node) &&
           !menuEl?.contains(e.target as Node)
         ) {
-          openMenuOpen.value = false;
-          document.removeEventListener("mousedown", onDocClick);
-          window.removeEventListener("resize", updateMenuPosition);
-          window.removeEventListener("scroll", updateMenuPosition, true);
-          openMenuCleanup = null;
+          closeOpenMenu();
         }
       };
+      // 捕获阶段监听所有滚动容器的滚动事件，实时更新菜单位置
+      const onScroll = () => updateMenuPosition();
       document.addEventListener("mousedown", onDocClick);
       window.addEventListener("resize", updateMenuPosition);
-      window.addEventListener("scroll", updateMenuPosition, true);
+      window.addEventListener("scroll", onScroll, true);
       openMenuCleanup = () => {
         document.removeEventListener("mousedown", onDocClick);
         window.removeEventListener("resize", updateMenuPosition);
-        window.removeEventListener("scroll", updateMenuPosition, true);
+        window.removeEventListener("scroll", onScroll, true);
       };
     }, 0);
   } else {
-    openMenuCleanup?.();
-    openMenuCleanup = null;
+    closeOpenMenu();
   }
+}
+
+function closeOpenMenu() {
+  openMenuOpen.value = false;
+  openMenuCleanup?.();
+  openMenuCleanup = null;
 }
 
 onBeforeUnmount(() => {
   openMenuCleanup?.();
   openMenuCleanup = null;
 });
+
+// 标签栏鼠标滚轮横向滚动（监听在整个标签栏上，Open 按钮区域也能滚）
+function handleTabsWheel(e: WheelEvent) {
+  const el = tabsScrollRef.value;
+  if (!el) return;
+  // 如果内容没有溢出，无需处理
+  if (el.scrollWidth <= el.clientWidth + 1) return;
+  // 优先使用垂直滚轮来横向滚动（Shift+滚轮已经原生支持横向）
+  const delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+  if (delta === 0) return;
+  el.scrollLeft += delta;
+  e.preventDefault();
+}
 
 function appIconSvg(icon: string): string {
   switch (icon) {
@@ -357,8 +384,8 @@ onMounted(() => void loadDir(null));
     <!-- 左：预览区 -->
     <section class="file-preview file-preview--files" :class="{ empty: !selectedPath, error: !!previewError }">
       <!-- 顶部操作栏：标签 + Open + 折叠按钮 -->
-      <div class="file-tabs-bar" v-if="tabs.length">
-        <div class="file-tabs-scroll">
+      <div class="file-tabs-bar" v-if="tabs.length" @wheel="handleTabsWheel">
+        <div ref="tabsScrollRef" class="file-tabs-scroll">
           <button
             v-for="tab in tabs"
             :key="tab.path"

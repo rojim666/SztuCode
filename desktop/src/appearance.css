@@ -400,7 +400,16 @@
 }
 
 :root[data-app-theme="dark"] .sidebar-workspace {
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: transparent transparent;
+}
+:root[data-app-theme="dark"] .sidebar-workspace:hover {
+  scrollbar-color: rgb(140 150 165 / 28%) transparent;
+}
+:root[data-app-theme="dark"] .sidebar-workspace:hover::-webkit-scrollbar-thumb {
+  background: rgb(140 150 165 / 28%);
+}
+:root[data-app-theme="dark"] .sidebar-workspace::-webkit-scrollbar-thumb:hover {
+  background: rgb(140 150 165 / 50%);
 }
 
 :root[data-app-theme="dark"] .permission-confirm-backdrop {
@@ -559,29 +568,27 @@
 
 /* 文件标签栏 + Open 按钮 暗色主题 */
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-bar {
-  background: var(--surface-soft);
+  background: var(--surface);
   border-bottom-color: var(--border);
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-actions {
-  background: var(--surface-soft);
-  border-left-color: var(--border);
+  background: var(--surface);
 }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab { color: var(--text-muted); cursor: pointer; }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tab:hover { background: rgba(255,255,255,.06); color: var(--text); }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.active {
   color: var(--text);
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 0 0 1px var(--border);
+  background: rgba(255,255,255,.08);
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.has-error { color: #e07858; }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close { color: var(--text-muted); }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close:hover { color: var(--text); background: rgba(255,255,255,.1); }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn {
   color: var(--text);
-  background: var(--surface);
-  border-color: var(--border);
+  background: transparent;
+  border: 0;
 }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn:hover { background: var(--surface-soft); border-color: var(--border-strong); box-shadow: 0 1px 3px rgb(0 0 0 / 20%); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn:hover { background: rgba(255,255,255,.06); }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:first-child { color: #6ea1ff; }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:last-child { color: var(--text-muted); }
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-open-menu {
@@ -610,12 +617,11 @@
   border-color: var(--border);
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo {
-  background: var(--surface);
-  border-color: var(--border);
+  background: transparent;
+  border: 0;
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo:hover {
-  background: var(--surface-soft);
-  border-color: var(--border-strong);
+  background: rgba(255,255,255,.06);
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview,
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-scroll { background: var(--surface); }
@@ -739,19 +745,29 @@
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-bullet { color: #83cbd7; }
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-deletion { color: #ff938d; }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll) {
-  scrollbar-color: var(--border-strong) transparent;
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view) {
+  scrollbar-color: transparent transparent;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover {
+  scrollbar-color: rgb(140 150 165 / 28%) transparent;
 }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll)::-webkit-scrollbar-track {
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll)::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background-clip: padding-box;
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+}
+
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover::-webkit-scrollbar-thumb {
+  background: rgb(140 150 165 / 28%);
+}
+
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb:hover {
+  background: rgb(140 150 165 / 50%);
 }
 
 /* Capability pages use the shared theme tokens so wallpaper glass stays legible. */
