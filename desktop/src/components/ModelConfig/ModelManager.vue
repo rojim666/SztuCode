@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, ChevronDown, ExternalLink, Eye, EyeOff, LoaderCircle, Pencil, Play, Plus, Settings2, Trash2, X } from "@lucide/vue";
+import { Check, ChevronDown, ExternalLink, Eye, EyeOff, LoaderCircle, Pencil, Play, Plus, Settings2, Trash2, X, Zap } from "@lucide/vue";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
@@ -42,6 +42,8 @@ const managerDialog = ref<HTMLElement | null>(null);
 const { setInitialFocus, trapTab, restoreFocus } = useFocusTrap();
 let modelRequestVersion = 0;
 const canSave = computed(() => Boolean(selectedVendor.value && name.value.trim() && model.value.trim() && (editingModel.value !== null || apiKey.value.trim())));
+const currentModel = computed(() => models.value.find((item) => item.is_current) ?? null);
+const customModelCount = computed(() => models.value.filter((item) => !item.builtin).length);
 
 async function refresh() {
   error.value = "";
@@ -188,13 +190,13 @@ onMounted(() => {
 
 <template>
   <section ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : 'true'" aria-label="模型管理" tabindex="-1" @keydown.esc="emit('close')">
-    <header><div><h1>模型</h1><p>配置 API Key，添加并管理本机可用模型。</p></div><button type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button></header>
+    <header><div class="model-manager-heading"><span class="model-manager-eyebrow">MODEL WORKSPACE</span><h1>模型管理</h1><p>配置 API Key，添加并管理本机可用模型。</p></div><button type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button></header>
     <div ref="modelManagerBody" class="model-manager-body" tabindex="-1" :inert="Boolean(deleteTarget || deletingId)">
-      <button ref="editorTrigger" type="button" class="model-add-button" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)"><Plus :size="15" />添加模型</button>
+      <div class="model-manager-toolbar"><div class="model-manager-summary"><span class="model-stat"><b>{{ models.length }}</b><small>全部模型</small></span><span class="model-stat"><b>{{ customModelCount }}</b><small>可编辑</small></span><span v-if="currentModel" class="model-current"><Zap :size="13" /><span>当前使用：<b>{{ currentModel.name }}</b></span></span></div><button ref="editorTrigger" type="button" class="model-add-button" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)"><Plus :size="15" />添加模型</button></div>
       <div class="model-table">
         <header><span>模型</span><span>服务商</span><span>接口</span><span>操作</span></header>
         <div v-for="item in models" :key="item.id" class="model-table-row">
-          <span><span class="model-table-name"><button type="button" class="model-toggle" :class="{ on: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" :aria-label="item.is_current ? `${item.name} 是当前模型` : `将 ${item.name} 设为当前模型`" @click="selectModel(item)"><i /></button><span><b :title="item.name">{{ item.name }}</b><small :title="item.model">{{ item.model }}</small></span></span></span><span :title="item.vendor">{{ item.vendor }}</span><span>{{ item.provider === 'openai' ? 'OpenAI 兼容' : 'Anthropic' }}</span>
+          <span><span class="model-table-name"><button type="button" class="model-toggle" :class="{ on: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" :aria-label="item.is_current ? `${item.name} 是当前模型` : `将 ${item.name} 设为当前模型`" @click="selectModel(item)"><i /></button><i class="model-provider-logo"><img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" /><span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span></i><span><b :title="item.name">{{ item.name }}</b><small :title="item.model">{{ item.model }}</small><small class="model-mobile-meta">{{ item.vendor }} · {{ item.provider === 'openai' ? 'OpenAI 兼容' : 'Anthropic' }}</small></span></span></span><span class="model-vendor" :title="item.vendor">{{ item.vendor }}</span><span><span class="model-interface">{{ item.provider === 'openai' ? 'OpenAI 兼容' : 'Anthropic' }}</span></span>
           <span><em v-if="item.is_current"><Check :size="12" />当前</em><small v-else-if="item.builtin">内置</small><template v-else><button type="button" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)"><Pencil :size="14" /></button><button type="button" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)"><Trash2 :size="14" /></button></template></span>
         </div>
         <p v-if="!models.length">暂无自定义模型，点击“添加模型”开始配置。</p>
