@@ -21,7 +21,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -243,6 +243,7 @@ export class AgentLoop {
         messages.push({ role: "assistant", content: responseContent(response), ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
         // 等待后台压缩完成（如果有）
         await applyPendingCompaction(true);
+        await this.options.onCheckpoint?.({ step, phase: "completed", messages: [...messages], usage: { ...usage } });
         // TaskCanvas 记录任务完成
         taskCanvas.recordStep({ label: "任务完成", summary: response.text.slice(0, 100), status: "done" });
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
@@ -509,6 +510,7 @@ export class AgentLoop {
       await applyPendingCompaction(false);
 
       this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+      await this.options.onCheckpoint?.({ step, phase: "tool_batch", messages: [...messages], usage: { ...usage } });
       await extensions?.dispatch("turn_end", { goal, step, messages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       if (maxSteps > 0 && step >= maxSteps) {
         const conclusion = await this.conclude(runId, step, messages, usage, lastContextPct, signal, taskCanvas);
@@ -528,6 +530,7 @@ export class AgentLoop {
         const carrier = error as Error & { partialMessages?: ChatMessage[] };
         if (!carrier.partialMessages) carrier.partialMessages = messages;
       }
+      await this.options.onCheckpoint?.({ step: 0, phase: "failed", messages: [...messages], usage: { ...usage } });
       throw error;
     }
   }
