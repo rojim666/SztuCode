@@ -1,7 +1,7 @@
 import type { ToolPermission } from "./tools-types.js";
 
 const readOnlyCommands = new Set([
-  "cat", "head", "tail", "ls", "dir", "grep", "rg", "wc", "file", "stat",
+  "cat", "head", "tail", "less", "more", "ls", "dir", "grep", "rg", "awk", "sed", "wc", "file", "stat", "find",
   "which", "where", "whereis", "type", "echo", "printf", "date", "pwd", "whoami", "uname", "cls",
 ]);
 const readOnlyGitCommands = new Set(["status", "diff", "log", "show", "grep", "blame", "rev-parse", "ls-files", "ls-tree", "describe"]);
@@ -11,7 +11,7 @@ export function classifyBashPermission(params: Record<string, unknown>): ToolPer
   if (!command || hasUnsafeShellSyntax(command)) return "danger_full_access";
   const segments = splitCommand(command);
   if (!segments?.length || segments.some((tokens) => !isReadOnlySegment(tokens))) return "danger_full_access";
-  return "workspace_write";
+  return "read_only";
 }
 
 function hasUnsafeShellSyntax(command: string): boolean {

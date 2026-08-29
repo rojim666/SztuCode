@@ -7,6 +7,7 @@ import type { Workspace } from "./workspace.js";
 import type { EventBus } from "./event-bus.js";
 import { TaskManager, type TaskStatus } from "./task-manager.js";
 import { classifyBashPermission } from "./bash-permission.js";
+import { SkillLoader } from "./skills.js";
 
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
@@ -25,7 +26,7 @@ export type ToolContext = {
   /** runId 用于事件发布 */
   runId?: string;
 };
-export interface Tool { readonly name: string; readonly aliases?: readonly string[]; readonly description: string; readonly permission: ToolPermission; readonly schema: Record<string, unknown>; readonly executionMode?: "parallel" | "sequential"; readonly timeoutMs?: number; classifyPermission?(params: Record<string, unknown>): ToolPermission; invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult>; }
+export interface Tool { readonly name: string; readonly aliases?: readonly string[]; readonly description: string; readonly permission: ToolPermission; readonly schema: Record<string, unknown>; readonly executionMode?: "parallel" | "sequential"; readonly timeoutMs?: number; /** false 表示工具失败不自动重试（如 bash：exit≠0 是业务结果而非基础设施故障，且命令可能非幂等） */ readonly retryable?: boolean; classifyPermission?(params: Record<string, unknown>): ToolPermission; invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult>; }
 
 const ok = (output: string): ToolResult => ({ ok: true, output });
 const fail = (error: string, errorType: ToolResult["errorType"] = "runtime_error"): ToolResult => ({ ok: false, output: "", error, errorType });
@@ -242,7 +243,19 @@ export class ToolRegistry {
 }
 
 export function registerQuestionTool(registry: ToolRegistry, ask: (questions: Array<Record<string, unknown>>) => Promise<unknown[]>): void {
-  registry.register({ name: "ask_user_question", description: "Ask the user one to three structured questions and wait for an answer", permission: "read_only", schema: { type: "object", properties: { questions: { type: "array", minItems: 1, maxItems: 3 } }, required: ["questions"] }, async invoke(params) { try { return ok(JSON.stringify({ answers: await ask(Array.isArray(params.questions) ? params.questions as Array<Record<string, unknown>> : []) })); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } });
+  registry.register({ name: "ask_user_question", description: "Ask the user one to three structured questions and wait for an answer", permission: "read_only", schema: { type: "object", properties: { questions: { type: "array", minItems: 1, maxItems: 3, items: { type: "object", properties: { id: { type: "string" }, header: { type: "string" }, question: { type: "string" }, options: { type: "array", minItems: 2, maxItems: 4, items: { type: "object", properties: { label: { type: "string" }, description: { type: "string" } }, required: ["label"] } }, multi_select: { type: "boolean" } }, required: ["question", "options"] } } }, required: ["questions"] }, async invoke(params) { try { return ok(JSON.stringify({ answers: await ask(Array.isArray(params.questions) ? params.questions as Array<Record<string, unknown>> : []) })); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } });
+}
+
+export function createSpawnAgentTool(run: (role: string, goal: string, context?: string) => Promise<unknown>): Tool {
+  return { name: "spawn_agent", description: "Delegate a focused task to a specialist subagent and return its evidence", permission: "workspace_write", schema: { type: "object", properties: { role: { type: "string", enum: ["planner", "coder", "tester", "reviewer"] }, goal: { type: "string", minLength: 1 }, context: { type: "string" } }, required: ["role", "goal"] }, async invoke(params) { const role = String(params.role ?? ""); const goal = String(params.goal ?? ""); if (!/^(planner|coder|tester|reviewer)$/.test(role) || !goal.trim()) return fail("role and goal are required", "schema_error"); try { return ok(JSON.stringify(await run(role, goal, typeof params.context === "string" ? params.context : undefined))); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } };
+}
+
+export function createSkillTool(workspaceRoot: string): Tool {
+  return { name: "skill", description: "Load the full instructions for an enabled skill by name", permission: "read_only", schema: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"] }, async invoke(params) { try { const skill = await new SkillLoader(workspaceRoot).get(String(params.name ?? "")); return ok(JSON.stringify({ name: skill.name, description: skill.description, instructions: skill.system_prompt_template, allowed_tools: skill.allowed_tools })); } catch (error) { return fail(error instanceof Error ? error.message : String(error), "schema_error"); } } };
+}
+
+export function createWorkflowTool(run: (graph: unknown) => Promise<unknown>): Tool {
+  return { name: "run_workflow", description: "Execute a validated planner WorkflowGraph as a parallel specialist workflow", permission: "workspace_write", schema: { type: "object", properties: { workflow: { type: "object" } }, required: ["workflow"] }, async invoke(params) { try { return ok(JSON.stringify(await run(params.workflow))); } catch (error) { return fail(error instanceof Error ? error.message : String(error), "schema_error"); } } };
 }
 
 export function createPlanTools(events: EventBus, runId: string, sessionId = "", tasksDir = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu"), "runs", runId.replace(/[^A-Za-z0-9_.-]/g, "_"), "tasks")): Tool[] {
@@ -260,9 +273,20 @@ export function createPlanTools(events: EventBus, runId: string, sessionId = "",
 
 export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   const registry = new ToolRegistry();
-  registry.register({ name: "read_file", description: "Read a UTF-8 file inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, async invoke(params, context) {
+  registry.register({ name: "read_file", description: "Read a UTF-8 file inside the workspace with line numbers and optional line pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based first line" }, limit: { type: "integer", minimum: 1, maximum: 2000, description: "Maximum lines" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
-    try { const data = await readFile(await context.workspace.resolveExisting(file)); const limit = 2 * 1024 * 1024; const content = data.subarray(0, limit).toString("utf8"); return ok(content.length < data.length ? `${content}\n\n[truncated: file is ${data.length} bytes, showing first ${limit} bytes]` : content); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    try {
+      const data = await readFile(await context.workspace.resolveExisting(file)); const byteLimit = 2 * 1024 * 1024;
+      const content = data.subarray(0, byteLimit).toString("utf8"); const lines = content.split(/\r?\n/);
+      if (lines.at(-1) === "") lines.pop();
+      const offset = Number.isInteger(params.offset) ? Math.max(0, Number(params.offset)) : 0;
+      const limit = Number.isInteger(params.limit) ? Math.min(2000, Math.max(1, Number(params.limit))) : 2000;
+      const page = lines.slice(offset, offset + limit);
+      const numbered = page.map((line, index) => `${String(offset + index + 1).padStart(6, " ")}\t${line}`).join("\n");
+      const end = Math.min(lines.length, offset + page.length);
+      const suffix = end < lines.length || data.length > byteLimit ? `\n\n[${end < lines.length ? `lines ${offset + 1}-${end}/${lines.length}` : `end of file`}${data.length > byteLimit ? `; file truncated at ${byteLimit} bytes` : ""}]` : "";
+      return ok(`${numbered}${suffix}`.trimEnd());
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "write_file", description: "Write a UTF-8 file inside the workspace", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }, async invoke(params, context) {
     const file = str(params, "path"); const content = str(params, "content"); if (!file || content === null) return fail("path and content are required", "schema_error");
@@ -362,16 +386,33 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       return ok(result.length ? result.join("\n") : "No matches found.");
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
-  registry.register({ name: "edit_file", description: "Replace an exact string in a workspace file", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "old_string", "new_string"] }, async invoke(params, context) {
-    const file = str(params, "path"); const oldString = str(params, "old_string"); const newString = str(params, "new_string"); if (!file || oldString === null || newString === null) return fail("path, old_string and new_string are required", "schema_error"); if (oldString === newString) return fail("old_string and new_string are identical", "schema_error");
-    try { const target = await context.workspace.resolveExisting(file); const original = await readFile(target, "utf8"); const count = original.split(oldString).length - 1; if (!count) return fail(`old_string not found in ${file}`); if (count > 1 && params.replace_all !== true) return fail(`old_string appears ${count} times in ${file}`, "schema_error"); const updated = params.replace_all === true ? original.split(oldString).join(newString) : original.replace(oldString, newString); await writeFile(target, updated, "utf8"); context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`replaced ${params.replace_all === true ? count : 1} occurrence(s) in ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  const editSchema = { type: "object", properties: { old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 } }, required: ["old_string", "new_string"] };
+  registry.register({ name: "edit_file", description: "Atomically apply one or more exact replacements; optional line anchors prevent edits to the wrong occurrence", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, ...editSchema.properties, edits: { type: "array", minItems: 1, items: editSchema } }, required: ["path"], anyOf: [{ required: ["old_string", "new_string"] }, { required: ["edits"] }] }, async invoke(params, context) {
+    const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
+    const edits = Array.isArray(params.edits) ? params.edits as Array<Record<string, unknown>> : [params];
+    try {
+      const target = await context.workspace.resolveExisting(file); let updated = (await readFile(target, "utf8")).replace(/\r\n/g, "\n"); let replacements = 0;
+      for (const edit of edits) {
+        const oldString = str(edit, "old_string"); const newString = str(edit, "new_string");
+        if (oldString === null || newString === null || oldString === newString) return fail("each edit requires distinct old_string and new_string", "schema_error");
+        const start = Number.isInteger(edit.start_line) ? Math.max(1, Number(edit.start_line)) : 1; const end = Number.isInteger(edit.end_line) ? Math.max(start, Number(edit.end_line)) : Number.MAX_SAFE_INTEGER;
+        const lines = updated.split("\n"); const scoped = lines.slice(start - 1, end).join("\n"); const count = scoped.split(oldString).length - 1;
+        if (!count) return fail(`old_string not found in ${file} within lines ${start}-${end === Number.MAX_SAFE_INTEGER ? "end" : end}; re-read the file with line numbers`);
+        if (count > 1 && edit.replace_all !== true) return fail(`old_string appears ${count} times in ${file}; re-read and provide line anchors`, "schema_error");
+        const replaced = edit.replace_all === true ? scoped.split(oldString).join(newString) : scoped.replace(oldString, newString);
+        lines.splice(start - 1, end === Number.MAX_SAFE_INTEGER ? lines.length : end - start + 1, ...replaced.split("\n")); updated = lines.join("\n"); replacements += edit.replace_all === true ? count : 1;
+      }
+      await writeFile(target, updated, "utf8"); context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`applied ${edits.length} edit(s), replacing ${replacements} occurrence(s) in ${file}`);
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
-  registry.register({ name: "bash", description: "Execute a non-interactive shell command with real-time streaming output. Output is truncated at 64KB. Windows uses Git Bash if available.", permission: "danger_full_access", classifyPermission: classifyBashPermission, schema: { type: "object", properties: { command: { type: "string", minLength: 1, description: "Shell command to execute" }, timeout: { type: "integer", minimum: 1, maximum: 120, description: "Maximum seconds to wait (default 30, max 120)" }, background: { type: "boolean", description: "Run in background (not yet supported, reserved for future use)" } }, required: ["command"] }, async invoke(params, context) {
+  registry.register({ name: "bash", description: "Execute a non-interactive shell command with real-time streaming output. Output is truncated at 64KB. Windows uses Git Bash if available.", permission: "danger_full_access", retryable: false, classifyPermission: classifyBashPermission, schema: { type: "object", properties: { command: { type: "string", minLength: 1, description: "Shell command to execute" }, timeout: { type: "integer", minimum: 1, maximum: 120, description: "Maximum seconds to wait (default 30, max 120)" }, background: { type: "boolean", description: "Run in background (not yet supported, reserved for future use)" } }, required: ["command"] }, async invoke(params, context) {
     const command = str(params, "command");
     if (!command) return fail("command is required", "schema_error");
 
-    // 拦截安装/更新依赖命令
-    if (BLOCKED_INSTALL_RE.test(command)) {
+    // 拦截安装/更新依赖命令。
+    // 评测场景（Terminal-Bench 等 bench harness）任务本身常要求安装依赖，
+    // 由 SZTU_EVAL_ALLOW_INSTALL=1 显式放开（与 py-runtime bash.py 行为一致）。
+    if (BLOCKED_INSTALL_RE.test(command) && !/^(1|true|yes)$/i.test(process.env.SZTU_EVAL_ALLOW_INSTALL ?? "")) {
       return fail("[blocked] Installing/updating packages is not allowed in this environment — dependencies are already provisioned. Do not run install/update commands; use the existing packages directly.");
     }
 
