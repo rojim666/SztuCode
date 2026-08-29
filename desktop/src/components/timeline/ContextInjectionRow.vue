@@ -1,52 +1,341 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Braces, ChevronDown, CornerUpLeft, FileClock, FileText, Info, ShieldAlert } from "@lucide/vue";
+import { Braces, ChevronDown, CornerUpLeft, FileText, FileClock, Folder, Info, ShieldAlert } from "@lucide/vue";
 import type { ContextInjectionEntry } from "./types";
 
 const props = defineProps<{ entry: ContextInjectionEntry }>();
 const open = ref(false);
 
-const icon = computed(() => {
-  if (props.entry.source === "intervention") return ShieldAlert;
-  if (props.entry.source === "steering") return CornerUpLeft;
-  if (props.entry.source === "compaction") return FileClock;
-  if (props.entry.source === "canvas") return Braces;
-  return Info;
+const sourceConfig = computed(() => {
+  switch (props.entry.source) {
+    case "intervention":
+      return { icon: ShieldAlert, label: "干预", color: "#b45309", bg: "#fef3c7" };
+    case "steering":
+      return { icon: CornerUpLeft, label: "追加", color: "#1d4ed8", bg: "#dbeafe" };
+    case "compaction":
+      return { icon: FileClock, label: "压缩", color: "#6b7280", bg: "#f3f4f6" };
+    case "canvas":
+      return { icon: Braces, label: "进度", color: "#7c3aed", bg: "#ede9fe" };
+    default:
+      return { icon: Info, label: "注入", color: "#4b5563", bg: "#f3f4f6" };
+  }
 });
-const tag = computed(() => ({
-  compaction: "压缩",
-  canvas: "进度",
-  intervention: "干预",
-  steering: "追加",
-  system: "注入",
-}[props.entry.source] ?? "上下文"));
+
 const body = computed(() => props.entry.text ?? props.entry.preview);
 const charLabel = computed(() => props.entry.chars >= 1000 ? `${(props.entry.chars / 1000).toFixed(1)}k` : String(props.entry.chars));
-// 旧事件没有 files 字段，从注入正文中的 Markdown 文件标题和 Git 状态兜底推断。
+
+// 解析文件列表
 const files = computed(() => {
   const explicit = props.entry.files?.map((file) => file.trim()).filter(Boolean) ?? [];
   const inferred = [...body.value.matchAll(/^##\s+([^\n]+)$/gm)]
     .map((match) => match[1].trim())
     .filter((value) => /(?:^|[\\/])[^\\/]+\.[a-z0-9]{1,12}$/i.test(value));
   const gitFiles = [...body.value.matchAll(/^\s*[MADRCU?!]{1,2}\s+(.+)$/gm)].map((match) => match[1].trim());
-  return [...new Set([...explicit, ...inferred, ...gitFiles])].slice(0, 24);
+  return [...new Set([...explicit, ...inferred, ...gitFiles])];
 });
-const ariaLabel = computed(() => `${props.entry.label}（${tag.value}）`);
+
+// 区分文件和目录
+const fileItems = computed(() => files.value.filter(f => !f.endsWith('/') && !f.endsWith('\\')));
+const dirItems = computed(() => files.value.filter(f => f.endsWith('/') || f.endsWith('\\')));
+
+// 取文件名
+const fileName = (path: string) => {
+  const parts = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+};
+
+const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.label}）`);
 </script>
 
 <template>
-  <!-- 复用 Tool calls 的 disclosure chrome（借鉴 dsh ContextInjectionRow）：
-       与 Think/ToolCall 行同一 34px 节奏与分隔符形状，展开体为 141px 高代码风格滚动区 -->
-  <section class="context-injection-row tool-call-event" :class="`ctx-${entry.source}`">
-    <button type="button" :aria-label="ariaLabel" :aria-expanded="open" @click="open = !open">
-      <component :is="icon" :size="14" />
-      <span class="tool-call-event__action">{{ entry.label }}</span>
-      <ChevronDown class="timeline-row__chevron" :size="13" />
+  <section class="ctx-row" :class="[`ctx-${entry.source}`, { open }]">
+    <button type="button" class="ctx-row__trigger" :aria-label="ariaLabel" :aria-expanded="open" @click="open = !open">
+      <span class="ctx-row__icon" :style="{ color: sourceConfig.color, background: sourceConfig.bg }">
+        <component :is="sourceConfig.icon" :size="12" />
+      </span>
+      <span class="ctx-row__title">{{ entry.label }}</span>
+      <span class="ctx-row__badge">{{ charLabel }}字符</span>
+      <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ files.length }}个文件</span>
+      <ChevronDown class="ctx-row__chevron" :size="12" />
     </button>
-    <div v-if="open" class="tool-call-event__details" aria-label="注入内容">
-      <div class="context-injection-row__meta"><b>注入内容 · {{ charLabel }} 字符</b><span>{{ files.length ? `涉及 ${files.length} 个文件` : "未识别具体文件" }}</span></div>
-      <ul v-if="files.length" class="context-injection-row__files" aria-label="涉及文件"><li v-for="file in files" :key="file" :title="file"><FileText :size="13" /><span>{{ file }}</span></li></ul>
-      <pre class="context-injection-row__body">{{ body }}</pre>
-    </div>
+
+    <transition name="ctx-expand">
+      <div v-if="open" class="ctx-row__body">
+        <div v-if="files.length" class="ctx-row__section">
+          <div class="ctx-row__section-header">
+            <Folder :size="11" />
+            <span>上下文文件</span>
+            <span class="ctx-row__section-count">{{ files.length }} 个</span>
+          </div>
+          <div class="ctx-row__file-grid">
+            <div v-for="file in files.slice(0, 48)" :key="file" class="ctx-row__file-chip" :title="file">
+              <FileText :size="11" />
+              <span>{{ fileName(file) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="body" class="ctx-row__section ctx-row__section--content">
+          <div class="ctx-row__section-header">
+            <component :is="sourceConfig.icon" :size="11" />
+            <span>注入内容</span>
+          </div>
+          <pre class="ctx-row__content">{{ body }}</pre>
+        </div>
+      </div>
+    </transition>
   </section>
 </template>
+
+<style scoped>
+.ctx-row {
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.ctx-row__trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 3px 4px;
+  margin: 0 -4px;
+  color: #6b7280;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ctx-row__trigger:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ctx-row__icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 5px;
+}
+
+.ctx-row__title {
+  flex: 0 0 auto;
+  color: #374151;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.ctx-row__badge {
+  padding: 1px 7px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.ctx-row__badge--files {
+  color: #4b5563;
+}
+
+.ctx-row__chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #9ca3af;
+  transition: transform 0.18s ease;
+  opacity: 0;
+}
+
+.ctx-row__trigger:hover .ctx-row__chevron,
+.ctx-row.open .ctx-row__chevron {
+  opacity: 1;
+}
+
+.ctx-row.open .ctx-row__chevron {
+  transform: rotate(180deg);
+}
+
+.ctx-row__body {
+  margin: 4px 0 6px 0;
+  padding: 10px 12px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ctx-row__section-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 7px;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ctx-row__section-count {
+  margin-left: auto;
+  color: #9ca3af;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ctx-row__file-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ctx-row__file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 3px 8px;
+  color: #374151;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font: 11px/1.4 "SF Mono", Consolas, monospace;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.ctx-row__file-chip:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.ctx-row__file-chip svg {
+  flex: 0 0 auto;
+  color: #9ca3af;
+}
+
+.ctx-row__file-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-row__section--content {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.ctx-row__content {
+  max-height: 200px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  color: #4b5563;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font: 11px/1.6 "SF Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 展开/折叠动画 */
+.ctx-expand-enter-active,
+.ctx-expand-leave-active {
+  transition: all 0.18s ease;
+  overflow: hidden;
+}
+
+.ctx-expand-enter-from,
+.ctx-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.ctx-expand-enter-to,
+.ctx-expand-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 600px;
+}
+
+/* 暗色主题 */
+:global(.dark) .ctx-row__trigger:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+:global(.dark) .ctx-row__title {
+  color: #d1d5db;
+}
+
+:global(.dark) .ctx-row__badge {
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(.dark) .ctx-row__badge--files {
+  color: #d1d5db;
+}
+
+:global(.dark) .ctx-row__chevron {
+  color: #6b7280;
+}
+
+:global(.dark) .ctx-row__body {
+  background: #1a1a1a;
+  border-color: #2a2a2a;
+}
+
+:global(.dark) .ctx-row__section-header {
+  color: #9ca3af;
+}
+
+:global(.dark) .ctx-row__section-count {
+  color: #6b7280;
+}
+
+:global(.dark) .ctx-row__file-chip {
+  color: #d1d5db;
+  background: #232323;
+  border-color: #333;
+}
+
+:global(.dark) .ctx-row__file-chip:hover {
+  border-color: #404040;
+  background: #2a2a2a;
+}
+
+:global(.dark) .ctx-row__file-chip svg {
+  color: #6b7280;
+}
+
+:global(.dark) .ctx-row__section--content {
+  border-top-color: #2a2a2a;
+}
+
+:global(.dark) .ctx-row__content {
+  color: #9ca3af;
+  background: #171717;
+  border-color: #333;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ctx-expand-enter-active,
+  .ctx-expand-leave-active {
+    transition: none;
+  }
+}
+</style>
