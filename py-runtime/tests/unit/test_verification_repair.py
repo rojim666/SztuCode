@@ -119,6 +119,7 @@ class _EndTurnProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self.calls += 1
         last = messages[-1]
@@ -142,6 +143,7 @@ class _WritingProvider(_EndTurnProvider):
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         response = await super().chat(
             messages, tool_schemas, bus, run_id, step=step, system=system

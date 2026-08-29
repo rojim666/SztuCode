@@ -36,7 +36,8 @@ class _SingleBashProvider:
         *,
         step: int = 0,
         system: str | None = None,
-    )usage_estimator: object | None = None,
+    
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._step += 1
         if self._step == 1:
@@ -60,7 +61,8 @@ class _TwoBashProvider:
         *,
         step: int = 0,
         system: str | None = None,
-    )usage_estimator: object | None = None,
+    
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._step += 1
         if self._step == 1:
