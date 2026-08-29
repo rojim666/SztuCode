@@ -96,6 +96,7 @@ class _SummaryProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         return LlmResponse(
             stop_reason="end_turn",
