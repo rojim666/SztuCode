@@ -20,7 +20,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -111,7 +111,10 @@ export class AgentLoop {
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Injected ${steering.length} steering message(s)`, ts: now() });
       }
       const sanitized = sanitizeContextMessages(messages, context.budgetMaxToolResultChars());
-      if (sanitized.length !== messages.length || sanitized.some((message, index) => message !== messages[index])) { messages.splice(0, messages.length, ...sanitized); }
+      if (sanitized.length !== messages.length || sanitized.some((message, index) => message !== messages[index])) {
+        messages.splice(0, messages.length, ...sanitized);
+        context.notifyMutated();
+      }
       await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
       const requestTokens = context.tokenEstimate();
       const response = await this.provider.complete(messages, this.tools, signal, (token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }), { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
@@ -135,49 +138,202 @@ export class AgentLoop {
         return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries };
       }
       messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
+
+      // 工具并发调度：只读工具批量并发执行，写工具/危险工具串行
+      const toolMaxConcurrency = Math.max(1, this.options.toolMaxConcurrency ?? nonNegativeEnv("SZTU_TOOL_MAX_CONCURRENCY", 4));
+      type BeforeToolCallResult = { cancel?: boolean; reason?: string; input?: Record<string, unknown> } | undefined;
+      const preparedCalls: Array<{
+        call: ModelToolCall;
+        before: BeforeToolCallResult;
+        input: Record<string, unknown>;
+        tool: Tool | undefined;
+        toolName: string;
+        canonicalCall: ModelToolCall;
+        canRunConcurrent: boolean;
+      }> = [];
+
       for (const call of response.tool_calls) {
         signal?.throwIfAborted();
         const before = await extensions?.dispatch("before_tool_call", { toolName: call.name, input: call.input, toolCallId: call.id }, extensionRoot, { runId, sessionId: this.options.sessionId });
-        if (before?.cancel) { messages.push({ role: "tool", tool_call_id: call.id, content: before.reason ?? "Tool call cancelled by extension", is_error: true }); continue; }
         const input = before?.input ?? call.input;
         const tool = this.tools.get(call.name);
         const toolName = tool?.name ?? call.name;
         const canonicalCall = tool ? { ...call, name: toolName, input } : { ...call, input };
-        this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: input, ts: now() });
-        const phaseChange = phases.observeTool(toolName, input);
-        if (phaseChange) this.publish({ type: "phase.changed", run_id: runId, step, phase: phaseChange.to, previous: phaseChange.from, reason: phaseChange.reason, ts: now() });
-        if (!tool) {
-          stuck.recordFailure(stuckSignature(call));
-          this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: call.name, error_class: "unknown_tool", error_message: `Unknown tool: ${call.name}`, elapsed_ms: 0, ts: now() });
-          messages.push({ role: "tool", tool_call_id: call.id, content: `Unknown tool: ${call.name}`, is_error: true });
-          continue;
+        let canRunConcurrent = false;
+
+        if (tool && !before?.cancel) {
+          const validation = validateSchema(input, tool.schema);
+          if (validation.valid) {
+            const permission = tool.classifyPermission?.(input) ?? tool.permission;
+            // 只读、非交互工具允许并发
+            canRunConcurrent = permission === "read_only" && !(tool as any).isInteractive;
+          }
         }
-        const validation = validateSchema(input, tool.schema);
-        if (!validation.valid) {
-          stuck.recordFailure(stuckSignature(canonicalCall));
-          this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "schema_error", error_message: validation.error, elapsed_ms: 0, ts: now() });
-          messages.push({ role: "tool", tool_call_id: call.id, content: validation.error, is_error: true });
-          continue;
+
+        preparedCalls.push({ call, before, input, tool, toolName, canonicalCall, canRunConcurrent });
+      }
+
+      // 分割为并发批次和串行序列
+      const batches: Array<Array<typeof preparedCalls[0]>> = [];
+      let currentBatch: Array<typeof preparedCalls[0]> = [];
+
+      for (const prepared of preparedCalls) {
+        if (prepared.canRunConcurrent && toolMaxConcurrency > 1) {
+          currentBatch.push(prepared);
+        } else {
+          if (currentBatch.length > 0) {
+            batches.push(currentBatch);
+            currentBatch = [];
+          }
+          batches.push([prepared]);
         }
-        const permission = tool.classifyPermission?.(input) ?? tool.permission;
-        const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
-        if (!allowed) {
-          denials.recordDenial(toolName);
-          this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "permission_denied", error_message: "Permission denied or approval timed out", elapsed_ms: 0, ts: now() });
-          messages.push({ role: "tool", tool_call_id: call.id, content: "Permission denied", is_error: true });
-          continue;
+      }
+      if (currentBatch.length > 0) batches.push(currentBatch);
+
+      // 执行结果按原始顺序存储
+      const toolResults = new Map<string, { result: ToolResult; elapsedMs: number; input: Record<string, unknown>; tool: Tool | undefined; toolName: string; canonicalCall: ModelToolCall }>();
+
+      for (const batch of batches) {
+        signal?.throwIfAborted();
+
+        if (batch.length === 1 || !batch[0].canRunConcurrent) {
+          // 串行执行
+          const prepared = batch[0];
+          const { call, before, input, tool, toolName, canonicalCall } = prepared;
+
+          if (before?.cancel) {
+            toolResults.set(call.id, { result: { ok: false, output: before.reason ?? "Tool call cancelled by extension", errorType: "runtime_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+            continue;
+          }
+
+          this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: input, ts: now() });
+          const phaseChange = phases.observeTool(toolName, input);
+          if (phaseChange) this.publish({ type: "phase.changed", run_id: runId, step, phase: phaseChange.to, previous: phaseChange.from, reason: phaseChange.reason, ts: now() });
+
+          if (!tool) {
+            stuck.recordFailure(stuckSignature(call));
+            this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: call.name, error_class: "unknown_tool", error_message: `Unknown tool: ${call.name}`, elapsed_ms: 0, ts: now() });
+            toolResults.set(call.id, { result: { ok: false, output: `Unknown tool: ${call.name}`, errorType: "runtime_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+            continue;
+          }
+
+          const validation = validateSchema(input, tool.schema);
+          if (!validation.valid) {
+            stuck.recordFailure(stuckSignature(canonicalCall));
+            this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "schema_error", error_message: validation.error, elapsed_ms: 0, ts: now() });
+            toolResults.set(call.id, { result: { ok: false, output: validation.error, errorType: "schema_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+            continue;
+          }
+
+          const permission = tool.classifyPermission?.(input) ?? tool.permission;
+          const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
+          if (!allowed) {
+            denials.recordDenial(toolName);
+            this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "permission_denied", error_message: "Permission denied or approval timed out", elapsed_ms: 0, ts: now() });
+            toolResults.set(call.id, { result: { ok: false, output: "Permission denied", errorType: "permission_denied" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+            continue;
+          }
+
+          const started = Date.now();
+          const result = await safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "tool.execution", attributes: { run_id: runId, tool_name: toolName, tool_use_id: call.id, scheduler_mode: "serial" } }, async (span) => {
+            try {
+              const value = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
+                this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+              });
+              span.setAttributes({ ok: value.ok, error_type: value.errorType ?? "" });
+              return value;
+            } catch (error) { span.recordError(error); throw error; }
+          });
+          const elapsedMs = Date.now() - started;
+          toolResults.set(call.id, { result, elapsedMs, input, tool, toolName, canonicalCall });
+        } else {
+          // 并发执行只读工具批次（带信号量限流）
+          const semaphore = { permits: Math.min(toolMaxConcurrency, batch.length), queue: [] as Array<() => void> };
+          const acquire = async () => {
+            if (semaphore.permits > 0) { semaphore.permits--; return; }
+            await new Promise<void>(resolve => semaphore.queue.push(resolve));
+          };
+          const release = () => {
+            if (semaphore.queue.length > 0) {
+              const next = semaphore.queue.shift()!;
+              next();
+            } else {
+              semaphore.permits++;
+            }
+          };
+
+          // 预检查所有并发工具的权限（只读工具权限检查可批量进行）
+          const permissionResults = new Map<string, boolean>();
+          for (const prepared of batch) {
+            const { call, input, tool, toolName } = prepared;
+            if (!tool) { permissionResults.set(call.id, false); continue; }
+            const permission = tool.classifyPermission?.(input) ?? tool.permission;
+            const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
+            permissionResults.set(call.id, allowed);
+          }
+
+          await Promise.all(batch.map(async (prepared) => {
+            const { call, before, input, tool, toolName, canonicalCall } = prepared;
+
+            if (before?.cancel) {
+              toolResults.set(call.id, { result: { ok: false, output: before.reason ?? "Tool call cancelled by extension", errorType: "runtime_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+              return;
+            }
+
+            this.publish({ type: "tool.call_started", run_id: runId, tool_use_id: call.id, tool_name: toolName, params: input, ts: now() });
+            const phaseChange = phases.observeTool(toolName, input);
+            if (phaseChange) this.publish({ type: "phase.changed", run_id: runId, step, phase: phaseChange.to, previous: phaseChange.from, reason: phaseChange.reason, ts: now() });
+
+            if (!tool) {
+              stuck.recordFailure(stuckSignature(call));
+              this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: call.name, error_class: "unknown_tool", error_message: `Unknown tool: ${call.name}`, elapsed_ms: 0, ts: now() });
+              toolResults.set(call.id, { result: { ok: false, output: `Unknown tool: ${call.name}`, errorType: "runtime_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+              return;
+            }
+
+            const validation = validateSchema(input, tool.schema);
+            if (!validation.valid) {
+              stuck.recordFailure(stuckSignature(canonicalCall));
+              this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "schema_error", error_message: validation.error, elapsed_ms: 0, ts: now() });
+              toolResults.set(call.id, { result: { ok: false, output: validation.error, errorType: "schema_error" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+              return;
+            }
+
+            const allowed = permissionResults.get(call.id) ?? false;
+            if (!allowed) {
+              denials.recordDenial(toolName);
+              this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "permission_denied", error_message: "Permission denied or approval timed out", elapsed_ms: 0, ts: now() });
+              toolResults.set(call.id, { result: { ok: false, output: "Permission denied", errorType: "permission_denied" }, elapsedMs: 0, input, tool, toolName, canonicalCall });
+              return;
+            }
+
+            await acquire();
+            const started = Date.now();
+            try {
+              const result = await safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "tool.execution", attributes: { run_id: runId, tool_name: toolName, tool_use_id: call.id, scheduler_mode: "concurrent" } }, async (span) => {
+                try {
+                  const value = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
+                    this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
+                  });
+                  span.setAttributes({ ok: value.ok, error_type: value.errorType ?? "" });
+                  return value;
+                } catch (error) { span.recordError(error); throw error; }
+              });
+              const elapsedMs = Date.now() - started;
+              toolResults.set(call.id, { result, elapsedMs, input, tool, toolName, canonicalCall });
+            } finally {
+              release();
+            }
+          }));
         }
-        const started = Date.now();
-        const result = await safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "tool.execution", attributes: { run_id: runId, tool_name: toolName, tool_use_id: call.id } }, async (span) => {
-          try {
-            const value = await invokeToolWithRetry(tool, input, { ...this.context, signal }, this.options.toolMaxRetries ?? nonNegativeEnv("SZTU_TOOL_MAX_RETRIES", 1), this.options.toolRetryBaseMs ?? nonNegativeEnv("SZTU_TOOL_RETRY_BASE_MS", 2_000), (attempt, failure) => {
-              this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "tool", message: `Retrying ${toolName} after attempt ${attempt}: ${failure.error ?? "Tool failed"}`, ts: now() });
-            });
-            span.setAttributes({ ok: value.ok, error_type: value.errorType ?? "" });
-            return value;
-          } catch (error) { span.recordError(error); throw error; }
-        });
-        const elapsedMs = Date.now() - started;
+      }
+
+      // 按原始顺序处理结果并加入消息
+      for (const call of response.tool_calls) {
+        const entry = toolResults.get(call.id);
+        if (!entry) continue;
+        const { result, elapsedMs, input, tool, toolName, canonicalCall } = entry;
+
         await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });
         const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "Tool failed";
         let contextOutput = rawOutput;
@@ -188,9 +344,13 @@ export class AgentLoop {
           denials.recordSuccess(toolName);
           stuck.recordSuccess(stuckSignature(canonicalCall));
           this.publish({ type: "tool.call_finished", run_id: runId, tool_use_id: call.id, tool_name: toolName, elapsed_ms: elapsedMs, output: contextOutput, ts: now() });
-          if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(input.command ?? ""), result.output), ts: now() });
+          if (tool && isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(input.command ?? ""), result.output), ts: now() });
         }
-        else { stuck.recordFailure(stuckSignature(canonicalCall)); this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() }); if (isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() }); }
+        else {
+          stuck.recordFailure(stuckSignature(canonicalCall));
+          this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() });
+          if (tool && isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() });
+        }
         messages.push({ role: "tool", tool_call_id: call.id, content: contextOutput, is_error: !result.ok });
       }
       this.publish({ type: "step.finished", run_id: runId, step, ts: now() });

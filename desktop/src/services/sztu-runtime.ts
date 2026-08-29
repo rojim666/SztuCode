@@ -77,7 +77,7 @@ export type Session = {
 };
 export type RunStats = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; elapsed_s: number };
 export type ContextInjectionRecord = {
-  run_id: string; source: string; label: string; chars: number; preview: string; text: string; ts?: string;
+  run_id: string; source: string; label: string; chars: number; preview: string; text: string; files?: string[]; ts?: string;
 };
 export type SessionHistory = {
   messages: unknown[];

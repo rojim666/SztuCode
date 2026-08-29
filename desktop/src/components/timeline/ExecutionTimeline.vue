@@ -345,7 +345,8 @@ const turns = computed<TurnView[]>(() => {
           </section>
 
           <section v-if="turn.summaryText" class="turn-result" aria-label="任务结果">
-            <TokenStream :tokens="[]" :final-text="turn.summaryText" />
+            <!-- 运行中展示整轮累计输出，避免下一段 token 到达后把上一段从视图中替换掉。 -->
+            <TokenStream :tokens="[]" :final-text="turn.state === 'running' || turn.state === 'waiting' ? turn.text : turn.summaryText" />
             <button v-if="turn.text || turn.summaryText" type="button" class="turn-copy" :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'" :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'" @click="copyTurnSummary(turn)">
               <Check v-if="copiedTurn === turn.key" :size="15" :stroke-width="1.8" />
               <Copy v-else :size="15" :stroke-width="1.8" />

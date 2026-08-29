@@ -89,21 +89,79 @@ export type CompactionOptions = { slidingWindow?: number; minimumOldTokens?: num
 
 export type UsageSnapshot = { system: number; conversation: number; tool: number };
 
-// 增量计数缓存：记录上次计数时的消息引用前缀，查询时若仍是纯追加则只对新尾部
-// 编码。压缩/截断会整体替换消息对象，引用前缀失配时自动回退全量重数，保证结果
-// 与全量路径一致。约束：已入列消息不得原地修改（只允许 push 追加）——agent-loop
-// 与 compactWithProvider 均满足。
-type UsageCache = { length: number; system: number; conversation: number; tool: number; refs: ContextMessage[] };
+// 增量计数缓存：记录上次计数时的消息长度和尾部消息引用。
+// 由于消息数组只在压缩/截断时整体替换（splice），追加时仅需检查：
+// 1. 长度是否增长
+// 2. 之前长度位置的消息引用是否匹配（未被替换）
+// 满足则只对新增尾部计数，否则全量重数。避免每次创建 [...messages] 浅拷贝。
+type UsageCache = {
+  length: number;
+  system: number;
+  conversation: number;
+  tool: number;
+  tailMessage: ContextMessage | undefined;  // 缓存时 messages[length-1] 的引用
+};
 
 export class ContextManager {
   readonly counter: TokenCounter;
   private _usageCache: UsageCache | null = null;
+  // 单条消息 token 缓存：避免同一条消息被重复计数（压缩/截断时清空）
+  private _messageTokenCache = new WeakMap<ContextMessage, { conversation: number; category: "system" | "tool" | "other"; categoryTokens: number }>();
+
   constructor(public messages: ContextMessage[] = [], private readonly budget: ContextBudget = { maxTokens: 128_000, reservedOutputTokens: 8_192, maxToolResultChars: 8_000 }, counter = new TokenCounter()) { this.counter = counter; }
   append(message: ContextMessage): void { this.messages.push(message); }
 
-  // 统计单条消息的对话 token（与 TokenCounter.countMessages 的块语义一致）
-  private countMessageContent(content: ContextMessage["content"]): number {
-    return typeof content === "string" ? this.counter.count(content) : content.reduce((sum, block) => sum + this.counter.count(String(block.text ?? block.content ?? "")), 0);
+  // 通知上下文消息数组被外部修改（如 sanitize、splice 替换等），清空增量缓存
+  notifyMutated(): void { this.invalidateCache(); }
+
+  // 统计单条消息的完整对话 token（包含 content、tool_calls、reasoning_content）
+  private countMessageTokens(message: ContextMessage): { conversation: number; category: "system" | "tool" | "other"; categoryTokens: number } {
+    const cached = this._messageTokenCache.get(message);
+    if (cached) return cached;
+
+    let conversation = 0;
+    // content 部分
+    if (typeof message.content === "string") {
+      conversation += this.counter.count(message.content);
+    } else {
+      for (const block of message.content) {
+        conversation += this.counter.count(String(block.text ?? block.content ?? ""));
+      }
+    }
+    // tool_calls 部分（assistant 消息的工具调用参数）
+    if (message.tool_calls) {
+      for (const call of message.tool_calls) {
+        conversation += this.counter.count(call.name);
+        conversation += this.counter.countJson(call.input);
+      }
+    }
+    // reasoning_content 部分
+    if (message.reasoning_content) {
+      conversation += this.counter.count(message.reasoning_content);
+    }
+    // 每条消息基础开销（与 TokenCounter 对齐）
+    conversation += 4;
+
+    // 分类计数（system/tool 用于单独统计）
+    let category: "system" | "tool" | "other" = "other";
+    let categoryTokens = 0;
+    if (message.role === "system") {
+      category = "system";
+      categoryTokens = this.counter.countJson(message.content);
+    } else if (message.role === "tool") {
+      category = "tool";
+      categoryTokens = this.counter.countJson(message.content);
+    }
+
+    const result = { conversation, category, categoryTokens };
+    this._messageTokenCache.set(message, result);
+    return result;
+  }
+
+  // 清空增量缓存（压缩/截断/整体替换后调用）
+  private invalidateCache(): void {
+    this._usageCache = null;
+    // WeakMap 无需手动清理，消息对象被 GC 时自动清除
   }
 
   // 分类 token 快照（system/conversation/tool），跨调用增量累积：
@@ -111,32 +169,41 @@ export class ContextManager {
   // - 前缀失配（压缩/截断/回放）：全量重数后重建缓存
   usageSnapshot(): UsageSnapshot {
     const messages = this.messages;
+    const len = messages.length;
     const cache = this._usageCache;
-    if (cache) {
-      const prev = cache.refs;
-      const limit = Math.min(prev.length, messages.length);
-      let overlap = 0;
-      while (overlap < limit && messages[overlap] === prev[overlap]) overlap += 1;
-      if (overlap === prev.length && messages.length >= prev.length) {
+
+    // 快速路径：检查是否纯追加（长度增长且之前位置的消息未变）
+    if (cache && len >= cache.length) {
+      // 如果长度相同且尾部消息引用相同，直接返回缓存
+      if (len === cache.length && messages[len - 1] === cache.tailMessage) {
+        return { system: cache.system, conversation: cache.conversation, tool: cache.tool };
+      }
+      // 验证前缀未变：检查旧长度位置的消息是否仍是旧尾部（说明是追加而非替换）
+      if (len > cache.length && messages[cache.length - 1] === cache.tailMessage) {
         let { system, conversation, tool } = cache;
-        for (let i = prev.length; i < messages.length; i += 1) {
+        for (let i = cache.length; i < len; i += 1) {
           const message = messages[i]!;
-          if (message.role === "system") system += this.counter.countJson(message.content);
-          else if (message.role === "tool") tool += this.counter.countJson(message.content);
-          conversation += this.countMessageContent(message.content);
+          const counted = this.countMessageTokens(message);
+          conversation += counted.conversation;
+          if (counted.category === "system") system += counted.categoryTokens;
+          else if (counted.category === "tool") tool += counted.categoryTokens;
         }
-        this._usageCache = { length: messages.length, system, conversation, tool, refs: [...messages] };
+        this._usageCache = { length: len, system, conversation, tool, tailMessage: messages[len - 1] };
         return { system, conversation, tool };
       }
     }
+
+    // 慢路径：全量重数
     let system = 0;
+    let conversation = 0;
     let tool = 0;
     for (const message of messages) {
-      if (message.role === "system") system += this.counter.countJson(message.content);
-      else if (message.role === "tool") tool += this.counter.countJson(message.content);
+      const counted = this.countMessageTokens(message);
+      conversation += counted.conversation;
+      if (counted.category === "system") system += counted.categoryTokens;
+      else if (counted.category === "tool") tool += counted.categoryTokens;
     }
-    const conversation = this.counter.countMessages(messages);
-    this._usageCache = { length: messages.length, system, conversation, tool, refs: [...messages] };
+    this._usageCache = { length: len, system, conversation, tool, tailMessage: messages[len - 1] };
     return { system, conversation, tool };
   }
 
@@ -151,6 +218,7 @@ export class ContextManager {
     const recent = flat(body.slice(-slidingWindow)); const old = flat(body.slice(0, -slidingWindow));
     const replacement = sanitizeContextMessages([...system, ...preamble, { role: "user", content: "[Earlier conversation compacted. Continue using the initial goal and recent turns.]" }, ...recent], this.budget.maxToolResultChars);
     this.messages.splice(0, this.messages.length, ...replacement);
+    this.invalidateCache();
     return { originalTokens, summaryTokens: this.tokenEstimate(), removedMessages: old.length, summaryText: "", usedModel: false };
   }
   async compactWithProvider(provider: ContextCompactionProvider, focus = "", slidingWindowOrOptions: number | CompactionOptions = 5, signal?: AbortSignal, invocation?: ModelInvocation): Promise<ContextCompactionResult> {
@@ -170,6 +238,7 @@ export class ContextManager {
       const appendedWhileCompacting = this.messages.slice(snapshotLength);
       const replacement = sanitizeContextMessages([...system, ...(fullFallback ? [] : preamble), { role: "user", content: continuationMessage(summaryText) }, { role: "assistant", content: continuationAck() }, ...flat(recentTurns), ...appendedWhileCompacting], this.budget.maxToolResultChars);
       this.messages.splice(0, this.messages.length, ...replacement);
+      this.invalidateCache();
       return { originalTokens, summaryTokens: this.tokenEstimate(), removedMessages: old.length, summaryText, usedModel: true };
     } catch { return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, failed: true }; }
   }

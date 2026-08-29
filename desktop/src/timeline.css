@@ -83,8 +83,14 @@
 .tool-call-event__details { margin: 1px 0 12px 21px; padding-left: 16px; border-left: 1px solid rgb(118 126 136 / 20%); }
 .tool-call-event__details > b { display: block; margin: 9px 0 5px; color: #686f78; font-size: 11px; font-weight: 500; }
 .tool-call-event__details pre { box-sizing: border-box; max-height: 220px; width: 100%; margin: 0; padding: 10px 11px; overflow: auto; color: #343940; background: rgb(245 246 247 / 82%); border: 1px solid rgb(220 223 227 / 72%); border-radius: 7px; font: 12px/1.65 var(--font-code, Consolas), monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-/* 上下文注入行复用 Tool calls 的 disclosure chrome（借鉴 dsh ContextInjectionRow）：
-   标题 + 来源标签 + 一行摘要；展开体为 141px 高代码风格滚动区 */
+/* 上下文注入行折叠态只显示标题，展开后列出涉及文件和完整正文。 */
+.context-injection-row__meta { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 12px; }
+.context-injection-row__meta > b { color: #686f78; font-size: 11px; font-weight: 500; }
+.context-injection-row__meta > span { color: #9298a0; font-size: 10px; white-space: nowrap; }
+.context-injection-row__files { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 5px 8px; margin: 0 0 8px; padding: 0; list-style: none; }
+.context-injection-row__files li { display: flex; min-width: 0; min-height: 30px; align-items: center; gap: 6px; padding: 0 8px; color: #555d66; background: #f5f6f7; border: 1px solid #e4e6e8; border-radius: 6px; font: 11px/1.4 var(--font-code, Consolas), monospace; }
+.context-injection-row__files li svg { flex: 0 0 auto; color: #7c848d; }
+.context-injection-row__files li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .context-injection-row .tool-call-event__details pre { max-height: 141px; }
 .thinking-collapse { margin: 0 0 8px; overflow: hidden; border: 1px solid #e3e6ea; border-radius: 8px; background: #fafbfc; }.thinking-collapse summary { display: flex; align-items: center; gap: 6px; padding: 8px 10px; color: #57729c; list-style: none; cursor: pointer; font-size: 12px; user-select: none; }.thinking-collapse summary::-webkit-details-marker { display: none; }.thinking-collapse summary svg:last-child { margin-left: auto; transition: transform .18s; }.thinking-collapse[open] summary svg:last-child { transform: rotate(180deg); }.thinking-collapse__body { padding: 4px 10px 10px; border-top: 1px solid #edf0f2; }
 .thinking-loading { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; color: #8a9099; font-size: 13px; }

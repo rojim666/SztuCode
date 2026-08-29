@@ -12,6 +12,8 @@ export class EventBus {
   // 可能乱序/丢行且拖慢事件分发；这里复用一条 Promise 链按序落盘
   private traceReady: Promise<void> | null = null;
   private traceWrite: Promise<void> = Promise.resolve();
+  private pendingTrace = "";
+  private traceBatchScheduled = false;
   constructor(private readonly tracePath = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "traces", "runtime-ts-events.jsonl")) {
     try {
       const rows = readFileSync(this.tracePath, "utf8").split(/\r?\n/).filter(Boolean).slice(-10_000);

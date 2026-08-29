@@ -792,6 +792,7 @@ function hydrateTimeline(
       chars: Number(injection.chars ?? text.length),
       preview: String(injection.preview ?? ""),
       text,
+      files: Array.isArray(injection.files) ? injection.files.filter((file): file is string => typeof file === "string") : undefined,
     };
     next.set(injectionStep, {
       ...current,
@@ -958,6 +959,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
       chars: Number(event.chars ?? 0),
       preview: String(event.preview ?? ""),
       text: String(event.text ?? event.preview ?? ""),
+      files: Array.isArray(event.files) ? event.files.filter((file): file is string => typeof file === "string") : undefined,
     };
     setStep(step, (current) => ({ ...current, contextInjections: [...(current.contextInjections ?? []), entry] }));
     return;
@@ -1496,19 +1498,10 @@ async function stopActiveRun() {
     if (sending.value && activeId.value) stopRequestedSessions.add(activeId.value);
     return;
   }
-  const sessionId = activeId.value;
-  // 先解除本地运行态，避免取消响应被事件流背压拖住时按钮仍显示为运行中。
-  if (sessionId) {
-    const view = ensureSessionView(sessionId);
-    if (view.activeRunId === runId) {
-      view.activeRunId = null;
-      view.runActive = false;
-    }
-  }
   try {
     await cancelRun(runId);
   } catch (error) {
-    // daemon 可能已执行取消，但取消响应被高频事件流延迟；run.finished 仍会完成最终收尾。
+    // 保持运行态与停止入口，用户可以再次发起取消；最终状态只由 run.finished 收尾。
     console.warn("停止任务请求未及时返回", error);
   }
 }
@@ -2167,6 +2160,12 @@ function handleWindowResize() {
 }
 function handleGlobalShortcut(event: KeyboardEvent) {
   const mod = event.ctrlKey || event.metaKey;
+  // Ctrl/Cmd+Escape 是运行中的紧急停止快捷键，不受输入框焦点影响。
+  if (mod && event.key === "Escape" && isRunActive.value) {
+    event.preventDefault();
+    void stopActiveRun();
+    return;
+  }
   if (mod && event.key.toLowerCase() === "n") { event.preventDefault(); beginTask(); }
   if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); void openLocalProject(); }
   if (mod && event.key.toLowerCase() === "e") { event.preventDefault(); openPage("source-control"); }
@@ -2182,6 +2181,7 @@ function handleGlobalShortcut(event: KeyboardEvent) {
   if (event.key === "Escape") {
     if (activeAppMenu.value) closeAppMenu();
     else if (permissionConfirmOpen.value) permissionConfirmOpen.value = false;
+    else if (isRunActive.value) void stopActiveRun();
     else closeLauncherMenus();
   }
 }
@@ -2584,7 +2584,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
                       <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive && !prompt.trim()" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>

@@ -15,9 +15,81 @@ export interface Tool { readonly name: string; readonly aliases?: readonly strin
 const ok = (output: string): ToolResult => ({ ok: true, output });
 const fail = (error: string, errorType: ToolResult["errorType"] = "runtime_error"): ToolResult => ({ ok: false, output: "", error, errorType });
 const str = (params: Record<string, unknown>, key: string): string | null => typeof params[key] === "string" ? params[key] as string : null;
-const ignored = new Set([".git", "node_modules", "__pycache__", ".venv", ".codegraph", "dist", "build"]);
+// 扩展忽略目录：覆盖常见构建产物、缓存、虚拟环境、IDE 配置等
+const ignored = new Set([
+  ".git", "node_modules", "__pycache__", ".venv", ".codegraph", "dist", "build",
+  ".next", ".nuxt", ".svelte-kit", "target", "out", "coverage",
+  ".cache", ".parcel-cache", ".turbo", ".eslintcache",
+  ".idea", ".vscode", ".vs",
+  "venv", "env", ".env", "virtualenv",
+  "bower_components", "jspm_packages",
+  ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+  "bin", "obj", "Debug", "Release",  // .NET build artifacts
+]);
 const escapeRegex = (value: string) => value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-const globMatch = (value: string, pattern: string): boolean => new RegExp(`^${pattern.split("**").map((part) => part.split("*").map(escapeRegex).join("[^/]*")).join(".*")}$`).test(value);
+// glob 正则缓存：避免每次匹配都重新编译正则
+const globRegexCache = new Map<string, RegExp>();
+const globMatch = (value: string, pattern: string): boolean => {
+  let regex = globRegexCache.get(pattern);
+  if (!regex) {
+    regex = new RegExp(`^${pattern.split("**").map((part) => part.split("*").map(escapeRegex).join("[^/]*")).join(".*")}$`);
+    globRegexCache.set(pattern, regex);
+  }
+  return regex.test(value);
+};
+// 文件系统并发控制
+const FILE_READ_CONCURRENCY = 8;
+const MAX_RESULTS = 200;
+// 简单二进制文件检测：检查文件头部是否有 null 字节
+const isBinaryFile = (buffer: Buffer): boolean => buffer.includes(0);
+
+// 异步信号量实现
+class AsyncSemaphore {
+  private permits: number;
+  private queue: Array<() => void> = [];
+  constructor(permits: number) { this.permits = permits; }
+  async acquire(): Promise<void> {
+    if (this.permits > 0) { this.permits--; return; }
+    await new Promise<void>(resolve => this.queue.push(resolve));
+  }
+  release(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.permits++;
+    }
+  }
+}
+
+// 流式文件遍历：异步生成器，边遍历边产出文件路径，支持提前终止
+async function* walkFiles(
+  root: string,
+  current: string,
+  signal?: AbortSignal
+): AsyncGenerator<string, void, unknown> {
+  signal?.throwIfAborted();
+  let entries;
+  try {
+    entries = await readdir(current, { withFileTypes: true });
+  } catch {
+    return; // 无权限或目录不存在时跳过
+  }
+  for (const entry of entries) {
+    signal?.throwIfAborted();
+    // 跳过符号链接：防止目录树跟随链接逃逸到工作区外
+    if (entry.isSymbolicLink()) continue;
+    const fullPath = path.join(current, entry.name);
+    if (entry.isDirectory()) {
+      if (!ignored.has(entry.name)) {
+        yield* walkFiles(root, fullPath, signal);
+      }
+    } else if (entry.isFile()) {
+      yield path.relative(root, fullPath).split(path.sep).join("/");
+    }
+  }
+}
+
 const builtinAliases: Readonly<Record<string, string>> = {
   read: "read_file", Read: "read_file",
   write: "write_file", Write: "write_file",
@@ -56,15 +128,6 @@ export function createPlanTools(events: EventBus, runId: string, sessionId = "",
   ];
 }
 
-async function collectFiles(root: string, current: string, output: string[]): Promise<void> {
-  for (const entry of await readdir(current, { withFileTypes: true })) {
-    // 跳过符号链接：防止目录树跟随链接逃逸到工作区外（list/glob/grep 读外部文件）
-    if (entry.isSymbolicLink()) continue;
-    if (entry.isDirectory() && !ignored.has(entry.name)) await collectFiles(root, path.join(current, entry.name), output);
-    else if (entry.isFile()) output.push(path.relative(root, path.join(current, entry.name)).split(path.sep).join("/"));
-  }
-}
-
 export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   const registry = new ToolRegistry();
   registry.register({ name: "read_file", description: "Read a UTF-8 file inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, async invoke(params, context) {
@@ -80,11 +143,94 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   }});
   registry.register({ name: "glob_search", description: "Find files matching a glob pattern", permission: "read_only", schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" } }, required: ["pattern"] }, async invoke(params, context) {
     const pattern = str(params, "pattern"); if (!pattern) return fail("pattern is required", "schema_error");
-    try { const root = context.workspace.resolve(str(params, "path") ?? "."); const files: string[] = []; const workspaceRoot = context.workspace.root; if ((await stat(root)).isFile()) files.push(path.relative(workspaceRoot, root).split(path.sep).join("/")); else await collectFiles(workspaceRoot, root, files); const matches = files.filter((file) => globMatch(file, pattern)).sort().slice(0, 200); return ok(matches.length ? matches.join("\n") : "No files found."); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    try {
+      const root = context.workspace.resolve(str(params, "path") ?? ".");
+      const workspaceRoot = context.workspace.root;
+      const matches: string[] = [];
+
+      // 单文件情况直接返回
+      const rootStat = await stat(root);
+      if (rootStat.isFile()) {
+        const rel = path.relative(workspaceRoot, root).split(path.sep).join("/");
+        if (globMatch(rel, pattern)) return ok(rel);
+        return ok("No files found.");
+      }
+
+      // 流式遍历：边遍历边匹配，达到结果上限立即停止
+      for await (const file of walkFiles(workspaceRoot, root, context.signal)) {
+        if (globMatch(file, pattern)) {
+          matches.push(file);
+          if (matches.length >= MAX_RESULTS) break;
+        }
+      }
+
+      matches.sort();
+      return ok(matches.length ? matches.join("\n") : "No files found.");
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "grep_search", description: "Search workspace files with a regular expression", permission: "read_only", schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] }, async invoke(params, context) {
-    const pattern = str(params, "pattern"); if (!pattern) return fail("pattern is required", "schema_error"); let matcher: RegExp; try { matcher = new RegExp(pattern, params.case_sensitive === true ? "" : "i"); } catch (error) { return fail(error instanceof Error ? error.message : String(error), "schema_error"); }
-    try { const root = context.workspace.root; const target = context.workspace.resolve(str(params, "path") ?? "."); const files: string[] = []; if ((await stat(target)).isFile()) files.push(path.relative(root, target).split(path.sep).join("/")); else await collectFiles(root, target, files); const result: string[] = []; for (const file of files) { if (params.glob && !globMatch(file, String(params.glob))) continue; const text = (await readFile(path.join(root, file))).subarray(0, 512 * 1024).toString("utf8"); if (text.includes("\u0000")) continue; text.split(/\r?\n/).forEach((line, index) => { if (matcher.test(line) && result.length < 200) result.push(`${file}:${index + 1}: ${line}`); }); } return ok(result.length ? result.join("\n") : "No matches found."); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+    const pattern = str(params, "pattern"); if (!pattern) return fail("pattern is required", "schema_error");
+    let matcher: RegExp;
+    try { matcher = new RegExp(pattern, params.case_sensitive === true ? "" : "i"); }
+    catch (error) { return fail(error instanceof Error ? error.message : String(error), "schema_error"); }
+
+    try {
+      const root = context.workspace.root;
+      const target = context.workspace.resolve(str(params, "path") ?? ".");
+      const globPattern = params.glob ? String(params.glob) : null;
+      const result: string[] = [];
+      const filesToSearch: string[] = [];
+
+      // 收集需要搜索的文件（流式遍历，提前终止）
+      const targetStat = await stat(target);
+      if (targetStat.isFile()) {
+        filesToSearch.push(path.relative(root, target).split(path.sep).join("/"));
+      } else {
+        for await (const file of walkFiles(root, target, context.signal)) {
+          if (globPattern && !globMatch(file, globPattern)) continue;
+          filesToSearch.push(file);
+          // 限制待搜索文件数量，防止遍历超大仓库
+          if (filesToSearch.length >= 2000) break;
+        }
+      }
+
+      // 并发读取并搜索文件（带信号量限流）
+      const semaphore = new AsyncSemaphore(FILE_READ_CONCURRENCY);
+      const searchFile = async (file: string): Promise<string[]> => {
+        await semaphore.acquire();
+        try {
+          context.signal?.throwIfAborted();
+          const data = await readFile(path.join(root, file));
+          // 跳过二进制文件和超大文件
+          if (data.length > 512 * 1024 || isBinaryFile(data.subarray(0, 512))) return [];
+          const text = data.toString("utf8");
+          const matches: string[] = [];
+          const lines = text.split(/\r?\n/);
+          for (let index = 0; index < lines.length; index++) {
+            const line = lines[index]!;
+            if (matcher.test(line)) {
+              matches.push(`${file}:${index + 1}: ${line}`);
+            }
+          }
+          return matches;
+        } catch {
+          return []; // 无法读取的文件跳过
+        } finally {
+          semaphore.release();
+        }
+      };
+
+      const searchResults = await Promise.all(filesToSearch.map(searchFile));
+      for (const matches of searchResults) {
+        for (const match of matches) {
+          result.push(match);
+          if (result.length >= MAX_RESULTS) break;
+        }
+        if (result.length >= MAX_RESULTS) break;
+      }
+
+      return ok(result.length ? result.join("\n") : "No matches found.");
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "edit_file", description: "Replace an exact string in a workspace file", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } }, required: ["path", "old_string", "new_string"] }, async invoke(params, context) {
     const file = str(params, "path"); const oldString = str(params, "old_string"); const newString = str(params, "new_string"); if (!file || oldString === null || newString === null) return fail("path, old_string and new_string are required", "schema_error"); if (oldString === newString) return fail("old_string and new_string are identical", "schema_error");
