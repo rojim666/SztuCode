@@ -361,7 +361,7 @@ class _DeterministicEvaluationProvider:
         )
         file_matches = all(
             not results[f"review-read-{index}"].is_error
-            and results[f"review-read-{index}"].content == change.after
+            and _normalize_newlines(results[f"review-read-{index}"].content) == change.after
             for index, change in enumerate(self._scenario.changes)
         )
         pytest_result = results["review-pytest"]
@@ -381,7 +381,9 @@ class _DeterministicEvaluationProvider:
                 list(
                     difflib.unified_diff(
                         change.before.splitlines(),
-                        results[f"review-read-{index}"].content.splitlines(),
+                        _normalize_newlines(
+                            results[f"review-read-{index}"].content
+                        ).splitlines(),
                     )
                 )
             )
@@ -448,6 +450,12 @@ class _DeterministicEvaluationProvider:
             stop_reason="end_turn",
             text="single Agent completed and tested the task" if passed else "baseline failed",
         )
+
+
+# 工具链（seed/edit_file/write_file）按平台写回换行：Windows 上文件以 CRLF 落盘，
+# 而场景数据使用 LF。产物内容与场景目标的比对统一归一化为 LF，保证平台无关
+def _normalize_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n")
 
 
 # 写入相同的失败初始状态和场景测试，供两条执行路径隔离使用
