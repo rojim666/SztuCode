@@ -1,76 +1,1482 @@
-.source-control-host { height: 100%; min-height: 0; background: #fff; }
-.source-control-page { display: flex; height: 100%; min-height: 0; flex-direction: column; color: #30343a; background: #fff; }
-.source-control-header { display: flex; flex: 0 0 58px; align-items: center; gap: 12px; padding: 0 18px; border-bottom: 1px solid #e8eaec; }
-.source-control-back, .source-control-refresh { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; color: #69717a; background: transparent; border: 0; border-radius: 7px; }
-.source-control-back:hover, .source-control-refresh:hover:not(:disabled) { color: #176fd1; background: #edf5ff; }
-.source-control-refresh:disabled { opacity: .5; }
-.source-control-title { display: flex; min-width: 0; align-items: center; gap: 10px; }.source-control-title > svg { color: #176fd1; }
-.source-control-title h1 { margin: 0; color: #252a30; font-size: 16px; font-weight: 600; }.source-control-title p { display: flex; max-width: 62vw; gap: 9px; margin: 3px 0 0; overflow: hidden; color: #858c94; font-size: 11px; }.source-control-title p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.source-control-refresh { margin-left: auto; }
-.source-control-branch { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 23px; color: #59616a; background: #fafbfc; border-bottom: 1px solid #edf0f2; font-size: 12px; }.source-control-branch > svg { color: #69717a; }.source-control-branch small { margin-left: auto; color: #9299a1; font-size: 10px; }
-.source-control-error { margin: 10px 18px 0; padding: 8px 10px; color: #a54038; background: #fff4f3; border: 1px solid #f3d6d2; border-radius: 7px; font-size: 11px; }
-.source-control-tabs { display: flex; flex: 0 0 35px; align-items: end; gap: 18px; padding: 0 22px; border-bottom: 1px solid #e7eaed; }.source-control-tabs button { position: relative; height: 35px; padding: 0 1px; color: #7b838c; background: transparent; border: 0; font-size: 11px; }.source-control-tabs button.active { color: #252a30; font-weight: 600; }.source-control-tabs button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: #176fd1; content: ""; }
-.source-control-summary { display: flex; align-items: center; gap: 9px; padding: 13px 22px 8px; color: #707881; font-size: 11px; }.source-control-summary span:first-child { margin-right: auto; }.source-control-summary b { color: #343a40; font-weight: 600; }.source-control-add { color: #2d9d5a; }.source-control-del { color: #d23c47; }
-.source-control-commit-notice { color: #2d9d5a; }
-.source-control-search { display: flex; height: 30px; margin: 0 18px 9px; align-items: center; gap: 7px; padding: 0 8px; color: #8b939c; background: #fff; border: 1px solid #dfe3e7; border-radius: 6px; }.source-control-search:focus-within { border-color: #9cc4f2; box-shadow: 0 0 0 3px rgb(45 130 235 / 10%); }.source-control-search input { min-width: 0; width: 100%; color: #3d444c; background: transparent; border: 0; outline: 0; font-size: 11px; }.source-control-search input::placeholder { color: #a2a8ae; }
-.source-control-commit { display: flex; gap: 7px; margin: 0 18px 9px; }.source-control-commit input { min-width: 0; flex: 1; height: 30px; padding: 0 8px; color: #3d444c; background: #fff; border: 1px solid #dfe3e7; border-radius: 6px; outline: 0; font-size: 11px; }.source-control-commit input:focus { border-color: #9cc4f2; box-shadow: 0 0 0 3px rgb(45 130 235 / 10%); }.source-control-commit button { min-width: 56px; padding: 0 10px; color: #fff; background: #176fd1; border: 0; border-radius: 6px; font-size: 11px; }.source-control-commit button:disabled { opacity: .4; }
-.source-control-body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(280px, 36%) minmax(0, 1fr); border-top: 1px solid #edf0f2; }.source-control-files { min-width: 0; min-height: 0; overflow: auto; padding: 8px; border-right: 1px solid #e8ebee; }.source-control-group + .source-control-group { margin-top: 10px; padding-top: 9px; border-top: 1px solid #e3e7ea; }.source-control-group-header { display: flex; min-height: 25px; align-items: center; gap: 7px; padding: 0 7px; color: #68727c; font-size: 11px; }.source-control-group-header b { font-weight: 600; }.source-control-group-header span { display: grid; min-width: 18px; height: 18px; place-items: center; color: #7f8993; background: #eef1f3; border-radius: 9px; font: 10px Consolas, monospace; }.source-control-file { display: flex; width: 100%; min-width: 0; min-height: 48px; align-items: center; gap: 8px; padding: 6px 7px; color: #4a525b; background: transparent; border: 0; border-radius: 7px; text-align: left; }.source-control-file:hover { background: #f4f7fa; }.source-control-file.active { color: #176fd1; background: #eaf3fd; box-shadow: inset 2px 0 #2d82eb; }.source-control-file-status { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; color: #2d9d5a; font: 600 11px Consolas, monospace; }.source-control-file-status.status-d { color: #d23c47; }.source-control-file-status.status-r { color: #a66d00; }.source-control-file-status.status-\? { color: #8b6bd1; }.source-control-file-name { display: grid; min-width: 0; gap: 2px; }.source-control-file-name b, .source-control-file-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.source-control-file-name b { color: inherit; font-size: 12px; font-weight: 550; }.source-control-file-name small { color: #939ba4; font-size: 10px; }.source-control-file-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; margin-left: auto; font: 10px Consolas, monospace; }.source-control-file-actions em { font-style: normal; }.source-control-file-actions em:first-child { color: #2d9d5a; }.source-control-file-actions em:nth-child(2) { color: #d23c47; }.source-control-file-actions button { display: grid; width: 22px; height: 22px; place-items: center; color: #69717a; background: transparent; border: 0; border-radius: 5px; }.source-control-file-actions button:hover:not(:disabled) { color: #176fd1; background: #dcecff; }.source-control-file-actions button:disabled { opacity: .35; }
-.source-control-file-actions .source-control-discard { color: #c6535c; }.source-control-file-actions .source-control-discard:hover:not(:disabled) { color: #b23d48; background: #fff0f1; }
-.source-control-empty { display: grid; min-height: 170px; place-content: center; justify-items: center; gap: 6px; margin: 0; color: #a1a8af; text-align: center; }.source-control-empty svg { color: #48a366; }.source-control-empty b { color: #626a72; font-size: 12px; }.source-control-empty span { font-size: 10px; }
-.source-control-diff { min-width: 0; min-height: 0; overflow: auto; background: #fbfcfd; }.source-control-diff > header { display: flex; min-height: 39px; align-items: center; gap: 8px; padding: 0 13px; color: #626a72; border-bottom: 1px solid #e8ebee; font: 11px Consolas, monospace; }.source-control-diff > header span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.source-control-diff > header button { display: grid; width: 22px; height: 22px; margin-left: auto; place-items: center; color: #8d959d; background: transparent; border: 0; border-radius: 5px; }.source-control-diff > header button:hover { background: #edf0f2; }.source-control-diff-empty { display: flex; min-height: 180px; align-items: center; justify-content: center; gap: 8px; color: #969ea6; font-size: 12px; }.source-control-diff-code { min-width: max-content; padding: 13px; margin: 0; color: #4a4f57; font: 11px/1.7 Consolas, monospace; }.source-control-diff-code code { display: block; min-height: 18px; padding: 0 5px; white-space: pre; }.source-control-diff-code code.add { color: #247a47; background: #effaf2; }.source-control-diff-code code.del { color: #b53d46; background: #fff2f3; }.source-control-diff-code code.hunk { color: #8067b3; background: #f5f1fc; }
-.git-graph { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; background: rgb(251 252 253 / 82%); }
-.git-graph-toolbar { display: flex; height: 39px; flex: 0 0 39px; align-items: center; gap: 4px; padding: 0 12px 0 16px; border-bottom: 1px solid #e3e7eb; }.git-graph-toolbar > div { display: flex; min-width: 0; align-items: center; gap: 7px; margin-right: auto; color: #68717b; }.git-graph-toolbar > div svg { color: #176fd1; }.git-graph-toolbar b { color: #31373e; font-size: 12px; font-weight: 600; }.git-graph-toolbar > div span { color: #9299a1; font-size: 10px; }.git-graph-toolbar button { display: grid; width: 27px; height: 27px; place-items: center; color: #68717b; background: transparent; border: 0; border-radius: 5px; }.git-graph-toolbar button:hover:not(:disabled) { color: #176fd1; background: #eaf3fd; }.git-graph-toolbar button:disabled { opacity: .35; }.git-graph-branch { max-width: 160px; margin-right: 4px; overflow: hidden; color: #176fd1; font: 10px Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.git-graph-scroll { min-height: 0; flex: 1; overflow: auto; }.git-graph-list { min-width: 720px; padding: 4px 8px 10px; }.git-graph-outgoing { display: flex; height: 28px; align-items: center; gap: 7px; padding: 0 8px; color: #66717c; border-bottom: 1px solid #e6e9ec; font-size: 11px; }.git-graph-outgoing i { width: 8px; height: 8px; border: 2px solid #1681d9; border-radius: 50%; }.git-graph-outgoing b { display: grid; min-width: 17px; height: 17px; margin-left: 1px; place-items: center; color: #fff; background: #1681d9; border-radius: 9px; font: 9px Consolas, monospace; }
-.git-graph-row { display: flex; height: 34px; align-items: center; color: #343a41; border-radius: 3px; cursor: default; outline: 0; }.git-graph-row:hover { background: rgb(225 231 237 / 52%); }.git-graph-row.selected { background: #dce9f7; box-shadow: inset 2px 0 #1681d9; }.git-graph-row:focus-visible { box-shadow: inset 0 0 0 1px #1681d9; }.git-graph-row.outgoing .git-graph-summary b { font-weight: 620; }
-.git-graph-canvas { position: relative; height: 34px; min-width: 44px; flex: 0 0 auto; }.git-graph-canvas svg { display: block; width: 100%; height: 100%; overflow: visible; }.git-graph-canvas path { fill: none; stroke-width: 1.7px; vector-effect: non-scaling-stroke; }.git-graph-node { position: absolute; top: 50%; z-index: 2; width: 10px; height: 10px; box-sizing: border-box; background: #fff; border: 2px solid #277bc7; border-radius: 50%; transform: translateY(-50%); box-shadow: 0 0 0 2px #fbfcfd; }.git-graph-node.head { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #fbfcfd; }.git-graph-node.merge { width: 11px; height: 11px; }
-.git-graph-summary { display: flex; min-width: 160px; flex: 1 1 55%; align-items: baseline; gap: 7px; padding-right: 10px; white-space: nowrap; }.git-graph-summary b { min-width: 0; overflow: hidden; color: #30353b; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }.git-graph-summary span { flex: 0 0 auto; color: #7f8790; font-size: 10px; }
-.git-graph-refs { display: flex; max-width: 34%; flex: 0 1 auto; align-items: center; justify-content: flex-end; gap: 4px; overflow: hidden; }.git-graph-refs span { max-width: 150px; overflow: hidden; padding: 2px 6px; color: #fff; border-radius: 9px; font: 9px Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }.git-graph-refs .ref-head { background: #087ea4; }.git-graph-refs .ref-remote { background: #7c3aed; }.git-graph-refs .ref-tag { color: #543500; background: #f2c94c; }
-.git-graph-row time { width: 66px; flex: 0 0 auto; color: #8a929a; font-size: 9px; text-align: right; }.git-graph-row > code { width: 58px; flex: 0 0 auto; color: #747d86; font: 9px Consolas, monospace; text-align: right; }
-.git-graph-page-state { display: flex; height: 34px; align-items: center; justify-content: center; gap: 7px; color: #9199a1; font-size: 10px; }.git-graph-page-state button { height: 25px; padding: 0 10px; color: #66717c; background: transparent; border: 0; border-radius: 5px; font-size: 10px; }.git-graph-page-state button:hover { color: #176fd1; background: #eaf3fd; }
-.git-graph-status { display: flex; height: 32px; flex: 0 0 32px; align-items: center; gap: 12px; padding: 0 14px; color: #77808a; border-top: 1px solid #e3e7eb; font-size: 9px; }.git-graph-status > span { display: flex; min-width: 0; flex: 1; align-items: center; gap: 7px; overflow: hidden; color: #4b535c; text-overflow: ellipsis; white-space: nowrap; }.git-graph-status > span i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; }.git-graph-status code { max-width: 220px; overflow: hidden; font: 9px Consolas, monospace; text-overflow: ellipsis; }.git-graph-status small { flex: 0 0 auto; font-size: 9px; }
-.git-graph-empty { display: grid; min-height: 240px; flex: 1; place-content: center; justify-items: center; gap: 7px; color: #9aa1a8; text-align: center; font-size: 11px; }.git-graph-empty b { color: #59616a; font-size: 12px; }.git-graph-empty svg { color: #6d91b8; }
-@media (max-width: 760px) { .source-control-body { grid-template-columns: 1fr; grid-template-rows: minmax(180px, 42%) minmax(0, 1fr); }.source-control-files { border-right: 0; border-bottom: 1px solid #e8ebee; }.source-control-title p span { display: none; }.git-graph-branch { max-width: 90px; }.git-graph-status code { display: none; } }
+.source-control-host {
+  height: 100%;
+  min-height: 0;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+}
 
-:root[data-app-theme="dark"] .source-control-host,
-:root[data-app-theme="dark"] .source-control-page { color: var(--text); background: var(--surface); }
-:root[data-app-theme="dark"] :is(.source-control-header, .source-control-body, .source-control-diff > header) { border-color: var(--border); }
-:root[data-app-theme="dark"] .source-control-tabs { border-color: var(--border); }
-:root[data-app-theme="dark"] .source-control-tabs button { color: var(--text-muted); }
-:root[data-app-theme="dark"] .source-control-tabs button.active { color: var(--text); }
-:root[data-app-theme="dark"] .source-control-branch { color: var(--text-muted); background: var(--surface-soft); border-color: var(--border); }
+.source-control-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  color: #262626;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+.source-control-header {
+  display: flex;
+  flex: 0 0 62px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,250,250,0.95) 100%);
+  backdrop-filter: blur(12px);
+}
+
+.source-control-back,
+.source-control-refresh {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #525252;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.source-control-back:hover,
+.source-control-refresh:hover:not(:disabled) {
+  color: #171717;
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.source-control-refresh:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.source-control-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.source-control-title > svg {
+  color: #404040;
+}
+
+.source-control-title h1 {
+  margin: 0;
+  color: #171717;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.source-control-title p {
+  display: flex;
+  max-width: 62vw;
+  gap: 10px;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: #737373;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.source-control-title p span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  color: #a3a3a3;
+  background: #f5f5f5;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.source-control-refresh {
+  margin-left: auto;
+}
+
+.source-control-branch {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px;
+  color: #525252;
+  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.source-control-branch > svg {
+  color: #525252;
+}
+
+.source-control-branch b {
+  font-weight: 600;
+  color: #262626;
+}
+
+.source-control-branch small {
+  margin-left: auto;
+  padding: 4px 12px;
+  color: #525252;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.source-control-error {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.source-control-tabs {
+  display: flex;
+  flex: 0 0 42px;
+  align-items: end;
+  gap: 2px;
+  padding: 0 16px;
+  background: #fafafa;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.source-control-tabs button {
+  position: relative;
+  height: 42px;
+  padding: 0 20px;
+  color: #737373;
+  background: transparent;
+  border: 0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-radius: 6px 6px 0 0;
+}
+
+.source-control-tabs button:hover {
+  color: #262626;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.source-control-tabs button.active {
+  color: #171717;
+  background: #ffffff;
+  font-weight: 600;
+}
+
+.source-control-tabs button.active::after {
+  position: absolute;
+  right: 14px;
+  bottom: -1px;
+  left: 14px;
+  height: 2px;
+  background: #262626;
+  border-radius: 2px 2px 0 0;
+  content: "";
+}
+
+.source-control-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px 10px;
+  color: #737373;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.source-control-summary span:first-child {
+  margin-right: auto;
+}
+
+.source-control-summary b {
+  color: #171717;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.source-control-add {
+  color: #166534;
+  font-weight: 600;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  padding: 4px 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.source-control-del {
+  color: #991b1b;
+  font-weight: 600;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 13px;
+  padding: 4px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.source-control-commit-notice {
+  color: #166534;
+  font-weight: 600;
+  padding: 4px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 20px;
+  font-size: 11px;
+}
+
+.source-control-search {
+  display: flex;
+  height: 36px;
+  margin: 0 20px 12px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: #525252;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.source-control-search:focus-within {
+  border-color: #404040;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.source-control-search input {
+  min-width: 0;
+  width: 100%;
+  color: #171717;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.source-control-search input::placeholder {
+  color: #a3a3a3;
+  font-weight: 400;
+}
+
+.source-control-commit {
+  display: flex;
+  gap: 10px;
+  margin: 0 20px 14px;
+}
+
+.source-control-commit input {
+  min-width: 0;
+  flex: 1;
+  height: 38px;
+  padding: 0 14px;
+  color: #171717;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  outline: 0;
+  font-size: 13px;
+  font-weight: 400;
+  transition: all 0.15s ease;
+}
+
+.source-control-commit input:focus {
+  border-color: #404040;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.source-control-commit button {
+  min-width: 72px;
+  padding: 0 20px;
+  color: #ffffff;
+  background: #262626;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.source-control-commit button:hover:not(:disabled) {
+  background: #171717;
+}
+
+.source-control-commit button:active:not(:disabled) {
+  background: #0a0a0a;
+}
+
+.source-control-commit button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.source-control-body {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(300px, 38%) minmax(0, 1fr);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+}
+
+.source-control-files {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.source-control-group + .source-control-group {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.source-control-group-header {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: #737373;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.source-control-group-header b {
+  font-weight: 600;
+}
+
+.source-control-group-header span {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  place-items: center;
+  color: #525252;
+  background: #f5f5f5;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  font: 600 10px "SF Mono", Consolas, monospace;
+}
+
+.source-control-file {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  color: #404040;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  margin-bottom: 2px;
+}
+
+.source-control-file:hover {
+  background: #fafafa;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.source-control-file.active {
+  color: #171717;
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: inset 2px 0 #262626;
+}
+
+.source-control-file-status {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  font: 600 11px "SF Mono", Consolas, monospace;
+  border-radius: 4px;
+}
+
+.source-control-file-status.status-a,
+.source-control-file-status.status-m {
+  color: #374151;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.source-control-file-status.status-d {
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.source-control-file-status.status-r {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.source-control-file-status.status-? {
+  color: #4c1d95;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+}
+
+.source-control-file-name {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.source-control-file-name b,
+.source-control-file-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-control-file-name b {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.source-control-file-name small {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-family: "SF Mono", Consolas, monospace;
+}
+
+.source-control-file-stats {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 10px;
+}
+
+.source-control-file-stats span {
+  font: 700 13px "SF Mono", Consolas, monospace;
+  min-width: 28px;
+  text-align: right;
+  padding: 3px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.source-control-file-stats .stat-add {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.source-control-file-stats .stat-del {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.source-control-file-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding-left: 10px;
+}
+
+.source-control-file:hover .source-control-file-actions,
+.source-control-file.active .source-control-file-actions {
+  opacity: 1;
+}
+
+.source-control-file-actions button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: #737373;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.source-control-file-actions button:hover:not(:disabled) {
+  color: #171717;
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.source-control-file-actions button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.source-control-file-actions .source-control-discard {
+  color: #991b1b;
+}
+
+.source-control-file-actions .source-control-discard:hover:not(:disabled) {
+  color: #7f1d1d;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.source-control-empty {
+  display: grid;
+  min-height: 200px;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  margin: 0;
+  color: #a3a3a3;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.source-control-empty svg {
+  color: #525252;
+}
+
+.source-control-empty b {
+  color: #404040;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.source-control-empty span {
+  font-size: 12px;
+  color: #a3a3a3;
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+.source-control-diff {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #fcfcfc;
+}
+
+.source-control-diff > header {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  color: #525252;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  font: 500 12px "SF Mono", Consolas, monospace;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.source-control-diff > header span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-control-diff > header button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  place-items: center;
+  color: #737373;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.source-control-diff > header button:hover {
+  color: #262626;
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.source-control-diff-empty {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #a3a3a3;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.source-control-diff-code {
+  min-width: max-content;
+  padding: 16px;
+  margin: 0;
+  color: #262626;
+  font: 12px/1.8 "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.source-control-diff-code code {
+  display: block;
+  min-height: 20px;
+  padding: 0 12px;
+  white-space: pre;
+  border-radius: 3px;
+  margin: 1px 0;
+}
+
+.source-control-diff-code code.add {
+  color: #14532d;
+  background: #f0fdf4;
+  border-left: 3px solid #22c55e;
+}
+
+.source-control-diff-code code.del {
+  color: #7f1d1d;
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+}
+
+.source-control-diff-code code.hunk {
+  color: #4c1d95;
+  background: #faf5ff;
+  border-left: 3px solid #a855f7;
+  font-weight: 500;
+}
+
+.git-graph {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fcfcfc;
+}
+
+.git-graph-toolbar {
+  display: flex;
+  height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+}
+
+.git-graph-toolbar > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  margin-right: auto;
+  color: #525252;
+}
+
+.git-graph-toolbar > div svg {
+  color: #404040;
+}
+
+.git-graph-toolbar b {
+  color: #171717;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.git-graph-toolbar > div span {
+  color: #737373;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  background: #f5f5f5;
+  border-radius: 20px;
+}
+
+.git-graph-toolbar button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: #525252;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.git-graph-toolbar button:hover:not(:disabled) {
+  color: #171717;
+  background: #f5f5f5;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.git-graph-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.git-graph-branch {
+  max-width: 180px;
+  margin-right: 6px;
+  overflow: hidden;
+  padding: 4px 12px;
+  color: #404040;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 20px;
+  font: 500 11px "SF Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-graph-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.git-graph-list {
+  min-width: 760px;
+  padding: 8px 12px 14px;
+}
+
+.git-graph-outgoing {
+  display: flex;
+  height: 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  color: #525252;
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.git-graph-outgoing i {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #404040;
+  border-radius: 50%;
+}
+
+.git-graph-outgoing b {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  margin-left: 2px;
+  place-items: center;
+  color: #ffffff;
+  background: #404040;
+  border-radius: 10px;
+  font: 600 10px "SF Mono", Consolas, monospace;
+}
+
+.git-graph-row {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  color: #404040;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: 0;
+  transition: all 0.12s ease;
+  margin: 1px 0;
+}
+
+.git-graph-row:hover {
+  background: #fafafa;
+}
+
+.git-graph-row.selected {
+  background: #f5f5f5;
+  box-shadow: inset 2px 0 #262626;
+}
+
+.git-graph-row:focus-visible {
+  box-shadow: inset 0 0 0 1px #404040;
+}
+
+.git-graph-row.outgoing .git-graph-summary b {
+  font-weight: 600;
+}
+
+.git-graph-canvas {
+  position: relative;
+  height: 40px;
+  min-width: 52px;
+  flex: 0 0 auto;
+}
+
+.git-graph-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.git-graph-canvas path {
+  fill: none;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+
+.git-graph-node {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 2.5px solid #525252;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 3px #fcfcfc;
+  transition: transform 0.15s ease;
+}
+
+.git-graph-row:hover .git-graph-node {
+  transform: translateY(-50%) scale(1.15);
+}
+
+.git-graph-node.head {
+  background: #262626;
+  border-color: #262626;
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 3px #fcfcfc;
+}
+
+.git-graph-node.merge {
+  width: 14px;
+  height: 14px;
+}
+
+.git-graph-summary {
+  display: flex;
+  min-width: 180px;
+  flex: 1 1 55%;
+  align-items: baseline;
+  gap: 10px;
+  padding-right: 14px;
+  white-space: nowrap;
+}
+
+.git-graph-summary b {
+  min-width: 0;
+  overflow: hidden;
+  color: #171717;
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-graph-summary span {
+  flex: 0 0 auto;
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.git-graph-refs {
+  display: flex;
+  max-width: 34%;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.git-graph-refs span {
+  max-width: 160px;
+  overflow: hidden;
+  padding: 3px 10px;
+  color: #ffffff;
+  border-radius: 20px;
+  font: 500 10px "SF Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-graph-refs .ref-head {
+  background: #404040;
+}
+
+.git-graph-refs .ref-remote {
+  background: #737373;
+}
+
+.git-graph-refs .ref-tag {
+  color: #171717;
+  background: #e5e5e5;
+  border: 1px solid #d4d4d4;
+}
+
+.git-graph-row time {
+  width: 78px;
+  flex: 0 0 auto;
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 400;
+  text-align: right;
+}
+
+.git-graph-row > code {
+  width: 68px;
+  flex: 0 0 auto;
+  color: #737373;
+  font: 500 11px "SF Mono", Consolas, monospace;
+  text-align: right;
+  padding: 3px 8px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.git-graph-page-state {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #a3a3a3;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.git-graph-page-state button {
+  height: 30px;
+  padding: 0 16px;
+  color: #525252;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.git-graph-page-state button:hover {
+  color: #171717;
+  background: #fafafa;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.git-graph-status {
+  display: flex;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  color: #737373;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.git-graph-status > span {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  color: #404040;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.git-graph-status > span i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.git-graph-status code {
+  max-width: 240px;
+  overflow: hidden;
+  font: 500 11px "SF Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  padding: 3px 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  color: #525252;
+}
+
+.git-graph-status small {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #a3a3a3;
+  padding: 3px 10px;
+  background: #fafafa;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  font-weight: 400;
+}
+
+.git-graph-empty {
+  display: grid;
+  min-height: 280px;
+  flex: 1;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: #a3a3a3;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.git-graph-empty b {
+  color: #404040;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.git-graph-empty svg {
+  color: #525252;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .source-control-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(200px, 45%) minmax(0, 1fr);
+  }
+  .source-control-files {
+    border-right: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+  .source-control-title p span {
+    display: none;
+  }
+  .git-graph-branch {
+    max-width: 100px;
+  }
+  .git-graph-status code {
+    display: none;
+  }
+}
+
+:root[data-app-theme="dark"] .source-control-host {
+  background: linear-gradient(180deg, #0a0a0a 0%, #171717 100%);
+}
+
+:root[data-app-theme="dark"] .source-control-page {
+  color: #e5e5e5;
+  background: transparent;
+}
+
+:root[data-app-theme="dark"] :is(.source-control-header, .source-control-body, .source-control-diff > header) {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-header {
+  background: linear-gradient(180deg, rgba(23,23,23,0.98) 0%, rgba(10,10,10,0.95) 100%);
+}
+
+:root[data-app-theme="dark"] .source-control-tabs {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #0a0a0a;
+}
+
+:root[data-app-theme="dark"] .source-control-tabs button {
+  color: #a3a3a3;
+}
+
+:root[data-app-theme="dark"] .source-control-tabs button:hover {
+  color: #e5e5e5;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-app-theme="dark"] .source-control-tabs button.active {
+  color: #fafafa;
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .source-control-tabs button.active::after {
+  background: #fafafa;
+}
+
+:root[data-app-theme="dark"] .source-control-branch {
+  color: #a3a3a3;
+  background: linear-gradient(180deg, #171717 0%, #0a0a0a 100%);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-branch b {
+  color: #e5e5e5;
+}
+
+:root[data-app-theme="dark"] .source-control-branch small {
+  color: #d4d4d4;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
 :root[data-app-theme="dark"] .source-control-title h1,
 :root[data-app-theme="dark"] .source-control-summary b,
-:root[data-app-theme="dark"] .source-control-file-name b { color: var(--text); }
-:root[data-app-theme="dark"] :is(.source-control-title p, .source-control-title p span, .source-control-branch small, .source-control-summary, .source-control-file-name small, .source-control-diff > header, .source-control-diff-empty) { color: var(--text-muted); }
-:root[data-app-theme="dark"] :is(.source-control-search, .source-control-commit input) { color: var(--text); background: var(--surface-soft); border-color: var(--border); }
-:root[data-app-theme="dark"] :is(.source-control-search input, .source-control-commit input) { color: var(--text); }
-:root[data-app-theme="dark"] .source-control-file:hover { background: var(--surface-soft); }
-:root[data-app-theme="dark"] .source-control-file.active { color: var(--accent); background: var(--accent-soft); }
-:root[data-app-theme="dark"] .source-control-files { border-color: var(--border); }
-:root[data-app-theme="dark"] .source-control-group + .source-control-group { border-color: var(--border); }
-:root[data-app-theme="dark"] .source-control-group-header { color: var(--text-muted); }
-:root[data-app-theme="dark"] .source-control-group-header span { color: var(--text-muted); background: var(--surface-raised); }
-:root[data-app-theme="dark"] .source-control-diff { background: var(--surface-soft); }
-:root[data-app-theme="dark"] .git-graph { background: rgb(20 23 28 / 84%); }
-:root[data-app-theme="dark"] :is(.git-graph-toolbar, .git-graph-outgoing, .git-graph-status) { border-color: var(--border); }
-:root[data-app-theme="dark"] .git-graph-toolbar b { color: var(--text); }
-:root[data-app-theme="dark"] .git-graph-toolbar button { color: var(--text-muted); }
-:root[data-app-theme="dark"] .git-graph-toolbar button:hover:not(:disabled) { color: var(--accent); background: var(--surface-raised); }
-:root[data-app-theme="dark"] .git-graph-row { color: var(--text); border-color: var(--border); }
-:root[data-app-theme="dark"] .git-graph-row:hover { background: var(--surface-raised); }
-:root[data-app-theme="dark"] .git-graph-row.selected { background: var(--accent-soft); }
+:root[data-app-theme="dark"] .source-control-file-name b {
+  color: #fafafa;
+}
+
+:root[data-app-theme="dark"] :is(.source-control-title p, .source-control-title p span, .source-control-branch small, .source-control-summary, .source-control-file-name small, .source-control-diff > header, .source-control-diff-empty) {
+  color: #a3a3a3;
+}
+
+:root[data-app-theme="dark"] .source-control-title > svg,
+:root[data-app-theme="dark"] .source-control-title p span {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-app-theme="dark"] :is(.source-control-search, .source-control-commit input) {
+  color: #e5e5e5;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-search:focus-within,
+:root[data-app-theme="dark"] .source-control-commit input:focus {
+  background: #262626;
+  border-color: #737373;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+:root[data-app-theme="dark"] :is(.source-control-search input, .source-control-commit input) {
+  color: #e5e5e5;
+}
+
+:root[data-app-theme="dark"] .source-control-commit button {
+  background: #e5e5e5;
+  color: #171717;
+}
+
+:root[data-app-theme="dark"] .source-control-commit button:hover:not(:disabled) {
+  background: #fafafa;
+}
+
+:root[data-app-theme="dark"] .source-control-file {
+  border-color: transparent;
+}
+
+:root[data-app-theme="dark"] .source-control-file:hover {
+  background: #1a1a1a;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-app-theme="dark"] .source-control-file.active {
+  color: #fafafa;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 2px 0 #fafafa;
+}
+
+:root[data-app-theme="dark"] .source-control-files {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .source-control-body {
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .source-control-group + .source-control-group {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-group-header {
+  color: #a3a3a3;
+}
+
+:root[data-app-theme="dark"] .source-control-group-header span {
+  color: #d4d4d4;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-app-theme="dark"] .source-control-add {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+:root[data-app-theme="dark"] .source-control-del {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+:root[data-app-theme="dark"] .source-control-diff {
+  background: #0f0f0f;
+}
+
+:root[data-app-theme="dark"] .source-control-diff > header {
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .source-control-diff > header button:hover {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-file-status.status-a,
+:root[data-app-theme="dark"] .source-control-file-status.status-m {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d4d4d4;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .source-control-file-status.status-d {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+:root[data-app-theme="dark"] .source-control-file-status.status-r {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+:root[data-app-theme="dark"] .source-control-file-status.status-? {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c4b5fd;
+  border-color: rgba(168, 85, 247, 0.2);
+}
+
+:root[data-app-theme="dark"] .source-control-file-stats {
+  border-right: none;
+}
+
+:root[data-app-theme="dark"] .source-control-file-stats .stat-add {
+  color: #86efac;
+  background: rgba(22, 163, 74, 0.2);
+}
+
+:root[data-app-theme="dark"] .source-control-file-stats .stat-del {
+  color: #fca5a5;
+  background: rgba(220, 38, 38, 0.2);
+}
+
+:root[data-app-theme="dark"] .source-control-file-actions {
+  border-left: none;
+}
+
+:root[data-app-theme="dark"] .source-control-file-actions button:hover:not(:disabled) {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #fafafa;
+}
+
+:root[data-app-theme="dark"] .source-control-file-actions .source-control-discard:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+:root[data-app-theme="dark"] .git-graph {
+  background: #0f0f0f;
+}
+
+:root[data-app-theme="dark"] :is(.git-graph-toolbar, .git-graph-outgoing, .git-graph-status) {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .git-graph-toolbar {
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .git-graph-toolbar b {
+  color: #fafafa;
+}
+
+:root[data-app-theme="dark"] .git-graph-toolbar > div span {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-app-theme="dark"] .git-graph-toolbar button {
+  color: #a3a3a3;
+}
+
+:root[data-app-theme="dark"] .git-graph-toolbar button:hover:not(:disabled) {
+  color: #fafafa;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-app-theme="dark"] .git-graph-branch {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #d4d4d4;
+}
+
+:root[data-app-theme="dark"] .git-graph-row {
+  color: #d4d4d4;
+}
+
+:root[data-app-theme="dark"] .git-graph-row:hover {
+  background: #1a1a1a;
+}
+
+:root[data-app-theme="dark"] .git-graph-row.selected {
+  background: #262626;
+  box-shadow: inset 2px 0 #fafafa;
+}
+
 :root[data-app-theme="dark"] .git-graph-summary b,
-:root[data-app-theme="dark"] .git-graph-empty b { color: var(--text); }
+:root[data-app-theme="dark"] .git-graph-empty b {
+  color: #fafafa;
+}
+
 :root[data-app-theme="dark"] .git-graph-summary span,
 :root[data-app-theme="dark"] .git-graph-row time,
 :root[data-app-theme="dark"] .git-graph-row > code,
-:root[data-app-theme="dark"] .git-graph-page-state { color: var(--text-muted); }
-:root[data-app-theme="dark"] .git-graph-page-state button { color: var(--text-muted); }
-:root[data-app-theme="dark"] .git-graph-page-state button:hover { color: var(--accent); background: var(--surface-raised); }
-:root[data-app-theme="dark"] .git-graph-status > span { color: var(--text); }
-:root[data-app-theme="dark"] .git-graph-node { background: var(--surface); box-shadow: 0 0 0 2px #14171c; }
-:root[data-app-theme="dark"] .git-graph-node.head { box-shadow: inset 0 0 0 2px #14171c, 0 0 0 2px #14171c; }
-:root[data-app-theme="dark"] .source-control-diff-code { color: var(--text); }
-:root[data-app-theme="dark"] .source-control-diff-code code.add { color: #82d39a; background: #183b28; }
-:root[data-app-theme="dark"] .source-control-diff-code code.del { color: #f29a9f; background: #45252a; }
-:root[data-app-theme="dark"] .source-control-diff-code code.hunk { color: #c4a8f1; background: #34294a; }
-:root[data-app-theme="dark"] .source-control-error { color: #ffb0aa; background: #452523; border-color: #70403d; }
+:root[data-app-theme="dark"] .git-graph-page-state {
+  color: #a3a3a3;
+}
+
+:root[data-app-theme="dark"] .git-graph-row > code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-app-theme="dark"] .git-graph-outgoing i {
+  border-color: #d4d4d4;
+}
+
+:root[data-app-theme="dark"] .git-graph-outgoing b {
+  background: #d4d4d4;
+  color: #171717;
+}
+
+:root[data-app-theme="dark"] .git-graph-page-state button {
+  color: #d4d4d4;
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-app-theme="dark"] .git-graph-page-state button:hover {
+  color: #fafafa;
+  background: #333333;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+:root[data-app-theme="dark"] .git-graph-status {
+  background: #171717;
+}
+
+:root[data-app-theme="dark"] .git-graph-status > span {
+  color: #e5e5e5;
+}
+
+:root[data-app-theme="dark"] .git-graph-status code {
+  background: rgba(255, 255, 255, 0.08);
+  color: #d4d4d4;
+}
+
+:root[data-app-theme="dark"] .git-graph-status small {
+  background: #1a1a1a;
+  color: #a3a3a3;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-app-theme="dark"] .git-graph-node {
+  background: #171717;
+  border-color: #a3a3a3;
+  box-shadow: 0 0 0 3px #0f0f0f;
+}
+
+:root[data-app-theme="dark"] .git-graph-node.head {
+  background: #fafafa;
+  border-color: #fafafa;
+  box-shadow: inset 0 0 0 2px #171717, 0 0 0 3px #0f0f0f;
+}
+
+:root[data-app-theme="dark"] .git-graph-refs .ref-head {
+  background: #e5e5e5;
+  color: #171717;
+}
+
+:root[data-app-theme="dark"] .git-graph-refs .ref-remote {
+  background: #a3a3a3;
+  color: #171717;
+}
+
+:root[data-app-theme="dark"] .git-graph-refs .ref-tag {
+  background: #404040;
+  color: #e5e5e5;
+  border-color: #525252;
+}
+
+:root[data-app-theme="dark"] .source-control-diff-code {
+  color: #e5e5e5;
+}
+
+:root[data-app-theme="dark"] .source-control-diff-code code.add {
+  color: #bbf7d0;
+  background: rgba(22, 101, 52, 0.25);
+  border-left-color: #22c55e;
+}
+
+:root[data-app-theme="dark"] .source-control-diff-code code.del {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.25);
+  border-left-color: #ef4444;
+}
+
+:root[data-app-theme="dark"] .source-control-diff-code code.hunk {
+  color: #ddd6fe;
+  background: rgba(76, 29, 149, 0.25);
+  border-left-color: #a855f7;
+}
+
+:root[data-app-theme="dark"] .source-control-error {
+  color: #fca5a5;
+  background: rgba(127, 29, 29, 0.3);
+  border-color: rgba(239, 68, 68, 0.2);
+}

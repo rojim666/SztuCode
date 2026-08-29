@@ -137,7 +137,7 @@
   .work-header,
   .task-canvas,
   .kimi-composer,
-  .queue-dock
+  .queue-dock,
   .composer-input-shell,
   .project-popover,
   .launcher-popover,
@@ -150,6 +150,13 @@
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
+}
+
+/* 排队态/追加态：暗色下也使用灰色底、无边框 */
+:root[data-app-theme="dark"] .queue-dock--queued {
+  background: var(--surface-soft) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :root[data-app-theme="dark"] :is(
@@ -392,15 +399,17 @@
   border: 0;
 }
 
-:root[data-app-theme="dark"] .task-stream:hover,
-:root[data-app-theme="dark"] .task-stream:focus-within,
 :root[data-app-theme="dark"] .sidebar-workspace {
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: transparent transparent;
 }
-
-:root[data-app-theme="dark"] .task-stream:hover::-webkit-scrollbar-thumb,
-:root[data-app-theme="dark"] .task-stream:focus-within::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+:root[data-app-theme="dark"] .sidebar-workspace:hover {
+  scrollbar-color: rgb(140 150 165 / 28%) transparent;
+}
+:root[data-app-theme="dark"] .sidebar-workspace:hover::-webkit-scrollbar-thumb {
+  background: rgb(140 150 165 / 28%);
+}
+:root[data-app-theme="dark"] .sidebar-workspace::-webkit-scrollbar-thumb:hover {
+  background: rgb(140 150 165 / 50%);
 }
 
 :root[data-app-theme="dark"] .permission-confirm-backdrop {
@@ -464,6 +473,7 @@
 }
 
 :root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tab-strip,
+:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-home-header,
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-preview--files > header,
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta,
 :root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
@@ -537,7 +547,8 @@
   .file-preview--files > header b,
   .file-row,
   .files-preview-placeholder b,
-  .code-preview-empty b
+  .code-preview-empty b,
+  .home-launcher__button
 ) { color: var(--text); }
 
 :root[data-app-theme="dark"] .project-inspector.file-rail :is(
@@ -546,8 +557,99 @@
   .files-empty,
   .files-preview-placeholder p,
   .code-preview-empty,
-  .code-preview-empty svg
+  .code-preview-empty svg,
+  .home-launcher__prompt,
+  .home-launcher__button svg
 ) { color: var(--text-muted); }
+
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error svg { color: #e07858; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error b { color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error p { color: var(--text-muted); }
+
+/* 文件标签栏 + Open 按钮 暗色主题 */
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-bar {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-actions {
+  background: var(--surface);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab { color: var(--text-muted); cursor: pointer; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab:hover { background: rgba(255,255,255,.06); color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.active {
+  color: var(--text);
+  background: rgba(255,255,255,.08);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.has-error { color: #e07858; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close:hover { color: var(--text); background: rgba(255,255,255,.1); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn {
+  color: var(--text);
+  background: transparent;
+  border: 0;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn:hover { background: rgba(255,255,255,.06); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:first-child { color: #6ea1ff; }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:last-child { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-menu {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 45%), 0 3px 10px rgb(0 0 0 / 25%);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item { color: var(--text); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) { background: rgba(255,255,255,.06); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item.disabled { color: var(--text-disabled); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-icon {
+  background: rgba(255,255,255,.06);
+  color: var(--text-muted);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) .file-open-icon {
+  background: rgba(255,255,255,.1);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.06);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo {
+  background: transparent;
+  border: 0;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo:hover {
+  background: rgba(255,255,255,.06);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview,
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-scroll { background: var(--surface); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta { border-bottom-color: var(--border); }
+:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta > span {
+  color: var(--text-muted);
+  background: rgba(255,255,255,.04);
+  border-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
+  color: var(--text-muted);
+  border-bottom-color: var(--border);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb i { color: var(--text-disabled); }
+
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button {
+  background: transparent;
+  border-color: transparent;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:hover {
+  background: var(--surface-soft);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:focus-visible {
+  background: var(--surface-raised);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-workspace {
+  background: transparent;
+}
 
 :root[data-app-theme="dark"] .project-inspector.file-rail .file-row:hover {
   background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
@@ -643,19 +745,29 @@
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-bullet { color: #83cbd7; }
 :root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-deletion { color: #ff938d; }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll) {
-  scrollbar-color: var(--border-strong) transparent;
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view) {
+  scrollbar-color: transparent transparent;
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover {
+  scrollbar-color: rgb(140 150 165 / 28%) transparent;
 }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll)::-webkit-scrollbar-track {
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll)::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background-clip: padding-box;
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+}
+
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover::-webkit-scrollbar-thumb {
+  background: rgb(140 150 165 / 28%);
+}
+
+:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb:hover {
+  background: rgb(140 150 165 / 50%);
 }
 
 /* Capability pages use the shared theme tokens so wallpaper glass stays legible. */
@@ -811,6 +923,13 @@
   background: color-mix(in srgb, var(--surface) var(--composer-surface-opacity), transparent) !important;
   backdrop-filter: blur(12px) saturate(108%);
   -webkit-backdrop-filter: blur(12px) saturate(108%);
+}
+
+/* 壁纸模式下排队态/追加态使用 soft 灰色底 */
+:root:not([data-wallpaper="none"]) .task-conversation > .queue-dock--queued {
+  background: color-mix(in srgb, var(--surface-soft) var(--composer-surface-opacity), transparent) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :root:not([data-wallpaper="none"]) :is(.work-header, .workspace-tab-strip) {

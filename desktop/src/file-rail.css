@@ -76,7 +76,13 @@
 .workspace-tool-menu button svg { flex: 0 0 auto; color: #272b28; }
 .workspace-tool-menu button span { display: inline; min-width: 0; overflow: hidden; color: inherit; text-overflow: ellipsis; white-space: nowrap; }
 
-.task-summary-view { min-height: 0; padding: 0 24px 24px; overflow-y: auto; overflow-x: hidden; background: #fff; border-radius: 0; container-type: inline-size; scrollbar-gutter: stable; }
+.task-summary-view { min-height: 0; padding: 0 24px 24px; overflow-y: auto; overflow-x: hidden; background: #fff; border-radius: 0; container-type: inline-size; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.task-summary-view:hover { scrollbar-color: rgb(120 130 145 / 22%) transparent; }
+.task-summary-view::-webkit-scrollbar { width: 6px; height: 6px; }
+.task-summary-view::-webkit-scrollbar-track { background: transparent; }
+.task-summary-view::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.task-summary-view:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 22%); }
+.task-summary-view::-webkit-scrollbar-thumb:hover { background: rgb(120 130 145 / 45%); }
 .summary-section { min-height: 0; overflow: visible; background: #fff; border: 0; border-bottom: 1px solid #ececea; border-radius: 0; box-shadow: none; }
 .summary-section:last-child { border-bottom: 0; }
 .summary-section-trigger { display: flex; width: 100%; min-height: 66px; align-items: center; gap: 5px; padding: 0; color: #555a56; background: transparent; text-align: left; }
@@ -199,8 +205,15 @@
 .artifact-list > button > svg { color: #9ba09c; }
 
 /* ── 项目文件浏览器（查看项目文件） ───────────────────────────────── */
-.files-body { min-height: 0; overflow: auto; padding: 6px 0 10px; }
-.files-loading, .files-empty, .files-error { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 22px 12px; color: #9aa09b; font-size: 11px; }
+.files-body { min-height: 0; overflow: auto; padding: 6px 0 10px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.files-body:hover { scrollbar-color: rgb(120 130 145 / 22%) transparent; }
+.files-body::-webkit-scrollbar { width: 6px; height: 6px; }
+.files-body::-webkit-scrollbar-track { background: transparent; }
+.files-body::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.files-body:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 22%); }
+.files-body::-webkit-scrollbar-thumb:hover { background: rgb(120 130 145 / 45%); }
+.files-loading, .files-error { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 22px 12px; color: #9aa09b; font-size: 11px; }
+.files-empty { margin: 0; padding: 24px 16px; color: #8b938e; font-size: 12px; }
 .files-error { color: #b0563a; }
 .file-tree { margin: 0; padding: 0; list-style: none; }
 .file-tree--nested { padding-left: 14px; }
@@ -214,17 +227,251 @@
 .file-row .file-type-icon { display: block; width: 16px; height: 16px; }
 .file-row .row-name { overflow: hidden; font-size: 13px; text-overflow: ellipsis; }
 /* 高特异性压过 kimi.css 基类 .file-preview 的 position:absolute，让预览作为普通网格列参与左右分栏 */
-.file-tree-view .file-preview--files { position: relative; inset: auto; display: grid; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: #fff; }
-.file-tree-view .file-preview--files.empty { grid-template-rows: minmax(0, 1fr); }
-.file-tree-view .file-preview--files > header { display: flex; align-items: center; min-height: 44px; gap: 8px; padding: 0 13px; border-bottom: 1px solid #e7e9e7; }
-.file-tree-view .file-preview--files > header b { margin-right: auto; color: #2b3035; font: 12px "Microsoft YaHei UI", sans-serif; }
-.file-tree-view .file-preview--files > header small { overflow: hidden; color: #9aa09b; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.files-preview-placeholder { align-self: stretch; display: grid; place-content: center; justify-items: center; gap: 8px; color: #8b938e; text-align: center; }
+.file-tree-view .file-preview--files {
+  position: relative;
+  inset: auto;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: #fff;
+}
+/* 让预览内容区（第二行）不撑破网格，保证滚动/居中生效 */
+.file-tree-view .file-preview--files > .files-preview-placeholder,
+.file-tree-view .file-preview--files > .preview-error,
+.file-tree-view .file-preview--files > .code-preview { min-width: 0; min-height: 0; }
+
+/* ── 文件标签栏 ────────────────────────────── */
+.file-tabs-bar {
+  position: relative;
+  z-index: 120;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  background: #fff;
+  border-bottom: 1px solid #eceeec;
+}
+.file-tabs-bar--empty {
+  justify-content: flex-end;
+  padding: 0 10px;
+}
+.file-tabs-scroll {
+  display: flex;
+  flex: 1 1 0px;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.file-tabs-scroll::-webkit-scrollbar { display: none; }
+.file-tab {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 6px 0 10px;
+  margin: 6px 0;
+  color: #5f6662;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 13px;
+  transition: background-color 120ms ease, color 120ms ease;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.file-tab:hover { background: #f3f5f3; color: #2f3531; }
+.file-tab.active {
+  color: #1d221f;
+  background: #f0f2f0;
+  font-weight: 500;
+}
+.file-tab.has-error { color: #c0573f; }
+.file-tab.has-error.active { color: #c0573f; }
+.file-tab svg { flex: 0 0 auto; opacity: .75; }
+.file-tab.active svg { opacity: 1; }
+.file-tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.file-tab-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  color: #8b938d;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.file-tab:hover .file-tab-close, .file-tab.active .file-tab-close { opacity: 1; }
+.file-tab-close:hover { color: #2a302c; background: #e0e4e0; }
+
+/* ── 操作按钮组（Open + 折叠） ────────────── */
+.file-tabs-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: #fff;
+  position: relative;
+  z-index: 122;
+  box-shadow: -6px 0 8px -6px rgb(20 28 24 / 10%);
+}
+
+/* ── Open 按钮与下拉菜单 ───────────────────── */
+.file-open-wrap { position: relative; }
+.file-open-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  color: #252a27;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.file-open-btn:hover { background: #f2f4f2; }
+.file-open-btn svg:first-child { color: #3b6fd8; }
+.file-open-btn svg:last-child { color: #6a726d; transition: transform 150ms ease; }
+.file-open-btn svg.rotated { transform: rotate(180deg); }
+.file-open-menu {
+  position: absolute;
+  z-index: 9999;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 260px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #e0e3e0;
+  border-radius: 12px;
+  box-shadow: 0 12px 36px rgb(20 28 24 / 14%), 0 3px 10px rgb(20 28 24 / 7%);
+  animation: open-menu-in 140ms cubic-bezier(.2,.8,.2,1);
+}
+@keyframes open-menu-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.file-open-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  color: #1f2421;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.file-open-item:hover:not(.disabled) { background: #f2f5f2; }
+.file-open-item.disabled { color: #b0b6b2; cursor: default; }
+.file-open-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: #f2f4f2;
+  color: #555d58;
+  overflow: hidden;
+}
+.file-open-item:hover:not(.disabled) .file-open-icon { background: #e7ebe7; }
+.file-open-item[data-icon]:focus-visible,
+.file-open-item:focus-visible { outline: 2px solid rgb(59 111 216 / 40%); outline-offset: 1px; }
+.file-open-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  letter-spacing: .01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Teleport 到 body 的下拉菜单（使用 fixed 定位，避免被任何 overflow 裁剪） */
+.file-open-menu--teleport {
+  position: fixed;
+  z-index: 2147483647;
+  top: 0;
+  right: 0;
+}
+
+/* ── 文件树折叠/展开按钮（在 Open 按钮右侧） ─ */
+.tree-toggle-btn {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  color: #5f6662;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.tree-toggle-btn:hover { color: #252a27; background: #eef0ee; }
+.tree-toggle-btn--solo { position: static; margin: 6px 0; background: transparent; border: 0; }
+.tree-toggle-btn--solo:hover { background: #f2f4f2; }
+
+.files-preview-placeholder {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: #8b938e;
+  text-align: center;
+}
 .files-preview-placeholder svg { color: #737b76; }
 .files-preview-placeholder b,
 .files-preview-placeholder p { margin: 0; font-size: 12px; font-weight: 400; line-height: 1.4; }
 .files-preview-placeholder b { color: #4b5258; }
 .files-preview-placeholder p { color: #8b9299; }
+/* 文件预览错误状态：友好提示，显示在左侧预览面板 */
+.preview-error {
+  align-self: stretch;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  color: #9ca3a0;
+  text-align: center;
+}
+.preview-error svg { color: #c0573f; }
+.preview-error b { margin: 0; font-size: 13px; font-weight: 600; color: #5b3a33; }
+.preview-error p { margin: 0; max-width: 240px; font-size: 11px; line-height: 1.5; color: #8a6e68; word-break: break-all; }
 .files-workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 /* 左右分栏：左预览自适应、右文件树（宽度可拖拽调整） */
 .file-tree-view { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr) 6px 200px; }
@@ -275,6 +522,70 @@
 
 .sandbox-workspace { min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); border-radius: 0; }
 .workspace-empty-view { min-width: 0; min-height: 0; background: var(--surface); border-radius: 0; }
+
+/* ── 工作区首页导航 ───────────────────────────────── */
+.workspace-home-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: #fff;
+  border: 0;
+  border-radius: 0;
+}
+.workspace-home-header__right { display: flex; align-items: center; gap: 2px; }
+
+.home-workspace {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  background: #fff;
+  border-radius: 0;
+}
+.home-launcher {
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+.home-launcher__prompt {
+  margin: 0 0 12px;
+  color: #8a8f8c;
+  font-size: 13px;
+}
+.home-launcher__button {
+  display: flex;
+  min-width: 200px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  color: #3a3f3c;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  font-size: 15px;
+  text-align: left;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+.home-launcher__button:hover {
+  background: #f0f2f0;
+}
+.home-launcher__button:focus-visible {
+  outline: none;
+  background: #e8ebe8;
+}
+.home-launcher__button:active {
+  transform: scale(0.98);
+}
+.home-launcher__button svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: #5c625e;
+}
 .xterm-shell {
   display: flex;
   flex-direction: column;
@@ -321,7 +632,8 @@
 .preview-tab { position: relative; display: flex; align-self: stretch; align-items: center; gap: 7px; min-width: 0; margin-right: auto; padding: 0 4px; }
 .preview-tab i { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: #367058; }
 .preview-tab b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code-preview { display: grid; grid-template-rows: 31px 29px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; background: #fbfcfd; }
+.code-preview { display: grid; grid-template-rows: 31px 29px minmax(0, 1fr); min-width: 0; min-height: 0; height: 100%; overflow: hidden; background: #fbfcfd; }
+.code-preview.code-preview--bare { grid-template-rows: minmax(0, 1fr); }
 .code-preview-meta { display: flex; align-items: center; gap: 6px; padding: 0 13px; border-bottom: 1px solid #eef0f2; }
 .code-preview-meta > span { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; color: #596169; background: #f7f8f9; border: 1px solid #dfe3e6; border-radius: 4px; font: 10px/1 "Microsoft YaHei UI", sans-serif; }
 .code-preview-meta .format-badge { color: #1769b0; border-color: #c9ddf0; background: #edf6fd; font-weight: 600; }
@@ -329,7 +641,13 @@
 .preview-breadcrumb { display: flex; min-width: 0; align-items: center; gap: 4px; padding: 0 13px; overflow: hidden; color: #899198; border-bottom: 1px solid #eef0f2; font: 10px Consolas, "Cascadia Mono", monospace; white-space: nowrap; }
 .preview-breadcrumb span { display: flex; gap: 4px; }
 .preview-breadcrumb i { color: #c1c5c9; font-style: normal; }
-.code-preview-scroll { min-width: 0; min-height: 0; padding: 12px 0 22px; overflow: auto; color: #252a2f; background: #fbfcfd; scrollbar-gutter: stable; }
+.code-preview-scroll { min-width: 0; min-height: 0; padding: 12px 0 22px; overflow: auto; color: #252a2f; background: #fbfcfd; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.code-preview-scroll:hover { scrollbar-color: rgb(120 130 145 / 22%) transparent; }
+.code-preview-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.code-preview-scroll::-webkit-scrollbar-track { background: transparent; }
+.code-preview-scroll::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.code-preview-scroll:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 22%); }
+.code-preview-scroll::-webkit-scrollbar-thumb:hover { background: rgb(120 130 145 / 45%); }
 .code-line { display: grid; min-width: fit-content; min-height: 22px; grid-template-columns: 48px minmax(max-content, 1fr); font: 13px/1.7 "Cascadia Code", "Cascadia Mono", Consolas, monospace; }
 .code-line:hover { background: #f3f6f8; }
 .code-line:has(.hljs-addition) { background: #edf8f0; }

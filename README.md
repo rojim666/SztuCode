@@ -132,7 +132,7 @@ desktop / packages/cli
 | --- | --- |
 | Agent Runtime | 基于 ReAct 的多步推理、工具调用、结果回填和终止控制；Python 版支持工具并发执行（默认 4），TS 版为串行 |
 | 多种客户端 | Tauri 2 + Vue 3 桌面工作台、Node 终端 chat（TS）；Textual TUI 与脚本化 CLI（Python） |
-| 模型接入 | Anthropic 与 OpenAI-compatible 双协议，可连接兼容服务商；内置 opencode Zen 免费 profile（如 deepseek-v4-flash、mimo-v2.5）与 OrcaRouter 多厂商 profile |
+| 模型接入 | Anthropic 与 OpenAI-compatible 双协议，可连接兼容服务商；内置 opencode Zen 免费 profile（如 deepseek-v4-flash、mimo-v2.5） |
 | 工作区工具 | 文件读取、目录浏览、搜索、写入、精确编辑和受控 Shell 执行 |
 | 权限系统 | `normal`、`plan`、`accept_edits`、`auto` 四种运行模式，持久化策略与 denial 追踪 |
 | 会话与记忆 | 持久化会话、分层上下文、Notes、历史恢复和上下文压缩（TS 用 js-tiktoken，Python 用 tiktoken，均带 CJK 感知回退） |

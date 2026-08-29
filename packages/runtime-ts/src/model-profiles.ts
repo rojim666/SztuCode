@@ -2,25 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RuntimeSettings, SettingsStore } from "./settings.js";
-import { ORCAROUTER_BASE_URL, ORCAROUTER_MODELS, ORCAROUTER_VENDOR, isOrcaRouterUrl } from "./providers/orcarouter.js";
 
 type ProfileSettings = Omit<RuntimeSettings, "permission_mode">;
 export type ModelProfile = ProfileSettings & { id: string; name: string; vendor: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
 type StoredProfile = ProfileSettings & { id: string; name: string; vendor: string; builtin: boolean; api_key?: string; keyless?: boolean };
 type ProfileFile = { profiles: StoredProfile[]; active_model_id: string };
 
-const ZEN_BASE_URL = "https://opencode.ai/zen/v1";
-const ZEN_MODELS = ["deepseek-v4-flash-free", "ling-3.0-flash-free", "nemotron-3-ultra-free", "north-mini-code-free", "longcat-2.0-free", "mimo-v2.5-free", "laguna-s-2.1-free"];
-const ZEN_PROFILES: StoredProfile[] = ZEN_MODELS.map((model) => ({
-  id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai", api_format: "openai_chat_completions", model, base_url: ZEN_BASE_URL, builtin: true, keyless: true,
-  context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true,
-}));
-// OrcaRouter 需要自备 sk-orca- 密钥，因此 keyless 为 false；用户在设置里填入密钥后即可选中。
-const ORCA_PROFILES: StoredProfile[] = ORCAROUTER_MODELS.map(({ id, context_window }) => ({
-  id: `builtin-orcarouter-${id.replace(/\//g, "-")}`, name: id, vendor: ORCAROUTER_VENDOR, provider: "openai", api_format: "openai_chat_completions", model: id, base_url: ORCAROUTER_BASE_URL, builtin: true, keyless: false,
-  context_window, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true,
-}));
-const BUILTIN_PROFILES: StoredProfile[] = [...ZEN_PROFILES, ...ORCA_PROFILES];
+const BUILTIN_PROFILES: StoredProfile[] = [];
 
 export class ModelProfileStore {
   private profiles: StoredProfile[] = []; private activeId = ""; private loaded = false;
@@ -54,6 +42,8 @@ export class ModelProfileStore {
   private async load(): Promise<void> {
     if (this.loaded) return; this.loaded = true;
     try { const value = JSON.parse(await readFile(this.filePath, "utf8")) as StoredProfile[] | Partial<ProfileFile>; if (Array.isArray(value)) this.profiles = value; else { this.profiles = Array.isArray(value.profiles) ? value.profiles : []; this.activeId = value.active_model_id ?? ""; } } catch { this.profiles = []; }
+    // 过滤掉旧的内置模型（opencode zen、orcarouter等）
+    this.profiles = this.profiles.filter(p => !p.builtin && !p.id.startsWith("builtin-"));
     if (!this.profiles.length) { const current = await this.settings.getProviderConfig(); this.profiles.push({ id: "default", name: current.model, vendor: current.provider === "anthropic" ? "Anthropic" : "OpenAI", provider: current.provider, api_format: current.api_format, model: current.model, base_url: current.base_url, builtin: false, api_key: current.api_key, keyless: current.keyless, context_window: current.context_window, max_output_tokens: current.max_output_tokens, temperature: current.temperature, top_p: current.top_p, reasoning_effort: current.reasoning_effort, timeout_s: current.timeout_s, max_retries: current.max_retries, cache_control: current.cache_control }); this.activeId = "default"; }
   }
   private async persist(): Promise<void> { await mkdir(path.dirname(this.filePath), { recursive: true }); await writeFile(this.filePath, `${JSON.stringify({ profiles: this.profiles, active_model_id: this.activeId }, null, 2)}\n`, "utf8"); }
@@ -61,6 +51,5 @@ export class ModelProfileStore {
 
 function providerKey(profile: { provider: "anthropic" | "openai"; base_url?: string }): string | undefined {
   if (profile.provider === "anthropic") return process.env.ANTHROPIC_API_KEY;
-  if (isOrcaRouterUrl(profile.base_url)) return process.env.ORCAROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
   return process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
 }

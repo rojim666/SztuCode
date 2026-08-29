@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, Play } from "@lucide/vue";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
-import ThinkingPanel from "./ThinkingPanel.vue";
+import ThinkingBlock from "./ThinkingBlock.vue";
+import ToolSummaryRow from "./ToolSummaryRow.vue";
 import TokenStream from "./TokenStream.vue";
-import ToolCallCard from "./ToolCallCard.vue";
-import ToolCallGroup from "./ToolCallGroup.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import AgentLogo from "./AgentLogo.vue";
 import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
@@ -15,12 +14,6 @@ import { formatTokens } from "../../utils/sessionStats";
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string }>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
-defineEmits<{
-  decide: [toolUseId: string, decision: PermissionDecision];
-  reverted: [runId: string];
-  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
-  continue: [runId?: string];
-}>();
 
 type TurnState = "running" | "waiting" | "failed" | "interrupted" | "done";
 type TurnView = {
@@ -39,6 +32,7 @@ type TurnView = {
   summaryText: string;
   thinkingText: string;
   allToolCalls: ToolCallEntry[];
+  completedCalls: ToolCallEntry[];
   liveToolCall?: ToolCallEntry;
   aggregatedStep: TimelineStep;
   steps: TimelineStep[];
@@ -55,6 +49,7 @@ type TurnView = {
 const now = ref(Date.now());
 const expandedTurns = ref(new Set<string | number>());
 const copiedTurn = ref<string | number | null>(null);
+const retryingTurn = ref<string | number | null>(null);
 let copyTimer: number | undefined;
 let clockTimer: number | undefined;
 onMounted(() => { clockTimer = window.setInterval(() => { now.value = Date.now(); }, 1000); });
@@ -151,8 +146,16 @@ function isTurnExpanded(turn: TurnView): boolean {
   return turn.state !== "running" && turn.state !== "waiting" && expandedTurns.value.has(turn.key);
 }
 
+function isTurnRunning(turn: TurnView): boolean {
+  return turn.state === "running" || turn.state === "waiting";
+}
+
 function liveToolCallOf(calls: ToolCallEntry[]): ToolCallEntry | undefined {
   return [...calls].reverse().find((call) => call.status === "running" || call.status === "awaiting_permission");
+}
+
+function completedToolCalls(calls: ToolCallEntry[]): ToolCallEntry[] {
+  return calls.filter((call) => call.status === "done" || call.status === "failed");
 }
 
 function toggleTurn(turn: TurnView) {
@@ -168,6 +171,20 @@ async function copyTurnSummary(turn: TurnView) {
   window.clearTimeout(copyTimer);
   copyTimer = window.setTimeout(() => { copiedTurn.value = null; }, 1600);
 }
+
+function retryTurn(turn: TurnView) {
+  if (!turn.runId || !turn.userMessage) return;
+  retryingTurn.value = turn.key;
+  emit("retry", turn.runId, turn.userMessage);
+}
+
+const emit = defineEmits<{
+  decide: [toolUseId: string, decision: PermissionDecision];
+  reverted: [runId: string];
+  retry: [runId: string, userMessage: string];
+  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
+  continue: [runId?: string];
+}>();
 
 function stepText(step: TimelineStep): string {
   return step.finalText || step.streamText || step.tokens.join("");
@@ -198,6 +215,81 @@ function orderedEvents(steps: TimelineStep[]): Array<TimelineEvent & { tool?: To
 
 function isFirstToolEvent(turn: TurnView, event: TimelineEvent): boolean {
   return turn.events.find((item) => item.kind === "tool" && item.tool)?.id === event.id;
+}
+
+type InlineSegment =
+  | { type: "text"; text: string; isFinal?: boolean }
+  | { type: "thinking"; text: string }
+  | { type: "tools"; calls: ToolCallEntry[] };
+
+function inlineSegments(turn: TurnView): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+  const isRunning = turn.state === "running" || turn.state === "waiting";
+  const visibleCalls = new Map<string, ToolCallEntry>();
+  for (const c of turn.completedCalls) visibleCalls.set(c.id, c);
+  if (turn.liveToolCall) visibleCalls.set(turn.liveToolCall.id, turn.liveToolCall);
+
+  // 按事件顺序穿插：思考块、文本块、工具摘要块
+  // 连续相同类型的事件合并为一个 segment
+  let pendingCalls: ToolCallEntry[] = [];
+  let pendingThinking = "";
+  let pendingText = "";
+
+  const flushCalls = () => {
+    if (pendingCalls.length) {
+      segments.push({ type: "tools", calls: [...pendingCalls] });
+      pendingCalls = [];
+    }
+  };
+  const flushThinking = () => {
+    if (pendingThinking.trim()) {
+      segments.push({ type: "thinking", text: pendingThinking.trim() });
+      pendingThinking = "";
+    }
+  };
+  const flushText = () => {
+    if (pendingText.trim()) {
+      segments.push({ type: "text", text: pendingText.trim() });
+      pendingText = "";
+    }
+  };
+
+  for (const event of turn.events) {
+    if (event.kind === "thinking") {
+      flushCalls();
+      flushText();
+      if (event.text) pendingThinking += (pendingThinking ? "\n\n" : "") + event.text;
+    } else if (event.kind === "text") {
+      flushCalls();
+      flushThinking();
+      if (event.text) pendingText += (pendingText ? "\n\n" : "") + event.text;
+    } else if (event.kind === "tool" && event.tool && visibleCalls.has(event.tool.id)) {
+      flushText();
+      flushThinking();
+      pendingCalls.push(event.tool);
+      visibleCalls.delete(event.tool.id);
+    }
+  }
+  // 追加剩余未在events中出现的调用（通常是liveToolCall）
+  for (const c of visibleCalls.values()) pendingCalls.push(c);
+
+  flushText();
+  flushThinking();
+  flushCalls();
+
+  return segments;
+}
+
+// 判断是否应该显示"正在规划下一步"（运行中且当前没有文本输出、没有活跃工具调用时）
+function shouldShowPlanningHint(turn: TurnView): boolean {
+  if (turn.state !== "running" && turn.state !== "waiting") return false;
+  // 有 liveToolCall 说明正在执行工具，显示"正在执行..."由工具摘要行自己处理
+  if (turn.liveToolCall) return false;
+  // 如果最后一个segment是文本且有streaming内容，说明LLM正在输出文字，不显示规划提示
+  const segs = inlineSegments(turn);
+  const lastSeg = segs[segs.length - 1];
+  if (lastSeg?.type === "text") return false;
+  return true;
 }
 
 function latestTextOf(events: Array<TimelineEvent & { tool?: ToolCallEntry }>, steps: TimelineStep[]): string {
@@ -238,6 +330,7 @@ const turns = computed<TurnView[]>(() => {
     const runStartedAt = steps.find((step) => step.runStartedAt)?.runStartedAt ?? group.userMessageTime;
     const text = steps.map((step) => step.finalText || step.streamText || step.tokens.join("")).filter(Boolean).join("\n\n");
     const allToolCalls = toolCallsOf(steps);
+    const completedCalls = completedToolCalls(allToolCalls);
     const liveToolCall = liveToolCallOf(allToolCalls);
     const thinkingText = thinkingTextOf(steps);
     const aggregatedStep = aggregateStep(steps);
@@ -269,6 +362,7 @@ const turns = computed<TurnView[]>(() => {
       summaryText,
       thinkingText,
       allToolCalls,
+      completedCalls,
       liveToolCall,
       aggregatedStep,
       steps,
@@ -291,7 +385,7 @@ const turns = computed<TurnView[]>(() => {
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
       class="timeline-step"
     >
       <div v-if="turn.userMessage" class="timeline-user-message">
@@ -304,53 +398,80 @@ const turns = computed<TurnView[]>(() => {
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
           <ContextInjectionRow v-for="entry in turn.contextInjections" :key="entry.id" :entry="entry" />
           <button
-            v-if="turn.hasActivity || turn.runStats"
+            v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"
             class="turn-history-toggle"
             :class="{ expanded: isTurnExpanded(turn) }"
             :aria-expanded="isTurnExpanded(turn)"
-            :disabled="turn.state === 'running' || turn.state === 'waiting'"
             @click="toggleTurn(turn)"
           >
-            <span>{{ elapsedLabel(turn) }}</span>
+            <span>{{ isTurnExpanded(turn) ? '收起过程' : `查看过程 · ${elapsedLabel(turn)}` }}</span>
             <ChevronDown :size="15" />
           </button>
 
-          <div v-if="turn.liveToolCall" class="turn-live-action" role="status">
-            <ToolCallCard :call="turn.liveToolCall" :expanded="true" />
+          <!-- 折叠态（已完成且未展开）：只展示最终输出文字 -->
+          <div v-if="!isTurnRunning(turn) && !isTurnExpanded(turn)" class="turn-event-stream turn-event-stream--collapsed">
+            <div v-if="turn.text || turn.summaryText" class="turn-inline-text">
+              <TokenStream :tokens="[]" :final-text="turn.text || turn.summaryText" />
+            </div>
           </div>
 
-          <!-- 折叠态思考行：运行中跟随增量输出；结算后继续保留到历史区展开，
-               让一次到达的大块 thinking 也能按顺序播放完，不会在 run.finished 时被直接卸载。 -->
-          <ThinkingPanel
-            v-if="turn.thinkingText && !isTurnExpanded(turn)"
-            :text="turn.thinkingText"
-            :completed="turn.state !== 'running'"
-          />
+          <!-- 展开态 / 运行中：事件流内联渲染，思考块/文本/工具摘要交替穿插 -->
+          <div v-else class="turn-event-stream">
+            <template v-for="(segment, segIdx) in inlineSegments(turn)" :key="segIdx">
+              <!-- 思考块：独立折叠行 -->
+              <ThinkingBlock
+                v-if="segment.type === 'thinking'"
+                :text="segment.text"
+                :running="turn.state === 'running' || turn.state === 'waiting'"
+                :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
+              />
+              <!-- 文本块：Agent输出的文字内容 -->
+              <div v-else-if="segment.type === 'text'" class="turn-inline-text">
+                <TokenStream :tokens="[]" :final-text="segment.text" />
+              </div>
+              <!-- 工具摘要：灰色折叠行，点击展开详情 -->
+              <ToolSummaryRow
+                v-else-if="segment.type === 'tools'"
+                :calls="segment.calls"
+                :running="turn.state === 'running' || turn.state === 'waiting'"
+              />
+            </template>
+            <!-- 进行中提示："正在规划下一步" -->
+            <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">
+              <LoaderCircle class="spin" :size="14" />
+              <span>正在规划下一步</span>
+            </div>
+          </div>
+
+          <!-- 文字下方操作栏：复制 + 重试，hover/focus 时显现 -->
+          <div v-if="turn.text || turn.summaryText || (turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting')" class="turn-actions" :class="{ 'turn-actions--busy': retryingTurn === turn.key }">
+            <button
+              v-if="turn.text || turn.summaryText"
+              type="button"
+              class="turn-action-btn"
+              :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'"
+              :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'"
+              @click="copyTurnSummary(turn)"
+            >
+              <Check v-if="copiedTurn === turn.key" :size="14" :stroke-width="1.8" />
+              <Copy v-else :size="14" :stroke-width="1.8" />
+            </button>
+            <button
+              v-if="turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting'"
+              type="button"
+              class="turn-action-btn"
+              title="回退本次修改并重新执行"
+              aria-label="回退本次修改并重新执行"
+              :disabled="retryingTurn === turn.key"
+              @click="retryTurn(turn)"
+            >
+              <LoaderCircle v-if="retryingTurn === turn.key" class="spin" :size="14" :stroke-width="1.8" />
+              <RotateCw v-else :size="14" :stroke-width="1.8" />
+            </button>
+          </div>
 
           <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
-
-          <section v-if="isTurnExpanded(turn)" class="turn-history" aria-label="历史输出与调用">
-            <template v-for="event in turn.events" :key="event.id">
-              <div v-if="event.kind === 'text' && event.text && event.text !== turn.summaryText" class="turn-history-text"><TokenStream :tokens="[]" :final-text="event.text" /></div>
-              <ThinkingPanel v-else-if="event.kind === 'thinking' && event.text" :text="event.text" :completed="turn.state !== 'running'" />
-              <div
-                v-else-if="event.kind === 'tool' && event.tool && (turn.allToolCalls.length <= 2 || isFirstToolEvent(turn, event))"
-                class="turn-history-actions"
-              >
-                <ToolCallGroup v-if="turn.allToolCalls.length > 2" :calls="turn.allToolCalls" />
-                <ToolCallCard v-else :call="event.tool" />
-              </div>
-            </template>
-          </section>
-
-          <section v-if="turn.summaryText" class="turn-result" aria-label="任务结果">
-            <TokenStream :tokens="[]" :final-text="turn.summaryText" />
-            <button v-if="turn.text || turn.summaryText" type="button" class="turn-copy" :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'" :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'" @click="copyTurnSummary(turn)">
-              <Check v-if="copiedTurn === turn.key" :size="15" :stroke-width="1.8" />
-              <Copy v-else :size="15" :stroke-width="1.8" />
-            </button>
-          </section>
 
           <!-- 每轮 Token 消耗与缓存命中：展开历史时展示，运行中轮次不渲染 -->
           <div v-if="turn.runStats && isTurnExpanded(turn)" class="turn-usage" aria-label="本轮 Token 消耗与缓存命中">

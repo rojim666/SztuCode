@@ -12,6 +12,7 @@ const props = defineProps<{
   forceLanguage?: string;
   mediaBase64?: string | null;
   mimeType?: string | null;
+  hideChrome?: boolean;
 }>();
 
 const languageByExtension: Record<string, { key: string; label: string }> = {
@@ -42,13 +43,13 @@ const highlightedLines = computed(() => {
 </script>
 
 <template>
-  <div class="code-preview">
-    <div class="code-preview-meta">
+  <div class="code-preview" :class="{ 'code-preview--bare': hideChrome }">
+    <div v-if="!hideChrome" class="code-preview-meta">
       <span class="format-badge">{{ language.label }}</span>
       <span class="encoding-badge">{{ encoding || "UTF-8" }}</span>
       <span v-if="truncated" class="truncated-badge"><AlertTriangle :size="12" />仅显示前 1 MB</span>
     </div>
-    <div class="preview-breadcrumb">
+    <div v-if="!hideChrome" class="preview-breadcrumb">
       <span v-for="(part, index) in pathParts" :key="index">{{ part }}<i v-if="index < pathParts.length - 1">/</i></span>
     </div>
     <div v-if="mediaBase64 && mimeType" class="media-preview">

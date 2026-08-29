@@ -3,7 +3,6 @@ import type { ToolRegistry } from "../tools.js";
 import { SettingsStore } from "../settings.js";
 import { AnthropicMessagesProvider } from "./anthropic.js";
 import { OpenAiCompatibleProvider } from "./openai.js";
-import { OrcaRouterProvider, isOrcaRouterUrl } from "./orcarouter.js";
 
 export class ConfigurableProvider implements ModelProvider {
   constructor(private readonly settings: SettingsStore) {}
@@ -16,12 +15,10 @@ export class ConfigurableProvider implements ModelProvider {
         return new AnthropicMessagesProvider({ apiKey, baseUrl: config.base_url || process.env.ANTHROPIC_BASE_URL, model: config.model, maxTokens: config.max_output_tokens, timeoutMs: config.timeout_s * 1000, temperature: config.temperature, topP: config.top_p, reasoningEffort: config.reasoning_effort, cacheControl: config.cache_control }).complete(messages, tools, signal, onToken, invocation, onThinking);
       }
       const baseUrl = config.base_url || (process.env.OPENAI_BASE_URL ?? process.env.DEEPSEEK_BASE_URL);
-      const envKey = isOrcaRouterUrl(baseUrl) ? process.env.ORCAROUTER_API_KEY ?? process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY : process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
+      const envKey = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
       const apiKey = config.keyless ? undefined : config.api_key ?? envKey;
       if (!config.keyless && !apiKey) throw new Error("OpenAI-compatible API key is not configured");
       const shared = { apiKey, baseUrl, model: config.model, maxOutputTokens: config.max_output_tokens, temperature: config.temperature, topP: config.top_p, reasoningEffort: config.reasoning_effort, timeoutMs: config.timeout_s * 1000, stream: true, cacheControl: config.cache_control };
-      // OrcaRouter 的 Messages 端点只覆盖 Claude，chat-completions 端点覆盖全部上游，故统一降级到后者。
-      if (isOrcaRouterUrl(baseUrl)) return new OrcaRouterProvider({ ...shared, apiFormat: config.api_format }).complete(messages, tools, signal, onToken, invocation, onThinking);
       return new OpenAiCompatibleProvider({ ...shared, apiFormat: config.api_format }).complete(messages, tools, signal, onToken, invocation, onThinking);
     };
     let lastError: unknown;
@@ -32,15 +29,14 @@ export class ConfigurableProvider implements ModelProvider {
   }
 }
 
-/** 无配置文件时的兜底入口：OrcaRouter 密钥优先，其次 OpenAI / DeepSeek，最后 Anthropic。 */
+/** 无配置文件时的兜底入口：优先 Anthropic，其次 OpenAI / DeepSeek。 */
 export function providerFromEnvironment(): ModelProvider {
   const model = process.env.SZTU_MODEL;
-  if (process.env.ORCAROUTER_API_KEY) return new OrcaRouterProvider({ apiKey: process.env.ORCAROUTER_API_KEY, baseUrl: process.env.ORCAROUTER_BASE_URL, model: model ?? "orcarouter/auto" });
-  if ((process.env.SZTU_PROVIDER ?? "").toLowerCase() === "anthropic" || process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY) {
+  if ((process.env.SZTU_PROVIDER ?? "").toLowerCase() === "anthropic" || (process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY && !process.env.DEEPSEEK_API_KEY)) {
     return new AnthropicMessagesProvider({ apiKey: process.env.ANTHROPIC_API_KEY ?? "", baseUrl: process.env.ANTHROPIC_BASE_URL, model: model ?? "claude-3-5-sonnet-latest" });
   }
   const apiKey = process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) return { async complete() { throw new Error("ORCAROUTER_API_KEY, OPENAI_API_KEY or DEEPSEEK_API_KEY is required"); } };
+  if (!apiKey) return { async complete() { throw new Error("OPENAI_API_KEY or DEEPSEEK_API_KEY is required"); } };
   return new OpenAiCompatibleProvider({ apiKey, baseUrl: process.env.OPENAI_BASE_URL ?? process.env.DEEPSEEK_BASE_URL, model: model ?? "gpt-4o-mini" });
 }
 

@@ -25,7 +25,7 @@ watch(() => props.items.length, (length) => {
 </script>
 
 <template>
-  <section class="queue-dock" :class="{ 'queue-dock--queued': items.length }">
+  <section class="queue-dock" :class="{ 'queue-dock--queued': items.length || running }">
     <div v-if="items.length" class="queue-dock__queue" aria-label="待处理任务">
       <button
         v-if="items.length > 1"
@@ -34,19 +34,19 @@ watch(() => props.items.length, (length) => {
         :aria-expanded="expanded"
         @click="expanded = !expanded"
       >
-        <ListOrdered :size="16" />
+        <ListOrdered :size="14" />
         <span>{{ items.length }} 条待处理</span>
-        <ChevronDown :size="15" />
+        <ChevronDown :size="13" />
       </button>
 
       <div v-if="items.length === 1 || expanded" class="queue-dock__items">
         <article v-for="item in visibleItems" :key="item.id" class="queue-dock__item">
-          <ListOrdered class="queue-dock__lead" :size="15" />
+          <ListOrdered class="queue-dock__lead" :size="13" />
           <span class="queue-dock__text" :title="item.text">{{ item.text }}</span>
           <small v-if="item.attachmentCount">{{ item.attachmentCount }} 个附件</small>
           <div class="queue-dock__actions">
-            <button type="button" class="queue-dock__action" title="退回输入框编辑" aria-label="退回输入框编辑" :disabled="busyId === item.id" @click="emit('edit', item.id)"><Pencil :size="15" /></button>
-            <button type="button" class="queue-dock__action queue-dock__action--danger" title="删除" aria-label="删除待处理任务" :disabled="busyId === item.id" @click="emit('remove', item.id)"><Trash2 :size="15" /></button>
+            <button type="button" class="queue-dock__action" title="退回输入框编辑" aria-label="退回输入框编辑" :disabled="busyId === item.id" @click="emit('edit', item.id)"><Pencil :size="13" /></button>
+            <button type="button" class="queue-dock__action queue-dock__action--danger" title="删除" aria-label="删除待处理任务" :disabled="busyId === item.id" @click="emit('remove', item.id)"><Trash2 :size="13" /></button>
             <button
               type="button"
               class="queue-dock__action queue-dock__action--accent"
@@ -54,7 +54,7 @@ watch(() => props.items.length, (length) => {
               aria-label="转入当前轮"
               :disabled="!running || busyId === item.id"
               @click="emit('steer', item.id)"
-            ><CornerUpLeft :size="15" /></button>
+            ><CornerUpLeft :size="13" /></button>
           </div>
         </article>
       </div>

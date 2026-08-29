@@ -21,6 +21,7 @@ export type ContextInjectionEntry = {
   chars: number;    // 注入内容字符数
   preview: string;  // 折叠时摘要（首行/前 100 字符）
   text?: string;    // 展开时完整正文（缺省用 preview）
+  files?: string[]; // 注入涉及的文件（旧事件缺省时由前端从正文推断）
 };
 
 export type TimelineEvent = {

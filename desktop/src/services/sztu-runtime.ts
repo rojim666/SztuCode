@@ -77,7 +77,7 @@ export type Session = {
 };
 export type RunStats = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; elapsed_s: number };
 export type ContextInjectionRecord = {
-  run_id: string; source: string; label: string; chars: number; preview: string; text: string; ts?: string;
+  run_id: string; source: string; label: string; chars: number; preview: string; text: string; files?: string[]; ts?: string;
 };
 export type SessionHistory = {
   messages: unknown[];
@@ -574,4 +574,19 @@ export async function respondUserQuestion(
     session_id: pending.session_id,
     answers,
   });
+}
+
+export interface ExternalAppInfo {
+  id: string;
+  name: string;
+  icon: string;
+  available: boolean;
+}
+
+export async function listExternalApps(): Promise<ExternalAppInfo[]> {
+  return invoke("list_external_apps");
+}
+
+export async function openPathWithApp(path: string, appId: string): Promise<void> {
+  await invoke("open_path_with_app", { path, appId });
 }

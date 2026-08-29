@@ -3,7 +3,7 @@ import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, re
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Workflow, X,
+  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,7 +17,6 @@ import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 // 暂时隐藏“修改了 N 个文件”提示，保留组件以便后续恢复。
 // import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
-import PipelineStream from "./components/timeline/pipeline/PipelineStream.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
@@ -35,9 +34,9 @@ import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockIt
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listPendingUserQuestions, listSessions,
-  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion,
-  resumeWorkspace, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
+  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listPendingUserQuestions, listSessions,
+  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
+  revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
 
@@ -160,27 +159,205 @@ const activePrompt = ref<HTMLTextAreaElement | null>(null);
 // 会话流“回到底部”悬浮按钮：离开底部超过阈值时显示，点击平滑回底
 const taskStreamEl = ref<HTMLElement | null>(null);
 const streamScrolledUp = ref(false);
+let userScrollPaused = false; // 用户主动向上滚动时暂停自动跟随
+let lastScrollTop = 0;
+
+function isNearBottom(el: HTMLElement, threshold = 40) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+}
+
 function handleTaskStreamScroll() {
   const el = taskStreamEl.value;
   if (!el) return;
-  streamScrolledUp.value = el.scrollHeight - el.scrollTop - el.clientHeight > 120;
+  const st = el.scrollTop;
+
+  if (userScrollPaused) {
+    // 用户滚回到底部附近时恢复自动跟随
+    if (isNearBottom(el, 60)) {
+      userScrollPaused = false;
+      streamScrolledUp.value = false;
+    }
+  } else {
+    // 检测用户是否主动向上滚动：scrollTop 减小（拖拽滚动条、键盘等）
+    // 阈值2px避免自动滚动时的微小抖动误判
+    if (st < lastScrollTop - 2 && !isNearBottom(el, 150)) {
+      userScrollPaused = true;
+      streamScrolledUp.value = true;
+    } else {
+      streamScrolledUp.value = !isNearBottom(el, 120);
+    }
+  }
+
+  lastScrollTop = st;
 }
+
+// 用户通过wheel/touch主动滚动时暂停自动跟随
+function markUserScrolling() {
+  const el = taskStreamEl.value;
+  if (!el) return;
+  if (isNearBottom(el, 80)) return;
+  userScrollPaused = true;
+  streamScrolledUp.value = true;
+}
+
 function scrollTaskStreamToBottom() {
   const el = taskStreamEl.value;
   if (!el) return;
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   streamScrolledUp.value = false;
+  userScrollPaused = false;
+  lastScrollTop = el.scrollHeight;
 }
+
 let autoScrollFrame: number | undefined;
 function keepTaskStreamAtBottom() {
-  if (streamScrolledUp.value || autoScrollFrame !== undefined) return;
+  if (userScrollPaused || autoScrollFrame !== undefined) return;
   autoScrollFrame = window.requestAnimationFrame(() => {
     autoScrollFrame = undefined;
     const el = taskStreamEl.value;
-    if (!el || streamScrolledUp.value) return;
+    if (!el || userScrollPaused) return;
+    // 双重检查：只在接近底部时才自动滚，避免在用户阅读中间内容时强行拉回
+    if (!isNearBottom(el, 150)) {
+      streamScrolledUp.value = true;
+      return;
+    }
     el.scrollTop = el.scrollHeight;
+    lastScrollTop = el.scrollHeight;
   });
 }
+
+// 会话轮次圆点导航（Trae Work风格）
+const TURN_DOT_VISIBLE = 11; // 固定可见圆点数量（奇数，中间为active）
+const TURN_DOT_SIZE = 8;     // 圆点直径
+const TURN_DOT_GAP = 8;      // 圆点间距
+const TURN_DOT_PAD = 16;     // rail 上下 padding
+const TURN_DOT_STEP = TURN_DOT_SIZE + TURN_DOT_GAP; // 每个圆点占用高度
+
+const turnDotActive = ref(-1);
+const turnDotCount = ref(0);
+const turnDotRailEl = ref<HTMLElement | null>(null);
+const turnDotWrapEl = ref<HTMLElement | null>(null);
+const turnDotHoverIdx = ref(-1);
+const turnDotBubbleTop = ref(0);
+const turnLabels = ref<string[]>([]);
+let turnObserver: IntersectionObserver | undefined;
+let turnElements: HTMLElement[] = [];
+let isScrollingToTurn = false;
+let scrollToTurnTimer: number | undefined;
+let turnScrollRaf: number | undefined;
+
+function extractTurnLabels(steps: TimelineStep[]): string[] {
+  const labels: string[] = [];
+  for (const step of steps) {
+    const msg = (step.userMessage ?? "").trim();
+    if (!msg) continue;
+    // 取第一行，去除markdown，截断为简短摘要
+    const firstLine = msg.split(/\r?\n/)[0]?.replace(/[#*`_~\[\]]/g, "").trim() ?? "";
+    labels.push(firstLine.length > 60 ? firstLine.slice(0, 57) + "…" : firstLine || `第 ${labels.length + 1} 轮`);
+  }
+  return labels;
+}
+
+function scrollRailToActive() {
+  const rail = turnDotRailEl.value;
+  if (!rail) return;
+  const idx = turnDotActive.value;
+  if (idx < 0) return;
+  // 让 active 圆点位于 rail 垂直居中位置：dotCenter - (railHeight/2 - dotRadius)
+  const dotCenter = TURN_DOT_PAD + idx * TURN_DOT_STEP + TURN_DOT_SIZE / 2;
+  const targetScroll = dotCenter - rail.clientHeight / 2;
+  if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf);
+  turnScrollRaf = requestAnimationFrame(() => {
+    rail.scrollTo({ top: Math.max(0, targetScroll), behavior: "smooth" });
+  });
+}
+
+function refreshTurnObserver() {
+  turnObserver?.disconnect();
+  const el = taskStreamEl.value;
+  if (!el) return;
+  const steps = el.querySelectorAll<HTMLElement>(".execution-timeline > .timeline-step");
+  turnElements = Array.from(steps);
+  turnDotCount.value = turnElements.length;
+  turnLabels.value = extractTurnLabels(orderedTimeline.value);
+  if (!turnElements.length) { turnDotActive.value = -1; return; }
+
+  turnObserver = new IntersectionObserver((entries) => {
+    if (isScrollingToTurn) return;
+    let bestIdx = -1;
+    let bestTop = Infinity;
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        const idx = turnElements.indexOf(entry.target as HTMLElement);
+        const rect = entry.boundingClientRect;
+        const containerTop = el.getBoundingClientRect().top;
+        const distance = Math.abs(rect.top - containerTop - 60);
+        if (distance < bestTop) {
+          bestTop = distance;
+          bestIdx = idx;
+        }
+      }
+    }
+    if (bestIdx === -1) {
+      for (let i = 0; i < turnElements.length; i++) {
+        const rect = turnElements[i].getBoundingClientRect();
+        const containerRect = el.getBoundingClientRect();
+        if (rect.bottom > containerRect.top + 20 && rect.top < containerRect.bottom - 20) {
+          bestIdx = i;
+          break;
+        }
+      }
+    }
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
+      bestIdx = turnElements.length - 1;
+    }
+    if (el.scrollTop < 30 && turnElements.length) {
+      bestIdx = 0;
+    }
+    if (bestIdx >= 0) {
+      const changed = turnDotActive.value !== bestIdx;
+      turnDotActive.value = bestIdx;
+      if (changed) nextTick(scrollRailToActive);
+    }
+  }, {
+    root: el,
+    threshold: [0, 0.1, 0.3, 0.5, 0.9, 1],
+    rootMargin: "-10% 0px -40% 0px",
+  });
+  for (const step of turnElements) turnObserver.observe(step);
+  nextTick(scrollRailToActive);
+}
+
+function scrollToTurn(idx: number) {
+  const el = taskStreamEl.value;
+  if (!el || !turnElements[idx]) return;
+  isScrollingToTurn = true;
+  const prev = turnDotActive.value;
+  turnDotActive.value = idx;
+  if (prev !== idx) nextTick(scrollRailToActive);
+  const target = turnElements[idx];
+  const containerTop = el.getBoundingClientRect().top;
+  const targetTop = target.getBoundingClientRect().top;
+  el.scrollBy({ top: targetTop - containerTop - 24, behavior: "smooth" });
+  window.clearTimeout(scrollToTurnTimer);
+  scrollToTurnTimer = window.setTimeout(() => { isScrollingToTurn = false; }, 700);
+}
+
+function handleDotHover(idx: number, event: FocusEvent | MouseEvent) {
+  turnDotHoverIdx.value = idx;
+  // 用相对于wrap的位置定位气泡（垂直居中于圆点）
+  nextTick(() => {
+    const wrap = turnDotWrapEl.value;
+    const dot = event.currentTarget as HTMLElement | null;
+    if (!wrap || !dot) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const dotRect = dot.getBoundingClientRect();
+    // 气泡top值 = 圆点中心 - 气泡高度一半。先用圆点中心 - 14px（约为单行文本半高）
+    turnDotBubbleTop.value = dotRect.top - wrapRect.top + dotRect.height / 2 - 14;
+  });
+}
+
+// 监听 orderedTimeline 和 DOM 变化，刷新观察器（在 orderedTimeline 定义后注册，见下方）
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
@@ -211,6 +388,7 @@ const inspectorRendered = ref(true);
 // 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
 const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
+const inspectorResizing = ref(false);
 // 响应式窗口宽度 + 窄窗自动收起右侧功能栏的追踪标志
 const windowWidth = ref(window.innerWidth);
 let inspectorAutoCollapsed = false;
@@ -239,10 +417,6 @@ const webviewZoom = ref(Number(localStorage.getItem("sztu.webviewZoom")) || 1);
 let lastEditableElement: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null = null;
 const settingsButton = ref<HTMLButtonElement | null>(null);
 const appearanceSettings = ref<AppearanceSettings>(loadAppearanceSettings());
-// 时间线渲染方式：classic=按轮次折叠、结束后回放；pipeline=线性流水线、全程就地追加。
-// 两套并存可随时切换对比，跑稳后再移除 classic 分支。
-const timelineView = ref<"classic" | "pipeline">(localStorage.getItem("sztu.timelineView") === "pipeline" ? "pipeline" : "classic");
-watch(timelineView, (value) => localStorage.setItem("sztu.timelineView", value));
 const currentStepByRun = new Map<string, number>();
 const runStepBase = new Map<string, number>(); // 每个 run 的 step 起点偏移，避免跨 run 步号冲突
 const liveRunUsage = new Map<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number }>();
@@ -357,6 +531,8 @@ const filteredLauncherWorkspaces = computed(() => {
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
 // 流式输出和思考动画不断改变内容高度；用户未主动上滑时持续跟随最新输出。
 watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
+// 轮次变化时刷新圆点导航观察器
+watch(orderedTimeline, () => { nextTick(refreshTurnObserver); }, { deep: true });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
@@ -525,25 +701,43 @@ function setInspectorOpen(next: boolean) {
 }
 function toggleInspector() { setInspectorOpen(!inspectorOpen.value); }
 // 拖拽分割线调整左右面板宽度比，并限制最小/最大宽度
-function startDividerDrag(event: MouseEvent) {
+function startDividerDrag(event: PointerEvent) {
+  if (event.button !== 0) return;
   event.preventDefault();
   const startX = event.clientX;
   const startWidth = inspectorWidth.value;
-  const container = (event.currentTarget as HTMLElement).parentElement;
-  const maxWidth = Math.max(340, (container?.clientWidth ?? 1200) - 360); // 左侧对话区至少保留 360
+  const target = event.currentTarget as HTMLElement;
+  const container = target.parentElement;
+  const maxWidth = Math.max(340, (container?.clientWidth ?? 1200) - CONVERSATION_MIN_WIDTH);
   const minWidth = 340;
-  function onMove(ev: MouseEvent) {
-    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, startWidth + (startX - ev.clientX)));
-  }
-  function onUp() {
-    localStorage.setItem("sztu.inspectorWidth", String(inspectorWidth.value));
-    document.body.style.cursor = "";
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  }
+  let rafId = 0;
+  let pendingWidth = startWidth;
+  inspectorResizing.value = true;
   document.body.style.cursor = "col-resize";
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onUp);
+  document.body.style.userSelect = "none";
+  target.setPointerCapture?.(event.pointerId);
+  const flush = () => {
+    rafId = 0;
+    inspectorWidth.value = Math.min(maxWidth, Math.max(minWidth, pendingWidth));
+  };
+  function onMove(ev: PointerEvent) {
+    pendingWidth = startWidth + (startX - ev.clientX);
+    if (!rafId) rafId = requestAnimationFrame(flush);
+  }
+  function finish() {
+    if (rafId) { cancelAnimationFrame(rafId); flush(); }
+    inspectorResizing.value = false;
+    localStorage.setItem("sztu.inspectorWidth", String(Math.round(inspectorWidth.value)));
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    target.releasePointerCapture?.(event.pointerId);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", finish);
+    document.removeEventListener("pointercancel", finish);
+  }
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", finish, { once: true });
+  document.addEventListener("pointercancel", finish, { once: true });
 }
 const slashQuery = computed(() => {
   const match = prompt.value.match(/^\/([^\s]*)$/);
@@ -797,6 +991,7 @@ function hydrateTimeline(
       chars: Number(injection.chars ?? text.length),
       preview: String(injection.preview ?? ""),
       text,
+      files: Array.isArray(injection.files) ? injection.files.filter((file): file is string => typeof file === "string") : undefined,
     };
     next.set(injectionStep, {
       ...current,
@@ -963,6 +1158,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
       chars: Number(event.chars ?? 0),
       preview: String(event.preview ?? ""),
       text: String(event.text ?? event.preview ?? ""),
+      files: Array.isArray(event.files) ? event.files.filter((file): file is string => typeof file === "string") : undefined,
     };
     setStep(step, (current) => ({ ...current, contextInjections: [...(current.contextInjections ?? []), entry] }));
     return;
@@ -1501,19 +1697,10 @@ async function stopActiveRun() {
     if (sending.value && activeId.value) stopRequestedSessions.add(activeId.value);
     return;
   }
-  const sessionId = activeId.value;
-  // 先解除本地运行态，避免取消响应被事件流背压拖住时按钮仍显示为运行中。
-  if (sessionId) {
-    const view = ensureSessionView(sessionId);
-    if (view.activeRunId === runId) {
-      view.activeRunId = null;
-      view.runActive = false;
-    }
-  }
   try {
     await cancelRun(runId);
   } catch (error) {
-    // daemon 可能已执行取消，但取消响应被高频事件流延迟；run.finished 仍会完成最终收尾。
+    // 保持运行态与停止入口，用户可以再次发起取消；最终状态只由 run.finished 收尾。
     console.warn("停止任务请求未及时返回", error);
   }
 }
@@ -1753,6 +1940,22 @@ function handleReverted(runId: string) {
   }
   timeline.value = next;
   void refreshIndex(false);
+}
+// 重试：回退该 run 的所有文件改动，再以相同的用户消息重跑
+async function handleRetry(runId: string, userMessage: string) {
+  const wsId = activeWorkspace.value?.workspace_id;
+  if (!wsId) return;
+  try {
+    const changes = await listChanges(wsId, runId);
+    const paths = changes.map((c) => c.path);
+    if (paths.length) {
+      await revertChanges(wsId, runId, paths);
+    }
+    handleReverted(runId);
+    await submitTask(userMessage, null);
+  } catch (error) {
+    window.alert(`重试失败：${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 // 中断任务的"继续执行"：向当前会话补发一条续跑消息，复用交接摘要作为上下文
 function handleContinue() {
@@ -2013,7 +2216,6 @@ function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
-function toggleTimelineView() { timelineView.value = timelineView.value === "pipeline" ? "classic" : "pipeline"; }
 async function submitChat(content: string) {
   const { content: payload, images } = buildMessagePayload(content);
   await submitTask(payload, null, images);
@@ -2087,24 +2289,37 @@ function startSidebarDrag(event: PointerEvent) {
   if (sidebarCollapsed.value || event.button !== 0) return;
   event.preventDefault();
   stopSidebarDragListeners?.();
+  const target = event.currentTarget as HTMLElement;
+  target.setPointerCapture?.(event.pointerId);
   const startX = event.clientX;
   const startWidth = sidebarWidth.value;
   sidebarResizing.value = true;
   sidebarAutoCollapsed = false;
   document.body.style.cursor = "col-resize";
   document.body.style.userSelect = "none";
+  let rafId = 0;
+  let pendingWidth = startWidth;
+  let pendingOverPull = 0;
+  let pendingArmed = false;
+  const flush = () => {
+    rafId = 0;
+    sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, pendingWidth));
+    sidebarPull.value = -Math.min(14, pendingOverPull * .28);
+    sidebarCollapseArmed.value = pendingArmed;
+  };
   const onMove = (moveEvent: PointerEvent) => {
-    const rawWidth = startWidth + moveEvent.clientX - startX;
-    const overPull = Math.max(0, SIDEBAR_MIN_WIDTH - rawWidth);
-    sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, rawWidth));
-    sidebarPull.value = -Math.min(14, overPull * .28);
-    sidebarCollapseArmed.value = overPull >= SIDEBAR_COLLAPSE_PULL;
+    pendingWidth = startWidth + moveEvent.clientX - startX;
+    pendingOverPull = Math.max(0, SIDEBAR_MIN_WIDTH - pendingWidth);
+    pendingArmed = pendingOverPull >= SIDEBAR_COLLAPSE_PULL;
+    if (!rafId) rafId = requestAnimationFrame(flush);
   };
   const finish = () => {
+    if (rafId) { cancelAnimationFrame(rafId); flush(); }
     stopSidebarDragListeners?.();
     sidebarResizing.value = false;
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
+    target.releasePointerCapture?.(event.pointerId);
     if (sidebarCollapseArmed.value) sidebarCollapsed.value = true;
     else localStorage.setItem("sztu.sidebarWidth", String(Math.round(sidebarWidth.value)));
     sidebarCollapseArmed.value = false;
@@ -2173,6 +2388,12 @@ function handleWindowResize() {
 }
 function handleGlobalShortcut(event: KeyboardEvent) {
   const mod = event.ctrlKey || event.metaKey;
+  // Ctrl/Cmd+Escape 是运行中的紧急停止快捷键，不受输入框焦点影响。
+  if (mod && event.key === "Escape" && isRunActive.value) {
+    event.preventDefault();
+    void stopActiveRun();
+    return;
+  }
   if (mod && event.key.toLowerCase() === "n") { event.preventDefault(); beginTask(); }
   if (mod && event.key.toLowerCase() === "o") { event.preventDefault(); void openLocalProject(); }
   if (mod && event.key.toLowerCase() === "e") { event.preventDefault(); openPage("source-control"); }
@@ -2188,6 +2409,7 @@ function handleGlobalShortcut(event: KeyboardEvent) {
   if (event.key === "Escape") {
     if (activeAppMenu.value) closeAppMenu();
     else if (permissionConfirmOpen.value) permissionConfirmOpen.value = false;
+    else if (isRunActive.value) void stopActiveRun();
     else closeLauncherMenus();
   }
 }
@@ -2245,11 +2467,38 @@ function onOpenInAppBrowser(event: Event) {
   }
 }
 
+// AI 输出中的文件链接 → 在右侧功能栏「文件」标签页中预览
+async function onOpenFileLink(event: Event) {
+  const rawPath = (event as CustomEvent<{ path: string }>).detail?.path;
+  if (!rawPath) return;
+  const ws = activeWorkspace.value;
+  if (!ws?.path) return;
+  // 确保右侧功能栏是打开的
+  setInspectorOpen(true);
+  // 拼接 workspace 绝对路径，交给 Inspector 的 FileTree 解析和预览
+  let targetPath = rawPath.trim();
+  // 去掉行号后缀，如 foo.ts:25
+  targetPath = targetPath.replace(/:\d+(?:-\d+)?$/, "");
+  let fullPath: string;
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(targetPath)) {
+    fullPath = targetPath;
+  } else {
+    const sep = ws.path.includes("\\") ? "\\" : "/";
+    const base = ws.path.replace(/[\\/]+$/, "");
+    const rel = targetPath.replace(/^[./\\]+/, "");
+    fullPath = `${base}${sep}${rel}`;
+  }
+  // 等待 inspector 渲染后调用 previewFile
+  await nextTick();
+  inspectorRef.value?.previewFile(fullPath);
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
   handleWindowResize(); // 初始化窗口宽度与窄窗自动收起状态
   window.addEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
+  window.addEventListener("sztu:open-file", onOpenFileLink);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
@@ -2264,6 +2513,7 @@ onMounted(() => {
     ]).then((unlisteners) => { trayListeners = unlisteners; });
   }
   void refreshRuntime(true);
+  nextTick(refreshTurnObserver);
 });
 onBeforeUnmount(() => {
   window.clearTimeout(projectPreviewCloseTimer);
@@ -2277,6 +2527,9 @@ onBeforeUnmount(() => {
   window.clearTimeout(sidebarAnimTimer);
   window.clearTimeout(windowResizeEndTimer);
   window.clearTimeout(runtimeReconnectTimer);
+  window.clearTimeout(scrollToTurnTimer);
+  if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf);
+  turnObserver?.disconnect();
   document.body.style.cursor = "";
   document.body.style.userSelect = "";
   if (inspectorCloseTimer) clearTimeout(inspectorCloseTimer);
@@ -2286,6 +2539,7 @@ onBeforeUnmount(() => {
   trayListeners = [];
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
+  window.removeEventListener("sztu:open-file", onOpenFileLink);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
   stopDisconnect?.();
@@ -2527,7 +2781,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <main class="kimi-main" :class="{ 'chat-main': page === 'chat', 'work-active': page === 'work' }">
       <div v-show="page === 'work'" class="work-page-host">
         <section v-if="active" class="work-page">
-          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace }" :style="workLayoutStyle">
+          <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div v-if="sessionLoading" class="session-loading" role="status" aria-label="正在加载会话">
                 <Terminal :size="40" :stroke-width="1.5" />
@@ -2538,7 +2792,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
-                  <button type="button" class="pipeline-view-toggle" :title="timelineView === 'pipeline' ? '流水线视图（点击切回经典）' : '经典视图（点击切到流水线）'" :aria-label="timelineView === 'pipeline' ? '切换到经典视图' : '切换到流水线视图'" :aria-pressed="timelineView === 'pipeline'" :class="{ active: timelineView === 'pipeline' }" @click="toggleTimelineView"><Workflow :size="18" /></button>
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
@@ -2557,12 +2810,44 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 </div>
               </div>
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
-                <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
+                <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <PipelineStream v-if="timelineView === 'pipeline'" :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
-                    <ExecutionTimeline v-else :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
+                </div>
+                <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->
+                <div v-if="turnDotCount > 1" ref="turnDotWrapEl" class="turn-dot-wrap" aria-label="对话轮次导航">
+                  <nav class="turn-dot-rail" role="tablist" @mouseleave="turnDotHoverIdx = -1">
+                    <div ref="turnDotRailEl" class="turn-dot-scroll">
+                      <button
+                        v-for="(label, idx) in turnLabels"
+                        :key="idx"
+                        :data-idx="idx"
+                        type="button"
+                        role="tab"
+                        class="turn-dot"
+                        :class="{ active: turnDotActive === idx }"
+                        :aria-selected="turnDotActive === idx"
+                        :aria-label="`第 ${idx + 1} 轮：${label}`"
+                        @click="scrollToTurn(idx)"
+                        @mouseenter="handleDotHover(idx, $event)"
+                        @focus="handleDotHover(idx, $event)"
+                        @blur="turnDotHoverIdx = -1"
+                      />
+                    </div>
+                  </nav>
+                  <!-- 上下渐变遮罩 -->
+                  <div class="turn-dot-fade turn-dot-fade--top" />
+                  <div class="turn-dot-fade turn-dot-fade--bottom" />
+                  <!-- 悬浮气泡（rail兄弟节点，不受任何overflow裁剪） -->
+                  <span
+                    v-if="turnDotHoverIdx >= 0 && turnLabels[turnDotHoverIdx]"
+                    class="turn-dot-bubble"
+                    :style="{ top: turnDotBubbleTop + 'px' }"
+                  >
+                    <span class="turn-dot-bubble-inner">{{ turnLabels[turnDotHoverIdx] }}</span>
+                  </span>
                 </div>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
@@ -2592,13 +2877,13 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
                       <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive && !prompt.trim()" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
-              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" @mousedown="startDividerDrag" />
+              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" style="touch-action: none;" @pointerdown="startDividerDrag" />
               <ProjectInspector
                 ref="inspectorRef"
                 :workspace-id="activeWorkspace.workspace_id"

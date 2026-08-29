@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, Circle, EllipsisVertical,
   ExternalLink, FileCode2, FileText, FolderOpen, Globe2,
@@ -45,15 +45,15 @@ type BrowserTab = {
   frameKey: number;
   loading: boolean;
 };
-type ActiveTab = "summary" | "files" | `sandbox-${number}` | `browser-${number}` | "";
+type ActiveTab = "home" | "summary" | "files" | `sandbox-${number}` | `browser-${number}` | "";
 type WorkspaceTab = { key: ActiveTab; kind: "summary" | "files" | "browser" | "sandbox" };
 type Artifact = { path: string; source: "change" | "attachment"; change?: ChangeSummary; previewPath?: string };
 
-const activeTab = ref<ActiveTab>("files");
+const activeTab = ref<ActiveTab>("home");
 const browserSequence = ref(0);
 const sandboxSequence = ref(0);
 const browserTabs = ref<BrowserTab[]>([]);
-const workspaceTabs = ref<WorkspaceTab[]>([{ key: "summary", kind: "summary" }, { key: "files", kind: "files" }]);
+const workspaceTabs = ref<WorkspaceTab[]>([]);
 const openSections = ref<Set<SectionKey>>(new Set(["profile", "todo", "artifacts", "references"]));
 const changes = ref<ChangeSummary[]>([]);
 const loadingArtifacts = ref(false);
@@ -68,6 +68,7 @@ const previewMimeType = ref<string | null>(null);
 const previewLanguage = ref("");
 // 代码预览弹窗：fixed + CSS 居中，脱离父级滚动/裁剪上下文，固定尺寸不被遮挡
 const previewModalRef = ref<HTMLElement | null>(null);
+const fileTreeRef = ref<InstanceType<typeof FileTree> | null>(null);
 
 // 点击弹窗外部关闭预览（点击遮罩或弹窗外任意处）
 function closePreviewOnOutside(event: PointerEvent) {
@@ -170,6 +171,12 @@ function openSummary() {
   toolMenuOpen.value = false;
 }
 
+function goHome() {
+  activeTab.value = "home";
+  selectedPath.value = "";
+  toolMenuOpen.value = false;
+}
+
 function projectTechnologies(project: ProjectComponent): Array<{ label: string; findings: TechnologyFinding[] }> {
   return [
     { label: "语言", findings: project.languages },
@@ -225,8 +232,8 @@ function closeWorkspaceTab(key: ActiveTab) {
   }
   workspaceTabs.value = workspaceTabs.value.filter((tab) => tab.key !== key);
   if (activeTab.value !== key) return;
-  const fallback = workspaceTabs.value[Math.min(index, workspaceTabs.value.length - 1)] ?? workspaceTabs.value[0];
-  activeTab.value = fallback?.key ?? "";
+  const fallback = workspaceTabs.value[Math.min(index, workspaceTabs.value.length - 1)];
+  activeTab.value = fallback?.key ?? "home";
   selectedPath.value = "";
 }
 
@@ -240,6 +247,16 @@ function openFiles() {
   activeTab.value = "files";
   selectedPath.value = "";
   toolMenuOpen.value = false;
+}
+
+// 在右侧「文件」标签页中预览指定路径的文件（供 AI 输出中的文件链接调用）
+async function previewFile(filePath: string) {
+  if (!workspaceTabs.value.some((tab) => tab.kind === "files")) workspaceTabs.value.push({ key: "files", kind: "files" });
+  activeTab.value = "files";
+  toolMenuOpen.value = false;
+  // 等待 DOM 更新后调用 FileTree 的 previewFileAtPath
+  await nextTick();
+  fileTreeRef.value?.previewFileAtPath(filePath);
 }
 
 function openBrowser() {
@@ -407,11 +424,11 @@ function closeToolMenuOnEscape(event: KeyboardEvent) {
 }
 
 watch(() => [props.workspaceId, props.runId], () => {
-  activeTab.value = "files";
+  activeTab.value = "home";
   browserSequence.value = 0;
   sandboxSequence.value = 0;
   browserTabs.value = [];
-  workspaceTabs.value = [{ key: "summary", kind: "summary" }, { key: "files", kind: "files" }];
+  workspaceTabs.value = [];
   selectedPath.value = "";
   void refreshArtifacts();
 }, { immediate: true });
@@ -437,15 +454,16 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closePreviewOnOutside);
   document.removeEventListener("keydown", closeToolMenuOnEscape);
 });
-defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
+defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previewFile });
 </script>
 
 <template>
   <aside class="project-inspector file-rail" :class="{ 'is-expanded': expandedPanel }">
-    <header class="workspace-tab-strip">
+    <header v-if="activeTab !== 'home'" class="workspace-tab-strip">
       <div ref="toolMenuRoot" class="workspace-tool-menu-root">
         <button type="button" class="workspace-tool-menu-trigger" :class="{ active: toolMenuOpen }" aria-label="打开功能" aria-haspopup="menu" :aria-expanded="toolMenuOpen" @click="toolMenuOpen = !toolMenuOpen"><Plus :size="16" /></button>
         <nav v-if="toolMenuOpen" class="workspace-tool-menu" aria-label="选择功能" role="menu">
+          <button type="button" role="menuitem" :class="{ active: activeTab === 'home' }" @click="goHome"><BookOpen :size="15" /><span>首页</span></button>
           <button type="button" role="menuitem" :class="{ active: activeTab === 'summary' }" @click="openSummary"><ListChecks :size="15" /><span>任务摘要</span></button>
           <button type="button" role="menuitem" :class="{ active: currentBrowser }" @click="openBrowser"><Globe2 :size="15" /><span>浏览器</span></button>
           <button type="button" role="menuitem" :class="{ active: activeTab.startsWith('sandbox-') }" @click="openTerminal"><SquareTerminal :size="15" /><span>终端</span></button>
@@ -471,6 +489,31 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
       <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><Minimize2 v-if="expandedPanel" :size="15" /><Maximize2 v-else :size="15" /></button>
       <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><PanelRightClose :size="16" /></button>
     </header>
+
+    <header v-else class="workspace-home-header">
+      <div class="workspace-home-header__right">
+        <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><Minimize2 v-if="expandedPanel" :size="15" /><Maximize2 v-else :size="15" /></button>
+        <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><PanelRightClose :size="16" /></button>
+      </div>
+    </header>
+
+    <main v-if="activeTab === 'home'" class="home-workspace">
+      <div class="home-launcher">
+        <p class="home-launcher__prompt">从这里开始</p>
+        <button class="home-launcher__button" @click="openFiles">
+          <FolderOpen :size="20" />文件
+        </button>
+        <button class="home-launcher__button" @click="openSummary">
+          <ListChecks :size="20" />任务摘要
+        </button>
+        <button class="home-launcher__button" @click="openBrowser">
+          <Globe2 :size="20" />浏览器
+        </button>
+        <button class="home-launcher__button" @click="openTerminal">
+          <SquareTerminal :size="20" />终端
+        </button>
+      </div>
+    </main>
 
     <main v-if="activeTab === 'summary'" class="task-summary-view">
       <section class="summary-section project-profile-section" :class="{ collapsed: !openSections.has('profile') }">
@@ -639,7 +682,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
       </div>
     </main>
 
-    <main v-else-if="activeTab === 'files'" class="files-workspace"><FileTree :workspace-id="filesRequest?.workspaceId || workspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
+    <main v-else-if="activeTab === 'files'" class="files-workspace"><FileTree ref="fileTreeRef" :workspace-id="filesRequest?.workspaceId || workspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
     <main v-for="tab in sandboxTabs" v-show="activeTab === tab.key" :key="`${workspacePath}-${tab.key}`" class="sandbox-workspace"><SandboxTerminal :workspace-path="workspacePath || ''" /></main>
     <main v-if="!activeTab" class="workspace-empty-view" />
 

@@ -18,10 +18,26 @@
   box-shadow: 0 5px 18px #18222e14;
 }
 
-/* 队列区：与下方输入框同处一张卡片，仅用一条分隔线划开 */
+/* 有待处理任务时：灰色底、无边框、无阴影 */
+.queue-dock--queued {
+  background: var(--surface-soft);
+  border: 0;
+  box-shadow: none;
+}
+
+.queue-dock--queued:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* 队列区：与下方输入框同处一张卡片，默认用分隔线划开；排队态（灰色底）取消分隔线 */
 .queue-dock__queue {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+}
+
+.queue-dock--queued .queue-dock__queue {
+  border-bottom: 0;
 }
 
 /* 被卡片包住后，内层的输入框与问答框不再单独描边，避免出现双边框与双重阴影 */
@@ -60,6 +76,7 @@
 }
 
 .queue-dock__summary:hover { background: var(--surface-soft); }
+.queue-dock--queued .queue-dock__summary:hover { background: var(--surface-raised); }
 .queue-dock__summary span { flex: 1; }
 .queue-dock__summary > svg:last-child { transition: transform 140ms ease; }
 .queue-dock__summary[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
@@ -73,18 +90,26 @@
   gap: 9px;
   padding: 5px 6px 5px 10px;
   border-radius: 9px;
+  transition: background-color 140ms ease;
 }
+
+.queue-dock__item:hover { background: var(--surface-soft); }
+.queue-dock--queued .queue-dock__item:hover { background: var(--surface-raised); }
 
 /* 序号做成小徽标，与右侧按钮组在视觉上呼应 */
 .queue-dock__lead {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--text-muted);
   background: var(--surface-soft);
-  border-radius: 7px;
+  border-radius: 6px;
+}
+
+.queue-dock--queued .queue-dock__lead {
+  background: transparent;
 }
 
 .queue-dock__text { overflow: hidden; min-width: 0; flex: 1; color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -97,24 +122,32 @@
   font-size: 11px;
 }
 
+.queue-dock--queued .queue-dock__item small {
+  background: var(--surface-raised);
+}
+
 /* 按钮组：统一落在一条柔性底槽里，三个操作视觉上归为一组 */
 .queue-dock__actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
+  gap: 1px;
+  padding: 2px;
   background: var(--surface-soft);
-  border-radius: 9px;
+  border-radius: 8px;
+}
+
+.queue-dock--queued .queue-dock__actions {
+  background: transparent;
 }
 
 .queue-dock__actions button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   color: var(--text-muted);
-  border-radius: 7px;
+  border-radius: 6px;
   transition: color 120ms ease, background-color 120ms ease;
 }
 

@@ -3,7 +3,10 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ChevronDown, FilePenLine, FileText, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
 import type { ToolCallEntry } from "./types";
 
-const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean }>(), { expanded: false });
+const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean; compact?: boolean }>(), {
+  expanded: false,
+  compact: false,
+});
 const open = ref(false);
 const isOpen = computed(() => props.expanded || open.value);
 const request = computed(() => JSON.stringify(props.call.params, null, 2));
@@ -32,16 +35,16 @@ const actionLabel = computed(() => {
   return props.call.name;
 });
 const title = computed(() => {
-  const prefix = props.call.status === "running" ? "正在" : "已运行";
+  const prefix = props.call.status === "running" ? "正在" : "已";
   if (kind.value === "edit") return `${props.call.status === "running" ? "正在编辑" : "已编辑"} ${detail.value}`;
   if (kind.value === "search" || kind.value === "glob") return `${props.call.status === "running" ? "正在搜索" : "已搜索"} ${detail.value}`;
   if (kind.value === "file") return `${props.call.status === "running" ? "正在读取" : "已读取"} ${detail.value}`;
-  return `${prefix} ${detail.value}`;
+  return `${prefix}${detail.value}`;
 });
 const isFileTool = computed(() => /read|file|dir/i.test(props.call.name));
 const isPathLike = computed(() => /read|file|dir|edit|write/i.test(props.call.name));
 
-// 运行中计时：以 started_at 为起点每秒刷新（借鉴 dsh web GUI 终端卡 running 态）
+// 运行中计时
 const now = ref(Date.now());
 let timer: number | undefined;
 watch(
@@ -62,9 +65,9 @@ const elapsed = computed(() => {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 });
 
-// 输出摘要：超过 400 字符/12 行时保留头部并标记省略量（借鉴 dsh ToolRow 折叠摘要）
-const OUTPUT_MAX_CHARS = 400;
-const OUTPUT_MAX_LINES = 12;
+// 输出摘要
+const OUTPUT_MAX_CHARS = props.compact ? 200 : 400;
+const OUTPUT_MAX_LINES = props.compact ? 6 : 12;
 const outputSummary = computed(() => {
   const raw = props.call.error || props.call.output || "";
   if (!raw) return "";
@@ -73,63 +76,296 @@ const outputSummary = computed(() => {
   const head = lines.slice(0, OUTPUT_MAX_LINES).join("\n");
   const omittedChars = raw.length - head.length;
   const omittedLines = Math.max(0, lines.length - OUTPUT_MAX_LINES);
-  return `${head}\n\n[... 已省略 ${omittedLines} 行 / ${omittedChars} 字符 ...]`;
+  return `${head}\n\n[... 省略 ${omittedLines} 行 / ${omittedChars} 字符 ...]`;
 });
+
+const hasDetails = computed(() => request.value.length > 2 || outputSummary.value);
 </script>
 
 <template>
-  <section class="tool-call-event" :class="call.status">
-    <button :aria-label="title" :aria-expanded="isOpen" @click="open = !open">
-      <FilePenLine v-if="kind === 'edit'" :size="16" />
-      <Search v-else-if="kind === 'search' || kind === 'glob'" :size="16" />
-      <FileText v-else-if="isFileTool" :size="16" />
-      <Terminal v-else :size="16" />
-      <span class="tool-call-event__action">{{ actionLabel }}</span>
-      <span class="timeline-row__separator">·</span>
+  <section class="tool-call-event" :class="[call.status, { compact }]">
+    <button :aria-label="title" :aria-expanded="isOpen" :disabled="!hasDetails" @click="hasDetails && (open = !open)">
+      <FilePenLine v-if="kind === 'edit'" :size="compact ? 12 : 14" />
+      <Search v-else-if="kind === 'search' || kind === 'glob'" :size="compact ? 12 : 14" />
+      <FileText v-else-if="isFileTool" :size="compact ? 12 : 14" />
+      <Terminal v-else :size="compact ? 12 : 14" />
+      <span v-if="!compact" class="tool-call-event__action">{{ actionLabel }}</span>
+      <span v-if="!compact" class="timeline-row__separator">·</span>
       <span class="tool-call-event__detail" :class="{ 'is-path': isPathLike }">{{ detail }}</span>
-      <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="11" />{{ elapsed }}</span>
-      <LoaderCircle v-if="call.status === 'running'" class="spin" :size="14" />
-      <ChevronDown class="timeline-row__chevron" :size="13" />
+      <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="10" />{{ elapsed }}</span>
+      <LoaderCircle v-if="call.status === 'running'" class="spin" :size="compact ? 12 : 13" />
+      <ChevronDown v-if="hasDetails" class="timeline-row__chevron" :size="11" />
     </button>
-    <div v-if="isOpen" class="tool-call-event__details">
-      <b>{{ call.status === 'running' ? '本次参数' : '输入参数' }}</b><pre>{{ request }}</pre>
-      <template v-if="outputSummary"><b>执行返回</b><pre>{{ outputSummary }}</pre></template>
-    </div>
+    <transition name="tool-expand">
+      <div v-if="isOpen && hasDetails" class="tool-call-event__details">
+        <b>{{ call.status === 'running' ? '参数' : '输入' }}</b><pre>{{ request }}</pre>
+        <template v-if="outputSummary"><b>返回</b><pre>{{ outputSummary }}</pre></template>
+      </div>
+    </transition>
   </section>
 </template>
 
 <style scoped>
+.tool-call-event {
+  font-size: 12px;
+}
+
+.tool-call-event > button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 4px;
+  color: #6b7280;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.tool-call-event > button:disabled {
+  cursor: default;
+}
+
+.tool-call-event > button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tool-call-event > button > svg:first-child {
+  flex: 0 0 auto;
+  color: #9ca3af;
+}
+
+.tool-call-event.running > button > svg:first-child,
+.tool-call-event.running .spin {
+  color: #2563eb;
+}
+
+.tool-call-event.done > button > svg:first-child {
+  color: #16a34a;
+}
+
+.tool-call-event.failed > button {
+  color: #dc2626;
+}
+
+.tool-call-event.failed > button > svg:first-child {
+  color: #dc2626;
+}
+
+.tool-call-event__action {
+  flex: 0 0 auto;
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.timeline-row__separator {
+  flex: 0 0 auto;
+  color: #d1d5db;
+}
+
+.tool-call-event__detail {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #6b7280;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-event__detail.is-path {
+  color: #4b5563;
+}
+
 .tool-call-event__elapsed {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex: 0 0 auto;
-  color: #8a6a4a;
+  color: #9ca3af;
   font: 10px Consolas, monospace;
 }
-/* 运行扫光（借鉴 dsh ToolRow sweep）：300px 固定宽光带滑过运行中的卡片，
-   ease-out + 尾部 10% 停驻给每次扫过留一拍 */
-.tool-call-event.running {
+
+.timeline-row__chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #d1d5db;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.tool-call-event > button:hover:not(:disabled) .timeline-row__chevron,
+.tool-call-event.open .timeline-row__chevron {
+  opacity: 1;
+}
+
+.tool-call-event.open .timeline-row__chevron {
+  transform: rotate(180deg);
+}
+
+.tool-call-event__details {
+  margin: 2px 0 4px 20px;
+  padding-left: 8px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.tool-call-event__details > b {
+  display: block;
+  margin: 6px 0 3px;
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tool-call-event__details > b:first-child {
+  margin-top: 2px;
+}
+
+.tool-call-event__details pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 6px 8px;
+  overflow: auto;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #f3f4f6;
+  border-radius: 4px;
+  font: 11px/1.5 "SF Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Compact 模式（在分组内展开时） */
+.tool-call-event.compact > button {
+  min-height: 22px;
+  gap: 5px;
+  padding: 2px 4px;
+}
+
+.tool-call-event.compact .tool-call-event__detail {
+  font-size: 11px;
+}
+
+/* 暗色主题 */
+:global(.dark) .tool-call-event > button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(.dark) .tool-call-event.running > button > svg:first-child,
+:global(.dark) .tool-call-event.running .spin {
+  color: #60a5fa;
+}
+
+:global(.dark) .tool-call-event.done > button > svg:first-child {
+  color: #4ade80;
+}
+
+:global(.dark) .tool-call-event.failed > button {
+  color: #f87171;
+}
+
+:global(.dark) .tool-call-event.failed > button > svg:first-child {
+  color: #f87171;
+}
+
+:global(.dark) .tool-call-event__action {
+  color: #d1d5db;
+}
+
+:global(.dark) .timeline-row__separator {
+  color: #4b5563;
+}
+
+:global(.dark) .tool-call-event__detail {
+  color: #9ca3af;
+}
+
+:global(.dark) .tool-call-event__detail.is-path {
+  color: #d1d5db;
+}
+
+:global(.dark) .tool-call-event__elapsed {
+  color: #6b7280;
+}
+
+:global(.dark) .timeline-row__chevron {
+  color: #6b7280;
+}
+
+:global(.dark) .tool-call-event__details {
+  border-left-color: #374151;
+}
+
+:global(.dark) .tool-call-event__details > b {
+  color: #6b7280;
+}
+
+:global(.dark) .tool-call-event__details pre {
+  color: #d1d5db;
+  background: #1f2937;
+  border-color: #374151;
+}
+
+/* 展开/折叠动画 */
+.tool-expand-enter-active,
+.tool-expand-leave-active {
+  transition: all 0.12s ease;
+  overflow: hidden;
+}
+
+.tool-expand-enter-from,
+.tool-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.tool-expand-enter-to,
+.tool-expand-leave-from {
+  opacity: 1;
+  max-height: 300px;
+}
+
+/* 运行中光带效果（仅非compact模式显示） */
+.tool-call-event.running:not(.compact) {
   position: relative;
   overflow: hidden;
 }
-.tool-call-event.running::after {
+
+.tool-call-event.running:not(.compact)::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 300px;
+  width: 200px;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 60%) 55%, transparent 100%);
-  animation: sz-tool-row-sweep 2.6s ease-out infinite;
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 40%) 50%, transparent 100%);
+  animation: tool-sweep 2s ease-out infinite;
 }
-@keyframes sz-tool-row-sweep {
-  0% { left: -300px; }
+
+@keyframes tool-sweep {
+  0% { left: -200px; }
   90%, 100% { left: 100%; }
 }
-/* 减弱动效（借鉴 dsh：prefers-reduced-motion 关闭全部状态动画） */
+
 @media (prefers-reduced-motion: reduce) {
-  .tool-call-event.running::after { animation: none; }
+  .tool-expand-enter-active,
+  .tool-expand-leave-active {
+    transition: none;
+  }
+
+  .tool-call-event.running:not(.compact)::after {
+    animation: none;
+  }
 }
 </style>

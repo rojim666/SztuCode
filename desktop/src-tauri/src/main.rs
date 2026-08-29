@@ -965,6 +965,311 @@ fn workspace_path_for_id(workspace_id: &str) -> Option<PathBuf> {
         .map(|record| PathBuf::from(record.path))
 }
 
+#[derive(Serialize)]
+struct ExternalApp {
+    id: String,
+    name: String,
+    icon: String,
+    available: bool,
+}
+
+#[tauri::command]
+fn list_external_apps() -> Vec<ExternalApp> {
+    #[cfg(windows)]
+    {
+        let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from);
+
+        let check_path = |p: &Path| p.exists();
+        let mut apps = Vec::new();
+
+        // TraeCode CN
+        let trae_cn = local_app_data
+            .as_ref()
+            .map(|d| d.join("Programs").join("Trae CN").join("Trae CN.exe"))
+            .filter(|p| check_path(p));
+        apps.push(ExternalApp {
+            id: "trae-cn".into(),
+            name: "TraeCode CN".into(),
+            icon: "trae".into(),
+            available: trae_cn.is_some(),
+        });
+
+        // TraeCode
+        let trae = local_app_data
+            .as_ref()
+            .map(|d| d.join("Programs").join("Trae").join("Trae.exe"))
+            .filter(|p| check_path(p));
+        apps.push(ExternalApp {
+            id: "trae".into(),
+            name: "TraeCode".into(),
+            icon: "trae".into(),
+            available: trae.is_some(),
+        });
+
+        // VS Code
+        let vscode = local_app_data
+            .as_ref()
+            .map(|d| d.join("Programs").join("Microsoft VS Code").join("Code.exe"))
+            .filter(|p| check_path(p))
+            .or_else(|| {
+                program_files
+                    .as_ref()
+                    .map(|d| d.join("Microsoft VS Code").join("Code.exe"))
+                    .filter(|p| check_path(p))
+            });
+        apps.push(ExternalApp {
+            id: "vscode".into(),
+            name: "Visual Studio Code".into(),
+            icon: "vscode".into(),
+            available: vscode.is_some(),
+        });
+
+        // Cursor
+        let cursor = local_app_data
+            .as_ref()
+            .map(|d| d.join("Programs").join("Cursor").join("Cursor.exe"))
+            .filter(|p| check_path(p));
+        apps.push(ExternalApp {
+            id: "cursor".into(),
+            name: "Cursor".into(),
+            icon: "cursor".into(),
+            available: cursor.is_some(),
+        });
+
+        // WebStorm (check common JetBrains paths)
+        let webstorm = if let Some(pf) = program_files.as_ref() {
+            let jetbrains = pf.join("JetBrains");
+            let mut found = None;
+            if let Ok(entries) = fs::read_dir(&jetbrains) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("webstorm") {
+                        let exe = entry.path().join("bin").join("webstorm64.exe");
+                        if exe.exists() {
+                            found = Some(exe);
+                            break;
+                        }
+                    }
+                }
+            }
+            found
+        } else {
+            None
+        };
+        apps.push(ExternalApp {
+            id: "webstorm".into(),
+            name: "WebStorm".into(),
+            icon: "webstorm".into(),
+            available: webstorm.is_some(),
+        });
+
+        // File explorer (always available on Windows)
+        apps.push(ExternalApp {
+            id: "explorer".into(),
+            name: "文件资源管理器".into(),
+            icon: "folder".into(),
+            available: true,
+        });
+
+        // Default app
+        apps.push(ExternalApp {
+            id: "default".into(),
+            name: "默认应用".into(),
+            icon: "default".into(),
+            available: true,
+        });
+
+        apps
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let check_app = |name: &str| {
+            PathBuf::from("/Applications")
+                .join(format!("{name}.app"))
+                .exists()
+        };
+        let mut apps = Vec::new();
+
+        apps.push(ExternalApp { id: "trae-cn".into(), name: "TraeCode CN".into(), icon: "trae".into(), available: check_app("Trae CN") });
+        apps.push(ExternalApp { id: "trae".into(), name: "TraeCode".into(), icon: "trae".into(), available: check_app("Trae") });
+        apps.push(ExternalApp { id: "vscode".into(), name: "Visual Studio Code".into(), icon: "vscode".into(), available: check_app("Visual Studio Code") });
+        apps.push(ExternalApp { id: "cursor".into(), name: "Cursor".into(), icon: "cursor".into(), available: check_app("Cursor") });
+        apps.push(ExternalApp { id: "webstorm".into(), name: "WebStorm".into(), icon: "webstorm".into(), available: check_app("WebStorm") });
+        apps.push(ExternalApp { id: "explorer".into(), name: "访达".into(), icon: "folder".into(), available: true });
+        apps.push(ExternalApp { id: "default".into(), name: "默认应用".into(), icon: "default".into(), available: true });
+
+        apps
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let in_path = |cmd: &str| {
+            std::env::var_os("PATH").map(|p| {
+                std::env::split_paths(&p).any(|dir| dir.join(cmd).is_file())
+            }).unwrap_or(false)
+        };
+        vec![
+            ExternalApp { id: "vscode".into(), name: "Visual Studio Code".into(), icon: "vscode".into(), available: in_path("code") },
+            ExternalApp { id: "cursor".into(), name: "Cursor".into(), icon: "cursor".into(), available: in_path("cursor") },
+            ExternalApp { id: "explorer".into(), name: "文件管理器".into(), icon: "folder".into(), available: true },
+            ExternalApp { id: "default".into(), name: "默认应用".into(), icon: "default".into(), available: true },
+        ]
+    }
+}
+
+fn app_command_for_id(app_id: &str, target: &Path) -> Result<StdCommand, String> {
+    match app_id {
+        "explorer" => {
+            #[cfg(windows)]
+            {
+                let mut cmd = StdCommand::new("explorer.exe");
+                if target.is_dir() {
+                    cmd.arg(target);
+                } else {
+                    cmd.arg("/select,");
+                    cmd.arg(target);
+                }
+                return Ok(cmd);
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = StdCommand::new("open");
+                cmd.arg("-R");
+                cmd.arg(target);
+                return Ok(cmd);
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                let mut cmd = StdCommand::new("xdg-open");
+                cmd.arg(target.parent().unwrap_or(target));
+                return Ok(cmd);
+            }
+        }
+        "default" => {
+            #[cfg(windows)]
+            {
+                let mut cmd = StdCommand::new("cmd");
+                cmd.args(["/c", "start", ""]);
+                cmd.arg(target);
+                return Ok(cmd);
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = StdCommand::new("open");
+                cmd.arg(target);
+                return Ok(cmd);
+            }
+            #[cfg(all(unix, not(target_os = "macos")))]
+            {
+                let mut cmd = StdCommand::new("xdg-open");
+                cmd.arg(target);
+                return Ok(cmd);
+            }
+        }
+        other => {
+            let (exe, args) = resolve_editor_path(other)?;
+            let mut cmd = StdCommand::new(&exe);
+            cmd.args(&args);
+            cmd.arg(target);
+            Ok(cmd)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
+    let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from);
+
+    match app_id {
+        "trae-cn" => {
+            let p = local_app_data
+                .ok_or("缺少 LOCALAPPDATA")?
+                .join("Programs").join("Trae CN").join("Trae CN.exe");
+            if p.is_file() { Ok((p, Vec::new())) } else { Err("Trae CN 未安装".into()) }
+        }
+        "trae" => {
+            let p = local_app_data
+                .ok_or("缺少 LOCALAPPDATA")?
+                .join("Programs").join("Trae").join("Trae.exe");
+            if p.is_file() { Ok((p, Vec::new())) } else { Err("Trae 未安装".into()) }
+        }
+        "vscode" => {
+            let p = local_app_data
+                .as_ref()
+                .map(|d| d.join("Programs").join("Microsoft VS Code").join("Code.exe"))
+                .filter(|p| p.is_file())
+                .or_else(|| program_files.as_ref().map(|d| d.join("Microsoft VS Code").join("Code.exe")).filter(|p| p.is_file()))
+                .ok_or("VS Code 未安装")?;
+            Ok((p, Vec::new()))
+        }
+        "cursor" => {
+            let p = local_app_data
+                .ok_or("缺少 LOCALAPPDATA")?
+                .join("Programs").join("Cursor").join("Cursor.exe");
+            if p.is_file() { Ok((p, Vec::new())) } else { Err("Cursor 未安装".into()) }
+        }
+        "webstorm" => {
+            let pf = program_files.ok_or("缺少 ProgramFiles")?;
+            let jetbrains = pf.join("JetBrains");
+            let mut found = None;
+            if let Ok(entries) = fs::read_dir(&jetbrains) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("webstorm") {
+                        let exe = entry.path().join("bin").join("webstorm64.exe");
+                        if exe.exists() { found = Some(exe); break; }
+                    }
+                }
+            }
+            found.map(|p| (p, Vec::new())).ok_or_else(|| "WebStorm 未安装".into())
+        }
+        _ => Err(format!("未知应用：{app_id}")),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
+    let (app_name, args) = match app_id {
+        "trae-cn" => ("Trae CN", vec!["-a".into(), "Trae CN".into()]),
+        "trae" => ("Trae", vec!["-a".into(), "Trae".into()]),
+        "vscode" => ("Visual Studio Code", vec!["-a".into(), "Visual Studio Code".into()]),
+        "cursor" => ("Cursor", vec!["-a".into(), "Cursor".into()]),
+        "webstorm" => ("WebStorm", vec!["-a".into(), "WebStorm".into()]),
+        _ => return Err(format!("未知应用：{app_id}")),
+    };
+    let app_path = PathBuf::from("/Applications").join(format!("{app_name}.app"));
+    if app_path.exists() {
+        Ok((PathBuf::from("open"), args))
+    } else {
+        Err(format!("{app_name} 未安装"))
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
+    let cmd = match app_id {
+        "vscode" => "code",
+        "cursor" => "cursor",
+        _ => return Err(format!("未知应用：{app_id}")),
+    };
+    Ok((PathBuf::from(cmd), Vec::new()))
+}
+
+#[tauri::command]
+fn open_path_with_app(path: String, app_id: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    // allow file to not exist for edge cases, but most apps will handle it
+    let mut cmd = app_command_for_id(&app_id, &target)?;
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    cmd.spawn().map_err(|e| format!("启动失败：{e}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 fn open_workspace_in_ide(workspace_path: String, workspace_id: Option<String>) -> Result<(), String> {
     let workspace_id = workspace_id.and_then(|id| {
@@ -1023,6 +1328,8 @@ fn main() {
             sandbox_pty_close,
             read_attachment,
             create_persistent_worktree,
+            list_external_apps,
+            open_path_with_app,
             open_workspace_in_ide,
             macos_toggle_work_area
         ])
