@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   ChevronRight,
   AlertCircle,
@@ -16,9 +16,16 @@ import type { ToolCallEntry } from "./types";
 const props = defineProps<{
   calls: ToolCallEntry[];
   running?: boolean;
+  defaultOpen?: boolean;
 }>();
 
-const open = ref(false);
+const open = ref(!!props.defaultOpen);
+
+// 父组件切换历史展开/折叠时，同步默认打开状态（用户手动点击过的优先级更高，通过 initialized 标志追踪）
+const userToggled = ref(false);
+watch(() => props.defaultOpen, (val) => {
+  if (!userToggled.value) open.value = !!val;
+});
 
 type CallKind = "read" | "search" | "edit" | "exec" | "other";
 
@@ -117,7 +124,7 @@ const expandable = computed(() =>
       type="button"
       class="tool-summary__trigger"
       :aria-expanded="open"
-      @click="open = !open"
+      @click="userToggled = true; open = !open"
     >
       <span class="tool-summary__chips">
         <span v-for="g in groups" :key="g.kind" class="tool-chip" :class="`tool-chip--${g.kind}`">

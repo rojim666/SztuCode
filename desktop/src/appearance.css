@@ -554,12 +554,14 @@
 ) { color: var(--text-muted); }
 
 :root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button {
-  background: var(--surface-soft);
-  border-color: var(--border);
+  background: transparent;
+  border-color: transparent;
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:hover {
+  background: var(--surface-soft);
+}
+:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:focus-visible {
   background: var(--surface-raised);
-  border-color: var(--border-strong);
 }
 :root[data-app-theme="dark"] .project-inspector.file-rail .home-workspace {
   background: transparent;

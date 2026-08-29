@@ -4,18 +4,15 @@ import {
   Braces,
   ChevronDown,
   CornerUpLeft,
-  FileCode2,
-  FileJson,
-  FileLock2,
-  FileText,
   FileClock,
+  FileLock2,
   Folder,
   Image as FileImage,
   Info,
-  Settings2,
   ShieldAlert,
 } from "@lucide/vue";
 import type { ContextInjectionEntry } from "./types";
+import { fileTypeIconUrl } from "../../utils/fileIcon";
 
 const props = defineProps<{ entry: ContextInjectionEntry }>();
 const open = ref(false);
@@ -56,86 +53,44 @@ const fileName = (path: string) => {
   return parts[parts.length - 1] || path;
 };
 
-// 根据文件扩展名返回图标和颜色
+// 根据文件名返回图标 URL（使用项目自带的 file-icons 资源集）
+// 目录/无扩展名/lock文件等特殊情况回退到 lucide 图标
 const getFileIcon = (name: string) => {
   const lower = name.toLowerCase();
+  // 目录（末尾带斜杠或无扩展名）
   if (lower.endsWith("/") || lower.endsWith("\\")) {
-    return { icon: Folder, color: "#d97706" };
+    return { kind: "lucide" as const, icon: Folder, color: "#d97706" };
   }
   const ext = lower.includes(".") ? lower.split(".").pop()! : "";
   const base = lower.split(/[\\/]/).pop()!;
-
-  // 目录
   if (!ext && base.length > 0) {
-    return { icon: Folder, color: "#d97706" };
+    return { kind: "lucide" as const, icon: Folder, color: "#d97706" };
   }
-
   // lock 文件
   if (ext === "lock") {
-    return { icon: FileLock2, color: "#9ca3af" };
+    return { kind: "lucide" as const, icon: FileLock2, color: "#9ca3af" };
   }
-  // 图片
-  if (["png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp"].includes(ext)) {
-    return { icon: FileImage, color: "#059669" };
+  // 图片（本地图标已包含 image 类型，无需特判，走 fileTypeIconUrl 即可）
+  const url = fileTypeIconUrl(name);
+  if (url) {
+    return { kind: "url" as const, url };
   }
-  // JSON 专用
-  if (ext === "json") {
-    return { icon: FileJson, color: "#ca8a04" };
+  // 未匹配到图标的文件使用默认文档图标
+  const defaultUrl = fileTypeIconUrl("a.txt");
+  if (defaultUrl) {
+    return { kind: "url" as const, url: defaultUrl };
   }
-  // 文档
-  if (["md", "mdx", "txt", "rst", "adoc"].includes(ext)) {
-    return { icon: FileText, color: "#2563eb" };
-  }
-  // 代码文件（不同语言用不同颜色）
-  if (["ts", "tsx"].includes(ext)) return { icon: FileCode2, color: "#3178c6" };
-  if (["js", "jsx"].includes(ext)) return { icon: FileCode2, color: "#d4a017" };
-  if (ext === "vue") return { icon: FileCode2, color: "#42b883" };
-  if (ext === "py") return { icon: FileCode2, color: "#3776ab" };
-  if (ext === "rs") return { icon: FileCode2, color: "#ce422b" };
-  if (ext === "go") return { icon: FileCode2, color: "#00add8" };
-  if (ext === "bzl") return { icon: FileCode2, color: "#43a047" };
-  if (["css", "scss", "sass", "less", "styl"].includes(ext)) return { icon: FileCode2, color: "#e96329" };
-  if (["html", "htm"].includes(ext)) return { icon: FileCode2, color: "#e34c26" };
-  if (
-    [
-      "java",
-      "kt",
-      "c",
-      "cpp",
-      "h",
-      "hpp",
-      "cs",
-      "rb",
-      "php",
-      "swift",
-      "scala",
-      "sh",
-      "bash",
-      "zsh",
-      "fish",
-      "ps1",
-      "bat",
-      "cmd",
-      "sql",
-      "graphql",
-      "gql",
-    ].includes(ext)
-  ) {
-    return { icon: FileCode2, color: "#6366f1" };
-  }
-  // 配置文件（yaml/toml/ini/env/点文件等）
-  if (
-    ["yaml", "yml", "toml", "ini", "env", "cfg", "conf", "bazel", "bazelrc", "bazelignore", "bazelversion"].includes(ext) ||
-    base.startsWith(".") ||
-    base === "justfile" ||
-    base === "makefile" ||
-    base === "dockerfile" ||
-    base.startsWith("build")
-  ) {
-    return { icon: Settings2, color: "#6b7280" };
-  }
-  return { icon: FileText, color: "#6b7280" };
+  return { kind: "lucide" as const, icon: FileImage, color: "#6b7280" };
 };
+
+// 预计算每个文件的图标信息，避免模板中重复调用
+const fileItems = computed(() => {
+  return files.value.slice(0, 48).map((path) => {
+    const name = fileName(path);
+    const icon = getFileIcon(name);
+    return { path, name, icon };
+  });
+});
 
 const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.label}）`);
 </script>
@@ -168,17 +123,24 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
           </div>
           <div class="ctx-row__file-grid">
             <div
-              v-for="file in files.slice(0, 48)"
-              :key="file"
+              v-for="item in fileItems"
+              :key="item.path"
               class="ctx-row__file-chip"
-              :title="file"
+              :title="item.path"
             >
-              <component
-                :is="getFileIcon(fileName(file)).icon"
-                :size="14"
-                :style="{ color: getFileIcon(fileName(file)).color }"
+              <img
+                v-if="item.icon.kind === 'url'"
+                :src="item.icon.url"
+                class="ctx-row__file-icon-img"
+                :alt="item.name"
               />
-              <span>{{ fileName(file) }}</span>
+              <component
+                v-else
+                :is="item.icon.icon"
+                :size="16"
+                :style="{ color: item.icon.color }"
+              />
+              <span>{{ item.name }}</span>
             </div>
           </div>
         </div>
@@ -331,6 +293,14 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ctx-row__file-icon-img {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
 }
 
 .ctx-row__section--content {

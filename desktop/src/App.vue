@@ -34,9 +34,9 @@ import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockIt
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listPendingUserQuestions, listSessions,
-  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion,
-  resumeWorkspace, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
+  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listPendingUserQuestions, listSessions,
+  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
+  revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
 
@@ -1922,6 +1922,22 @@ function handleReverted(runId: string) {
   timeline.value = next;
   void refreshIndex(false);
 }
+// 重试：回退该 run 的所有文件改动，再以相同的用户消息重跑
+async function handleRetry(runId: string, userMessage: string) {
+  const wsId = activeWorkspace.value?.workspace_id;
+  if (!wsId) return;
+  try {
+    const changes = await listChanges(wsId, runId);
+    const paths = changes.map((c) => c.path);
+    if (paths.length) {
+      await revertChanges(wsId, runId, paths);
+    }
+    handleReverted(runId);
+    await submitTask(userMessage, null);
+  } catch (error) {
+    window.alert(`重试失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 // 中断任务的"继续执行"：向当前会话补发一条续跑消息，复用交接摘要作为上下文
 function handleContinue() {
   void submitTask("继续", null);
@@ -2758,7 +2774,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->

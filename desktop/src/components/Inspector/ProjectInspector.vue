@@ -490,16 +490,16 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal });
       <div class="home-launcher">
         <p class="home-launcher__prompt">从这里开始</p>
         <button class="home-launcher__button" @click="openFiles">
-          <FolderOpen :size="18" />文件
+          <FolderOpen :size="20" />文件
         </button>
         <button class="home-launcher__button" @click="openSummary">
-          <ListChecks :size="18" />任务摘要
+          <ListChecks :size="20" />任务摘要
         </button>
         <button class="home-launcher__button" @click="openBrowser">
-          <Globe2 :size="18" />浏览器
+          <Globe2 :size="20" />浏览器
         </button>
         <button class="home-launcher__button" @click="openTerminal">
-          <SquareTerminal :size="18" />终端
+          <SquareTerminal :size="20" />终端
         </button>
       </div>
     </main>

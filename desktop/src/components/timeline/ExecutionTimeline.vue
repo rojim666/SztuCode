@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play } from "@lucide/vue";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import ThinkingBlock from "./ThinkingBlock.vue";
@@ -14,12 +14,6 @@ import { formatTokens } from "../../utils/sessionStats";
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string }>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
-defineEmits<{
-  decide: [toolUseId: string, decision: PermissionDecision];
-  reverted: [runId: string];
-  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
-  continue: [runId?: string];
-}>();
 
 type TurnState = "running" | "waiting" | "failed" | "interrupted" | "done";
 type TurnView = {
@@ -55,6 +49,7 @@ type TurnView = {
 const now = ref(Date.now());
 const expandedTurns = ref(new Set<string | number>());
 const copiedTurn = ref<string | number | null>(null);
+const retryingTurn = ref<string | number | null>(null);
 let copyTimer: number | undefined;
 let clockTimer: number | undefined;
 onMounted(() => { clockTimer = window.setInterval(() => { now.value = Date.now(); }, 1000); });
@@ -172,6 +167,20 @@ async function copyTurnSummary(turn: TurnView) {
   window.clearTimeout(copyTimer);
   copyTimer = window.setTimeout(() => { copiedTurn.value = null; }, 1600);
 }
+
+function retryTurn(turn: TurnView) {
+  if (!turn.runId || !turn.userMessage) return;
+  retryingTurn.value = turn.key;
+  emit("retry", turn.runId, turn.userMessage);
+}
+
+const emit = defineEmits<{
+  decide: [toolUseId: string, decision: PermissionDecision];
+  reverted: [runId: string];
+  retry: [runId: string, userMessage: string];
+  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
+  continue: [runId?: string];
+}>();
 
 function stepText(step: TimelineStep): string {
   return step.finalText || step.streamText || step.tokens.join("");
@@ -406,16 +415,18 @@ const turns = computed<TurnView[]>(() => {
                 :text="segment.text"
                 :running="turn.state === 'running' || turn.state === 'waiting'"
                 :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
+                :default-open="isTurnExpanded(turn)"
               />
               <!-- 文本块：Agent输出的文字内容 -->
               <div v-else-if="segment.type === 'text'" class="turn-inline-text">
                 <TokenStream :tokens="[]" :final-text="segment.text" />
               </div>
-              <!-- 工具摘要：灰色折叠行，点击展开详情 -->
+              <!-- 工具摘要：灰色折叠行，点击展开详情；历史展开态默认打开详情 -->
               <ToolSummaryRow
                 v-else-if="segment.type === 'tools'"
                 :calls="segment.calls"
                 :running="turn.state === 'running' || turn.state === 'waiting'"
+                :default-open="isTurnExpanded(turn)"
               />
             </template>
             <!-- 进行中提示："正在规划下一步" -->
@@ -425,13 +436,34 @@ const turns = computed<TurnView[]>(() => {
             </div>
           </div>
 
-          <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
+          <!-- 文字下方操作栏：复制 + 重试，hover/focus 时显现 -->
+          <div v-if="turn.text || turn.summaryText || (turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting')" class="turn-actions" :class="{ 'turn-actions--busy': retryingTurn === turn.key }">
+            <button
+              v-if="turn.text || turn.summaryText"
+              type="button"
+              class="turn-action-btn"
+              :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'"
+              :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'"
+              @click="copyTurnSummary(turn)"
+            >
+              <Check v-if="copiedTurn === turn.key" :size="14" :stroke-width="1.8" />
+              <Copy v-else :size="14" :stroke-width="1.8" />
+            </button>
+            <button
+              v-if="turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting'"
+              type="button"
+              class="turn-action-btn"
+              title="回退本次修改并重新执行"
+              aria-label="回退本次修改并重新执行"
+              :disabled="retryingTurn === turn.key"
+              @click="retryTurn(turn)"
+            >
+              <LoaderCircle v-if="retryingTurn === turn.key" class="spin" :size="14" :stroke-width="1.8" />
+              <RotateCw v-else :size="14" :stroke-width="1.8" />
+            </button>
+          </div>
 
-          <!-- 复制按钮 -->
-          <button v-if="turn.text || turn.summaryText" type="button" class="turn-copy" :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'" :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'" @click="copyTurnSummary(turn)">
-            <Check v-if="copiedTurn === turn.key" :size="15" :stroke-width="1.8" />
-            <Copy v-else :size="15" :stroke-width="1.8" />
-          </button>
+          <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
 
           <!-- 每轮 Token 消耗与缓存命中：展开历史时展示，运行中轮次不渲染 -->
           <div v-if="turn.runStats && isTurnExpanded(turn)" class="turn-usage" aria-label="本轮 Token 消耗与缓存命中">

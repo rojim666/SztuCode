@@ -7,13 +7,20 @@ const props = defineProps<{
   text: string;
   running?: boolean;
   completed?: boolean;
+  defaultOpen?: boolean;
 }>();
 
-const open = ref(false);
+const open = ref(!!props.defaultOpen);
+const userToggled = ref(false);
+
+// 父组件切换历史展开/折叠时，同步默认打开状态；用户手动点击过则尊重用户选择
+watch(() => props.defaultOpen, (val) => {
+  if (!userToggled.value) open.value = !!val;
+});
 
 watch(() => props.running, (isRunning, wasRunning) => {
-  if (isRunning) open.value = false;
-  else if (wasRunning && props.completed) open.value = false;
+  if (isRunning) { open.value = false; userToggled.value = false; }
+  else if (wasRunning && props.completed) { open.value = !!props.defaultOpen; userToggled.value = false; }
 });
 
 // 思考过程快速播放
@@ -61,7 +68,7 @@ const preview = computed(() => reasoningSummary(displayed.value, thinkingActive.
       type="button"
       class="thinking-block__trigger"
       :aria-expanded="open"
-      @click="open = !open"
+      @click="userToggled = true; open = !open"
     >
       <span class="thinking-block__icon">
         <LoaderCircle v-if="thinkingActive" class="spin" :size="14" />

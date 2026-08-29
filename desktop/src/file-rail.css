@@ -301,37 +301,42 @@
 }
 .home-launcher {
   display: grid;
-  gap: 10px;
+  gap: 6px;
   text-align: center;
 }
 .home-launcher__prompt {
-  margin: 0 0 8px;
+  margin: 0 0 12px;
   color: #8a8f8c;
-  font-size: 12px;
+  font-size: 13px;
 }
 .home-launcher__button {
   display: flex;
-  min-width: 180px;
+  min-width: 200px;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: 12px;
+  padding: 12px 18px;
   color: #3a3f3c;
-  background: #f6f7f6;
-  border: 1px solid #eceeec;
+  background: transparent;
+  border: 0;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: 15px;
   text-align: left;
-  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: background-color 120ms ease, transform 120ms ease;
 }
 .home-launcher__button:hover {
-  background: #eff1ef;
-  border-color: #dfe2df;
+  background: #f0f2f0;
+}
+.home-launcher__button:focus-visible {
+  outline: none;
+  background: #e8ebe8;
 }
 .home-launcher__button:active {
   transform: scale(0.98);
 }
 .home-launcher__button svg {
   flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
   color: #5c625e;
 }
 .xterm-shell {
