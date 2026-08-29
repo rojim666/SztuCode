@@ -306,13 +306,9 @@ button.composer-project:hover { color: #1a70cf; }
 }
 /* 面板滚动条：细窄、半透明、圆角，悬停时滑块透明度提升 */
 .inspector-panel, .diff-review__files, .diff-review__view { scrollbar-gutter: auto; scrollbar-width: thin; }.inspector-panel::-webkit-scrollbar, .diff-review__files::-webkit-scrollbar, .diff-review__view::-webkit-scrollbar { width: 8px; }.inspector-panel::-webkit-scrollbar-track, .diff-review__files::-webkit-scrollbar-track, .diff-review__view::-webkit-scrollbar-track { background: transparent; }.inspector-panel::-webkit-scrollbar-thumb, .diff-review__files::-webkit-scrollbar-thumb, .diff-review__view::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 18%); border-radius: 4px; }.inspector-panel:hover::-webkit-scrollbar-thumb, .diff-review__files:hover::-webkit-scrollbar-thumb, .diff-review__view:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 40%); }
-/* 会话区滚动条：非聚焦时滑块透明，聚焦/悬停时滑块为 #E3E3E3 */
-.task-stream { scrollbar-gutter: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.task-stream:hover, .task-stream:focus-within { scrollbar-color: #E3E3E3 transparent; }
-.task-stream::-webkit-scrollbar { width: 8px; }
-.task-stream::-webkit-scrollbar-track { background: transparent; }
-.task-stream::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
-.task-stream:hover::-webkit-scrollbar-thumb, .task-stream:focus-within::-webkit-scrollbar-thumb { background: #E3E3E3; }
+/* 会话区滚动条：已由圆点导航替代，完全隐藏 */
+.task-stream { scrollbar-width: none; }
+.task-stream::-webkit-scrollbar { width: 0; display: none; }
 
 /* 附件按钮：清除默认内边距与行高造成的视觉偏移。 */
 .composer-toolbar .round,

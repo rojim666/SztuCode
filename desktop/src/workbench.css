@@ -73,10 +73,87 @@
   padding: 24px 0 48px;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-gutter: stable;
+  scrollbar-width: none; /* Firefox: 隐藏滚动条 */
   scroll-behavior: smooth;
   transition: padding-bottom 180ms ease;
 }
+.task-stream::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome/Safari: 完全隐藏滚动条 */
+}
+
+/* 会话轮次圆点导航（Trae Work风格） */
+.turn-dot-rail {
+  position: absolute;
+  left: 10px;
+  top: 24px;
+  bottom: 120px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+  scrollbar-width: none;
+}
+.turn-dot-rail::-webkit-scrollbar { width: 0; display: none; }
+
+.turn-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #d1d5db;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.55;
+}
+
+.turn-dot:hover {
+  background: #9ca3af;
+  opacity: 1;
+  transform: scale(1.3);
+}
+
+.turn-dot.active {
+  background: #374151;
+  opacity: 1;
+  transform: scale(1.4);
+  box-shadow: 0 0 0 3px rgba(55, 65, 81, 0.12);
+}
+
+/* 轮次较多时缩小间距和圆点 */
+.turn-dot-rail[data-count="many"] { gap: 5px; }
+.turn-dot-rail[data-count="many"] .turn-dot { width: 6px; height: 6px; }
+.turn-dot-rail[data-count="crowded"] { gap: 4px; }
+.turn-dot-rail[data-count="crowded"] .turn-dot { width: 5px; height: 5px; }
+
+/* 小窗口下缩小圆点 */
+@media (max-height: 700px) {
+  .turn-dot-rail { gap: 6px; }
+  .turn-dot { width: 6px; height: 6px; }
+}
+
+:root[data-app-theme="dark"] .turn-dot {
+  background: #4b5563;
+}
+:root[data-app-theme="dark"] .turn-dot:hover {
+  background: #6b7280;
+}
+:root[data-app-theme="dark"] .turn-dot.active {
+  background: #d1d5db;
+  box-shadow: 0 0 0 3px rgba(209, 213, 219, 0.15);
+}
+
+/* 空会话不显示圆点导航 */
+.task-conversation--empty .turn-dot-rail { display: none; }
 
 /* 发送后预留空间，让流式回答有舒适的落点，不必手动下滑。 */
 .task-conversation--running .task-stream {

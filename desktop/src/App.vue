@@ -180,6 +180,102 @@ function keepTaskStreamAtBottom() {
     el.scrollTop = el.scrollHeight;
   });
 }
+
+// 会话轮次圆点导航（Trae Work风格）
+const turnDotActive = ref(-1);
+const turnDotCount = ref(0);
+const turnDotRailEl = ref<HTMLElement | null>(null);
+let turnObserver: IntersectionObserver | undefined;
+let turnElements: HTMLElement[] = [];
+let isScrollingToTurn = false;
+let scrollToTurnTimer: number | undefined;
+
+function refreshTurnObserver() {
+  turnObserver?.disconnect();
+  const el = taskStreamEl.value;
+  if (!el) return;
+  const steps = el.querySelectorAll<HTMLElement>(".execution-timeline > .timeline-step");
+  turnElements = Array.from(steps);
+  turnDotCount.value = turnElements.length;
+  if (!turnElements.length) { turnDotActive.value = -1; return; }
+
+  turnObserver = new IntersectionObserver((entries) => {
+    if (isScrollingToTurn) return;
+    // 找到最接近视口顶部且可见的轮次作为当前活动轮次
+    let bestIdx = -1;
+    let bestTop = Infinity;
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        const idx = turnElements.indexOf(entry.target as HTMLElement);
+        const rect = entry.boundingClientRect;
+        const containerTop = el.getBoundingClientRect().top;
+        const distance = Math.abs(rect.top - containerTop - 60);
+        if (distance < bestTop) {
+          bestTop = distance;
+          bestIdx = idx;
+        }
+      }
+    }
+    // 若没有完全可见的，找第一个部分可见的
+    if (bestIdx === -1) {
+      for (let i = 0; i < turnElements.length; i++) {
+        const rect = turnElements[i].getBoundingClientRect();
+        const containerRect = el.getBoundingClientRect();
+        if (rect.bottom > containerRect.top + 20 && rect.top < containerRect.bottom - 20) {
+          bestIdx = i;
+          break;
+        }
+      }
+    }
+    // 滚动到底部时激活最后一个
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
+      bestIdx = turnElements.length - 1;
+    }
+    // 滚动到顶部时激活第一个
+    if (el.scrollTop < 30 && turnElements.length) {
+      bestIdx = 0;
+    }
+    if (bestIdx >= 0) {
+      turnDotActive.value = bestIdx;
+      // 让圆点 rail 滚动到 active 圆点可见
+      nextTick(() => {
+        const rail = turnDotRailEl.value;
+        if (!rail) return;
+        const dots = rail.querySelectorAll<HTMLElement>(".turn-dot");
+        const dot = dots[bestIdx];
+        if (dot) {
+          const railRect = rail.getBoundingClientRect();
+          const dotRect = dot.getBoundingClientRect();
+          if (dotRect.top < railRect.top + 8) {
+            rail.scrollBy({ top: dotRect.top - railRect.top - 20, behavior: "smooth" });
+          } else if (dotRect.bottom > railRect.bottom - 8) {
+            rail.scrollBy({ top: dotRect.bottom - railRect.bottom + 20, behavior: "smooth" });
+          }
+        }
+      });
+    }
+  }, {
+    root: el,
+    threshold: [0, 0.1, 0.3, 0.5, 0.9, 1],
+    rootMargin: "-10% 0px -40% 0px",
+  });
+  for (const step of turnElements) turnObserver.observe(step);
+}
+
+function scrollToTurn(idx: number) {
+  const el = taskStreamEl.value;
+  if (!el || !turnElements[idx]) return;
+  isScrollingToTurn = true;
+  turnDotActive.value = idx;
+  const target = turnElements[idx];
+  const containerTop = el.getBoundingClientRect().top;
+  const targetTop = target.getBoundingClientRect().top;
+  el.scrollBy({ top: targetTop - containerTop - 24, behavior: "smooth" });
+  window.clearTimeout(scrollToTurnTimer);
+  scrollToTurnTimer = window.setTimeout(() => { isScrollingToTurn = false; }, 700);
+}
+
+// 监听 orderedTimeline 和 DOM 变化，刷新观察器（在 orderedTimeline 定义后注册，见下方）
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
@@ -352,6 +448,8 @@ const filteredLauncherWorkspaces = computed(() => {
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
 // 流式输出和思考动画不断改变内容高度；用户未主动上滑时持续跟随最新输出。
 watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
+// 轮次变化时刷新圆点导航观察器
+watch(orderedTimeline, () => { nextTick(refreshTurnObserver); }, { deep: true });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
@@ -2258,6 +2356,7 @@ onMounted(() => {
     ]).then((unlisteners) => { trayListeners = unlisteners; });
   }
   void refreshRuntime(true);
+  nextTick(refreshTurnObserver);
 });
 onBeforeUnmount(() => {
   window.clearTimeout(projectPreviewCloseTimer);
@@ -2271,6 +2370,8 @@ onBeforeUnmount(() => {
   window.clearTimeout(sidebarAnimTimer);
   window.clearTimeout(windowResizeEndTimer);
   window.clearTimeout(runtimeReconnectTimer);
+  window.clearTimeout(scrollToTurnTimer);
+  turnObserver?.disconnect();
   document.body.style.cursor = "";
   document.body.style.userSelect = "";
   if (inspectorCloseTimer) clearTimeout(inspectorCloseTimer);
@@ -2556,6 +2657,20 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
+                <!-- Trae Work 风格：会话轮次圆点导航 -->
+                <nav v-if="turnDotCount > 1" ref="turnDotRailEl" class="turn-dot-rail" :data-count="turnDotCount > 40 ? 'crowded' : turnDotCount > 20 ? 'many' : ''" aria-label="对话轮次导航">
+                  <button
+                    v-for="i in turnDotCount"
+                    :key="i - 1"
+                    type="button"
+                    class="turn-dot"
+                    :class="{ active: turnDotActive === i - 1 }"
+                    :title="`第 ${i} 轮`"
+                    :aria-label="`跳转到第 ${i} 轮对话`"
+                    :aria-current="turnDotActive === i - 1 ? 'true' : 'false'"
+                    @click="scrollToTurn(i - 1)"
+                  />
+                </nav>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />

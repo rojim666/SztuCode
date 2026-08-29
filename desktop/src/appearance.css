@@ -399,15 +399,8 @@
   border: 0;
 }
 
-:root[data-app-theme="dark"] .task-stream:hover,
-:root[data-app-theme="dark"] .task-stream:focus-within,
 :root[data-app-theme="dark"] .sidebar-workspace {
   scrollbar-color: var(--border-strong) transparent;
-}
-
-:root[data-app-theme="dark"] .task-stream:hover::-webkit-scrollbar-thumb,
-:root[data-app-theme="dark"] .task-stream:focus-within::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
 }
 
 :root[data-app-theme="dark"] .permission-confirm-backdrop {
