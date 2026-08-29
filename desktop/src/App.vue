@@ -3,7 +3,7 @@ import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, re
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
-  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, Workflow, X,
+  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,7 +17,6 @@ import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 // 暂时隐藏“修改了 N 个文件”提示，保留组件以便后续恢复。
 // import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
-import PipelineStream from "./components/timeline/pipeline/PipelineStream.vue";
 import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
@@ -239,10 +238,6 @@ const webviewZoom = ref(Number(localStorage.getItem("sztu.webviewZoom")) || 1);
 let lastEditableElement: HTMLInputElement | HTMLTextAreaElement | HTMLElement | null = null;
 const settingsButton = ref<HTMLButtonElement | null>(null);
 const appearanceSettings = ref<AppearanceSettings>(loadAppearanceSettings());
-// 时间线渲染方式：classic=按轮次折叠、结束后回放；pipeline=线性流水线、全程就地追加。
-// 两套并存可随时切换对比，跑稳后再移除 classic 分支。
-const timelineView = ref<"classic" | "pipeline">(localStorage.getItem("sztu.timelineView") === "pipeline" ? "pipeline" : "classic");
-watch(timelineView, (value) => localStorage.setItem("sztu.timelineView", value));
 const currentStepByRun = new Map<string, number>();
 const runStepBase = new Map<string, number>(); // 每个 run 的 step 起点偏移，避免跨 run 步号冲突
 const liveRunUsage = new Map<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number }>();
@@ -2013,7 +2008,6 @@ function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
-function toggleTimelineView() { timelineView.value = timelineView.value === "pipeline" ? "classic" : "pipeline"; }
 async function submitChat(content: string) {
   const { content: payload, images } = buildMessagePayload(content);
   await submitTask(payload, null, images);
@@ -2538,7 +2532,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
-                  <button type="button" class="pipeline-view-toggle" :title="timelineView === 'pipeline' ? '流水线视图（点击切回经典）' : '经典视图（点击切到流水线）'" :aria-label="timelineView === 'pipeline' ? '切换到经典视图' : '切换到流水线视图'" :aria-pressed="timelineView === 'pipeline'" :class="{ active: timelineView === 'pipeline' }" @click="toggleTimelineView"><Workflow :size="18" /></button>
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
@@ -2560,8 +2553,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <PipelineStream v-if="timelineView === 'pipeline'" :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
-                    <ExecutionTimeline v-else :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @review="handleReview" @continue="handleContinue" />
                   </KeepAlive>
                 </div>
                 <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>

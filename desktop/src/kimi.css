@@ -329,7 +329,6 @@ button.composer-project:hover { color: #1a70cf; }
 .work-header__tools .workspace-panel-toggle.active,
 .work-header__tools .pipeline-view-toggle:hover,
 .work-header__tools .pipeline-view-toggle:focus-visible,
-.work-header__tools .pipeline-view-toggle.active {
   color: #4f555c;
   background: #eceeef;
   border: 0;
