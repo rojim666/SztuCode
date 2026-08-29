@@ -15,7 +15,7 @@
 
 - Client sends `{type: "hello", version: 1, capabilities?: string[]}` as an optional first frame.
 - Server replies with `{type: "hello", version: 1, server_version: string, capabilities: string[]}` or `hello_error`.
-- Advertised capabilities: `jsonrpc`, `ndjson`, `hello`, `request.cancel`, `request.idempotency`, `session.attach`, `session.detach`, `session.snapshot`, `event.subscribe`.
+- Advertised capabilities: `jsonrpc`, `ndjson`, `hello`, `request.cancel`, `request.idempotency`, `session.attach`, `session.detach`, `session.snapshot`, `session.command`, `event.subscribe`.
 
 ## Error Codes
 
@@ -52,6 +52,7 @@
 - `session.create`
 - `session.attach`
 - `session.detach`
+- `session.command`
 - `session.get`
 - `session.list`
 - `session.history`
@@ -66,6 +67,7 @@
 - `session.pin`
 - `session.rename`
 - `session.resume`
+- `session.set_workspace`
 - `change.diff`
 - `change.discard`
 - `change.list`
@@ -106,82 +108,16 @@
 - `workspace.delete`
 - `workspace.list`
 - `workspace.open`
+- `workspace.pin`
 - `workspace.profile`
+- `workspace.rename`
 - `workspace.resume`
 - `workspace.status`
 - `workspace.tree`
 
 ## Registered Methods (runtime-ts)
 
-- `agent.run`
-- `agent.subagent`
-- `change.diff`
-- `change.discard`
-- `change.list`
-- `change.revert`
-- `change.stage`
-- `change.unstage`
-- `core.ping`
-- `core.shutdown`
-- `event.subscribe`
-- `file.read`
-- `file.search`
-- `git.commit`
-- `git.history`
-- `permission.respond`
-- `permission.set_mode`
-- `plugin.catalog`
-- `plugin.catalog_install`
-- `plugin.install`
-- `plugin.list`
-- `plugin.marketplace_add`
-- `plugin.marketplace_refresh`
-- `plugin.marketplace_remove`
-- `plugin.set_enabled`
-- `plugin.uninstall`
-- `provider.ccswitch_apply`
-- `provider.ccswitch_list`
-- `provider.model_benchmark`
-- `provider.model_delete`
-- `provider.model_list`
-- `provider.model_save`
-- `provider.model_select`
-- `provider.model_test`
-- `provider.status`
-- `question.pending`
-- `question.respond`
-- `run.cancel`
-- `run.get`
-- `run.replay`
-- `session.archive`
-- `session.close`
-- `session.compact`
-- `session.create`
-- `session.delete`
-- `session.fork`
-- `session.get`
-- `session.get_history`
-- `session.history`
-- `session.list`
-- `session.pin`
-- `session.rename`
-- `session.resume`
-- `session.send_message`
-- `session.steer_message`
-- `settings.get`
-- `settings.update`
-- `skill.install`
-- `skill.list`
-- `skill.set_enabled`
-- `workflow.run`
-- `workspace.archive`
-- `workspace.delete`
-- `workspace.list`
-- `workspace.open`
-- `workspace.profile`
-- `workspace.resume`
-- `workspace.status`
-- `workspace.tree`
+
 
 ## Shared Request and Result Types
 
@@ -336,6 +272,7 @@
 | `path` | `string` | yes |
 | `name` | `string` | yes |
 | `archived` | `boolean` | yes |
+| `pinned` | `boolean` | no |
 
 ### WorkspaceOpenResult
 
@@ -428,6 +365,54 @@
 | `content` | `string` | yes |
 | `images` | `MessageImageBlock[]` | no |
 
+### SessionPromptParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.prompt"` | no |
+| `session_id` | `string` | yes |
+| `content` | `string` | yes |
+| `client_message_id` | `string` | no |
+
+### SessionAbortParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.abort"` | no |
+| `session_id` | `string` | yes |
+| `run_id` | `string` | no |
+
+### SessionSetModelParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.set_model"` | no |
+| `session_id` | `string` | yes |
+| `model` | `string` | yes |
+
+### SessionSetThinkingParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.set_thinking"` | no |
+| `session_id` | `string` | yes |
+| `thinking_level` | `string` | yes |
+
+### EventSubscribeParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"event.subscribe"` | no |
+| `topics` | `string[]` | no |
+| `scope` | `string` | no |
+
+### EventSubscribeResult
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `subscribed` | `string[]` | yes |
+| `scope` | `string` | yes |
+
 ### SessionSnapshot
 
 | Field | Type | Required |
@@ -447,6 +432,104 @@
 | `locked` | `boolean` | no |
 | `phase` | `"idle" \| "running" \| "steering" \| "aborting" \| "closed"` | no |
 | `revision` | `number` | no |
+
+### SessionMetadata
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `session_id` | `string` | yes |
+| `title` | `string` | no |
+| `mode` | `"one_shot" \| "chat"` | no |
+| `status` | `SessionStatus` | no |
+| `updated_at` | `string` | no |
+| `archived` | `boolean` | no |
+| `workspace_id` | `string \| null` | no |
+
+### ServerSnapshot
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `server_id` | `string` | no |
+| `protocol_version` | `ProtocolVersion` | yes |
+| `revision` | `number` | yes |
+| `sessions` | `SessionMetadata[]` | yes |
+| `models` | `unknown[]` | no |
+
+### SessionCommandList
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"list"` | yes |
+
+### SessionCommandCreate
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"create"` | yes |
+| `cwd` | `string` | no |
+| `name` | `string` | no |
+| `model` | `string` | no |
+| `thinkingLevel` | `string` | no |
+
+### SessionCommandAttach
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"attach"` | yes |
+| `sessionId` | `string` | yes |
+
+### SessionCommandDetach
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"detach"` | yes |
+| `sessionId` | `string` | yes |
+
+### SessionCommandPrompt
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"prompt"` | yes |
+| `sessionId` | `string` | yes |
+| `text` | `string` | yes |
+
+### SessionCommandSteer
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"steer"` | yes |
+| `sessionId` | `string` | yes |
+| `text` | `string` | yes |
+
+### SessionCommandAbort
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"abort"` | yes |
+| `sessionId` | `string` | yes |
+
+### SessionCommandSetModel
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"set_model"` | yes |
+| `sessionId` | `string` | yes |
+| `model` | `string` | yes |
+
+### SessionCommandSetThinking
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `command` | `"set_thinking"` | yes |
+| `sessionId` | `string` | yes |
+| `thinkingLevel` | `string` | yes |
+
+### SessionCommandParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"session.command"` | no |
+| `command` | `SessionCommand` | yes |
 
 ### SessionResult
 
@@ -506,6 +589,7 @@
 | `goal` | `string` | yes |
 | `planner_summary` | `string` | yes |
 | `tasks` | `WorkflowTask[]` | yes |
+| `parent_session_id` | `string` | no |
 
 ### HandoffArtifact
 
@@ -529,6 +613,8 @@
 | `elapsed_s` | `number` | yes |
 | `attempt` | `number` | yes |
 | `child_run_id` | `string` | yes |
+| `parent_run_id` | `string` | no |
+| `child_session_id` | `string` | no |
 
 ### WorkflowTaskResult
 
@@ -540,6 +626,8 @@
 | `artifact` | `HandoffArtifact \| null` | yes |
 | `error` | `string` | yes |
 | `tokens` | `number` | yes |
+| `child_session_id` | `string` | no |
+| `parent_run_id` | `string` | no |
 
 ### WorkflowResult
 
@@ -551,6 +639,7 @@
 | `tasks` | `WorkflowTaskResult[]` | yes |
 | `total_tokens` | `number` | yes |
 | `elapsed_s` | `number` | yes |
+| `parent_run_id` | `string` | no |
 
 ### WorkflowTaskSnapshot
 
@@ -565,6 +654,8 @@
 | `allowed_paths` | `string[]` | yes |
 | `attempt` | `number` | yes |
 | `error` | `string` | yes |
+| `child_session_id` | `string` | no |
+| `parent_run_id` | `string` | no |
 
 ### PlanItem
 
@@ -609,6 +700,7 @@
 | `cache_creation_input_tokens` | `number` | yes |
 | `elapsed_s` | `number` | yes |
 | `context_pct` | `number` | yes |
+| `parent_session_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### StepStartedEvent
@@ -627,6 +719,18 @@
 | `type` | `"step.finished"` | yes |
 | `run_id` | `string` | yes |
 | `step` | `number` | yes |
+| `ts` | `string` | yes |
+
+### PhaseChangedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"phase.changed"` | yes |
+| `run_id` | `string` | yes |
+| `step` | `number` | yes |
+| `phase` | `AgentPhase` | yes |
+| `previous` | `AgentPhase` | no |
+| `reason` | `string` | yes |
 | `ts` | `string` | yes |
 
 ### LlmTokenEvent
@@ -836,6 +940,8 @@
 | `type` | `"subagent.started"` | yes |
 | `run_id` | `string` | yes |
 | `parent_run_id` | `string` | yes |
+| `parent_session_id` | `string` | no |
+| `child_session_id` | `string` | no |
 | `description` | `string` | yes |
 | `ts` | `string` | yes |
 
@@ -846,6 +952,8 @@
 | `type` | `"subagent.finished"` | yes |
 | `run_id` | `string` | yes |
 | `parent_run_id` | `string` | yes |
+| `parent_session_id` | `string` | no |
+| `child_session_id` | `string` | no |
 | `status` | `"success" \| "failed"` | yes |
 | `ts` | `string` | yes |
 
@@ -859,6 +967,8 @@
 | `goal` | `string` | yes |
 | `planner_summary` | `string` | yes |
 | `tasks` | `WorkflowTaskSnapshot[]` | yes |
+| `parent_run_id` | `string` | no |
+| `parent_session_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### WorkflowTaskUpdatedEvent
@@ -869,6 +979,8 @@
 | `run_id` | `string` | yes |
 | `workflow_id` | `string` | yes |
 | `task` | `WorkflowTaskSnapshot` | yes |
+| `parent_run_id` | `string` | no |
+| `parent_session_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### WorkflowHandoffEvent
@@ -879,6 +991,7 @@
 | `run_id` | `string` | yes |
 | `workflow_id` | `string` | yes |
 | `artifact` | `HandoffArtifact` | yes |
+| `parent_run_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### WorkflowReviewedEvent
@@ -894,6 +1007,7 @@
 | `test_summary` | `string` | yes |
 | `security_summary` | `string` | yes |
 | `conclusion` | `string` | yes |
+| `parent_run_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### WorkflowFinishedEvent
@@ -907,6 +1021,8 @@
 | `reason` | `string` | yes |
 | `total_tokens` | `number` | yes |
 | `elapsed_s` | `number` | yes |
+| `parent_run_id` | `string` | no |
+| `parent_session_id` | `string` | no |
 | `ts` | `string` | yes |
 
 ### SessionLifecycleEvent
