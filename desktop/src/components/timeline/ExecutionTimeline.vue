@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play, RotateCw } from "@lucide/vue";
+import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import AgentLogo from "./AgentLogo.vue";
-import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
+import FileChangesBadge from "./FileChangesBadge.vue";
+import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
 
-const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string }>();
+const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string; workspacePath?: string }>();
+const emit = defineEmits<{
+  retry: [runId: string, userMessage: string];
+  continue: [runId: string];
+  decide: [toolUseId: string, decision: PermissionDecision];
+  openFile: [path: string];
+  openChanges: [runId: string];
+}>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
 
@@ -19,6 +27,7 @@ type TurnView = {
   key: string | number;
   runId?: string;
   changePaths: string[];
+  changeFiles: ChangeFile[];
   userMessage?: string;
   userMessageTime?: string;
   model?: string;
@@ -352,6 +361,23 @@ const turns = computed<TurnView[]>(() => {
     const tests = aggregatedStep.tests ?? [];
     const plan = aggregatedStep.plan ?? [];
     const changePaths = [...new Set(aggregatedStep.changes?.flatMap((entry) => entry.paths) ?? [])];
+    // 优先使用files字段（带additions/deletions统计），否则从paths构建
+    const changeFiles: ChangeFile[] = aggregatedStep.changes?.length
+      ? (() => {
+          const allFiles = aggregatedStep.changes!.flatMap((entry) => entry.files ?? entry.paths.map((p) => ({ path: p })));
+          const map = new Map<string, ChangeFile>();
+          for (const f of allFiles) {
+            const existing = map.get(f.path);
+            if (existing) {
+              existing.additions = (existing.additions ?? 0) + (f.additions ?? 0);
+              existing.deletions = (existing.deletions ?? 0) + (f.deletions ?? 0);
+            } else {
+              map.set(f.path, { ...f });
+            }
+          }
+          return [...map.values()];
+        })()
+      : changePaths.map((p) => ({ path: p }));
     const hasActivity = Boolean(
       allToolCalls.length || thinkingText || plan.length || aggregatedStep.subagents?.length ||
       aggregatedStep.skills?.length || aggregatedStep.logs?.length ||
@@ -362,6 +388,7 @@ const turns = computed<TurnView[]>(() => {
       key: steps.find((step) => step.runId)?.runId ?? `turn-${index}`,
       runId: steps.find((step) => step.runId)?.runId,
       changePaths,
+      changeFiles,
       userMessage: group.userMessage,
       userMessageTime: group.userMessageTime,
       model,
@@ -512,11 +539,17 @@ const turns = computed<TurnView[]>(() => {
             <strong>{{ formatTokens(turn.runStats.inputTokens + turn.runStats.outputTokens) }} tokens</strong>
           </div>
 
-          <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changePaths.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" aria-label="验证与变更">
-            <div v-if="turn.passedTests" class="evidence-item passed"><CheckCircle2 :size="15" /><span><b>{{ turn.passedTests }}</b> 项验证通过</span></div>
-            <div v-if="turn.failedTests" class="evidence-item failed"><CircleAlert :size="15" /><span><b>{{ turn.failedTests }}</b> 项验证失败</span></div>
-            <div v-if="turn.changePaths.length" class="evidence-item changed"><FileDiff :size="15" /><span><b>{{ turn.changePaths.length }}</b> 个文件有变更</span></div>
-            <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><CircleAlert :size="15" /><span>{{ turn.failureReason }}</span></div>
+          <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" aria-label="验证与变更">
+            <div v-if="turn.passedTests" class="evidence-item passed"><CheckCircle2 :size="14" /><span><b>{{ turn.passedTests }}</b> 项验证通过</span></div>
+            <div v-if="turn.failedTests" class="evidence-item failed"><CircleAlert :size="14" /><span><b>{{ turn.failedTests }}</b> 项验证失败</span></div>
+            <FileChangesBadge
+              v-if="turn.changeFiles.length"
+              :files="turn.changeFiles"
+              :workspace-path="workspacePath ?? ''"
+              @open-file="(path) => emit('openFile', path)"
+              @open-all="turn.runId && emit('openChanges', turn.runId)"
+            />
+            <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><CircleAlert :size="14" /><span>{{ turn.failureReason }}</span></div>
           </section>
 
           <button v-if="isTurnExpanded(turn) && turn.state === 'interrupted'" class="continue-button" type="button" title="从中断处继续执行" @click="$emit('continue', turn.runId)">

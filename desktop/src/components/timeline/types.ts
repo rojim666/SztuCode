@@ -64,7 +64,8 @@ export type PlanItem = {
 };
 
 export type TestEntry = { status: "passed" | "failed"; summary: string };
-export type ChangeEntry = { paths: string[]; workspacePath: string };
+export type ChangeFile = { path: string; additions?: number; deletions?: number };
+export type ChangeEntry = { paths: string[]; workspacePath: string; files?: ChangeFile[] };
 export type LogEntry = { level: string; source: string; message: string };
 export type SubagentEntry = { runId: string; description: string; status: "running" | "success" | "failed" };
 export type SkillEntry = { name: string; arguments: string };
