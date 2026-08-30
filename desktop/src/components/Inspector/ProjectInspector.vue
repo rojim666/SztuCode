@@ -259,6 +259,25 @@ async function previewFile(filePath: string) {
   fileTreeRef.value?.previewFileAtPath(filePath);
 }
 
+async function openChangeDiff(filePath: string) {
+  // 先打开summary面板，它会自动加载changes
+  openSummary();
+  await nextTick();
+  await refreshArtifacts();
+  await nextTick();
+  // 查找对应的change artifact（优先精确匹配，再按文件名匹配）
+  const normalizedPath = filePath.replace(/\\/g, "/").toLowerCase();
+  const fileName = normalizedPath.split("/").pop() ?? "";
+  const artifact = artifacts.value.find((a) => a.source === "change" && a.path.replace(/\\/g, "/").toLowerCase() === normalizedPath)
+    ?? artifacts.value.find((a) => a.source === "change" && a.path.replace(/\\/g, "/").toLowerCase().endsWith("/" + fileName))
+    ?? artifacts.value.find((a) => a.source === "change");
+  if (artifact) await openArtifact(artifact);
+}
+
+function openChangesPanel() {
+  openSummary();
+}
+
 function openBrowser() {
   const tab = browserTabs.value[0];
   if (tab) {
@@ -454,7 +473,7 @@ onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", closePreviewOnOutside);
   document.removeEventListener("keydown", closeToolMenuOnEscape);
 });
-defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previewFile });
+defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previewFile, openChangeDiff, openChangesPanel });
 </script>
 
 <template>

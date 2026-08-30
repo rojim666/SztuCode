@@ -33,7 +33,7 @@ function imageUrlFromBlock(block: Record<string, unknown>): string {
 /** Convert provider-neutral/Anthropic history into strict OpenAI chat content. */
 function normalizeChatContent(message: ChatMessage): NormalizedContent {
   if (typeof message.content === "string") return {
-    content: message.content || (message.role === "assistant" ? null : ""),
+    content: message.content || (message.role === "assistant" ? "" : ""),
     ...(message.reasoning_content ? { reasoningContent: message.reasoning_content } : {}),
   };
   const text: string[] = [];
@@ -65,7 +65,7 @@ function normalizeChatContent(message: ChatMessage): NormalizedContent {
   }
   const content = media.length
     ? [...(text.length ? [{ type: "text", text: text.join("\n") }] : []), ...media]
-    : text.join("\n") || (message.role === "assistant" ? null : "");
+    : text.join("\n") || "";
   const reasoningContent = message.reasoning_content || undefined;
   return { content, ...(reasoningContent ? { reasoningContent } : {}) };
 }
