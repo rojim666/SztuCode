@@ -14,10 +14,12 @@ import { formatTokens } from "../../utils/sessionStats";
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string; workspacePath?: string }>();
 const emit = defineEmits<{
   retry: [runId: string, userMessage: string];
-  continue: [runId: string];
+  continue: [runId?: string];
   decide: [toolUseId: string, decision: PermissionDecision];
   openFile: [path: string];
   openChanges: [runId: string];
+  reverted: [runId: string];
+  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
 }>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
@@ -185,14 +187,6 @@ function retryTurn(turn: TurnView) {
   retryingTurn.value = turn.key;
   emit("retry", turn.runId, turn.userMessage);
 }
-
-const emit = defineEmits<{
-  decide: [toolUseId: string, decision: PermissionDecision];
-  reverted: [runId: string];
-  retry: [runId: string, userMessage: string];
-  review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
-  continue: [runId?: string];
-}>();
 
 function stepText(step: TimelineStep): string {
   return step.finalText || step.streamText || step.tokens.join("");
