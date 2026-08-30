@@ -8,6 +8,8 @@ import type { EventBus } from "./event-bus.js";
 import { TaskManager, type TaskStatus } from "./task-manager.js";
 import { classifyBashPermission } from "./bash-permission.js";
 import { SkillLoader } from "./skills.js";
+import { detectDocumentFormat } from "./document-parser/detect.js";
+import type { ParsedDocument } from "./document-parser/types.js";
 
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
@@ -276,7 +278,13 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   registry.register({ name: "read_file", description: "Read a UTF-8 file inside the workspace with line numbers and optional line pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based first line" }, limit: { type: "integer", minimum: 1, maximum: 2000, description: "Maximum lines" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
     try {
-      const data = await readFile(await context.workspace.resolveExisting(file)); const byteLimit = 2 * 1024 * 1024;
+      const target = await context.workspace.resolveExisting(file);
+      // 二进制办公文档（PDF/DOCX/XLSX/PPTX）按 UTF-8 读只会得到乱码：给出指向 parse_document 的提示
+      const documentHint = detectDocumentFormat(path.basename(target));
+      if (documentHint) {
+        return ok(`${file} is a binary ${documentHint.toUpperCase()} document; read_file cannot render its content. Use the parse_document tool ({"path": "${file}"}) to extract text, tables and metadata.`);
+      }
+      const data = await readFile(target); const byteLimit = 2 * 1024 * 1024;
       const content = data.subarray(0, byteLimit).toString("utf8"); const lines = content.split(/\r?\n/);
       if (lines.at(-1) === "") lines.pop();
       const offset = Number.isInteger(params.offset) ? Math.max(0, Number(params.offset)) : 0;
@@ -286,6 +294,25 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       const end = Math.min(lines.length, offset + page.length);
       const suffix = end < lines.length || data.length > byteLimit ? `\n\n[${end < lines.length ? `lines ${offset + 1}-${end}/${lines.length}` : `end of file`}${data.length > byteLimit ? `; file truncated at ${byteLimit} bytes` : ""}]` : "";
       return ok(`${numbered}${suffix}`.trimEnd());
+    } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  }});
+  registry.register({ name: "parse_document", description: "Extract readable text, tables and metadata from binary documents (PDF, DOCX, XLSX) as Markdown", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path to the document, relative to workspace root" }, format: { type: "string", enum: ["auto", "pdf", "docx", "xlsx"], description: "Force a parser instead of extension/magic detection", default: "auto" }, max_pages: { type: "integer", minimum: 1, maximum: 200, description: "PDF: parse only the first N pages (default: all)" }, max_rows: { type: "integer", minimum: 1, maximum: 5000, description: "XLSX: maximum rows per sheet (default: 500)" } }, required: ["path"] }, async invoke(params, context) {
+    const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
+    try {
+      const target = await context.workspace.resolveExisting(file);
+      const buffer = await readFile(target); const sizeLimit = 50 * 1024 * 1024;
+      if (buffer.length > sizeLimit) return fail(`document too large: ${buffer.length} bytes (limit ${sizeLimit})`);
+      const requested = str(params, "format") ?? "auto";
+      const format = requested === "auto" ? detectDocumentFormat(path.basename(target), buffer) : requested as ParsedDocument["format"];
+      if (!format || format === "unknown") return fail(`unsupported document format: ${path.extname(file) || "(no extension)"} — supported: pdf, docx, xlsx`, "schema_error");
+      // 懒加载：pdf/docx/xlsx 解析库较重，仅在真正解析文档时装入，不拖慢 daemon 启动
+      const { documentParsers, formatDocumentMarkdown } = await import("./document-parser/index.js");
+      if (!documentParsers.hasParser(format)) return fail(`parsing for ${format.toUpperCase()} is not supported yet`, "schema_error");
+      const doc = await documentParsers.parse(buffer, format, {
+        max_pages: Number.isInteger(params.max_pages) ? Number(params.max_pages) : undefined,
+        max_rows: Number.isInteger(params.max_rows) ? Number(params.max_rows) : undefined,
+      });
+      return ok(formatDocumentMarkdown(doc));
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "write_file", description: "Write a UTF-8 file inside the workspace", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }, async invoke(params, context) {

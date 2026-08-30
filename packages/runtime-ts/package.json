@@ -12,11 +12,14 @@
     "@sztucode/agent-core": "file:../agent-core",
     "@sztucode/ai": "file:../ai",
     "@sztucode/protocol": "file:../protocol",
+    "@sztucode/server": "file:../server",
     "@sztucode/session": "file:../session",
     "@sztucode/session-fs": "file:../session-fs",
-    "@sztucode/server": "file:../server",
     "@sztucode/telemetry": "file:../telemetry",
-    "js-tiktoken": "^1.0.21"
+    "js-tiktoken": "^1.0.21",
+    "mammoth": "^1.12.2",
+    "pdf-parse": "^2.4.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2"
