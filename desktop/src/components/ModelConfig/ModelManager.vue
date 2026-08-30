@@ -244,7 +244,7 @@ onMounted(() => {
             <small class="current-model-id">{{ currentModel.model }}</small>
           </div>
         </div>
-        <Check class="current-model-check" :size="20" />
+        <Check class="current-model-check" :size="22" />
       </div>
 
       <!-- 模型列表 -->
@@ -256,7 +256,7 @@ onMounted(() => {
         
         <div v-for="item in models" :key="item.id" class="model-card" :class="{ 'model-card--current': item.is_current }">
           <button class="model-card-select" :class="{ active: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" @click="selectModel(item)">
-            <Check v-if="item.is_current" :size="14" />
+            <Check v-if="item.is_current" :size="16" />
           </button>
           <i class="model-provider-logo">
             <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
@@ -300,7 +300,7 @@ onMounted(() => {
       <div v-if="deleteTarget" class="mm-modal-backdrop" @mousedown.self="cancelRemove">
         <section ref="deleteDialog" class="mm-modal-dialog mm-modal-dialog--sm" role="alertdialog" aria-modal="true" aria-labelledby="model-delete-title" aria-describedby="model-delete-description" @keydown.esc.stop="cancelRemove" @keydown.tab="(e: KeyboardEvent) => trapTab(e, deleteDialog)">
           <div class="mm-modal-icon mm-modal-icon--danger">
-            <Trash2 :size="16" />
+            <Trash2 :size="18" />
           </div>
           <h3 id="model-delete-title" class="mm-modal-title">删除模型</h3>
           <p id="model-delete-description" class="mm-modal-desc">确定要删除 "{{ deleteTarget.name }}" 吗？此操作无法撤销。</p>
@@ -327,7 +327,7 @@ onMounted(() => {
                 <span v-else>{{ item.mark }}</span>
               </i>
               <span class="mm-vendor-name">{{ item.name }}</span>
-              <ChevronDown class="mm-vendor-arrow" :size="12" />
+              <ChevronDown class="mm-vendor-arrow" :size="14" />
             </button>
           </div>
         </section>
@@ -338,7 +338,7 @@ onMounted(() => {
         <section ref="formDialog" class="mm-modal-dialog mm-modal-dialog--lg" role="dialog" aria-modal="true" :aria-label="editingModel ? '编辑模型' : '添加模型'" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, formDialog)">
           <header class="mm-modal-header">
             <button v-if="!editingModel" type="button" class="mm-modal-back-btn" aria-label="返回" @click="backToVendor">
-              <ArrowLeft :size="14" />
+              <ArrowLeft :size="16" />
             </button>
             <h3>{{ editingModel ? "编辑模型" : "添加模型" }}</h3>
           </header>
@@ -375,20 +375,20 @@ onMounted(() => {
               <div class="mm-input-with-action">
                 <input v-model="apiKey" class="mm-form-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? '留空保持不变' : '请输入 API Key'" />
                 <button type="button" class="mm-input-action-btn" :aria-label="showKey ? '隐藏 API Key' : '显示 API Key'" @click="showKey = !showKey">
-                  <EyeOff v-if="showKey" :size="13" />
-                  <Eye v-else :size="13" />
+                  <EyeOff v-if="showKey" :size="15" />
+                  <Eye v-else :size="15" />
                 </button>
               </div>
               <button v-if="selectedVendor.apiKeyUrl" type="button" class="mm-link-btn" @click="getApiKey">
                 获取 API 密钥
-                <ExternalLink :size="10" />
+                <ExternalLink :size="12" />
               </button>
             </div>
 
             <div class="mm-form-advanced">
               <button type="button" class="mm-advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
                 <span>高级配置</span>
-                <ChevronDown :size="12" :class="{ 'mm-rotated': advancedOpen }" />
+                <ChevronDown :size="14" :class="{ 'mm-rotated': advancedOpen }" />
               </button>
 
               <div v-if="advancedOpen" class="mm-advanced-body">
@@ -436,13 +436,13 @@ onMounted(() => {
 
           <footer class="mm-modal-footer">
             <button type="button" class="mm-btn mm-btn--ghost" @click="testConnection" :disabled="!canSave || saving || testing">
-              <LoaderCircle v-if="testing" class="mm-spin" :size="11" />
+              <LoaderCircle v-if="testing" class="mm-spin" :size="13" />
               {{ testing ? '测试中' : '测试连接' }}
             </button>
             <div class="mm-modal-footer-right">
               <button type="button" class="mm-btn mm-btn--ghost" @click="resetFormDefaults">重置</button>
               <button type="button" class="mm-btn mm-btn--primary" :disabled="!canSave || saving || testing" @click="save">
-                <LoaderCircle v-if="saving" class="mm-spin" :size="11" />
+                <LoaderCircle v-if="saving" class="mm-spin" :size="13" />
                 {{ saving ? '保存中' : (editingModel ? '保存' : '添加') }}
               </button>
             </div>
@@ -469,16 +469,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .current-model-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .current-model-text {
@@ -488,19 +488,19 @@ onMounted(() => {
 }
 
 .current-model-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
 }
 
 .current-model-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
 
 .current-model-id {
-  font-size: 10px;
+  font-size: 11px;
   font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
   color: var(--text-faint);
 }
@@ -508,8 +508,8 @@ onMounted(() => {
 .current-model-check {
   color: var(--accent);
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 /* 模型列表 */
@@ -528,24 +528,24 @@ onMounted(() => {
 }
 
 .model-list-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
 }
 
 .model-list-count {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-faint);
 }
 
 .model-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 8px 10px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 7px;
   transition: all 0.12s ease;
 }
 
@@ -562,8 +562,8 @@ onMounted(() => {
 .model-card-select {
   display: grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   padding: 0;
   color: transparent;
@@ -587,33 +587,33 @@ onMounted(() => {
 .model-provider-logo {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   background: var(--surface-soft);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  font-size: 10px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 700;
   font-style: normal;
   color: var(--text-muted);
 }
 
 .model-provider-logo--lg {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
 }
 
 .model-provider-logo img {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
 }
 
 .model-provider-logo--lg img {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
 }
 
 .model-card-info {
@@ -625,7 +625,7 @@ onMounted(() => {
 }
 
 .model-card-info b {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
   overflow: hidden;
@@ -634,7 +634,7 @@ onMounted(() => {
 }
 
 .model-card-info small {
-  font-size: 10px;
+  font-size: 11px;
   font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
   color: var(--text-faint);
   overflow: hidden;
@@ -650,12 +650,12 @@ onMounted(() => {
 }
 
 .model-badge {
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
   background: var(--surface-soft);
-  border-radius: 3px;
+  border-radius: 4px;
   font-style: normal;
 }
 
@@ -667,12 +667,12 @@ onMounted(() => {
 .model-action-btn {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border-radius: 4px;
+  border-radius: 5px;
   transition: all 0.12s ease;
 }
 
@@ -691,15 +691,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   width: 100%;
-  height: 28px;
+  height: 32px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
   border: 1px dashed var(--border-strong);
   border-radius: 5px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.12s ease;
 }
@@ -717,13 +717,13 @@ onMounted(() => {
   justify-content: center;
   gap: 6px;
   width: 100%;
-  min-height: 70px;
-  padding: 14px;
+  min-height: 80px;
+  padding: 16px;
   color: var(--text-muted);
   background: transparent;
   border: 1px dashed var(--border-strong);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 7px;
+  font-size: 13px;
   transition: all 0.12s ease;
 }
 
@@ -735,11 +735,11 @@ onMounted(() => {
 
 .model-error {
   margin: 0;
-  padding: 6px 8px;
+  padding: 7px 9px;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.08);
-  border-radius: 5px;
-  font-size: 11px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 /* Modal 基础样式 - z-index高于设置弹窗 */
@@ -1259,25 +1259,25 @@ onMounted(() => {
 
 .mm-modal-dialog {
   width: 100%;
-  max-width: 320px;
+  max-width: 400px;
   max-height: calc(100vh - 24px);
   overflow: hidden;
   background: var(--surface, #fff);
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   animation: mmSlideUp 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .mm-modal-dialog--lg {
-  max-width: 360px;
+  max-width: 460px;
 }
 
 .mm-modal-dialog--sm {
-  max-width: 260px;
-  padding: 14px;
+  max-width: 320px;
+  padding: 18px;
   text-align: center;
 }
 
@@ -1295,10 +1295,10 @@ onMounted(() => {
 .mm-modal-icon {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
-  margin: 0 auto 8px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 10px;
+  border-radius: 10px;
 }
 
 .mm-modal-icon--danger {
@@ -1307,37 +1307,37 @@ onMounted(() => {
 }
 
 .mm-modal-title {
-  margin: 0 0 4px;
-  font-size: 13px;
+  margin: 0 0 5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text, #111);
 }
 
 .mm-modal-desc {
-  margin: 0 0 12px;
-  font-size: 11px;
+  margin: 0 0 14px;
+  font-size: 13px;
   color: var(--text-muted, #6b7280);
   line-height: 1.5;
 }
 
 .mm-modal-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
 .mm-modal-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--border, #e5e7eb);
 }
 
 .mm-modal-header h3 {
   margin: 0;
   flex: 1;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text, #111);
 }
@@ -1345,13 +1345,13 @@ onMounted(() => {
 .mm-modal-back-btn {
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--text-muted, #6b7280);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
@@ -1364,43 +1364,43 @@ onMounted(() => {
 .mm-modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .mm-modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 12px 16px;
   border-top: 1px solid var(--border, #e5e7eb);
 }
 
 .mm-modal-footer-right {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 
 /* 服务商网格 */
 .mm-vendor-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  padding: 8px 10px 10px;
+  gap: 6px;
+  padding: 12px 16px 16px;
   overflow-y: auto;
 }
 
 .mm-vendor-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
+  gap: 10px;
+  padding: 10px 12px;
   background: transparent;
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 6px;
+  border-radius: 8px;
   text-align: left;
   cursor: pointer;
   font: inherit;
@@ -1415,27 +1415,27 @@ onMounted(() => {
 .mm-vendor-logo {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   background: var(--surface-soft, #f3f4f6);
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 6px;
+  border-radius: 8px;
   font-style: normal;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-muted, #6b7280);
 }
 
 .mm-vendor-logo img {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
 }
 
 .mm-vendor-name {
   flex: 1;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text, #111);
 }
@@ -1443,22 +1443,22 @@ onMounted(() => {
 .mm-vendor-arrow {
   color: var(--text-faint, #9ca3af);
   transform: rotate(-90deg);
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 /* 表单样式 */
 .mm-form-field {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 5px;
 }
 
 .mm-form-label {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text, #111);
 }
@@ -1471,13 +1471,13 @@ onMounted(() => {
 .mm-form-input,
 .mm-form-select {
   width: 100%;
-  height: 28px;
-  padding: 0 8px;
+  height: 34px;
+  padding: 0 10px;
   color: var(--text, #111);
   background: var(--surface, #fff);
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 5px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 13px;
   outline: none;
   transition: all 0.1s ease;
   box-sizing: border-box;
@@ -1500,21 +1500,21 @@ onMounted(() => {
 }
 
 .mm-input-with-action .mm-form-input {
-  padding-right: 30px;
+  padding-right: 36px;
 }
 
 .mm-input-action-btn {
   position: absolute;
-  right: 2px;
+  right: 3px;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--text-muted, #6b7280);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
   transition: all 0.1s ease;
 }
@@ -1527,14 +1527,14 @@ onMounted(() => {
 .mm-link-btn {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   align-self: flex-start;
   padding: 0;
-  margin-top: 1px;
+  margin-top: 2px;
   color: var(--accent, #3b82f6);
   background: transparent;
   border: none;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: opacity 0.1s ease;
@@ -1547,19 +1547,19 @@ onMounted(() => {
 /* 高级配置 */
 .mm-form-advanced {
   border-top: 1px solid var(--border, #e5e7eb);
-  padding-top: 8px;
+  padding-top: 10px;
 }
 
 .mm-advanced-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   width: 100%;
   padding: 0;
   color: var(--text, #111);
   background: transparent;
   border: none;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -1568,8 +1568,8 @@ onMounted(() => {
   margin-left: auto;
   color: var(--text-muted, #6b7280);
   transition: transform 0.2s ease;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .mm-advanced-toggle svg.mm-rotated {
@@ -1579,33 +1579,33 @@ onMounted(() => {
 .mm-advanced-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
   background: var(--surface-soft, #f3f4f6);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .mm-input-with-chips {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .mm-chip-group {
   display: flex;
-  gap: 3px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 .mm-chip {
-  height: 20px;
-  padding: 0 8px;
+  height: 26px;
+  padding: 0 12px;
   color: var(--text-muted, #6b7280);
   background: var(--surface, #fff);
   border: 1px solid var(--border, #e5e7eb);
-  border-radius: 3px;
-  font-size: 10px;
+  border-radius: 5px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -1624,20 +1624,20 @@ onMounted(() => {
 
 .mm-form-error {
   margin: 0;
-  padding: 5px 8px;
+  padding: 6px 10px;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.08);
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: 5px;
+  font-size: 12px;
 }
 
 .mm-form-success {
   margin: 0;
-  padding: 5px 8px;
+  padding: 6px 10px;
   color: #10b981;
   background: rgba(16, 185, 129, 0.08);
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: 5px;
+  font-size: 12px;
 }
 
 /* 按钮样式 */
@@ -1645,11 +1645,11 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
-  font-size: 11px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -1694,8 +1694,8 @@ onMounted(() => {
 
 .mm-spin {
   animation: mmSpin 0.8s linear infinite;
-  width: 11px !important;
-  height: 11px !important;
+  width: 13px !important;
+  height: 13px !important;
 }
 
 @keyframes mmSpin {
