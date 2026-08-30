@@ -114,14 +114,32 @@ const usedSkills = computed(() => {
 });
 
 const artifacts = computed<Artifact[]>(() => {
-  const items: Artifact[] = changes.value.map((change) => ({
-    path: change.path,
-    previewPath: change.path,
-    source: "change",
-    change,
-  }));
+  // 过滤编译产物目录（target、node_modules、__pycache__等）和非源代码文件
+  const isIgnoredPath = (p: string) => {
+    const normalized = p.replace(/\\/g, "/").toLowerCase();
+    const parts = normalized.split("/");
+    const ignoredDirs = new Set([
+      "target", "node_modules", "__pycache__", ".git", ".venv", "venv",
+      "build", "dist", ".cache", ".sztu", ".pytest_cache", ".mypy_cache",
+      ".ruff_cache", ".tox", ".nox", ".hypothesis",
+    ]);
+    if (parts.some((part) => ignoredDirs.has(part))) return true;
+    // 过滤编译产物后缀
+    if (/\.(d|bin|pyc|pyo|o|obj|class|exe|dll|so|dylib)$/i.test(normalized)) return true;
+    return false;
+  };
+  // 只显示AI修改的文件（agent_owned=true），过滤编译产物等附带文件修改
+  const items: Artifact[] = changes.value
+    .filter((change) => change.agent_owned && !isIgnoredPath(change.path))
+    .map((change) => ({
+      path: change.path,
+      previewPath: change.path,
+      source: "change",
+      change,
+    }));
   for (const attachment of props.attachments ?? []) {
     const normalized = attachment.replace(/\\/g, "/");
+    if (isIgnoredPath(normalized)) continue;
     const workspace = props.workspacePath?.replace(/\\/g, "/").replace(/\/$/, "");
     const previewPath = workspace && normalized.toLowerCase().startsWith(`${workspace.toLowerCase()}/`)
       ? normalized.slice(workspace.length + 1)
@@ -130,6 +148,23 @@ const artifacts = computed<Artifact[]>(() => {
   }
   return [...new Map(items.map((item) => [item.path.toLowerCase(), item])).values()];
 });
+
+// 弹窗预览只显示附件文件（代码变更点击后跳转到文件工作区）
+const previewArtifacts = computed<Artifact[]>(() => artifacts.value.filter((a) => a.source === "attachment"));
+
+// 文件树使用的工作区ID：filesRequest 存在时用它（查看其他项目），否则用当前工作区
+// 当通过 previewFile 打开当前工作区文件时，需要强制覆盖 filesRequest
+const fileTreeWorkspaceId = ref(props.workspaceId);
+watch(() => props.filesRequest?.workspaceId, (reqWsId) => {
+  // filesRequest 变化时更新文件树工作区
+  fileTreeWorkspaceId.value = reqWsId || props.workspaceId;
+}, { immediate: true });
+watch(() => props.workspaceId, (wsId) => {
+  // 当前工作区变化时，如果没有 filesRequest 则更新
+  if (!props.filesRequest?.workspaceId) {
+    fileTreeWorkspaceId.value = wsId;
+  }
+}, { immediate: true });
 
 const currentBrowser = computed(() => {
   if (!activeTab.value.startsWith("browser-")) return null;
@@ -251,10 +286,12 @@ function openFiles() {
 
 // 在右侧「文件」标签页中预览指定路径的文件（供 AI 输出中的文件链接调用）
 async function previewFile(filePath: string) {
+  // 强制使用当前工作区（而非 filesRequest 的其他项目）
+  fileTreeWorkspaceId.value = props.workspaceId;
   if (!workspaceTabs.value.some((tab) => tab.kind === "files")) workspaceTabs.value.push({ key: "files", kind: "files" });
   activeTab.value = "files";
   toolMenuOpen.value = false;
-  // 等待 DOM 更新后调用 FileTree 的 previewFileAtPath
+  // FileTree 组件使用 v-show 始终挂载，等待一个 nextTick 确保 DOM 切换完成后再调用
   await nextTick();
   fileTreeRef.value?.previewFileAtPath(filePath);
 }
@@ -387,6 +424,12 @@ async function openArtifact(artifact: Artifact) {
     notice.value = "该附件不在当前项目内，暂不支持直接预览";
     return;
   }
+  // 代码变更文件：跳转到文件工作区展示，而不是弹窗
+  if (artifact.source === "change") {
+    await previewFile(artifact.path);
+    return;
+  }
+  // 附件：保持弹窗预览
   selectedPath.value = artifact.path;
   await loadArtifact(artifact);
 }
@@ -418,9 +461,9 @@ async function loadArtifact(artifact: Artifact) {
   }
 }
 
-// 弹窗顶部下拉切换查看其他文件
+// 弹窗顶部下拉切换查看其他附件
 function onSelectFile() {
-  const artifact = artifacts.value.find((a) => a.path === selectedPath.value);
+  const artifact = previewArtifacts.value.find((a) => a.path === selectedPath.value);
   if (artifact) void loadArtifact(artifact);
 }
 
@@ -701,7 +744,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
       </div>
     </main>
 
-    <main v-else-if="activeTab === 'files'" class="files-workspace"><FileTree ref="fileTreeRef" :workspace-id="filesRequest?.workspaceId || workspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
+    <main v-show="activeTab === 'files'" class="files-workspace"><FileTree ref="fileTreeRef" :workspace-id="fileTreeWorkspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>
     <main v-for="tab in sandboxTabs" v-show="activeTab === tab.key" :key="`${workspacePath}-${tab.key}`" class="sandbox-workspace"><SandboxTerminal :workspace-path="workspacePath || ''" /></main>
     <main v-if="!activeTab" class="workspace-empty-view" />
 
@@ -710,8 +753,8 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
       <section v-if="selectedPath" ref="previewModalRef" class="preview-modal">
         <header>
           <span class="preview-modal__title"><FileText :size="15" /><b>{{ selectedName }}</b></span>
-          <select v-model="selectedPath" class="preview-modal__select" aria-label="查看其他文件" @change="onSelectFile">
-            <option v-for="artifact in artifacts" :key="artifact.path" :value="artifact.path">{{ basename(artifact.path) }}</option>
+          <select v-if="previewArtifacts.length > 1" v-model="selectedPath" class="preview-modal__select" aria-label="查看其他附件" @change="onSelectFile">
+            <option v-for="artifact in previewArtifacts" :key="artifact.path" :value="artifact.path">{{ basename(artifact.path) }}</option>
           </select>
           <button title="关闭预览" @click="closePreview"><X :size="17" /></button>
         </header>

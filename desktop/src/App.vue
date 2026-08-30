@@ -2605,24 +2605,15 @@ async function onOpenFileLink(event: Event) {
   if (!rawPath) return;
   const ws = activeWorkspace.value;
   if (!ws?.path) return;
-  // 确保右侧功能栏是打开的
+  // 确保右侧功能栏是打开的，并切到文件标签页
   setInspectorOpen(true);
-  // 拼接 workspace 绝对路径，交给 Inspector 的 FileTree 解析和预览
+  // 标准化路径：去掉行号后缀、统一分隔符为 /、去掉开头的 ./ 前缀（../ 交由 FileTree 解析）
   let targetPath = rawPath.trim();
-  // 去掉行号后缀，如 foo.ts:25
   targetPath = targetPath.replace(/:\d+(?:-\d+)?$/, "");
-  let fullPath: string;
-  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(targetPath)) {
-    fullPath = targetPath;
-  } else {
-    const sep = ws.path.includes("\\") ? "\\" : "/";
-    const base = ws.path.replace(/[\\/]+$/, "");
-    const rel = targetPath.replace(/^[./\\]+/, "");
-    fullPath = `${base}${sep}${rel}`;
-  }
-  // 等待 inspector 渲染后调用 previewFile
+  targetPath = targetPath.replace(/\\/g, "/").replace(/^\.\//, "");
+  // 等待 inspector 渲染后调用 previewFile（传递相对路径，FileTree 内部会处理解析）
   await nextTick();
-  inspectorRef.value?.previewFile(fullPath);
+  inspectorRef.value?.previewFile(targetPath);
 }
 
 // 文件变更徽章 → 打开对应文件的diff预览
@@ -3130,63 +3121,64 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>浏览器连接</h1><p>连接浏览器，让 Agent 在授权范围内协助网页操作</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>连接状态</h2><p>当前未连接。此功能需要浏览器扩展与本地服务支持。</p></div><span class="status-pill">未连接</span></div></section>
     </main>
 
-    <SettingsDialog
-      v-if="settingsOpen"
-      :appearance="appearanceSettings"
-      :runtime-settings="runtimeSettings"
-      :permission-error="permissionSettingsError"
-      :initial-section="settingsInitialSection"
-      @close="closeSettings"
-      @appearance-change="handleAppearanceChange"
-      @permission-change="choosePermissionMode"
-      @manage-model="openModelManager"
-      @runtime-updated="runtimeSettings = $event"
-    />
+    <Teleport to="body">
+      <SettingsDialog
+        v-if="settingsOpen"
+        :appearance="appearanceSettings"
+        :runtime-settings="runtimeSettings"
+        :permission-error="permissionSettingsError"
+        :initial-section="settingsInitialSection"
+        @close="closeSettings"
+        @appearance-change="handleAppearanceChange"
+        @permission-change="choosePermissionMode"
+        @manage-model="openModelManager"
+        @runtime-updated="runtimeSettings = $event"
+      />
 
-    <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
-      <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
-        <header>
-          <div><h2 id="project-edit-title">编辑项目</h2><p>修改项目在侧边栏中显示的名称。</p></div>
-          <button type="button" aria-label="关闭编辑窗口" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
-        </header>
-        <div class="project-edit-dialog__body">
-          <label><span>项目名称</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus placeholder="输入项目名称" /></label>
-          <label><span>项目位置</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
-          <p v-if="projectEditError" class="project-edit-dialog__error" role="alert">{{ projectEditError }}</p>
-        </div>
-        <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
-      </form>
-    </div>
+      <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
+        <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
+          <header>
+            <div><h2 id="project-edit-title">编辑项目</h2><p>修改项目在侧边栏中显示的名称。</p></div>
+            <button type="button" aria-label="关闭编辑窗口" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
+          </header>
+          <div class="project-edit-dialog__body">
+            <label><span>项目名称</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus placeholder="输入项目名称" /></label>
+            <label><span>项目位置</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
+            <p v-if="projectEditError" class="project-edit-dialog__error" role="alert">{{ projectEditError }}</p>
+          </div>
+          <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
+        </form>
+      </div>
 
-    <div v-if="projectDialog" class="project-dialog-backdrop" role="presentation" @mousedown.self="settleProjectDialog(false)">
-      <section class="project-dialog" :class="`project-dialog--${projectDialog.tone}`" :role="projectDialog.cancelLabel ? 'alertdialog' : 'dialog'" aria-modal="true" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-message" @keydown.esc.stop.prevent="settleProjectDialog(false)">
-        <div class="project-dialog__icon" aria-hidden="true">
-          <Check v-if="projectDialog.tone === 'success'" :size="18" />
-          <AlertTriangle v-else-if="projectDialog.tone === 'danger'" :size="18" />
-          <Info v-else :size="18" />
-        </div>
-        <div class="project-dialog__content">
-          <h2 id="project-dialog-title">{{ projectDialog.title }}</h2>
-          <p id="project-dialog-message">{{ projectDialog.message }}</p>
-        </div>
-        <footer>
-          <button v-if="projectDialog.cancelLabel" type="button" autofocus @click="settleProjectDialog(false)">{{ projectDialog.cancelLabel }}</button>
-          <button type="button" class="primary" :class="{ danger: projectDialog.tone === 'danger' }" :autofocus="!projectDialog.cancelLabel" @click="settleProjectDialog(true)">{{ projectDialog.confirmLabel }}</button>
-        </footer>
-      </section>
-    </div>
+      <div v-if="projectDialog" class="project-dialog-backdrop" role="presentation" @mousedown.self="settleProjectDialog(false)">
+        <section class="project-dialog" :class="`project-dialog--${projectDialog.tone}`" :role="projectDialog.cancelLabel ? 'alertdialog' : 'dialog'" aria-modal="true" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-message" @keydown.esc.stop.prevent="settleProjectDialog(false)">
+          <div class="project-dialog__icon" aria-hidden="true">
+            <Check v-if="projectDialog.tone === 'success'" :size="18" />
+            <AlertTriangle v-else-if="projectDialog.tone === 'danger'" :size="18" />
+            <Info v-else :size="18" />
+          </div>
+          <div class="project-dialog__content">
+            <h2 id="project-dialog-title">{{ projectDialog.title }}</h2>
+            <p id="project-dialog-message">{{ projectDialog.message }}</p>
+          </div>
+          <footer>
+            <button v-if="projectDialog.cancelLabel" type="button" autofocus @click="settleProjectDialog(false)">{{ projectDialog.cancelLabel }}</button>
+            <button type="button" class="primary" :class="{ danger: projectDialog.tone === 'danger' }" :autofocus="!projectDialog.cancelLabel" @click="settleProjectDialog(true)">{{ projectDialog.confirmLabel }}</button>
+          </footer>
+        </section>
+      </div>
 
-
-    <div v-if="permissionConfirmOpen" class="permission-confirm-backdrop" role="presentation" @mousedown.self="permissionConfirmOpen = false">
-      <section class="permission-confirm" role="alertdialog" aria-modal="true" aria-labelledby="permission-confirm-title" aria-describedby="permission-confirm-description">
-        <header><span><AlertTriangle :size="19" /></span><div><h2 id="permission-confirm-title">高风险权限提示</h2><p id="permission-confirm-description">允许全部权限后，Agent 将直接执行操作，不再逐次请求你的确认。</p></div></header>
-        <div class="permission-confirm__body">
-          <b>可能产生的后果</b>
-          <ul><li>文件被覆盖、误删或损坏</li><li>系统配置被更改，导致软件异常</li><li>执行无法撤销的命令或外部操作</li></ul>
-          <p><AlertTriangle :size="16" />部分操作不可逆，重要数据可能永久丢失。建议操作前备份重要内容。</p>
-        </div>
-        <footer><button type="button" @click="permissionConfirmOpen = false">取消</button><button type="button" class="danger" :disabled="permissionSaving" @click="confirmFullAccess">{{ permissionSaving ? '正在启用…' : '允许全部权限' }}</button></footer>
-      </section>
-    </div>
+      <div v-if="permissionConfirmOpen" class="permission-confirm-backdrop" role="presentation" @mousedown.self="permissionConfirmOpen = false">
+        <section class="permission-confirm" role="alertdialog" aria-modal="true" aria-labelledby="permission-confirm-title" aria-describedby="permission-confirm-description">
+          <header><span><AlertTriangle :size="19" /></span><div><h2 id="permission-confirm-title">高风险权限提示</h2><p id="permission-confirm-description">允许全部权限后，Agent 将直接执行操作，不再逐次请求你的确认。</p></div></header>
+          <div class="permission-confirm__body">
+            <b>可能产生的后果</b>
+            <ul><li>文件被覆盖、误删或损坏</li><li>系统配置被更改，导致软件异常</li><li>执行无法撤销的命令或外部操作</li></ul>
+            <p><AlertTriangle :size="16" />部分操作不可逆，重要数据可能永久丢失。建议操作前备份重要内容。</p>
+          </div>
+          <footer><button type="button" @click="permissionConfirmOpen = false">取消</button><button type="button" class="danger" :disabled="permissionSaving" @click="confirmFullAccess">{{ permissionSaving ? '正在启用…' : '允许全部权限' }}</button></footer>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>

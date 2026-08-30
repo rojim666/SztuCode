@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Check, ChevronDown, ExternalLink, Eye, EyeOff, Info, LoaderCircle, Pencil, Plus, Trash2 } from "@lucide/vue";
+import { ArrowLeft, Bot, Brain, Check, ChevronDown, Code2, Cpu, ExternalLink, Eye, EyeOff, Info, LoaderCircle, MessageSquare, Pencil, Plus, Sparkles, Trash2 } from "@lucide/vue";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Teleport, computed, nextTick, onMounted, ref, watch } from "vue";
@@ -23,7 +23,16 @@ const models = ref<ModelProfile[]>([]);
 const addStep = ref<"idle" | "vendor" | "form">("idle");
 const editingModel = ref<ModelProfile | null>(null);
 const selectedVendor = ref<ModelVendor | null>(null);
-const name = ref(""); const modelId = ref(""); const baseUrl = ref(""); const apiKey = ref("");
+const name = ref(""); const icon = ref("sparkles"); const modelId = ref(""); const baseUrl = ref(""); const apiKey = ref("");
+const customModelIcons = [
+  { id: "sparkles", label: "闪光", component: Sparkles },
+  { id: "bot", label: "机器人", component: Bot },
+  { id: "brain", label: "大脑", component: Brain },
+  { id: "code", label: "代码", component: Code2 },
+  { id: "cpu", label: "芯片", component: Cpu },
+  { id: "chat", label: "对话", component: MessageSquare },
+] as const;
+const vendorIconOptions = modelVendors.filter((v) => v.name !== "自定义模型" && v.logo);
 const provider = ref<"anthropic" | "openai">("openai");
 const apiFormat = ref<ApiFormat>("openai_chat_completions");
 const advancedOpen = ref(false);
@@ -44,6 +53,8 @@ const { setInitialFocus, trapTab, restoreFocus } = useFocusTrap();
 let modelRequestVersion = 0;
 const canSave = computed(() => Boolean(selectedVendor.value && modelId.value.trim() && (editingModel.value !== null || apiKey.value.trim() || selectedVendor.value?.name === "自定义模型")));
 const currentModel = computed(() => models.value.find((item) => item.is_current) ?? null);
+const customModelIcon = (value: string) => customModelIcons.find((item) => item.id === value)?.component ?? Sparkles;
+const customModelLogo = (value: string) => logoForVendor(value) ?? null;
 
 async function refresh() {
   error.value = "";
@@ -55,7 +66,7 @@ function beginAdd(event?: MouseEvent) {
   addStep.value = "vendor"; editingModel.value = null; resetForm();
 }
 function resetForm() {
-  selectedVendor.value = null; name.value = ""; modelId.value = ""; baseUrl.value = ""; apiKey.value = "";
+  selectedVendor.value = null; name.value = ""; icon.value = "sparkles"; modelId.value = ""; baseUrl.value = ""; apiKey.value = "";
   apiFormat.value = "openai_chat_completions"; provider.value = "openai";
   maxOutputTokens.value = 16384; temperature.value = null; topP.value = null; reasoningEffort.value = "";
   timeoutS.value = 120; maxRetries.value = 2; contextWindow.value = 128000; cacheControl.value = true;
@@ -68,6 +79,7 @@ function beginEdit(item: ModelProfile, event?: MouseEvent) {
   const vendor = modelVendors.find((v) => v.name === latest.vendor) ?? { name: latest.vendor, logo: null, mark: latest.vendor.slice(0, 1).toUpperCase() || "M", provider: latest.provider, baseUrl: latest.base_url, apiKeyUrl: null };
   selectedVendor.value = vendor;
   name.value = latest.name;
+  icon.value = latest.icon || "sparkles";
   modelId.value = latest.model;
   baseUrl.value = latest.base_url;
   apiKey.value = "";
@@ -93,6 +105,7 @@ watch(addStep, (step) => {
 function chooseVendor(item: ModelVendor) {
   selectedVendor.value = item;
   name.value = item.name;
+  icon.value = "sparkles";
   provider.value = item.provider;
   apiFormat.value = item.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions";
   baseUrl.value = item.baseUrl;
@@ -128,7 +141,7 @@ async function save() {
   saving.value = true; error.value = "";
   const finalName = name.value.trim() || selectedVendor.value.name;
   try {
-    const result = await saveModelProfile({ id: editingModel.value?.id, name: finalName, vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value });
+    const result = await saveModelProfile({ id: editingModel.value?.id, name: finalName, icon: icon.value, vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value });
     if (requestVersion !== modelRequestVersion) return;
     models.value = result.models; emit("updated", result.settings, await getProviderStatus()); closeEditor();
   } catch (reason) {
@@ -206,6 +219,7 @@ async function selectModel(item: ModelProfile) {
 function resetFormDefaults() {
   if (!selectedVendor.value) return;
   name.value = selectedVendor.value.name;
+  icon.value = "sparkles";
   modelId.value = "";
   baseUrl.value = selectedVendor.value.baseUrl;
   apiKey.value = "";
@@ -235,8 +249,14 @@ onMounted(() => {
       <div v-if="currentModel" class="current-model-card">
         <div class="current-model-info">
           <i class="model-provider-logo model-provider-logo--lg">
-            <img v-if="logoForVendor(currentModel.vendor)" :src="logoForVendor(currentModel.vendor) || undefined" alt="" />
-            <span v-else>{{ currentModel.vendor.slice(0, 1).toUpperCase() }}</span>
+            <template v-if="currentModel.vendor === '自定义模型'">
+              <img v-if="customModelLogo(currentModel.icon)" :src="customModelLogo(currentModel.icon) || undefined" alt="" />
+              <component v-else :is="customModelIcon(currentModel.icon)" :size="18" />
+            </template>
+            <template v-else>
+              <img v-if="logoForVendor(currentModel.vendor)" :src="logoForVendor(currentModel.vendor) || undefined" alt="" />
+              <span v-else>{{ currentModel.vendor.slice(0, 1).toUpperCase() }}</span>
+            </template>
           </i>
           <div class="current-model-text">
             <span class="current-model-label">当前模型</span>
@@ -259,8 +279,14 @@ onMounted(() => {
             <Check v-if="item.is_current" :size="16" />
           </button>
           <i class="model-provider-logo">
-            <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
-            <span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span>
+            <template v-if="item.vendor === '自定义模型'">
+              <img v-if="customModelLogo(item.icon)" :src="customModelLogo(item.icon) || undefined" alt="" />
+              <component v-else :is="customModelIcon(item.icon)" :size="16" />
+            </template>
+            <template v-else>
+              <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
+              <span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span>
+            </template>
           </i>
           <div class="model-card-info">
             <b :title="item.name">{{ item.name }}</b>
@@ -269,11 +295,11 @@ onMounted(() => {
           <div class="model-card-actions">
             <span v-if="item.is_current" class="model-badge model-badge--active">使用中</span>
             <span v-else-if="item.builtin" class="model-badge">内置</span>
-            <template v-else>
+            <template v-if="!item.builtin">
               <button type="button" class="model-action-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)">
                 <Pencil :size="14" />
               </button>
-              <button type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)">
+              <button v-if="!item.is_current" type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)">
                 <Trash2 :size="14" />
               </button>
             </template>
@@ -350,6 +376,25 @@ onMounted(() => {
                 <option v-for="v in vendors" :key="v.name" :value="v">{{ v.name }}</option>
               </select>
             </div>
+
+            <template v-if="selectedVendor.name === '自定义模型'">
+              <div class="mm-form-field">
+                <label class="mm-form-label"><span class="mm-required">*</span>显示名称</label>
+                <input v-model="name" class="mm-form-input" maxlength="100" placeholder="例如：我的编程助手" />
+              </div>
+
+              <div class="mm-form-field">
+                <label class="mm-form-label">模型图标</label>
+                <div class="mm-icon-picker" role="radiogroup" aria-label="模型图标">
+                  <button v-for="v in vendorIconOptions" :key="`v-${v.name}`" type="button" class="mm-icon-option mm-icon-option--logo" :class="{ active: icon === v.name }" role="radio" :aria-checked="icon === v.name" :aria-label="v.name" :title="v.name" @click="icon = v.name">
+                    <img v-if="v.logo" :src="v.logo" alt="" />
+                  </button>
+                  <button v-for="item in customModelIcons" :key="item.id" type="button" class="mm-icon-option" :class="{ active: icon === item.id }" role="radio" :aria-checked="icon === item.id" :aria-label="item.label" :title="item.label" @click="icon = item.id">
+                    <component :is="item.component" :size="18" />
+                  </button>
+                </div>
+              </div>
+            </template>
 
             <div class="mm-form-field">
               <label class="mm-form-label"><span class="mm-required">*</span>模型</label>
@@ -616,6 +661,41 @@ onMounted(() => {
   height: 18px;
 }
 
+.mm-icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mm-icon-option {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--text-muted);
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mm-icon-option:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.mm-icon-option.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.mm-icon-option img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
 .model-card-info {
   display: flex;
   flex-direction: column;
@@ -645,7 +725,7 @@ onMounted(() => {
 .model-card-actions {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -657,6 +737,8 @@ onMounted(() => {
   background: var(--surface-soft);
   border-radius: 4px;
   font-style: normal;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .model-badge--active {

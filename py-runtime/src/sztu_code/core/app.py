@@ -915,6 +915,7 @@ class CoreApp:
             ModelProfileSummary(
                 id=str(item.get("id", "")),
                 name=str(item.get("name", "")),
+                icon=str(item.get("icon", "sparkles")),
                 vendor=str(item.get("vendor", "")),
                 provider=item.get("provider", "anthropic"),
                 api_format=cast(
@@ -1643,6 +1644,7 @@ class CoreApp:
         current.update(
             {
                 "name": cmd.name,
+                "icon": cmd.icon,
                 "vendor": cmd.vendor,
                 "provider": provider_for_api_format(cmd.api_format),
                 "api_format": cmd.api_format,

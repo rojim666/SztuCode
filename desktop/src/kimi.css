@@ -9,17 +9,18 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .kimi-shell.window-resizing,
 .kimi-shell.window-resizing .agent-sidebar,
 .kimi-shell.window-resizing .sidebar-resizer { transition: none !important; }
-.kimi-titlebar { grid-column: 1 / -1; position: relative; display: flex; align-items: center; min-height: 40px; height: 40px; background: #fff; user-select: none; }
+.kimi-titlebar { grid-column: 1 / -1; position: relative; z-index: 80; isolation: isolate; display: flex; align-items: center; min-height: 40px; height: 40px; background: #fff; user-select: none; transform: translateZ(0); -webkit-transform: translateZ(0); }
 /* macOS: fixed toolbar owns toggle inset; titlebar is drag-only. */
 .kimi-shell.is-macos { --macos-nav-inset: 77px; border-radius: 0; }
 .kimi-titlebar.is-macos { padding-left: 0; }
-.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 70; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 40px; min-height: 40px; padding-left: var(--macos-nav-inset); }
+.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 70; isolation: isolate; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 40px; min-height: 40px; padding-left: var(--macos-nav-inset, 77px); pointer-events: none; }
+.kimi-shell.is-macos .sidebar-macos-toolbar > * { pointer-events: auto; }
 .kimi-shell.is-macos .nav-toggle-wrap { margin: 0; }
 .kimi-shell.is-macos.sidebar-collapsed .titlebar-drag-region { margin-left: calc(var(--macos-nav-inset) + 34px); }
 /* macOS: sidebar full height; titlebar only over main column. */
-.kimi-shell.is-macos .sidebar-viewport { grid-column: 1; grid-row: 1 / -1; }
-.kimi-shell.is-macos .kimi-titlebar { grid-column: 2; grid-row: 1; z-index: 6; }
-.kimi-shell.is-macos .kimi-main { grid-column: 2; grid-row: 2; border-radius: 0; }
+.kimi-shell.is-macos .sidebar-viewport { grid-column: 1; grid-row: 1 / -1; z-index: 1; }
+.kimi-shell.is-macos .kimi-titlebar { grid-column: 2; grid-row: 1; z-index: 80; isolation: isolate; position: relative; transform: translateZ(0); -webkit-transform: translateZ(0); }
+.kimi-shell.is-macos .kimi-main { grid-column: 2; grid-row: 2; border-radius: 0; z-index: 1; }
 .kimi-shell.is-macos.sidebar-collapsed .kimi-titlebar { grid-column: 1 / -1; }
 .kimi-shell.is-macos .agent-sidebar { padding-top: 40px; }
 .window-mark { align-self: center; flex: 0 0 auto; width: 15px; height: 15px; margin-left: 16px; border: 1.5px solid #8e9298; border-radius: 4px; box-shadow: inset -4px 0 #fff; pointer-events: none; }
@@ -37,7 +38,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .app-menu-item > button { min-width: 44px; height: 29px; padding: 0 9px; color: #42474e; background: transparent; border-radius: 5px; font-size: 14px; line-height: 1; }
 .app-menu-item > button:hover, .app-menu-item > button[aria-expanded="true"] { color: #17191c; background: rgb(36 42 48 / 8%); }
 .app-menu-item > button:focus-visible { outline: 2px solid #3383e8; outline-offset: -2px; }
-.app-menu-popover { position: absolute; z-index: 50; top: 35px; left: 0; display: grid; min-width: 210px; padding: 6px; color: #262a2f; background: #fff; border: 1px solid rgb(24 28 33 / 10%); border-radius: 13px; box-shadow: 0 14px 36px rgb(18 24 32 / 16%), 0 3px 10px rgb(18 24 32 / 8%); }
+.app-menu-popover { position: absolute; z-index: 9999; top: 35px; left: 0; display: grid; min-width: 210px; padding: 6px; color: #262a2f; background: #fff; border: 1px solid rgb(24 28 33 / 10%); border-radius: 13px; box-shadow: 0 14px 36px rgb(18 24 32 / 16%), 0 3px 10px rgb(18 24 32 / 8%); will-change: transform; transform: translateZ(0); -webkit-transform: translateZ(0); }
 .app-menu-popover--help { min-width: 180px; }
 .app-menu-popover button { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 34px; width: 100%; padding: 6px 10px; color: inherit; background: transparent; border-radius: 8px; text-align: left; font-size: 13px; }
 .app-menu-popover button:hover, .app-menu-popover button:focus-visible { background: #f0f3f5; outline: 0; }

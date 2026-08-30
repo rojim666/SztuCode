@@ -38,23 +38,49 @@ function basename(p: string): string {
 
 function resolveToRelative(rawPath: string): string {
   let p = rawPath.trim();
+  // 去掉行号后缀，如 foo.ts:25
   p = p.replace(/:\d+(?:-\d+)?$/, "");
-  const wsPath = props.workspacePath?.replace(/[\\/]+$/, "") ?? "";
-  if (!wsPath) return p.replace(/^[./\\]+/, "");
-  const sep = wsPath.includes("\\") ? "\\" : "/";
+  // 统一路径分隔符为正斜杠
+  const normalizedP = p.replace(/\\/g, "/");
+  // 标准化工作区路径：去掉尾部分隔符，统一为正斜杠
+  const wsRaw = props.workspacePath ?? "";
+  const wsPath = wsRaw.replace(/[\\/]+$/, "").replace(/\\/g, "/");
+  
+  // 处理 Windows 绝对路径（如 C:/path/to/file）
   if (/^[A-Za-z]:[\\/]/.test(p)) {
-    const wsLower = wsPath.toLowerCase();
-    const pLower = p.toLowerCase();
-    if (pLower.startsWith(wsLower + sep.toLowerCase()) || pLower === wsLower) {
-      return p.slice(wsPath.length + 1).replace(/\\/g, "/");
+    if (wsPath) {
+      const wsLower = wsPath.toLowerCase();
+      const pLower = normalizedP.toLowerCase();
+      // 检查是否在工作区内
+      if (pLower.startsWith(wsLower + "/")) {
+        return normalizedP.slice(wsPath.length + 1);
+      }
+      if (pLower === wsLower) {
+        return "";
+      }
     }
-    return p.replace(/\\/g, "/");
+    // 绝对路径不在工作区内，尝试提取最后一部分作为回退
+    // 这种情况不应该发生，但作为防御性处理
+    const parts = normalizedP.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? "";
   }
-  if (p.startsWith("/")) {
-    if (p.startsWith(wsPath + "/") || p === wsPath) return p.slice(wsPath.length + 1);
-    return p.slice(1);
+  
+  // 处理 Unix 绝对路径（/开头）
+  if (normalizedP.startsWith("/")) {
+    if (wsPath) {
+      if (normalizedP.startsWith(wsPath + "/")) {
+        return normalizedP.slice(wsPath.length + 1);
+      }
+      if (normalizedP === wsPath) {
+        return "";
+      }
+    }
+    // 不在工作区内，去掉开头的/
+    return normalizedP.slice(1);
   }
-  return p.replace(/^[./\\]+/, "").replace(/\\/g, "/");
+  
+  // 相对路径：只去掉开头的 ./ 前缀（../ 保留，交给后端判定边界）
+  return normalizedP.replace(/^\.\//, "");
 }
 
 function friendlyError(err: unknown, filePath: string): string {
@@ -242,8 +268,70 @@ async function previewFileAtPath(rawPath: string) {
     const result = await readFile(props.workspaceId, relPath);
     openTabFor(relPath, name, result.content, result.encoding, result.binary, result.truncated, result.media_base64 ?? null, result.mime_type ?? null);
   } catch (e) {
+    // 精确路径失败：AI 可能只给短文件名或相对其工作目录的路径，按文件名在工作区内定位
+    const resolved = await locateByBasename(relPath);
+    if (resolved && resolved !== relPath) {
+      const staleIdx = tabs.value.findIndex((t) => t.path === relPath);
+      if (staleIdx >= 0) tabs.value.splice(staleIdx, 1);
+      if (!tabs.value.some((t) => t.path === resolved)) {
+        tabs.value.push({
+          path: resolved, name: basename(resolved), content: "", encoding: "UTF-8",
+          binary: false, truncated: false, mediaBase64: null, mimeType: null, error: "",
+        });
+      }
+      activeTabPath.value = resolved;
+      try {
+        const result = await readFile(props.workspaceId, resolved);
+        openTabFor(resolved, basename(resolved), result.content, result.encoding, result.binary, result.truncated, result.media_base64 ?? null, result.mime_type ?? null);
+        return;
+      } catch (e2) {
+        setTabError(resolved, friendlyError(e2, resolved));
+        return;
+      }
+    }
     setTabError(relPath, friendlyError(e, relPath));
   }
+}
+
+// 工作区全量文件路径索引（懒加载 + 短缓存），供按文件名回退定位
+let fileIndexCache: { wsId: string; at: number; files: string[] } | null = null;
+async function indexedFiles(): Promise<string[]> {
+  if (fileIndexCache && fileIndexCache.wsId === props.workspaceId && Date.now() - fileIndexCache.at < 15_000) {
+    return fileIndexCache.files;
+  }
+  try {
+    const nodes = await workspaceTree(props.workspaceId, "", 32);
+    const files: string[] = [];
+    const walk = (list: WorkspaceNode[]) => {
+      for (const node of list) {
+        if (node.kind === "file") files.push(node.path);
+        if (node.children?.length) walk(node.children);
+      }
+    };
+    walk(nodes);
+    fileIndexCache = { wsId: props.workspaceId, at: Date.now(), files };
+    return files;
+  } catch {
+    fileIndexCache = null;
+    return [];
+  }
+}
+
+// 按文件名在工作区全量索引中定位，优先选择父目录名一致的匹配（减少同名误判）
+async function locateByBasename(relPath: string): Promise<string | null> {
+  const fileName = basename(relPath);
+  if (!fileName) return null;
+  const files = await indexedFiles();
+  if (!files.length) return null;
+  const matches = files.filter((p) => basename(p) === fileName);
+  if (!matches.length) return null;
+  const parentParts = relPath.split("/").slice(0, -1).filter(Boolean);
+  const parentName = parentParts[parentParts.length - 1] ?? "";
+  if (parentName) {
+    const byParent = matches.find((p) => p.split("/").slice(0, -1).includes(parentName));
+    if (byParent) return byParent;
+  }
+  return matches[0];
 }
 
 defineExpose({ previewFileAtPath });

@@ -124,8 +124,8 @@ export type MarketplacePluginSummary = {
   installed: boolean; installed_plugin_id?: string | null;
 };
 export type ProviderStatus = { provider: "anthropic" | "openai"; api_format: ApiFormat; model: string; api_key_configured: boolean; ready_for_next_run: boolean; skills: SkillSummary[]; mcp_servers: Array<{ name: string; status: string; tool_count?: number }> };
-export type ModelProfile = ModelRequestSettings & { id: string; name: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
-export type ModelProfileInput = ModelRequestSettings & { id?: string; name: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; api_key?: string; keyless?: boolean };
+export type ModelProfile = ModelRequestSettings & { id: string; name: string; icon: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
+export type ModelProfileInput = ModelRequestSettings & { id?: string; name: string; icon?: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; api_key?: string; keyless?: boolean };
 
 const client = new IpcClient();
 let subscribed = false;

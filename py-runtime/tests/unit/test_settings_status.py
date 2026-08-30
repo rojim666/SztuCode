@@ -99,6 +99,7 @@ async def test_model_profiles_save_select_and_delete_without_exposing_keys(
     first = await app._model_profile_save_handler(
         {
             "name": "DeepSeek V3",
+            "icon": "brain",
             "vendor": "DeepSeek",
             "provider": "openai",
             "model": "deepseek-chat",
@@ -109,6 +110,7 @@ async def test_model_profiles_save_select_and_delete_without_exposing_keys(
     first_profile = next(item for item in first.models if item.name == "DeepSeek V3")
     first_id = first_profile.id
     assert first_profile.has_api_key is True
+    assert first_profile.icon == "brain"
     assert first_profile.is_current is True
     assert "secret-one" not in str(first.model_dump())
 
@@ -125,7 +127,9 @@ async def test_model_profiles_save_select_and_delete_without_exposing_keys(
     second_id = next(item.id for item in second.models if item.is_current)
     selected = await app._model_profile_select_handler({"model_id": first_id})
     assert selected.settings.model == "deepseek-chat"
-    assert next(item for item in selected.models if item.id == first_id).is_current
+    selected_profile = next(item for item in selected.models if item.id == first_id)
+    assert selected_profile.is_current
+    assert selected_profile.icon == "brain"
 
     with pytest.raises(HandlerError):
         await app._model_profile_delete_handler({"model_id": first_id})

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Check, ChevronDown, LoaderCircle, Settings2 } from "@lucide/vue";
+import { Bot, Brain, Check, ChevronDown, Code2, Cpu, LoaderCircle, MessageSquare, Settings2, Sparkles } from "@lucide/vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { logoForVendor } from "./model-vendors";
 import {
   getProviderStatus,
   listModelProfiles,
@@ -25,6 +26,16 @@ const error = ref("");
 const activeModelName = computed(() =>
   models.value.find((item) => item.is_current)?.name || props.settings?.model || "配置模型"
 );
+const modelIcons = [
+  { id: "sparkles", component: Sparkles },
+  { id: "bot", component: Bot },
+  { id: "brain", component: Brain },
+  { id: "code", component: Code2 },
+  { id: "cpu", component: Cpu },
+  { id: "chat", component: MessageSquare },
+] as const;
+const modelIcon = (value: string) => modelIcons.find((item) => item.id === value)?.component ?? Sparkles;
+const modelLogo = (value: string) => logoForVendor(value) ?? null;
 
 async function loadModels() {
   loading.value = true;
@@ -70,6 +81,16 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
       <header><span>模型</span><small>{{ models.length }} 个配置</small></header>
       <div class="model-picker-list">
         <button v-for="item in models" :key="item.id" type="button" role="menuitemradio" :aria-checked="item.is_current" @click="choose(item)">
+          <i class="model-picker-logo">
+            <template v-if="item.vendor === '自定义模型'">
+              <img v-if="modelLogo(item.icon)" :src="modelLogo(item.icon) || undefined" alt="" />
+              <component v-else :is="modelIcon(item.icon)" :size="14" />
+            </template>
+            <template v-else>
+              <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
+              <span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span>
+            </template>
+          </i>
           <span class="model-name-cell"><b>{{ item.name }}</b><small>{{ item.vendor }}</small></span>
           <LoaderCircle v-if="selecting === item.id" class="spin" :size="14" /><Check v-else-if="item.is_current" :size="14" />
         </button>

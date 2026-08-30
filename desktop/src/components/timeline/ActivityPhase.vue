@@ -216,7 +216,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 
       <!-- 失败显示提示 -->
       <span v-if="hasFailedCalls" class="activity-phase__fail-hint">
-        操作失败，点击查看
+        有操作失效，点击查看
       </span>
 
       <ChevronDown v-if="hasContent" class="activity-phase__chevron" :size="11" />
@@ -321,7 +321,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 /* 失败：红色圆形背景叉号 */
 .activity-phase.failed .activity-phase__status {
   color: #fff;
-  background: #dc2626;
+  background: #fd9851;
 }
 
 /* 行为目的描述 */
@@ -368,7 +368,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 .activity-phase__fail-hint {
   min-width: 0;
   flex: 1 1 auto;
-  color: #dc2626;
+  color: #f28c47f6;
   font-size: 12px;
   font-weight: 500;
 }
@@ -522,7 +522,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 }
 :global(.dark) .activity-phase.failed .activity-phase__status {
   color: #fff;
-  background: #ef4444;
+  background: #ff9c72;
 }
 :global(.dark) .activity-phase__purpose {
   color: #d1d5db;

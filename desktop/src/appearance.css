@@ -958,7 +958,9 @@
   box-shadow: none !important;
 }
 
-:root:not([data-wallpaper="none"]) :is(.work-header, .workspace-tab-strip) {
+:root:not([data-wallpaper="none"]) :is(
+  .work-header, .workspace-tab-strip, .workspace-home-header
+) {
   background: transparent !important;
 }
 
@@ -970,9 +972,65 @@
   .file-tree-view .file-preview--files,
   .file-tree-view .files-body,
   .files-preview-placeholder,
-  .workspace-empty-view
+  .workspace-empty-view,
+  .home-workspace,
+  .browser-workspace,
+  .browser-stage
 ) {
   background: transparent !important;
+}
+
+/* 壁纸模式下首页按钮使用半透明hover效果 */
+:root:not([data-wallpaper="none"]) .home-launcher__button:hover {
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent) !important;
+}
+:root:not([data-wallpaper="none"]) .home-launcher__button:focus-visible {
+  background: color-mix(in srgb, var(--surface-raised) 85%, transparent) !important;
+}
+
+/* 壁纸模式下文件标签栏透明 */
+:root:not([data-wallpaper="none"]) .file-tabs-bar {
+  background: transparent !important;
+  border-bottom-color: color-mix(in srgb, var(--border) 60%, transparent) !important;
+}
+
+/* 壁纸模式下浏览器工具栏和地址栏半透明 */
+:root:not([data-wallpaper="none"]) .browser-toolbar {
+  background: color-mix(in srgb, var(--surface) 80%, transparent) !important;
+  border-bottom-color: color-mix(in srgb, var(--border) 60%, transparent) !important;
+  backdrop-filter: blur(12px) saturate(108%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
+}
+:root:not([data-wallpaper="none"]) .browser-address {
+  background: color-mix(in srgb, var(--surface-raised) 85%, transparent) !important;
+  border-color: color-mix(in srgb, var(--border) 70%, transparent) !important;
+}
+
+/* 壁纸模式下功能区标签激活态半透明 */
+:root:not([data-wallpaper="none"]) .workspace-open-tab.active {
+  background: color-mix(in srgb, var(--surface-raised) 75%, transparent) !important;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%) !important;
+}
+:root:not([data-wallpaper="none"]) .workspace-open-tab.active .workspace-tab-close {
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+}
+
+/* 壁纸模式下文件标签hover和激活态半透明 */
+:root:not([data-wallpaper="none"]) .file-tab:hover {
+  background: color-mix(in srgb, var(--surface-raised) 60%, transparent) !important;
+}
+:root:not([data-wallpaper="none"]) .file-tab.active {
+  background: color-mix(in srgb, var(--surface-raised) 75%, transparent) !important;
+}
+:root:not([data-wallpaper="none"]) .file-tab-close:hover {
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+}
+
+/* 壁纸模式下浏览器按钮hover半透明 */
+:root:not([data-wallpaper="none"]) .browser-toolbar-action:hover:not(:disabled),
+:root:not([data-wallpaper="none"]) .browser-toolbar-menu:hover,
+:root:not([data-wallpaper="none"]) .browser-toolbar-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent) !important;
 }
 
 :root[data-app-theme="dark"] :is(

@@ -185,7 +185,7 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
-/* 上下渐变遮罩：顶部淡出、底部淡出，仅覆盖圆点列区域 */
+/* 上下渐变遮罩：已移除，保持透明 */
 .turn-dot-fade {
   position: absolute;
   left: 0;
@@ -193,14 +193,7 @@
   height: 28px;
   pointer-events: none;
   z-index: 2;
-}
-.turn-dot-fade--top {
-  top: 0;
-  background: linear-gradient(to bottom, #fff 0%, rgba(255,255,255,0) 100%);
-}
-.turn-dot-fade--bottom {
-  bottom: 0;
-  background: linear-gradient(to top, #fff 0%, rgba(255,255,255,0) 100%);
+  background: transparent;
 }
 
 :root[data-app-theme="dark"] .turn-dot {
@@ -219,12 +212,6 @@
 }
 :root[data-app-theme="dark"] .turn-dot-bubble::before {
   border-right-color: #f3f4f6;
-}
-:root[data-app-theme="dark"] .turn-dot-fade--top {
-  background: linear-gradient(to bottom, #1a1a1a 0%, rgba(26,26,26,0) 100%);
-}
-:root[data-app-theme="dark"] .turn-dot-fade--bottom {
-  background: linear-gradient(to top, #1a1a1a 0%, rgba(26,26,26,0) 100%);
 }
 
 /* 空会话不显示圆点导航 */
@@ -1202,8 +1189,26 @@
 .model-picker-popover > header { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px 7px; color: #737980; font-size: 12px; }
 .model-picker-popover > header small { color: #a0a4a9; font-size: 10px; }
 .model-picker-list { max-height: 246px; padding: 2px 6px 7px; overflow-y: auto; scrollbar-width: thin; }
-.model-picker-list > button { display: grid; width: 100%; min-height: 48px; grid-template-columns: minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 6px 7px; color: #30343a; background: transparent; border-radius: 6px; text-align: left; }
+.model-picker-list > button { display: grid; width: 100%; min-height: 48px; grid-template-columns: 22px minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 6px 7px; color: #30343a; background: transparent; border-radius: 6px; text-align: left; }
 .model-picker-list > button:hover { background: #f3f4f4; }
+.model-picker-logo {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: transparent;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  color: #8d9298;
+}
+.model-picker-logo img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .model-picker-list .model-name-cell { display: grid; min-width: 0; gap: 2px; }
 .model-picker-list b { overflow: hidden; color: #000; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .model-picker-list small { overflow: hidden; color: #8d9298; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }

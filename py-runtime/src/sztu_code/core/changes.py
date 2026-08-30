@@ -24,6 +24,7 @@ _IGNORED_PARTS = {
     "build",
     "dist",
     "node_modules",
+    "target",
 }
 _IGNORED_SUFFIXES = (".pyc", ".pyo")
 _MANIFEST_NAME = "changes.json"

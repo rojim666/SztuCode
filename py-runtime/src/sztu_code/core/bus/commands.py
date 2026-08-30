@@ -821,6 +821,7 @@ class ProviderCcswitchApplyResult(BaseModel):
 class ModelProfileSummary(ModelRequestSettings):
     id: str
     name: str
+    icon: str = "sparkles"
     vendor: str
     provider: Literal["anthropic", "openai"]
     api_format: ApiFormat = "anthropic_messages"
@@ -853,6 +854,7 @@ class ModelProfileSaveCommand(ModelProfileProbe):
     type: Literal["provider.model_save"] = "provider.model_save"
     id: str | None = Field(default=None, max_length=100)
     name: str = Field(min_length=1, max_length=100)
+    icon: str = Field(default="sparkles", min_length=1, max_length=32)
 
 
 class ModelProfileSaveResult(BaseModel):
