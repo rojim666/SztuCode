@@ -568,9 +568,12 @@ const filteredLauncherWorkspaces = computed(() => {
 });
 const orderedTimeline = computed(() => [...timeline.value.values()].sort((left, right) => left.step - right.step));
 // 流式输出和思考动画不断改变内容高度；用户未主动上滑时持续跟随最新输出。
-watch(orderedTimeline, keepTaskStreamAtBottom, { deep: true });
+// Timeline updates are replaced by the microtask batcher; a shallow watch
+// avoids recursively traversing every streamed token and nested tool entry.
+watch(() => timeline.value, keepTaskStreamAtBottom);
 // 轮次变化时刷新圆点导航观察器
-watch(orderedTimeline, () => { nextTick(refreshTurnObserver); }, { deep: true });
+// Turn navigation only depends on the number of steps, not streamed content.
+watch([activeId, () => timeline.value.size], () => { nextTick(refreshTurnObserver); });
 // 全局会话统计（借鉴 dsh sessionStats 投影）：按 runId 去重的会话级 token/用时/轮步数，
 // 由底部统计栏展示；数据源与时间线同源，翻页与压缩不改变数字
 const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
@@ -880,7 +883,16 @@ function pendingTimelineFor(sessionId: string) {
   return pending;
 }
 function maxTimelineStep(sessionId: string): number {
-  return Math.max(0, ...ensureSessionView(sessionId).timeline.keys(), ...(pendingTimelineBySession.get(sessionId)?.keys() ?? []));
+  // Avoid spreading an ever-growing timeline into Math.max (which allocates
+  // an argument array and can hit the engine's argument limit).
+  let max = 0;
+  for (const step of ensureSessionView(sessionId).timeline.keys()) {
+    if (step > max) max = step;
+  }
+  for (const step of pendingTimelineBySession.get(sessionId)?.keys() ?? []) {
+    if (step > max) max = step;
+  }
+  return max;
 }
 function setSessionStep(step: number, updater: (current: TimelineStep) => TimelineStep, sessionId: string | null = activeId.value) {
   if (!sessionId) return;
@@ -1178,7 +1190,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   }
   if (!relatedRunId) return;
   if (type === "run.started") {
-    const messageStep = Math.max(0, ...timeline.value.keys());
+    const messageStep = maxTimelineStep(sessionId);
     setStep(messageStep || 1, (current) => ({ ...current, status: "thinking", runId, runStartedAt: String(event.ts ?? new Date().toISOString()) }));
     liveRunUsage.set(runId, { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0 });
     runStartedAtByRun.set(runId, Date.now());
@@ -1232,7 +1244,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   }
   if (type === "step.started") {
     // 每个 run 的 step 从 1 编号，这里按 run 做偏移，保证跨 run 步号不冲突
-    if (!runStepBase.has(runId)) runStepBase.set(runId, Math.max(0, ...timeline.value.keys()));
+    if (!runStepBase.has(runId)) runStepBase.set(runId, maxTimelineStep(sessionId));
     const step = (runStepBase.get(runId) ?? 0) + Number(event.step);
     currentStepByRun.set(runId, step);
     setStep(step, (current) => ({ ...current, status: "thinking", runId }));
