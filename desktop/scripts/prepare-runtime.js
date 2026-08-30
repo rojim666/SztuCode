@@ -51,6 +51,10 @@ const esbuildCommand = await import("node:fs").then(({ existsSync }) => existsSy
 const esbuildIsScript = esbuildCommand === esbuild && readFileSync(esbuild).subarray(0, 2).toString() === "#!/";
 const result = spawnSync(esbuildIsScript ? process.execPath : esbuildCommand, esbuildIsScript ? [esbuildCommand, ...esbuildArgs] : esbuildArgs, { cwd: repositoryRoot, stdio: "inherit", windowsHide: true });
 if (result.status !== 0) throw new Error(`Failed to bundle the TypeScript runtime (exit code ${result.status ?? 1})`);
+// esbuild 以 --format=esm 输出 .js，而 Node 对 .js 默认按 CommonJS 解析；
+// 必须在 runtime 目录声明 "type": "module"，否则安装版 daemon 启动即报
+// "Cannot use import statement outside a module"（issue #152）
+await writeFile(path.join(runtimeRoot, "package.json"), `${JSON.stringify({ type: "module" }, null, 2)}\n`);
 await prepareSkillAssets(path.join(repositoryRoot, "packages", "runtime-ts", "skills"), path.join(runtimeRoot, "skills"), repositoryRoot);
 for (const directory of ["prompts", "agents"]) await cp(path.join(repositoryRoot, "packages", "runtime-ts", directory), path.join(runtimeRoot, directory), { recursive: true });
 } finally {
