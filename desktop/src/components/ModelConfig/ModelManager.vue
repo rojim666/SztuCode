@@ -232,11 +232,19 @@ onMounted(() => {
 <template>
   <section ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : 'true'" aria-label="模型管理" tabindex="-1" @keydown.esc="addStep !== 'idle' ? closeEditor() : emit('close')">
     <header>
+      <div class="model-manager-heading">
+        <h1>模型管理</h1>
+        <p>配置供应商与当前使用的模型</p>
+      </div>
       <button v-if="addStep === 'idle'" type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button>
     </header>
 
     <div v-if="addStep === 'idle'" ref="modelManagerBody" class="model-manager-body" tabindex="-1" :inert="Boolean(deleteTarget || deletingId)">
       <div class="model-manager-toolbar">
+        <div class="model-manager-summary" aria-label="模型概览">
+          <div class="model-stat"><b>{{ models.length }}</b><small>已配置</small></div>
+          <div v-if="currentModel" class="model-current"><Check :size="13" /><span>当前：<b>{{ currentModel.name }}</b></span></div>
+        </div>
         <button ref="editorTrigger" type="button" class="model-add-button" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
           <Plus :size="15" />添加模型
         </button>
@@ -260,6 +268,7 @@ onMounted(() => {
           </span>
           <span class="model-row-actions">
             <em v-if="item.is_current" class="model-current-badge"><Check :size="12" />当前</em>
+            <em v-else-if="item.builtin" class="model-builtin-badge">内置</em>
             <template v-else>
               <button type="button" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)"><Pencil :size="14" /></button>
               <button type="button" class="model-delete-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)"><Trash2 :size="14" /></button>
@@ -449,14 +458,43 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.model-manager-desc {
-  margin: 4px 0 0;
-  color: #868b92;
-  font-size: 13px;
+.model-manager {
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+.model-manager-heading {
+  display: grid;
+  gap: 2px;
+}
+.model-manager-heading h1 {
+  font-size: 17px;
+  font-weight: 620;
+}
+.model-manager-heading p {
+  margin: 0;
+  color: #8a9097;
+  font-size: 11px;
 }
 
 .model-manager-body {
-  padding: 20px 24px 32px;
+  padding: 18px 24px 28px;
+}
+.model-manager-toolbar {
+  min-height: 40px;
+}
+.model-manager-summary {
+  gap: 14px;
+}
+.model-stat {
+  min-width: 44px;
+}
+.model-stat b {
+  font-size: 16px;
+}
+.model-current {
+  max-width: min(320px, 45vw);
+  padding: 6px 9px;
+  background: #f4f8f5;
+  border-color: #e1e9e3;
 }
 
 .model-add-button {
@@ -476,7 +514,7 @@ onMounted(() => {
 .model-add-button:disabled { opacity: 0.4; cursor: default; }
 
 .model-table {
-  margin-top: 8px;
+  margin-top: 10px;
   overflow: hidden;
   border: 1px solid #e8eaec;
   border-radius: 8px;
@@ -485,7 +523,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
-  min-height: 40px;
+  min-height: 34px;
   padding: 0 16px;
   color: #868b92;
   background: #f7f8f9;
@@ -497,8 +535,8 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
-  min-height: 56px;
-  padding: 8px 16px;
+  min-height: 54px;
+  padding: 6px 16px;
   background: #fff;
   border-bottom: 1px solid #f0f1f2;
   transition: background 0.12s ease;
@@ -545,21 +583,21 @@ onMounted(() => {
 }
 .model-provider-logo {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   place-items: center;
   background: #f5f6f7;
   border: 1px solid #e8eaec;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 11px;
   font-style: normal;
   font-weight: 700;
   color: #6b7280;
 }
-.model-provider-logo img { width: 22px; height: 22px; object-fit: contain; }
+.model-provider-logo img { width: 19px; height: 19px; object-fit: contain; }
 .model-name-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.model-name-text b { font-size: 14px; font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-name-text b { font-size: 13px; font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-name-text small { font-size: 12px; color: #9ca3af; font-family: "SF Mono", Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .model-row-actions { display: flex; align-items: center; gap: 4px; }
@@ -567,12 +605,22 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 3px 8px;
   color: #059669;
   background: #ecfdf5;
   border: 1px solid #a7f3d0;
-  border-radius: 20px;
+  border-radius: 5px;
   font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+.model-builtin-badge {
+  padding: 3px 8px;
+  color: #737980;
+  background: #f3f4f5;
+  border: 1px solid #e5e7e9;
+  border-radius: 5px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 500;
 }
@@ -614,7 +662,8 @@ onMounted(() => {
   max-height: calc(100vh - 28px);
   overflow: hidden;
   background: #fff;
-  border-radius: 12px;
+  border: 1px solid #dedfe2;
+  border-radius: 8px;
   box-shadow: 0 25px 65px rgba(0,0,0,0.18);
   display: flex;
   flex-direction: column;
@@ -659,9 +708,7 @@ onMounted(() => {
 }
 .model-vendor-card:hover {
   background: #fff;
-  border-color: #2563eb;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1);
-  transform: translateY(-1px);
+  border-color: #aeb3b8;
 }
 .model-vendor-logo {
   display: grid;
@@ -697,7 +744,8 @@ onMounted(() => {
   max-height: calc(100vh - 28px);
   overflow: hidden;
   background: #f7f8f9;
-  border-radius: 12px;
+  border: 1px solid #dedfe2;
+  border-radius: 8px;
   box-shadow: 0 25px 65px rgba(0,0,0,0.18);
   display: flex;
   flex-direction: column;
@@ -937,10 +985,97 @@ onMounted(() => {
 .model-form-submit:hover:not(:disabled) { background: #111827; }
 .model-form-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
+@media (max-width: 720px) {
+  .model-manager {
+    grid-template-rows: 58px minmax(0, 1fr);
+  }
+  .model-manager > header {
+    padding: 0 16px;
+  }
+  .model-manager-heading p {
+    display: none;
+  }
+  .model-manager-body {
+    padding: 14px 14px 22px;
+  }
+  .model-manager-toolbar {
+    min-height: 0;
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+  }
+  .model-manager-summary {
+    flex: 1;
+    width: auto;
+    gap: 9px;
+  }
+  .model-current {
+    max-width: none;
+    flex: 1;
+  }
+  .model-add-button {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .model-table-header,
+  .model-table-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+  .model-table-header {
+    min-height: 32px;
+  }
+  .model-table-row {
+    min-height: 52px;
+  }
+  .model-row-info {
+    gap: 8px;
+  }
+  .model-provider-logo {
+    width: 28px;
+    height: 28px;
+  }
+  .model-provider-logo img {
+    width: 17px;
+    height: 17px;
+  }
+  .model-row-actions button {
+    width: 28px;
+    height: 28px;
+  }
+  .model-current-badge,
+  .model-builtin-badge {
+    padding: 3px 6px;
+  }
+  .model-form-body {
+    padding: 14px;
+  }
+  .model-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 10px 14px;
+  }
+  .model-form-footer-actions {
+    justify-content: flex-end;
+  }
+  .model-form-footer-note {
+    line-height: 1.4;
+  }
+  .model-radio-row {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+}
+
 /* 暗色主题 */
 :global(.dark) .model-manager { color: #e5e7eb; background: #1a1a1a; border-color: #2a2a2a; }
 :global(.dark) .model-manager > header { background: #1e1e1e; border-color: #2a2a2a; }
-:global(.dark) .model-manager-desc { color: #9ca3af; }
+:global(.dark) .model-manager-heading p { color: #858b93; }
+:global(.dark) .model-stat b { color: #e5e7eb; }
+:global(.dark) .model-current { color: #6ee7a2; background: #1d2b22; border-color: #2b4132; }
 :global(.dark) .model-add-button { background: #3b82f6; }
 :global(.dark) .model-add-button:hover { background: #2563eb; }
 :global(.dark) .model-table { border-color: #2a2a2a; background: #1e1e1e; }
@@ -956,6 +1091,7 @@ onMounted(() => {
 :global(.dark) .model-row-actions button:hover { color: #e5e7eb; background: #333; }
 :global(.dark) .model-row-actions .model-delete-btn:hover { color: #f87171; background: rgba(239,68,68,0.1); }
 :global(.dark) .model-current-badge { color: #34d399; background: rgba(5,150,105,0.15); border-color: rgba(52,211,153,0.3); }
+:global(.dark) .model-builtin-badge { color: #a4a9b0; background: #292929; border-color: #373737; }
 :global(.dark) .model-empty { color: #6b7280; }
 :global(.dark) .model-vendor-picker { background: #1e1e1e; }
 :global(.dark) .model-vendor-picker > header { background: #1e1e1e; border-color: #2a2a2a; }

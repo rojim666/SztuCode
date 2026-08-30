@@ -6,7 +6,7 @@ const classify = (command: string) => classifyBashPermission({ command });
 
 test("bash permission downgrades only local read-only command chains", () => {
   for (const command of ["ls -la", "cat src/main.ts", "rg needle .", "git status --short", "git diff -- src/main.ts", "rg needle . | head -20", "git status && git diff"]) {
-    assert.equal(classify(command), "workspace_write", command);
+    assert.equal(classify(command), "read_only", command);
   }
 });
 

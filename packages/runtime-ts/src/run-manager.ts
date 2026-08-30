@@ -3,7 +3,7 @@ import path from "node:path";
 import type { RunGetResult, RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { AgentLoop, type AgentRunResult } from "./agent-loop.js";
-import { createPlanTools, createWorkspaceTools, registerQuestionTool } from "./tools.js";
+import { createPlanTools, createSkillTool, createSpawnAgentTool, createWorkflowTool, createWorkspaceTools, registerQuestionTool } from "./tools.js";
 import { Workspace } from "./workspace.js";
 import { PermissionManager } from "./permissions.js";
 import type { ChatMessage } from "./agent-loop.js";
@@ -16,8 +16,10 @@ import { createMemoryTools, loadMemoryCatalog } from "./memory.js";
 import type { SessionStore } from "./session-store.js";
 import { ExtensionRegistry } from "./extensions/registry.js";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
+import { SubagentManager } from "./subagent.js";
+import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 
-type RunState = { runId: string; goal: string; status: "running" | "completed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
+type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
 /**
  * Compatibility runner for the legacy runtime API.
@@ -89,7 +91,8 @@ export class RunManager {
     const tracker = workspaceRoot ? new WorkspaceChangeTracker(workspaceRoot, run.runId) : null;
     try {
       const root = workspaceRoot ?? process.cwd(); const memory = await loadMemoryCatalog(root, this.sessions, sessionId);
-      const tools = createWorkspaceTools([...createPlanTools(this.events, run.runId, sessionId), ...createMemoryTools(memory, this.sessions, sessionId, run.runId), ...this.extraTools()]);
+      const subagents = new SubagentManager(this.provider, root, this.events, this.permissions, undefined, undefined, this.telemetry);
+      const tools = createWorkspaceTools([...createPlanTools(this.events, run.runId, sessionId), createSkillTool(root), createSpawnAgentTool(async (role, goal, context) => { const result = await subagents.run(role as "planner" | "coder" | "tester" | "reviewer", context ? `${goal}\n\nAdditional context:\n${context}` : goal, [], run.runId, { parentSessionId: sessionId, parentRunId: run.runId }); if (role === "planner") { try { const candidate = JSON.parse(result.text); const errors = validateWorkflowGraph(candidate); if (!errors.length) return { ...result, workflow: candidate }; return { ...result, workflow_error: errors }; } catch { return { ...result, workflow_error: ["planner did not return a valid WorkflowGraph JSON object"] }; } } return result; }), createWorkflowTool(async (graph) => { const candidate = graph as import("@sztucode/protocol").WorkflowGraph; const errors = validateWorkflowGraph(candidate); if (errors.length) throw new Error(errors.join("; ")); return subagents.runWorkflow(candidate, { runId: run.runId, parentRunId: run.runId, parentSessionId: sessionId }); }), ...createMemoryTools(memory, this.sessions, sessionId, run.runId), ...this.extraTools()]);
       for (const tool of this.extensions.toolsForWorkspace(root, new Set(tools.list().map((candidate) => candidate.name)))) { try { tools.register(tool); } catch (error) { this.events.publish({ type: "log.line", run_id: run.runId, level: "WARN", source: "extensions", message: error instanceof Error ? error.message : String(error), ts: now() }); } }
       if (tracker) await tracker.capture();
       if (sessionId && this.questions) registerQuestionTool(tools, (questions) => this.questions!.ask(sessionId, run.runId, questions as never));
@@ -98,16 +101,24 @@ export class RunManager {
       const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name), taskText: run.goal }), extensionPrompt, memory.prompt()].filter(Boolean).join("\n\n");
       await this.extensions.dispatch("session_start", { goal: run.goal }, root, { runId: run.runId, sessionId });
       const initialHistory = [{ role: "system" as const, content: prompt }, ...history];
-      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
+      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
       result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => run.steering.splice(0, run.steering.length));
     } catch (error) {
       if (tracker) await tracker.finalize();
-      if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); return; }
-      run.status = "completed";
+      // 失败路径也持久化已积累的对话状态（AgentLoop 会把 partialMessages 挂到错误上），避免多步工作成果蒸发
+      const partialMessages = error instanceof Error ? (error as Error & { partialMessages?: ChatMessage[] }).partialMessages : undefined;
+      if (sessionId && this.sessions && partialMessages?.length) {
+        try { await this.sessions.replaceModelHistory(sessionId, partialMessages.filter((message) => message.role !== "system")); } catch { /* 持久化失败不掩盖原始错误 */ }
+      }
+      if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
+      // 失败 run 的状态必须与 run.finished 事件的 status 保持一致，否则 get() 调用方拿到的是谎言
+      run.status = "failed";
       this.sessionRuns.forEach((active, sessionId) => { if (active === run.runId) this.sessionRuns.delete(sessionId); });
       this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: error instanceof Error ? error.message : String(error), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
       await this.extensions.dispatch("agent_end", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
       await this.extensions.dispatch("session_shutdown", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
+      this.runRoots.delete(run.runId);
+      this.scheduleRunCleanup(run.runId);
       return;
     }
     run.steps = result.steps;
@@ -115,22 +126,29 @@ export class RunManager {
     run.contextPct = result.contextPct;
     const changes = tracker ? await tracker.finalize() : [];
     if (changes.length) this.emit({ type: "change.applied", run_id: run.runId, workspace_path: path.resolve(workspaceRoot!), paths: changes.map((item) => item.path), ts: now() });
-    if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); return; }
+    if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
     if (onComplete) await onComplete(result.messages, run.usage);
     if (sessionId && this.sessions) {
       await this.sessions.replaceModelHistory(sessionId, result.messages.filter((message) => message.role !== "system"));
     }
     await new Promise((resolve) => setTimeout(resolve, 0));
-    if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); return; }
+    if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
     run.status = "completed";
     if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
     this.emit({ type: "run.finished", run_id: run.runId, status: "success", steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
     await this.extensions.dispatch("agent_end", { goal: run.goal, messages: result.messages, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
     await this.extensions.dispatch("session_shutdown", { goal: run.goal, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
     this.runRoots.delete(run.runId);
+    this.scheduleRunCleanup(run.runId);
   }
 
   private emit(event: RuntimeEvent): void { this.events.publish(event); }
+
+  /** 终态 run 延迟清理：保留一个窗口供 run.get 轮询拿到真实终态，避免 Map 永久驻留泄漏。 */
+  private scheduleRunCleanup(runId: string, delayMs = 60_000): void {
+    const timer = setTimeout(() => { this.runs.delete(runId); }, delayMs);
+    timer.unref?.();
+  }
 }
 
 /** @deprecated Use the ServerService-created AgentSession for new callers. */

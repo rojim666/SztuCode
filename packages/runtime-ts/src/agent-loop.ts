@@ -16,12 +16,12 @@ import { TaskCanvas } from "./task-canvas.js";
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
 export type ModelUsage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number };
-export type ModelResponse = { text: string; tool_calls: ModelToolCall[]; stop_reason: "end_turn" | "tool_use"; thinking_blocks?: ContentBlock[]; reasoning_content?: string; usage?: Partial<ModelUsage>; model?: string; streamed?: boolean };
+export type ModelResponse = { text: string; tool_calls: ModelToolCall[]; stop_reason: "end_turn" | "tool_use" | "max_tokens"; thinking_blocks?: ContentBlock[]; reasoning_content?: string; usage?: Partial<ModelUsage>; model?: string; streamed?: boolean };
 export type ModelInvocation = { runId: string; step: number; purpose?: "agent" | "compaction" };
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -65,6 +65,11 @@ export class AgentLoop {
     // 墙钟时间预算
     const maxWallClockMs = this.options.maxWallClockMs ?? nonNegativeEnv("SZTU_MAX_WALL_CLOCK_MS", 0);
     const runStartTime = Date.now();
+    // LLM 调用连续失败上限：达到前把错误回注对话让模型自行续跑；达到后诚实失败。0 表示首次失败即终止。
+    const maxLlmFailures = this.options.maxLlmFailures ?? nonNegativeEnv("SZTU_MAX_LLM_FAILURES", 3);
+    let llmFailures = 0;
+    let checkpointSequence = 0;
+    let currentStep = 0;
     const wallClockExceeded = (): boolean => maxWallClockMs > 0 && (Date.now() - runStartTime) >= maxWallClockMs;
     // TaskCanvas 任务画布
     const taskCanvas = new TaskCanvas();
@@ -73,8 +78,29 @@ export class AgentLoop {
     // 后台压缩控制
     const compactBackground = this.options.compactBackground ?? booleanEnv("SZTU_COMPACT_BACKGROUND", true);
     let compactionRunning = false;
-    const startCompaction = (step: number): boolean => {
-      if (pendingCompaction || compactionRunning || compactThreshold <= 0 || (compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker) || step - lastCompactStep < compactCooldownSteps) return false;
+    // 熔断退路：LLM 摘要连续失败后，用无模型的硬丢弃压缩兜底，避免上下文持续膨胀到 API 报错
+    const applyHardDropCompaction = async (): Promise<boolean> => {
+      let fallback = context.compact(slidingWindowSize);
+      // body <= 滑窗时 compact 会 deferred，但在小上下文场景这正是熔断发生的地方：
+      // 退到极限窗口（只保留最近 1 个 turn），保证熔断后至少丢弃一批旧消息（body 为空才真正放弃）
+      if (fallback.deferred && slidingWindowSize > 1) fallback = context.compact(1);
+      if (fallback.deferred) return false;
+      compacted = true;
+      compactionCount += 1;
+      taskCanvas.recordStep({ label: "上下文压缩（熔断退路）", summary: `硬丢弃 ${fallback.removedMessages} 条旧消息`, toolNames: [], status: "done" });
+      this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "context", message: `Compaction circuit breaker open after ${compactionFailures} summary failure(s); applied hard-drop compaction (${fallback.removedMessages} messages removed)`, ts: now() });
+      if (this.options.sessionId) this.publish({ type: "context.compacted", session_id: this.options.sessionId, run_id: runId, original_tokens: fallback.originalTokens, summary_tokens: fallback.summaryTokens, ts: now() });
+      await extensions?.dispatch("compact", { messages, summary: "", removedMessages: fallback.removedMessages }, extensionRoot, { runId, sessionId: this.options.sessionId });
+      await this.options.onCompacted?.(messages, "");
+      return true;
+    };
+    const startCompaction = async (step: number): Promise<boolean> => {
+      if (pendingCompaction || compactionRunning || compactThreshold <= 0 || step - lastCompactStep < compactCooldownSteps) return false;
+      // 熔断打开：LLM 摘要不可用，直接走硬丢弃退路（不消耗 LLM 调用）
+      if (compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker) {
+        lastCompactStep = step;
+        return applyHardDropCompaction();
+      }
       if (this.options.sessionId) this.publish({ type: "context.compacting", session_id: this.options.sessionId, run_id: runId, ts: now() });
       this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "context", message: `Starting background compaction at step ${step}`, ts: now() });
       compactionRunning = true;
@@ -115,7 +141,13 @@ export class AgentLoop {
         if (!isResolved) return false;
       }
       const result = await pendingCompaction; pendingCompaction = null;
-      if (result.failed) { compactionFailures += 1; this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "context", message: `Compaction failed (${compactionFailures}/${compactCircuitBreaker || "unlimited"})`, ts: now() }); return false; }
+      if (result.failed) {
+        compactionFailures += 1;
+        this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "context", message: `Compaction failed (${compactionFailures}/${compactCircuitBreaker || "unlimited"})`, ts: now() });
+        // 熔断在本轮打开：立即硬丢弃一次，不等到下次触发才退化
+        if (compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker) await applyHardDropCompaction();
+        return false;
+      }
       if (result.deferred) return false;
       // 应用压缩结果：合并快照后新增的消息
       const snapshotLength = (result as any).snapshotLength as number ?? messages.length;
@@ -136,7 +168,9 @@ export class AgentLoop {
     const denials = new DenialTracker();
     const stuck = new StuckLoopTracker(this.options.stuckMaxFailures ?? nonNegativeEnv("SZTU_STUCK_MAX_FAILURES", 2), this.options.stuckMaxTotal ?? nonNegativeEnv("SZTU_STUCK_MAX_TOTAL", 0));
     const phases = createPhaseTracker();
+    try {
     for (let step = 1; maxSteps === 0 || step <= maxSteps; step += 1) {
+      currentStep = step;
       signal?.throwIfAborted();
 
       // 墙钟时间预算预检
@@ -175,7 +209,24 @@ export class AgentLoop {
       }
       await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
       const requestTokens = context.tokenEstimate();
-      const response = await this.provider.complete(messages, this.tools, signal, (token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }), { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+      let response: ModelResponse;
+      try {
+        const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
+        response = await this.provider.complete(messages, this.tools, signal, tokenBuffer.push, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+        tokenBuffer.flush();
+        llmFailures = 0;
+      } catch (error) {
+        // 用户主动取消不是故障，照常上抛
+        if (signal?.aborted) throw error;
+        llmFailures += 1;
+        const reason = error instanceof Error ? error.message : String(error);
+        if (llmFailures >= maxLlmFailures) throw error;
+        // 错误回注对话：让失败成为对话的一部分而不是进程的终点，模型下一步可自行重试/续跑
+        this.publish({ type: "log.line", run_id: runId, level: "ERROR", source: "llm", message: `Model call failed (${llmFailures}/${maxLlmFailures}): ${reason}`, ts: now() });
+        messages.push({ role: "user", content: `The model API call failed (attempt ${llmFailures} of ${maxLlmFailures}): ${reason}\nNo output was produced for this step. Continue the task from the last completed step; do not repeat work that already finished.` });
+        this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+        continue;
+      }
       usage.input_tokens += Number(response.usage?.input_tokens ?? 0);
       usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
       usage.cache_read_input_tokens += Number(response.usage?.cache_read_input_tokens ?? 0);
@@ -188,13 +239,14 @@ export class AgentLoop {
       const usageSnapshot = context.usageSnapshot();
       this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: usageSnapshot.system, summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: usageSnapshot.conversation, tool_tokens: usageSnapshot.tool, ts: now() });
       if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
-      if (response.stop_reason === "end_turn" || response.tool_calls.length === 0) {
+      if (response.stop_reason === "end_turn") {
         const finalPhase = phases.finish();
         if (finalPhase) this.publish({ type: "phase.changed", run_id: runId, step, phase: finalPhase.to, previous: finalPhase.from, reason: finalPhase.reason, ts: now() });
         this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
         messages.push({ role: "assistant", content: responseContent(response), ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
         // 等待后台压缩完成（如果有）
         await applyPendingCompaction(true);
+        await this.options.onCheckpoint?.({ step, sequence: ++checkpointSequence, phase: "completed", messages: [...messages], usage: { ...usage } });
         // TaskCanvas 记录任务完成
         taskCanvas.recordStep({ label: "任务完成", summary: response.text.slice(0, 100), status: "done" });
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
@@ -204,7 +256,7 @@ export class AgentLoop {
 
       // 达到阈值时启动后台压缩（利用工具执行期间的等待时间）
       if (lastContextPct >= compactThreshold && !pendingCompaction) {
-        startCompaction(step);
+        void startCompaction(step);
       }
 
       // TaskCanvas 记录本轮工具调用开始
@@ -302,7 +354,7 @@ export class AgentLoop {
           }
 
           const permission = tool.classifyPermission?.(input) ?? tool.permission;
-          const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
+          const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal, this.context.workspace.root);
           if (!allowed) {
             denials.recordDenial(toolName);
             this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "permission_denied", error_message: "Permission denied or approval timed out", elapsed_ms: 0, ts: now() });
@@ -345,7 +397,7 @@ export class AgentLoop {
             const { call, input, tool, toolName } = prepared;
             if (!tool) { permissionResults.set(call.id, false); continue; }
             const permission = tool.classifyPermission?.(input) ?? tool.permission;
-            const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal);
+            const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal, this.context.workspace.root);
             permissionResults.set(call.id, allowed);
           }
 
@@ -461,6 +513,7 @@ export class AgentLoop {
       await applyPendingCompaction(false);
 
       this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+      await this.options.onCheckpoint?.({ step, sequence: ++checkpointSequence, phase: "tool_batch", messages: [...messages], usage: { ...usage } });
       await extensions?.dispatch("turn_end", { goal, step, messages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       if (maxSteps > 0 && step >= maxSteps) {
         const conclusion = await this.conclude(runId, step, messages, usage, lastContextPct, signal, taskCanvas);
@@ -470,15 +523,26 @@ export class AgentLoop {
       // 兜底：如果还没有启动压缩且需要压缩，则启动（工具执行期间可能已经启动了）
       const addedTokens = Math.max(0, context.tokenEstimate() - requestTokens);
       if (context.needsCompaction(compactThreshold, responseInputTokens || requestTokens, addedTokens) && !pendingCompaction) {
-        startCompaction(step);
+        void startCompaction(step);
       }
     }
     throw new Error("Agent stopped unexpectedly");
+    } catch (error) {
+      // 失败也带上已积累的对话状态：上层（RunManager）在失败路径持久化，避免多步工作成果随异常蒸发
+      if (error instanceof Error && messages.length) {
+        const carrier = error as Error & { partialMessages?: ChatMessage[] };
+        if (!carrier.partialMessages) carrier.partialMessages = messages;
+      }
+      await this.options.onCheckpoint?.({ step: currentStep, sequence: ++checkpointSequence, phase: "failed", messages: [...messages], usage: { ...usage } });
+      throw error;
+    }
   }
 
   private async conclude(runId: string, step: number, messages: ChatMessage[], usage: ModelUsage, previousContextPct: number, signal?: AbortSignal, taskCanvas?: TaskCanvas): Promise<{ complete: boolean; text: string; contextPct: number }> {
     messages.push({ role: "user", content: "The agent run has reached its step limit and must stop now. Give your final answer. If the goal is fully achieved, start with [COMPLETE]. If work remains, start with [INCOMPLETE] and list it. Do not call tools." });
-    const response = await this.provider.complete(messages, new ToolRegistry(), signal, (token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }), { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+    const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
+    const response = await this.provider.complete(messages, new ToolRegistry(), signal, tokenBuffer.push, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+    tokenBuffer.flush();
     usage.input_tokens += Number(response.usage?.input_tokens ?? 0);
     usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
     usage.cache_read_input_tokens += Number(response.usage?.cache_read_input_tokens ?? 0);
@@ -496,6 +560,12 @@ export class AgentLoop {
 }
 
 const now = () => new Date().toISOString();
+// Coalesce provider deltas into short frames to keep the event bus affordable during streaming.
+function bufferedEmitter(emit: (text: string) => void, windowMs = 75): { push: (text: string) => void; flush: () => void } {
+  let pending = ""; let timer: ReturnType<typeof setTimeout> | undefined;
+  const flush = () => { if (timer) clearTimeout(timer); timer = undefined; if (pending) { const text = pending; pending = ""; emit(text); } };
+  return { push(text) { pending += text; if (!timer) timer = setTimeout(flush, windowMs); }, flush };
+}
 const nonNegativeEnv = (name: string, fallback: number): number => { const value = Number(process.env[name]); return Number.isInteger(value) && value >= 0 ? value : fallback; };
 const numberEnv = (name: string, fallback: number, minimum: number, maximum: number): number => { const value = Number(process.env[name]); return Number.isFinite(value) && value >= minimum && value <= maximum ? value : fallback; };
 const booleanEnv = (name: string, fallback: boolean): boolean => process.env[name] === undefined ? fallback : !/^(0|false|no)$/i.test(process.env[name] ?? "");
@@ -516,7 +586,8 @@ async function invokeToolWithRetry(tool: Tool, input: Record<string, unknown>, c
       result = { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "runtime_error" };
     }
     const errorType = result.errorType ?? "runtime_error";
-    if (result.ok || !retryableToolErrors.has(errorType) || attempt >= maxRetries) return result;
+    // retryable === false 的工具（如 bash）失败不自动重试：exit≠0 是业务结果而非基础设施故障，且命令可能非幂等
+    if (result.ok || tool.retryable === false || !retryableToolErrors.has(errorType) || attempt >= maxRetries) return result;
     onRetry(attempt + 1, result);
     await abortableDelay(retryBaseMs * 2 ** attempt, context.signal);
   }

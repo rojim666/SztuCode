@@ -66,6 +66,45 @@ test("agent loop publishes thinking deltas and preserves signed blocks in histor
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
+test("agent loop continues after a max_tokens response without tool calls", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-max-tokens-loop-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0;
+    const provider: ModelProvider = { complete: async () => {
+      calls += 1;
+      return calls === 1
+        ? { text: "partial", tool_calls: [], stop_reason: "max_tokens" }
+        : { text: "recovered", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }).run("max-tokens-run", "work", 2);
+    assert.equal(calls, 2);
+    assert.equal(result.text, "recovered");
+    assert.equal(result.messages.some((message) => message.role === "assistant" && message.content === "partial"), true);
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("agent loop feeds malformed truncated tool arguments back as schema_error", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-schema-repair-loop-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0;
+    const failures: string[] = [];
+    events.subscribe((event) => { if (event.type === "tool.call_failed") failures.push(event.error_class); });
+    const provider: ModelProvider = { complete: async (messages) => {
+      calls += 1;
+      if (calls === 1) return { text: "", tool_calls: [{ id: "bad-read", name: "read_file", input: {} }], stop_reason: "max_tokens" };
+      const toolResult = messages.find((message) => message.role === "tool" && message.tool_call_id === "bad-read");
+      assert.equal(toolResult?.is_error, true);
+      assert.match(String(toolResult?.content), /path.*required/i);
+      return { text: "recovered", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }).run("schema-repair-run", "read a file", 2);
+    assert.equal(result.text, "recovered");
+    assert.ok(failures.includes("schema_error"));
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
 test("agent loop auto-compacts at the configured threshold and preserves the initial goal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-auto-compact-"));
   const events = new EventBus(path.join(root, "events.jsonl"));
@@ -97,7 +136,7 @@ test("agent loop treats a 0 context window as auto and never reports 100% usage"
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
-test("agent loop stops automatic compaction after consecutive summary failures", async () => {
+test("agent loop falls back to hard-drop compaction after the circuit breaker opens", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-compact-breaker-"));
   try {
     let compactions = 0; let agents = 0;
@@ -108,7 +147,61 @@ test("agent loop stops automatic compaction after consecutive summary failures",
     await writeFile(path.join(root, "package.json"), "{}", "utf8");
     const history = [{ role: "user" as const, content: "goal" }, ...Array.from({ length: 6 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `old-${index} ${"detail ".repeat(20)}` }))];
     const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { contextWindow: 100, compactThreshold: 0.70, compactCooldownSteps: 0, compactCircuitBreaker: 2, compactMinimumOldTokens: 0 }).run("breaker", "continue", 4, history);
-    assert.equal(result.text, "done"); assert.equal(result.compacted, false); assert.equal(compactions, 2);
+    // LLM 摘要连续失败触发熔断后退化为无模型硬丢弃，上下文不再只增不减
+    assert.equal(result.text, "done"); assert.equal(result.compacted, true); assert.equal(compactions, 2);
+    assert.ok(result.messages.some((message) => String(message.content).includes("Earlier conversation compacted")));
+  } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("agent loop feeds LLM API failures back into the conversation and recovers", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-llm-failure-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0; let sawFailureNotice = false;
+    const provider: ModelProvider = { complete: async (messages) => {
+      calls += 1;
+      if (calls === 1) throw new Error("LLM request failed (500): gateway exploded");
+      sawFailureNotice = messages.some((message) => message.role === "user" && String(message.content).includes("gateway exploded"));
+      return { text: "recovered", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { maxLlmFailures: 3 }).run("llm-failure", "work", 3);
+    assert.equal(result.text, "recovered");
+    // 错误成为对话的一部分：模型下一轮能看到失败原因
+    assert.ok(sawFailureNotice);
+    assert.ok(result.messages.some((message) => message.role === "user" && String(message.content).includes("attempt 1 of 3")));
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("agent loop gives up after consecutive LLM failures and carries partial messages", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-llm-dead-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0;
+    const provider: ModelProvider = { complete: async () => { calls += 1; throw new Error("LLM request failed (429): rate limited"); } };
+    let caught: NodeJS.ErrnoException | undefined;
+    try { await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { maxLlmFailures: 2 }).run("llm-dead", "work", 10); }
+    catch (error) { caught = error as NodeJS.ErrnoException; }
+    assert.ok(caught);
+    assert.match(caught!.message, /429/);
+    assert.equal(calls, 2);
+    // 失败也带上已积累的对话状态，供上层持久化
+    const partial = (caught as Error & { partialMessages?: unknown }).partialMessages as unknown[] | undefined;
+    assert.ok(Array.isArray(partial) && partial.length >= 1);
+    assert.ok(partial!.some((message) => String((message as { content: unknown }).content).includes("rate limited")));
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("agent loop does not auto-retry tools marked retryable false", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-bash-no-retry-"));
+  try {
+    let toolCalls = 0; let modelCalls = 0;
+    const tools = createWorkspaceTools([{ name: "non_retryable", description: "non-idempotent command", permission: "workspace_write", retryable: false, schema: { type: "object" }, async invoke() { toolCalls += 1; return { ok: false, output: "[exit 1]", error: "command exited with code 1", errorType: "runtime_error" }; } }]);
+    const provider: ModelProvider = { complete: async () => { modelCalls += 1; return modelCalls === 1 ? { text: "", tool_calls: [{ id: "cmd", name: "non_retryable", input: {} }], stop_reason: "tool_use" } : { text: "seen failure", tool_calls: [], stop_reason: "end_turn" }; } };
+    const loop = new AgentLoop(provider, tools, { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { toolRetryBaseMs: 0 });
+    assert.equal((await loop.run("no-retry", "run", 3)).text, "seen failure");
+    // exit≠0 是业务结果：只执行一次，不自动重跑
+    assert.equal(toolCalls, 1);
+    assert.equal(tools.get("bash")?.retryable, false);
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
@@ -136,7 +229,7 @@ test("run manager reports real progress when a step-limited run remains incomple
     const provider: ModelProvider = { complete: async () => { calls += 1; return calls === 1 ? { text: "", tool_calls: [{ id: "read", name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 7, output_tokens: 2 } } : { text: "[INCOMPLETE] more work remains", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 9, output_tokens: 3 } }; } };
     await writeFile(path.join(root, "package.json"), "{}", "utf8"); new RunManager(events, provider, root).start("inspect", [], undefined, root);
     const event = await finished; assert.equal(event.status, "failed"); assert.equal(event.steps, 1); assert.equal(event.total_input_tokens, 16); assert.equal(event.total_output_tokens, 5); assert.match(event.reason, /more work remains/);
-  } finally { if (previous === undefined) delete process.env.SZTU_MAX_STEPS; else process.env.SZTU_MAX_STEPS = previous; await rm(root, { recursive: true, force: true }); }
+  } finally { if (previous === undefined) delete process.env.SZTU_MAX_STEPS; else process.env.SZTU_MAX_STEPS = previous; await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("agent loop applies dynamic bash permission before approval", async () => {
@@ -148,7 +241,8 @@ test("agent loop applies dynamic bash permission before approval", async () => {
     bash.invoke = async () => ({ ok: true, output: "ok" });
     const loop = new AgentLoop(provider, tools, { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async (_runId, _callId, _toolName, _params, permission) => { observed.push(permission); return true; } });
     assert.equal((await loop.run("bash-permission", "inspect", 4)).text, "done");
-    assert.deepEqual(observed, ["workspace_write", "danger_full_access"]);
+    // git status 是只读 git 子命令，动态分类降级为 read_only；git clean 不在白名单，保持 danger_full_access
+    assert.deepEqual(observed, ["read_only", "danger_full_access"]);
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 

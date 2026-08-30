@@ -1383,43 +1383,11 @@
   .sidebar-collapsed .sidebar-viewport { transition-delay: 0s; }
 }
 
-/* —— 模型管理页窄窗口响应式布局（Issue #27）—— */
-/* 920px 及以下：收紧留白，让四列表格在窄屏仍清晰 */
+/* 模型管理页外层尺寸；组件内部响应式规则由 ModelManager.vue 维护。 */
 @media (max-width: 920px) {
-  .model-manager > header { padding: 0 20px; }
-  .model-manager-body { padding: 18px 20px 36px; }
-  .model-table { margin-top: 12px; }
+  .model-manager { width: min(920px, 100%); }
 }
 
-/* 720px 及以下（覆盖 620px 视口）：
-   模型列表降为两列：首列合并名称/模型 ID，次列放操作；
-   服务商名称移到模型 ID 下方作为次级信息，避免横向溢出 */
 @media (max-width: 720px) {
-  .model-table > header,
-  .model-table-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  /* 表头只保留「模型」与「操作」两列语义，其余列隐藏 */
-  .model-table > header span:nth-child(2),
-  .model-table > header span:nth-child(3) { display: none; }
-  /* 行内：隐藏服务商/接口列，服务商信息并入名称列的次级文本 */
-  .model-table-row > span:nth-child(2),
-  .model-table-row > span:nth-child(3) { display: none; }
-  .model-manager-toolbar { align-items: flex-start; flex-direction: column; gap: 12px; }
-  .model-manager-summary { width: 100%; justify-content: flex-start; gap: 14px; }
-  .model-current { flex: 1; }
-  .model-table-name { grid-template-columns: 26px 30px minmax(0, 1fr); gap: 7px; }
-  .model-provider-logo { width: 30px; height: 30px; }
-  .model-mobile-meta { display: block; color: #a0a5aa; font-size: 10px; }
-  .model-table-row { min-height: 54px; }
-  .model-table-row > span:last-child { padding-right: 8px; }
-
-  /* 添加模型编辑器：表单项全部单列，弹窗占满可用宽度 */
-  .model-editor { width: min(100%, calc(100vw - 14px)); }
-  .model-editor-fields { grid-template-columns: minmax(0, 1fr); }
-  .model-editor-fields label.wide { grid-column: auto; }
-  .model-vendor-grid { grid-template-columns: minmax(0, 1fr); }
-  .model-request-fields { grid-template-columns: minmax(0, 1fr); }
-  .model-request-fields .model-cache-toggle { grid-column: auto; }
   .model-manager { height: min(720px, calc(100vh - 14px)); }
 }

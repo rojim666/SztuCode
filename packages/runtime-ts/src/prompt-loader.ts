@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PermissionMode } from "@sztucode/protocol";
 import { composeRuntimePrompt, type PromptRuntimeContext } from "./prompt-harness.js";
+import { SkillLoader } from "./skills.js";
 
 const execFileAsync = promisify(execFile);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -75,6 +76,10 @@ export async function buildSystemPrompt(workspaceRoot: string, role = "coder", r
   if (instructions) sections.push(`# Project instructions\n${instructions}`);
   const git = await gitSnapshot(workspaceRoot);
   if (git) sections.push(`# Git status snapshot\n${git}`);
+  try {
+    const skills = (await new SkillLoader(workspaceRoot).list()).filter((skill) => skill.enabled);
+    if (skills.length) sections.push(`# Available skills\n${skills.map((skill) => `- ${skill.name}: ${skill.description || "No description"}`).join("\n")}\nUse the skill tool to load full instructions when a skill is relevant.`);
+  } catch { /* optional skill roots */ }
   return composeRuntimePrompt(sections.join("\n\n"), runtime);
 }
 

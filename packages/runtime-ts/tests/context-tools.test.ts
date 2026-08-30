@@ -64,10 +64,12 @@ test("run snapshots revert only an unchanged agent result", async () => { const 
 test("incremental usage snapshot matches full recounts across appends", () => {
   const context = new ContextManager([{ role: "user", content: "goal" }]);
   const counter = context.counter;
+  // 全量基准：独立 ContextManager 的首测慢路径（与增量同一计数语义，含每消息开销与 tool_calls 计数）
+  const recount = (): number => new ContextManager([...context.messages], undefined, counter).usageSnapshot().conversation;
   const snap = context.usageSnapshot();
   // 初始快照与全量一致
   assert.equal(snap.system, 0);
-  assert.equal(snap.conversation, counter.countMessages(context.messages));
+  assert.equal(snap.conversation, recount());
   assert.equal(snap.tool, 0);
 
   // 分步追加 assistant + tool + system 消息，逐步验证增量与全量严格相等
@@ -80,10 +82,10 @@ test("incremental usage snapshot matches full recounts across appends", () => {
     const expectedTool = context.messages.filter((m) => m.role === "tool").reduce((sum, m) => sum + counter.countJson(m.content), 0);
     assert.equal(snap.system, expectedSystem);
     assert.equal(snap.tool, expectedTool);
-    assert.equal(snap.conversation, counter.countMessages(context.messages));
+    assert.equal(snap.conversation, recount());
   }
   // tokenEstimate/contextPct 走同一增量路径且数值不变
-  assert.equal(context.tokenEstimate(), counter.countMessages(context.messages));
+  assert.equal(context.tokenEstimate(), recount());
   assert.ok(context.availableTokens() >= 0);
 });
 
@@ -98,15 +100,16 @@ test("incremental usage snapshot falls back to full recount after message replac
   context.messages.splice(0, context.messages.length, ...replaced);
   const snap = context.usageSnapshot();
   const counter = context.counter;
-  assert.equal(snap.conversation, counter.countMessages(context.messages));
+  const recount = (): number => new ContextManager([...context.messages], undefined, counter).usageSnapshot().conversation;
+  assert.equal(snap.conversation, recount());
   assert.equal(snap.system, context.messages.filter((m) => m.role === "system").reduce((sum, m) => sum + counter.countJson(m.content), 0));
   assert.equal(snap.tool, context.messages.filter((m) => m.role === "tool").reduce((sum, m) => sum + counter.countJson(m.content), 0));
 
-  // 替换后再追加仍保持增量正确
+  // 替换后再追加仍保持增量正确（增量值 = 全量基准；单条 assistant 增量 = 文本计数 + 每消息开销）
   context.append({ role: "assistant", content: "after compaction" });
   const snap2 = context.usageSnapshot();
-  assert.equal(snap2.conversation, counter.countMessages(context.messages));
-  assert.equal(snap2.conversation, snap.conversation + counter.count("after compaction"));
+  assert.equal(snap2.conversation, recount());
+  assert.equal(snap2.conversation, snap.conversation + counter.count("after compaction") + 4);
 });
 
 test("incremental usage snapshot stays consistent across compact()", () => {
@@ -116,5 +119,5 @@ test("incremental usage snapshot stays consistent across compact()", () => {
   const result = context.compact(3);
   assert.equal(result.removedMessages, 4);
   const snap = context.usageSnapshot();
-  assert.equal(snap.conversation, context.counter.countMessages(context.messages));
+  assert.equal(snap.conversation, new ContextManager([...context.messages], undefined, context.counter).usageSnapshot().conversation);
 });

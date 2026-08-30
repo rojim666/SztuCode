@@ -33,6 +33,12 @@ workspace/
 
 # SWE-bench 会在此克隆第三方仓库，仅提交评测结果，不提交临时工作区
 py-runtime/eval/reports/swebench-workspace/
+# Harbor (Terminal-Bench) 运行产物：任务结果与容器同步产物不入库
+py-runtime/jobs/
+py-runtime/trials/
+# 桌面端本地准备的嵌入式 runtime、锁文件与测试输出
+desktop/src-tauri/resources/
+packages/runtime-ts/*.txt
 .hilo/
 .workbuddy/
 
