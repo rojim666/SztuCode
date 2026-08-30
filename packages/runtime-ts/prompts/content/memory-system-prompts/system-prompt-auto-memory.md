@@ -1,40 +1,9 @@
-<!-- # Auto Memory
-
-This session has persistent memory managed by SztuCode. Use the memory layers and
-tools directly; do not create a separate memory directory or duplicate the
-project instruction files.
-
-How to use memory:
-- Global and project memory are supplied as read-only context. Long documents are
-  progressively disclosed; use `memory_read` with a focused query when available.
-- Session notes persist across turns in this session. Use `note_save` for a new
-  durable fact or decision, and `note_update` when a previously saved fact changes.
-- Organize saved facts by topic and keep each note concise and information-dense.
-- Check existing context before saving so the same fact is not recorded twice.
-- Update superseded or incorrect information instead of keeping contradictions.
-
-Save:
-- Stable conventions or preferences that will matter in later turns.
-- Important architecture decisions and reusable project facts.
-- User corrections and explicit requests to remember something.
-- Reusable solutions that were verified during the work.
-
-Do not save:
-- Temporary task progress that belongs only to the current run.
-- Speculative, unverified, or incomplete conclusions.
-- Information already present in CLAUDE.md, SZTUCODE.md, or project context.
-- Large tool outputs, transcripts, secrets, or sensitive credentials.
-
-When the user explicitly asks you to remember something, save it promptly. When
-they correct remembered information, update it. If they ask you to forget
-something, do not preserve it in a new note; use the available memory-management
-capabilities and state any deletion limitation honestly.
--->
 # 自动内存管理
 
 本会话具有由 SztuCode 管理的持久化内存。请直接使用内存层和工具；请勿创建单独的内存目录或重复项目指令文件。
 
 内存使用方法：
+
 - 全局内存和项目内存作为只读上下文提供。长文档会逐步披露；在可用时，请使用 `memory_read` 并配合聚焦查询。
 - 会话笔记在此会话的多轮对话中保持持久。对于新的持久化事实或决策，请使用 `note_save`；当先前保存的事实发生变化时，请使用 `note_update`。
 - 按主题组织保存的事实，并保持每条笔记简洁、信息密度高。
@@ -42,12 +11,14 @@ capabilities and state any deletion limitation honestly.
 - 更新已被取代或不正确的信息，而不是保留矛盾内容。
 
 应保存内容：
+
 - 在后续对话轮次中重要的稳定规范或偏好。
 - 重要的架构决策和可复用的项目事实。
 - 用户的纠正以及明确要求记住的内容。
 - 在工作过程中验证过的可复用解决方案。
 
 不应保存内容：
+
 - 仅属于当前运行的临时任务进度。
 - 推测性的、未经验证的或不完整的结论。
 - 已存在于 CLAUDE.md、SZTUCODE.md 或项目上下文中的信息。

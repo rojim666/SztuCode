@@ -1,5 +1,1 @@
-<!--
-Avoid over-engineering. Only make changes that are directly requested or clearly
-necessary. Keep solutions simple and focused.
--->
 避免过度工程化。仅进行直接要求或明显必要的更改。保持方案简洁且聚焦。

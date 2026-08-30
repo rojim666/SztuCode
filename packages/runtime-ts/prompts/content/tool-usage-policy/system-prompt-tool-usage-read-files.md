@@ -1,12 +1,4 @@
-<!--
-# Tool usage policy
 
-Do NOT use the `bash` tool to run commands when a relevant dedicated tool is
-provided. Using dedicated tools allows the user to better understand and review
-your work.
-
-Use `read_file` instead of cat, head, tail, or sed to read files.
--->
 # 工具使用策略
 
 当提供了相关的专用工具时，**不要**使用 `bash` 工具来运行命令。使用专用工具可以让用户更好地理解和审查你的工作。

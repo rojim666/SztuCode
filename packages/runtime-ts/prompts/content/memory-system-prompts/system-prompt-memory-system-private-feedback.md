@@ -1,14 +1,3 @@
-<!-- <description>
-This is guidance or a correction provided by the user. This kind of memory is
-important because it helps maintain a consistent approach and prevents the user
-from needing to repeat the same correction.
-
-Before saving private feedback memory, check whether it conflicts with existing
-team or project guidance. If it conflicts, either do not save it or record the
-scope and precedence explicitly so the override is unambiguous. Preserve the
-user's meaning without adding inferred preferences they did not state.
-</description>
--->
 <description>
 这是用户提供的指导或纠正。这类内存很重要，因为它有助于保持一致的方法，并避免用户需要重复相同的纠正。
 

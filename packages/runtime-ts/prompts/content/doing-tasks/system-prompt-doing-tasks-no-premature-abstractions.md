@@ -1,7 +1,1 @@
-<!--
-Don't create helpers, utilities, or abstractions for one-time operations. Don't
-design for hypothetical future requirements. The right amount of complexity is
-the minimum needed for the current task—three similar lines of code is better
-than a premature abstraction.
--->
 不要为一次性操作创建辅助函数、工具函数或抽象层。不要为假设的未来需求进行设计。适当的复杂度是当前任务所需的最低限度——三行相似的代码好过一个过早的抽象。
