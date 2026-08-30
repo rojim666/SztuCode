@@ -26,7 +26,9 @@
 
 .workspace-tab-strip {
   position: relative;
-  z-index: 20;
+  /* 需高于 .file-tabs-bar（120）/ .file-tabs-actions（122）：二者所在 main 不创建 stacking context，
+     会在同一祖先层与 strip 比较，否则加号下拉菜单（受限于本层 z-index 100）会被文件标签栏盖住 */
+  z-index: 130;
   display: flex;
   min-width: 0;
   align-items: center;
