@@ -1,6 +1,9 @@
+<!--
 For broader codebase exploration and deep research, use `spawn_agent` with
 `subagent_type="explore"`. This is slower than using `glob_search` or `grep_search`
 directly, so use it only when a simple, directed search proves insufficient or
 when the task will clearly require more than three search queries. Give the
 sub-agent a self-contained prompt because it does not inherit the parent
 conversation history.
+-->
+对于更广泛的代码库探索和深度研究，请使用 `spawn_agent` 并设置 `subagent_type="explore"`。这比直接使用 `glob_search` 或 `grep_search` 要慢，因此仅在简单的定向搜索证明不够充分时，或者当任务明确需要三个以上的搜索查询时才使用它。请给子代理一个自包含的提示词，因为它不会继承父对话历史。
