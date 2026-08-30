@@ -124,20 +124,22 @@ planner→WorkflowGraph 的生成管线，desktop 端提交的是硬编码静态
 
 | # | 事项 | 要点 | 状态 |
 | --- | --- | --- | --- |
-| 6 | Read 加行号 + offset/limit 分页 | `cat -n` 格式，是 Edit 成功率的先决条件 | 未开始 |
-| 7 | Edit 加行号锚定 + CRLF 归一化 | 失败时提示重 read；考虑 MultiEdit 原子批量编辑 | 未开始 |
-| 8 | 权限规则升级为参数级 | `write_file(/src/**)`、`bash(git diff:*)` 的 glob 规则 + per-workspace 作用域 | 未开始 |
+| 6 | Read 加行号 + offset/limit 分页 | `read_file` 输出 `cat -n` 风格六位行号 + Tab 分隔；`offset`（0 起始行）/`limit`（≤2000 行）分页；文件尾与字节截断均带显式标记（`lines X-Y/Z` / `file truncated at N bytes`） | 已完成 |
+| 7 | Edit 加行号锚定 + CRLF 归一化 | `edit_file` 支持 `start_line`/`end_line` 锚定防止误改重复片段；多匹配且未锚定时报 schema_error 并提示 re-read；读取时 `\r\n` 统一归一化为 `\n`；`edits` 数组实现 MultiEdit 原子批量编辑 | 已完成 |
+| 8 | 权限规则升级为参数级 | `findStoredDecision` 支持 `write_file(/src/**)`、`bash(git diff:*)` glob 规则（`*` 通配、相对路径自动补 `/` 前缀）；per-workspace 作用域经 `encodeURIComponent(workspaceRoot)::` key 前缀隔离，无前缀规则作为全局 fallback | 已完成 |
 | 9 | bash 分类增加 read_only 档 | `bash-permission.ts` 已实现只读命令白名单（`cat/ls/rg/...`）与只读 git 子命令白名单（`status/diff/log/...`），`classifyBashPermission` 动态降级为 `read_only` 进并发批；危险语法（路径逃逸/展开/重定向/sudo）保持 `danger_full_access` | 已完成 |
-| 10 | 流式 token 合帧 | 50-100ms 缓冲窗口批量发事件，消灭每 token 事件风暴 | 未开始 |
+| 10 | 流式 token 合帧 | `bufferedEmitter` 75ms 缓冲窗口合帧后批量发 `llm.token` 事件；主循环与 `conclude` 双接线，流结束/异常路径均显式 flush | 已完成 |
 
 ### 阶段三：把编排决策权交给模型
 
 | # | 事项 | 要点 | 状态 |
 | --- | --- | --- | --- |
-| 11 | 实现 Task 工具 | 主 Agent 可 spawn 子代理（复用 SubagentManager，加 `dispatch_agent` 工具），agent 描述注入 system prompt，结果截断后作为 tool_result 回注——单点投入回报最大的架构升级 | 未开始 |
-| 12 | Planner→DAG 管线 | planner 角色输出结构化 WorkflowGraph（复用现有校验器），打通 ADR-0002 承诺的闭环 | 未开始 |
-| 13 | Skills 模型侧接线 | name + description 常驻 system prompt + Skill 工具按需读全文（渐进披露），激活 23 个内置技能 | 未开始 |
-| 14 | ask_user_question 补全 schema items | 结构化提问的 UI 可靠性因缺 items 定义落空 | 未开始 |
+| 11 | 实现 Task 工具 | `spawn_agent` 工具（`planner/coder/tester/reviewer` 四角色枚举 + goal + 可选 context），RunManager 内接线 SubagentManager 独立子会话；结果 JSON 序列化回注，超长输出由全局 `maxToolResultChars` 截断兜底；prompt-harness 已为 spawn_agent 保留 delegate-exploration 指导条目 | 已完成 |
+| 12 | Planner→DAG 管线 | planner 输出经 `JSON.parse` → `validateWorkflowGraph` 校验（失败回注 `workflow_error` 让模型自愈）→ `run_workflow` 工具 → `subagents.runWorkflow` 并行调度 DAG，ADR-0002 闭环打通 | 已完成 |
+| 13 | Skills 模型侧接线 | enabled skills 的 name + description 常驻 system prompt（Available skills 段落）；`skill` 工具按需加载全文 instructions + allowed_tools，渐进披露激活内置技能 | 已完成 |
+| 14 | ask_user_question 补全 schema items | `questions` 数组完整 items 定义：`id`/`header`/`question`/`options[].label+description`/`multi_select`，required 齐全（`question`、`options`），minItems/maxItems 约束到位 | 已完成 |
+
+阶段二/三验证：`packages/runtime-ts` 全量测试 134/134 通过，`tsc --noEmit` 零错误。
 
 ### 阶段四：长程能力
 
@@ -160,6 +162,9 @@ planner→WorkflowGraph 的生成管线，desktop 端提交的是硬编码静态
 场景成本、成功率已经由当前实现重新证明"——当前项目没有任何可信的能力数值，这本身就是
 最大的能力空洞。
 
-执行顺序建议：先做阶段一的 5 项止血（涉及文件少、风险低、收益直接），再做阶段二第 6/7 项
-（Read/Edit 行号体系），然后是阶段三第 11 项的 Task 工具——那是这套系统从"优秀的工作流
-执行引擎"进化为"自主多 Agent 系统"的关键一跃。
+执行进度：阶段一（韧性止血 5 项）、阶段二（工具基础设施 5 项）、阶段三（模型编排决策权
+4 项）已全部完成并通过验证。下一步是阶段四的长程能力——优先级建议：#16 run 级
+checkpoint（事件流已落盘，重放重建成本低、崩溃恢复收益高）与 #18 microcompact 分层压缩
+（与已有的压缩熔断退路天然衔接），再考虑 #15 流式 steering、#17 记忆巩固管道与 #19 MCP
+升级。另一个悬而未决的空洞仍是能力数值：当前 134 个测试证明了机制正确性，但尚无
+Terminal-Bench 等基准的端到端成功率/成本数据来证明真实能力水平。
