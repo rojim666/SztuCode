@@ -873,6 +873,13 @@ fn macos_toggle_work_area(window: WebviewWindow) -> Result<(), String> {
 fn create_persistent_worktree(workspace_path: String, worktree_id: String, label: String) -> Result<serde_json::Value, String> {
     let root = Path::new(&workspace_path);
     if !root.is_dir() { return Err("项目目录不存在".into()); }
+    let repository_check = StdCommand::new("git")
+        .args(["-C", &workspace_path, "rev-parse", "--verify", "HEAD"])
+        .output()
+        .map_err(|error| format!("无法执行 Git：{error}"))?;
+    if !repository_check.status.success() {
+        return Err("当前项目不是有效的 Git 仓库，或仓库还没有任何提交。请先初始化 Git 并至少提交一次。".into());
+    }
     let short_id: String = worktree_id.chars().filter(|ch| ch.is_ascii_alphanumeric()).take(12).collect();
     if short_id.is_empty() { return Err("聊天 ID 无效".into()); }
     let project_name = root.file_name().and_then(|name| name.to_str()).unwrap_or("project");
@@ -1516,6 +1523,30 @@ mod tests {
         let result = registered_workspace(temporary.to_string_lossy().as_ref());
         let _ = std::fs::remove_dir(&temporary);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn worktree_rejects_non_git_directory_without_creating_storage() {
+        let temporary = std::env::temp_dir().join(format!(
+            "sztucode-worktree-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        ));
+        let project = temporary.join("project");
+        std::fs::create_dir_all(&project).expect("temporary project directory");
+
+        let result = create_persistent_worktree(
+            project.to_string_lossy().into_owned(),
+            "workspace-123".into(),
+            "project".into(),
+        );
+
+        assert!(result.is_err());
+        assert!(!temporary.join(".sztu-worktrees").exists());
+        let _ = std::fs::remove_dir_all(&temporary);
     }
 
     #[test]

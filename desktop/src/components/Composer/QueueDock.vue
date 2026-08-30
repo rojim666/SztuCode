@@ -25,7 +25,7 @@ watch(() => props.items.length, (length) => {
 </script>
 
 <template>
-  <section class="queue-dock" :class="{ 'queue-dock--queued': items.length || running }">
+  <section class="queue-dock" :class="{ 'queue-dock--queued': items.length > 0 }">
     <div v-if="items.length" class="queue-dock__queue" aria-label="待处理任务">
       <button
         v-if="items.length > 1"

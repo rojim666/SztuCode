@@ -187,7 +187,9 @@ class BashTool(BaseTool):
         timeout = _effective_timeout(p, command)
 
         # 安装/更新依赖命令直接拦截，不执行：环境已就绪，安装必然失败并浪费步骤
-        if _BLOCKED_INSTALL_RE.search(command):
+        # 评测场景（Terminal-Bench 等 bench harness）任务本身常要求安装依赖，
+        # 由 SZTU_EVAL_ALLOW_INSTALL=1 显式放开
+        if _BLOCKED_INSTALL_RE.search(command) and not os.environ.get("SZTU_EVAL_ALLOW_INSTALL"):
             return ToolResult(
                 content=(
                     "[blocked] Installing/updating packages is not allowed in this "

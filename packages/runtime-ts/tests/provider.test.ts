@@ -115,6 +115,51 @@ test("OpenAI chat provider sends reasoning_content back on assistant tool turns"
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("OpenAI chat provider removes Anthropic thinking blocks from persisted history", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "continued" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test" }).complete([
+      { role: "user", content: "work" },
+      { role: "assistant", content: [
+        { type: "thinking", thinking: "inspect the repository", signature: "signed-1" },
+        { type: "text", text: "I found the issue." },
+      ] },
+      { role: "user", content: "continue" },
+    ], new ToolRegistry());
+
+    assert.equal(requestBody.messages[1].content, "I found the issue.");
+    assert.equal(requestBody.messages[1].reasoning_content, undefined);
+    assert.equal(JSON.stringify(requestBody.messages).includes('"type":"thinking"'), false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI Responses provider removes Anthropic thinking blocks from persisted history", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ output_text: "continued", status: "completed" }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", apiFormat: "openai_responses" }).complete([
+      { role: "user", content: "work" },
+      { role: "assistant", content: [
+        { type: "thinking", thinking: "private reasoning", signature: "signed-1" },
+        { type: "text", text: "Public answer" },
+      ] },
+      { role: "user", content: "continue" },
+    ], new ToolRegistry());
+
+    assert.deepEqual(requestBody.input[1], { role: "assistant", content: [{ type: "input_text", text: "Public answer" }] });
+    assert.equal(JSON.stringify(requestBody.input).includes('"type":"thinking"'), false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("OpenAI-compatible provider supports keyless endpoints without an authorization header", async () => {
   const originalFetch = globalThis.fetch;
   let authorization: string | null = "not-called";
@@ -231,5 +276,66 @@ test("Anthropic messages provider streams and preserves signed thinking blocks",
       { role: "user", content: "continue" },
     ]);
     assert.deepEqual(next[1]?.content[0], { type: "thinking", thinking: "inspect files", signature: "signed-1" });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider repairs malformed tool JSON instead of throwing", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    choices: [{ finish_reason: "length", message: { content: "", tool_calls: [{ id: "call-bad", function: { name: "read_file", arguments: '{"path":"a.txt"' } }] } }],
+  }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  try {
+    const tools = new ToolRegistry();
+    tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object", required: ["path"] }, invoke: async () => ({ ok: true, output: "" }) });
+    const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test" }).complete([{ role: "user", content: "hi" }], tools);
+    assert.deepEqual(result.tool_calls, [{ id: "call-bad", name: "read_file", input: {} }]);
+    assert.equal(result.stop_reason, "max_tokens");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider preserves max_tokens finish reason", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "partial" } }] }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  try {
+    const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test" }).complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(result.stop_reason, "max_tokens");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI Responses provider preserves incomplete max_output_tokens reason", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output_text: "partial" }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  try {
+    const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test", apiFormat: "openai_responses" }).complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(result.stop_reason, "max_tokens");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI streaming provider repairs malformed tool JSON and preserves max_tokens", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    const encoder = new TextEncoder();
+    const frames = [
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "call-bad", function: { name: "read_file", arguments: '{"path":"a.txt"' } }] } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}\n\n`,
+      "data: [DONE]\n\n",
+    ];
+    return new Response(new ReadableStream({ start(controller) { for (const frame of frames) controller.enqueue(encoder.encode(frame)); controller.close(); } }), { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const tools = new ToolRegistry();
+    tools.register({ name: "read_file", schema: { type: "object", required: ["path"] }, invoke: async () => ({ ok: true, output: "" }) });
+    const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test", stream: true }).complete([{ role: "user", content: "hi" }], tools);
+    assert.deepEqual(result.tool_calls, [{ id: "call-bad", name: "read_file", input: {} }]);
+    assert.equal(result.stop_reason, "max_tokens");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Anthropic provider preserves max_tokens stop reason", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ stop_reason: "max_tokens", content: [{ type: "text", text: "partial" }] }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  try {
+    const result = await new AnthropicMessagesProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "claude-test" }).complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(result.stop_reason, "max_tokens");
   } finally { globalThis.fetch = originalFetch; }
 });

@@ -188,12 +188,13 @@ test("session lifecycle and model profiles preserve desktop invariants", async (
     const linked = await rpc(socket, "settings.update", { provider: "anthropic", unknown_field: "ignored" }); assert.equal(linked.settings.provider, "anthropic"); assert.equal(linked.settings.api_format, "anthropic_messages"); assert.deepEqual(linked.updated, ["provider"]);
     const formatWins = await rpc(socket, "settings.update", { provider: "anthropic", api_format: "openai_responses" }); assert.equal(formatWins.settings.provider, "openai"); assert.equal(formatWins.settings.api_format, "openai_responses"); assert.deepEqual(formatWins.updated, ["api_format"]);
     await assert.rejects(() => rpc(socket, "settings.update", { max_retries: 11 }), (error: any) => error.code === -32602);
-    const initialModels = await rpc(socket, "provider.model_list"); const builtin = initialModels.models.find((item: any) => item.id === "builtin-opencode-zen-deepseek-v4-flash-free"); assert.equal(builtin.builtin, true); assert.equal(builtin.has_api_key, true);
-    const selectedBuiltin = await rpc(socket, "provider.model_select", { model_id: builtin.id }); assert.equal(selectedBuiltin.settings.permission_mode, "auto"); const status = await rpc(socket, "provider.status"); assert.equal(status.ready_for_next_run, true);
-    await assert.rejects(() => rpc(socket, "provider.model_delete", { model_id: builtin.id }), /builtin profiles cannot be deleted/);
+    // 内置模型 profile 已移除（load 阶段过滤 builtin- 前缀）：列表不应再出现 builtin 条目
+    const initialModels = await rpc(socket, "provider.model_list"); assert.ok(Array.isArray(initialModels.models)); assert.ok(!initialModels.models.some((item: any) => item.builtin));
 
     const shared = { vendor: "Test", provider: "openai", api_format: "openai_chat_completions", model: "same-model", base_url: "https://example.test/v1", api_key: "secret", context_window: 16_000, max_output_tokens: 1024, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 30, max_retries: 1, cache_control: true };
     const first = await rpc(socket, "provider.model_save", { ...shared, name: "First" }); const firstId = first.models.find((item: any) => item.name === "First").id;
+    // 切换模型 profile 不得重置权限模式；配置了 api_key 后 provider 应就绪
+    const reselected = await rpc(socket, "provider.model_select", { model_id: firstId }); assert.equal(reselected.settings.permission_mode, "auto"); const status = await rpc(socket, "provider.status"); assert.equal(status.ready_for_next_run, true);
     const second = await rpc(socket, "provider.model_save", { ...shared, name: "Second" }); const secondId = second.models.find((item: any) => item.name === "Second").id; assert.deepEqual(second.models.filter((item: any) => item.is_current).map((item: any) => item.id), [secondId]);
     await assert.rejects(() => rpc(socket, "provider.model_delete", { model_id: secondId }), /current model profile cannot be deleted/); const deleted = await rpc(socket, "provider.model_delete", { model_id: firstId }); assert.ok(!deleted.models.some((item: any) => item.id === firstId));
   } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }

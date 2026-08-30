@@ -37,7 +37,7 @@ test("subagents create independent child sessions with parent links and subscrip
     assert.equal(snapshot.header.metadata?.parentRunId, "parent-run");
     assert.ok(snapshot.entries.some((entry) => entry.type === "message" && entry.message.role === "assistant"));
     assert.equal(result.tokens, 5);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("child cancellation and parent cancellation abort the SessionRuntime", async () => {
@@ -56,7 +56,7 @@ test("child cancellation and parent cancellation abort the SessionRuntime", asyn
     const parentRun = manager.run("planner", "wait for parent", [], "parent", { signal: controller.signal });
     await new Promise((resolve) => setTimeout(resolve, 10)); controller.abort();
     await assert.rejects(parentRun, /aborted|cancelled/i);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });
 
 test("workflow persists node state and propagates DAG failure to dependents", async () => {
@@ -79,5 +79,5 @@ test("workflow persists node state and propagates DAG failure to dependents", as
     assert.equal(result.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "c")?.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "d")?.status, "blocked");
     const persisted = await manager.loadWorkflow(workflowRunId);
     assert.equal(persisted.status, "failed"); assert.equal(persisted.parent_session_id, "parent");
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });

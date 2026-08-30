@@ -135,7 +135,7 @@ export interface WorkspaceListParams { type?: "workspace.list" }
 export interface PongResult { server_version: string; uptime_ms: number; received_at: string; capabilities: string[]; protocol_version?: ProtocolVersion }
 export interface AgentRunResult { run_id: string }
 export interface RunCancelResult { run_id: string; status: "cancelling" | "not_running" }
-export interface RunGetResult { run_id: string; status: "running" | "completed" | "cancelled" | "unknown" }
+export interface RunGetResult { run_id: string; status: "running" | "completed" | "failed" | "cancelled" | "unknown" }
 export interface RunReplayResult { run_id: string; events: RuntimeEvent[] }
 export interface RequestCancelResult { request_id: RequestId; status: "cancelling" | "not_running" }
 export interface WorkspaceSummary { workspace_id: string; path: string; name: string; archived: boolean; pinned?: boolean }

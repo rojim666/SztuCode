@@ -474,6 +474,11 @@ const previewProject = computed(() => allProjects.value.find((item) => item.work
 
 function showProjectPreview(item: Workspace, event: MouseEvent | FocusEvent) {
   window.clearTimeout(projectPreviewCloseTimer);
+  const eventTarget = event.target as HTMLElement | null;
+  if (eventTarget?.closest(".project-action-menu")) {
+    keepProjectPreviewOpen();
+    return;
+  }
   sessionPreview.value = null;
   projectActionsOpen.value = null;
   const anchor = event.currentTarget as HTMLElement | null;
@@ -1909,26 +1914,46 @@ async function toggleProjectPinned(item: Workspace) {
   finally { projectActionBusy.value = false; }
 }
 async function openProjectExplorer(item: Workspace) {
-  try { const { openPath } = await import("@tauri-apps/plugin-opener"); await openPath(item.path); projectActionsOpen.value = null; }
-  catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  projectActionsOpen.value = null;
+  try {
+    await invoke("open_path_with_app", { path: item.path, appId: "explorer" });
+  } catch (error) {
+    await message(error instanceof Error ? error.message : String(error), { title: "无法打开资源管理器", kind: "error" });
+  }
 }
 async function createProjectWorktree(item: Workspace) {
   if (projectActionBusy.value) return;
   projectActionBusy.value = true;
+  projectActionsOpen.value = null;
   try {
+    const status = await workspaceStatus(item.workspace_id);
+    if (!status.is_git_repository) {
+      await message("当前项目不是 Git 仓库，无法创建工作树。请先初始化 Git 并至少提交一次。", { title: "无法创建永久工作树", kind: "info" });
+      return;
+    }
     const result = await invoke<{ path: string }>("create_persistent_worktree", { workspacePath: item.path, worktreeId: item.workspace_id, label: "project" });
-    window.alert(`已创建永久工作树：${result.path}`);
-    projectActionsOpen.value = null;
-  } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+    await message(`已创建永久工作树：\n${result.path}`, { title: "永久工作树已创建", kind: "info" });
+  } catch (error) {
+    await message(error instanceof Error ? error.message : String(error), { title: "无法创建永久工作树", kind: "error" });
+  }
   finally { projectActionBusy.value = false; }
 }
 async function archiveProjectChats(item: Workspace) {
   if (projectActionBusy.value) return;
   const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id && !session.archived);
-  if (!chats.length) { projectActionsOpen.value = null; return; }
+  projectActionsOpen.value = null;
+  if (!chats.length) {
+    await message("该项目没有可归档的聊天。", { title: "归档聊天", kind: "info" });
+    return;
+  }
   projectActionBusy.value = true;
-  try { await Promise.all(chats.map((session) => archiveSession(session.session_id))); projectActionsOpen.value = null; await refreshIndex(false); }
-  catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  try {
+    await Promise.all(chats.map((session) => archiveSession(session.session_id)));
+    await refreshIndex(false);
+    await message(`已归档 ${chats.length} 个聊天。`, { title: "归档完成", kind: "info" });
+  } catch (error) {
+    await message(error instanceof Error ? error.message : String(error), { title: "无法归档聊天", kind: "error" });
+  }
   finally { projectActionBusy.value = false; }
 }
 // 撤销后清除该 run 的全部改动，使变更卡片随之消失

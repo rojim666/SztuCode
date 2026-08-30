@@ -1,13 +1,93 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
+import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
 
-type OpenAiResponse = { choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } };
+type OpenAiResponse = { choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; summary?: Array<{ type?: string; text?: string }>; content?: Array<{ type?: string; text?: string }> };
-type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
+type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; status?: string; incomplete_details?: { reason?: string | null }; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
 /** 网关类与部分推理模型对标准 OpenAI 请求存在差异，compat 用于逐项修正而不影响默认行为。 */
 export type ProviderCompat = { headers?: Record<string, string>; extraBody?: Record<string, unknown>; dropTemperature?: boolean; dropTopP?: boolean; disableCacheControl?: boolean };
 export type OpenAiProviderOptions = { apiKey?: string; baseUrl?: string; model: string; timeoutMs?: number; apiFormat?: "openai_chat_completions" | "openai_responses"; maxOutputTokens?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; stream?: boolean; cacheControl?: boolean; compat?: ProviderCompat };
+
+type NormalizedContent = { content: string | Array<Record<string, unknown>> | null; reasoningContent?: string };
+
+function dataUrlFromImageBlock(block: Record<string, unknown>): string {
+  const source = block.source;
+  if (!source || typeof source !== "object" || Array.isArray(source)) return "";
+  const value = source as Record<string, unknown>;
+  const mediaType = String(value.media_type ?? "");
+  const data = String(value.data ?? "");
+  return mediaType && data ? `data:${mediaType};base64,${data}` : "";
+}
+
+function imageUrlFromBlock(block: Record<string, unknown>): string {
+  if (block.type === "image") return dataUrlFromImageBlock(block);
+  const imageUrl = block.image_url;
+  if (typeof imageUrl === "string") return imageUrl;
+  if (imageUrl && typeof imageUrl === "object" && !Array.isArray(imageUrl)) return String((imageUrl as Record<string, unknown>).url ?? "");
+  return "";
+}
+
+/** Convert provider-neutral/Anthropic history into strict OpenAI chat content. */
+function normalizeChatContent(message: ChatMessage): NormalizedContent {
+  if (typeof message.content === "string") return {
+    content: message.content || (message.role === "assistant" ? null : ""),
+    ...(message.reasoning_content ? { reasoningContent: message.reasoning_content } : {}),
+  };
+  const text: string[] = [];
+  const media: Array<Record<string, unknown>> = [];
+  for (const block of message.content) {
+    if (block.type === "thinking") {
+      continue;
+    }
+    if (block.type === "text") {
+      const value = String(block.text ?? block.content ?? "");
+      if (value) text.push(value);
+      continue;
+    }
+    if (block.type === "image" || block.type === "image_url") {
+      const url = imageUrlFromBlock(block);
+      if (url) media.push({ type: "image_url", image_url: { url } });
+      continue;
+    }
+    if (block.type === "file" && block.file && typeof block.file === "object") {
+      media.push({ type: "file", file: block.file });
+      continue;
+    }
+    // tool_use is represented by message.tool_calls. Preserve readable content from
+    // legacy blocks without forwarding their provider-specific discriminator.
+    if (block.type !== "tool_use") {
+      const value = block.text ?? block.content;
+      if (typeof value === "string" && value) text.push(value);
+    }
+  }
+  const content = media.length
+    ? [...(text.length ? [{ type: "text", text: text.join("\n") }] : []), ...media]
+    : text.join("\n") || (message.role === "assistant" ? null : "");
+  const reasoningContent = message.reasoning_content || undefined;
+  return { content, ...(reasoningContent ? { reasoningContent } : {}) };
+}
+
+function responseInputContent(content: ChatMessage["content"]): string | Array<Record<string, unknown>> {
+  if (typeof content === "string") return content;
+  const output: Array<Record<string, unknown>> = [];
+  for (const block of content) {
+    if (block.type === "text") {
+      const text = String(block.text ?? block.content ?? "");
+      if (text) output.push({ type: "input_text", text });
+    } else if (block.type === "image" || block.type === "image_url") {
+      const imageUrl = imageUrlFromBlock(block);
+      if (imageUrl) output.push({ type: "input_image", image_url: imageUrl });
+    } else if (block.type === "file" && block.file && typeof block.file === "object") {
+      output.push({ type: "input_file", ...(block.file as Record<string, unknown>) });
+    } else if (block.type !== "thinking" && block.type !== "tool_use") {
+      const text = block.text ?? block.content;
+      if (typeof text === "string" && text) output.push({ type: "input_text", text });
+    }
+  }
+  return output;
+}
 
 export class OpenAiCompatibleProvider implements ModelProvider {
   constructor(private readonly options: OpenAiProviderOptions) {}
@@ -25,36 +105,50 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     try {
       const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
       const definitions = tools.list().map((tool, index, all) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema, ...(this.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }));
-      const apiMessages = messages.map((message) => message.role === "assistant" && message.tool_calls?.length ? { role: "assistant", content: typeof message.content === "string" ? message.content || null : message.content, ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}), tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : message.role === "system" && this.cacheControl ? { ...message, cache_control: { type: "ephemeral" } } : message);
+      const apiMessages = messages.map((message) => {
+        const normalized = normalizeChatContent(message);
+        return {
+          role: message.role,
+          content: normalized.content,
+          ...(message.role === "tool" && message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+          ...(message.role === "assistant" && normalized.reasoningContent ? { reasoning_content: normalized.reasoningContent } : {}),
+          ...(message.role === "assistant" && message.tool_calls?.length ? { tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : {}),
+          ...(message.role === "system" && this.cacheControl ? { cache_control: { type: "ephemeral" } } : {}),
+        };
+      });
       const responses = this.options.apiFormat === "openai_responses";
       const input: Array<Record<string, unknown>> = [];
       for (const message of messages) {
         if (message.role === "system") continue;
         if (message.role === "tool") { input.push({ type: "function_call_output", call_id: message.tool_call_id ?? "", output: typeof message.content === "string" ? message.content : JSON.stringify(message.content) }); continue; }
         if (message.role === "assistant" && message.tool_calls?.length) {
-          if (message.content) input.push({ role: "assistant", content: typeof message.content === "string" ? message.content : JSON.stringify(message.content) });
+          const content = responseInputContent(message.content);
+          if (typeof content === "string" ? content : content.length) input.push({ role: "assistant", content });
           for (const call of message.tool_calls) input.push({ type: "function_call", call_id: call.id, name: call.name, arguments: JSON.stringify(call.input) });
           continue;
         }
-        input.push({ role: message.role, content: typeof message.content === "string" ? message.content : message.content.map((block) => ({ ...block, type: block.type === "text" ? "input_text" : block.type === "image" ? "input_image" : block.type, ...(block.text != null ? { text: block.text } : block.content != null ? { text: block.content } : {}) })) });
+        input.push({ role: message.role, content: responseInputContent(message.content) });
       }
-      const system = messages.filter((message) => message.role === "system").map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n\n");
+      const system = messages.filter((message) => message.role === "system").map((message) => {
+        const content = responseInputContent(message.content);
+        return typeof content === "string" ? content : content.filter((block) => block.type === "input_text").map((block) => String(block.text ?? "")).join("\n");
+      }).filter(Boolean).join("\n\n");
       const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning: { effort: this.options.reasoningEffort, summary: "auto" } } : {}) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters }, ...(tool.cache_control ? { cache_control: tool.cache_control } : {}) })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? { max_tokens: this.options.maxOutputTokens } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}) };
       const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
       if (!response.ok) throw new Error(`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
       if (this.options.stream && response.body && response.headers.get("content-type")?.includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking);
       const payload = await response.json() as OpenAiResponse & ResponsesResponse;
       if (responses) return this.parseResponses(payload, onThinking);
-      const choice = payload.choices?.[0]?.message;
+      const selectedChoice = payload.choices?.[0];
+      const choice = selectedChoice?.message;
       if (!choice) throw new Error("LLM response did not contain a message");
       const toolCalls = (choice.tool_calls ?? []).flatMap((call) => {
         if (!call.id || !call.function?.name) return [];
-        let input: Record<string, unknown> = {};
-        try { input = JSON.parse(call.function.arguments || "{}"); } catch { throw new Error(`Invalid JSON arguments for tool ${call.function.name}`); }
+        const input = parseToolArguments(call.function.arguments);
         return [{ id: call.id, name: call.function.name, input }];
       });
       if (choice.reasoning_content) onThinking?.(choice.reasoning_content);
-      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: toolCalls.length ? "tool_use" : "end_turn", model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? 0) } };
+      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? 0) } };
     } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
   }
 
@@ -65,7 +159,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
   }
 
   private async parseStream(response: Response, responses: boolean, onToken?: (token: string) => void, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
-    const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = ""; let text = ""; let reasoning_content = ""; const calls = new Map<number, { id: string; name: string; args: string }>(); let usage: ResponsesResponse["usage"] & OpenAiResponse["usage"] = {};
+    const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = ""; let text = ""; let reasoning_content = ""; let stopReason: string | null | undefined; const calls = new Map<number, { id: string; name: string; args: string }>(); let usage: ResponsesResponse["usage"] & OpenAiResponse["usage"] = {};
     const consume = (raw: string) => {
       if (raw === "[DONE]") return;
       let event: any; try { event = JSON.parse(raw); } catch { return; }
@@ -74,13 +168,13 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         else if (event.type === "response.reasoning_summary_text.delta" || event.type === "response.reasoning_text.delta") { const thinking = String(event.delta ?? ""); if (thinking) { reasoning_content += thinking; onThinking?.(thinking); } }
         else if (event.type === "response.function_call_arguments.delta") { const index = Number(event.output_index ?? 0); const current = calls.get(index) ?? { id: String(event.item_id ?? `call_${index}`), name: "", args: "" }; current.args += String(event.delta ?? ""); calls.set(index, current); }
         else if (event.type === "response.output_item.added" && event.item?.type === "function_call") { const index = Number(event.output_index ?? calls.size); calls.set(index, { id: String(event.item.call_id ?? event.item.id ?? `call_${index}`), name: String(event.item.name ?? ""), args: String(event.item.arguments ?? "") }); }
-        else if (event.type === "response.completed") usage = event.response?.usage ?? {};
+        else if (event.type === "response.completed" || event.type === "response.incomplete") { usage = event.response?.usage ?? {}; stopReason = responsesStopReason(event.response?.status, event.response?.incomplete_details); }
       } else {
-        const chunk = event as OpenAiResponse; const delta = chunk.choices?.[0]?.delta; const reasoning = delta?.reasoning_content ?? ""; if (reasoning) { reasoning_content += reasoning; onThinking?.(reasoning); } const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
+        const chunk = event as OpenAiResponse; const choice = chunk.choices?.[0]; const delta = choice?.delta; if (choice?.finish_reason) stopReason = choice.finish_reason; const reasoning = delta?.reasoning_content ?? ""; if (reasoning) { reasoning_content += reasoning; onThinking?.(reasoning); } const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
     };
     while (true) { const { value, done } = await reader.read(); if (done) break; buffer += decoder.decode(value, { stream: true }); const rows = buffer.split(/\r?\n\r?\n/); buffer = rows.pop() ?? ""; for (const row of rows) { const data = row.split(/\r?\n/).find((line) => line.startsWith("data:")); if (data) consume(data.slice(5).trim()); } }
-    const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => { let input: Record<string, unknown> = {}; try { input = JSON.parse(call.args || "{}"); } catch { throw new Error(`Invalid JSON arguments for tool ${call.name}`); } return { id: call.id, name: call.name, input }; });
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: tool_calls.length ? "tool_use" : "end_turn", model: this.options.model, streamed: true, usage: { input_tokens: Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
+    const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.args) }));
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
   }
 
   private parseResponses(payload: ResponsesResponse, onThinking?: (thinking: string) => void): ModelResponse {
@@ -89,11 +183,15 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     const reasoning_content = output.filter((item) => item.type === "reasoning").flatMap((item) => item.summary ?? item.content ?? []).filter((part) => part.type === "summary_text" || part.type === "reasoning_text" || part.type === "text").map((part) => part.text ?? "").join("\n");
     if (reasoning_content) onThinking?.(reasoning_content);
     const tool_calls = output.filter((item) => item.type === "function_call" && item.name).map((item, index) => {
-      let input: Record<string, unknown> = {};
-      try { input = JSON.parse(item.arguments || "{}"); } catch { throw new Error(`Invalid JSON arguments for tool ${item.name}`); }
+      const input = parseToolArguments(item.arguments);
       return { id: item.call_id || item.id || `call_${index}`, name: item.name!, input };
     });
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: tool_calls.length ? "tool_use" : "end_turn", model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
   }
+}
+
+function responsesStopReason(status?: string, details?: { reason?: string | null }): string | undefined {
+  if (details?.reason) return details.reason;
+  return status === "incomplete" ? "max_output_tokens" : undefined;
 }
 
