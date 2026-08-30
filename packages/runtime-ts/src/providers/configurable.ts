@@ -3,6 +3,7 @@ import type { ToolRegistry } from "../tools.js";
 import { SettingsStore } from "../settings.js";
 import { AnthropicMessagesProvider } from "./anthropic.js";
 import { OpenAiCompatibleProvider } from "./openai.js";
+import { ProviderError, abortableDelay, retryDelayMs, retryableProviderError } from "./errors.js";
 
 export class ConfigurableProvider implements ModelProvider {
   constructor(private readonly settings: SettingsStore) {}
@@ -23,7 +24,15 @@ export class ConfigurableProvider implements ModelProvider {
     };
     let lastError: unknown;
     for (let attempt = 0; attempt <= Math.max(0, Math.min(10, config.max_retries)); attempt += 1) {
-      try { return await completeOnce(); } catch (error) { lastError = error; if (signal?.aborted || attempt >= config.max_retries || !isRetryable(error)) throw error; await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, 200 * 2 ** attempt))); }
+      try { return await completeOnce(); } catch (error) {
+        lastError = error;
+        if (signal?.aborted || !retryableProviderError(error)) throw error;
+        if (attempt >= config.max_retries) {
+          if (error instanceof ProviderError) throw new ProviderError(error.message, { ...error.details, retryExhausted: true });
+          throw new ProviderError(error instanceof Error ? error.message : String(error), { retryable: true, billingEffect: "unknown", retryExhausted: true });
+        }
+        await abortableDelay(retryDelayMs(error, attempt), signal);
+      }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
@@ -39,5 +48,3 @@ export function providerFromEnvironment(): ModelProvider {
   if (!apiKey) return { async complete() { throw new Error("OPENAI_API_KEY or DEEPSEEK_API_KEY is required"); } };
   return new OpenAiCompatibleProvider({ apiKey, baseUrl: process.env.OPENAI_BASE_URL ?? process.env.DEEPSEEK_BASE_URL, model: model ?? "gpt-4o-mini" });
 }
-
-function isRetryable(error: unknown): boolean { const message = error instanceof Error ? error.message : String(error); return /\b(429|500|502|503|504)\b|timeout|aborted|fetch failed|network|socket|ECONN|ETIMEDOUT/i.test(message); }

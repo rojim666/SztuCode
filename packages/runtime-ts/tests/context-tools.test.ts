@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ContextManager, TokenCounter, truncateText, sanitizeContextMessages } from "../src/context.js";
+import { ContextManager, IncrementalContextSanitizer, TokenCounter, microcompactToolResults, truncateText, sanitizeContextMessages } from "../src/context.js";
 import { createWorkspaceTools, ToolRegistry } from "../src/tools.js";
 import { Workspace } from "../src/workspace.js";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -120,4 +120,22 @@ test("incremental usage snapshot stays consistent across compact()", () => {
   assert.equal(result.removedMessages, 4);
   const snap = context.usageSnapshot();
   assert.equal(snap.conversation, new ContextManager([...context.messages], undefined, context.counter).usageSnapshot().conversation);
+});
+
+test("incremental sanitizer processes appended tool turns and resets after replacement", () => {
+  const sanitizer = new IncrementalContextSanitizer();
+  const messages = [{ role: "user" as const, content: "work" }];
+  assert.equal(sanitizer.sanitize(messages).length, 1);
+  messages.push({ role: "assistant", content: "", tool_calls: [{ id: "t1", name: "read_file", input: {} }] } as any);
+  assert.equal(sanitizer.sanitize(messages).length, 1);
+  messages.push({ role: "tool", tool_call_id: "t1", content: "done" } as any);
+  assert.equal(sanitizer.sanitize(messages).length, 3);
+  messages.splice(0, messages.length, { role: "user", content: "replacement" });
+  assert.deepEqual(sanitizer.sanitize(messages), messages);
+});
+
+test("microcompact shrinks only old tool output without an LLM call", () => {
+  const messages = [{ role: "tool" as const, tool_call_id: "old", content: "x".repeat(3_000) }, { role: "tool" as const, tool_call_id: "recent", content: "y".repeat(3_000) }];
+  const compacted = microcompactToolResults(messages, 1, 500);
+  assert.ok(String(compacted[0]?.content).length <= 500); assert.equal(compacted[1], messages[1]);
 });

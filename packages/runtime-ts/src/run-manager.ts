@@ -11,7 +11,7 @@ import type { ModelProvider } from "./agent-loop.js";
 import { QuestionManager } from "./questions.js";
 import { WorkspaceChangeTracker } from "./changes.js";
 import type { Tool } from "./tools.js";
-import { buildSystemPrompt } from "./prompt-loader.js";
+import { buildDynamicContext, buildSystemPrompt } from "./prompt-loader.js";
 import { createMemoryTools, loadMemoryCatalog } from "./memory.js";
 import type { SessionStore } from "./session-store.js";
 import { ExtensionRegistry } from "./extensions/registry.js";
@@ -19,7 +19,7 @@ import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@s
 import { SubagentManager } from "./subagent.js";
 import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 
-type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
+type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
 /**
  * Compatibility runner for the legacy runtime API.
@@ -41,11 +41,12 @@ export class RunManager {
 
   start(goal: string, history: ChatMessage[] = [], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, onRunCreated?: (runId: string) => void): string {
     const runId = randomUUID();
-    const run: RunState = { runId, goal, status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
+    const run: RunState = { runId, goal, status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), generationController: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
     this.runs.set(runId, run);
     this.runRoots.set(runId, workspaceRoot ?? process.cwd());
     if (sessionId) this.sessionRuns.set(sessionId, runId);
     onRunCreated?.(runId);
+    this.emit({ type: "operation.started", run_id: runId, operation_id: runId, goal, ts: now() });
     this.emit({ type: "run.started", run_id: runId, goal, ts: now() });
     void safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); });
     return runId;
@@ -65,7 +66,7 @@ export class RunManager {
   steer(sessionId: string, message: ChatMessage): string {
     const runId = this.sessionRuns.get(sessionId); const run = runId ? this.runs.get(runId) : undefined;
     if (!run || run.status !== "running") throw new Error("steer unavailable");
-    run.steering.push(message); return runId!;
+    run.steering.push(message); run.generationController.abort(new Error("Generation interrupted by steering")); return runId!;
   }
 
   cancel(runId: string): "cancelling" | "not_running" {
@@ -98,11 +99,13 @@ export class RunManager {
       if (sessionId && this.questions) registerQuestionTool(tools, (questions) => this.questions!.ask(sessionId, run.runId, questions as never));
       const config = await this.contextConfig();
       const extensionPrompt = (await this.extensions.renderToolPromptContributions(root, { sessionId, runId: run.runId })).filter(Boolean).join("\n\n");
-      const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name), taskText: run.goal }), extensionPrompt, memory.prompt()].filter(Boolean).join("\n\n");
+      const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name) }), extensionPrompt].filter(Boolean).join("\n\n");
+      const dynamicContext = [await buildDynamicContext(root), memory.prompt()].filter(Boolean).join("\n\n");
       await this.extensions.dispatch("session_start", { goal: run.goal }, root, { runId: run.runId, sessionId });
-      const initialHistory = [{ role: "system" as const, content: prompt }, ...history];
-      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
-      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => run.steering.splice(0, run.steering.length));
+      const initialHistory = [{ role: "system" as const, content: prompt }, ...(dynamicContext ? [{ role: "user" as const, content: dynamicContext }] : []), ...history];
+      const checkpointInterval = positiveEnv("SZTU_CHECKPOINT_INTERVAL", 5);
+      const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { if (checkpoint.phase === "tool_batch" && checkpoint.step % checkpointInterval !== 0) return; await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
+      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal);
     } catch (error) {
       if (tracker) await tracker.finalize();
       // 失败路径也持久化已积累的对话状态（AgentLoop 会把 partialMessages 挂到错误上），避免多步工作成果蒸发
@@ -114,6 +117,7 @@ export class RunManager {
       // 失败 run 的状态必须与 run.finished 事件的 status 保持一致，否则 get() 调用方拿到的是谎言
       run.status = "failed";
       this.sessionRuns.forEach((active, sessionId) => { if (active === run.runId) this.sessionRuns.delete(sessionId); });
+      this.emit({ type: "operation.finished", run_id: run.runId, operation_id: run.runId, status: "failed", steps: run.steps, ts: now() });
       this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: error instanceof Error ? error.message : String(error), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
       await this.extensions.dispatch("agent_end", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
       await this.extensions.dispatch("session_shutdown", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
@@ -135,6 +139,7 @@ export class RunManager {
     if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
     run.status = "completed";
     if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
+    this.emit({ type: "operation.finished", run_id: run.runId, operation_id: run.runId, status: "completed", steps: run.steps, ts: now() });
     this.emit({ type: "run.finished", run_id: run.runId, status: "success", steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
     await this.extensions.dispatch("agent_end", { goal: run.goal, messages: result.messages, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
     await this.extensions.dispatch("session_shutdown", { goal: run.goal, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
@@ -157,3 +162,4 @@ export const LegacyRunManager = RunManager;
 const now = () => new Date().toISOString();
 const elapsed = (startedAt: number) => (Date.now() - startedAt) / 1000;
 const maxSteps = (): number => { const value = Number(process.env.SZTU_MAX_STEPS); return Number.isInteger(value) && value >= 0 ? value : 100; };
+const positiveEnv = (name: string, fallback: number): number => { const value = Number(process.env[name]); return Number.isInteger(value) && value > 0 ? value : fallback; };

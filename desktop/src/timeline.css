@@ -155,6 +155,87 @@
   gap: 2px;
 }
 
+/* 长程任务进度条 */
+.task-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 8px;
+  padding: 6px 0;
+}
+
+.task-progress-bar__track {
+  flex: 1 1 auto;
+  height: 4px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.task-progress-bar__fill {
+  display: block;
+  height: 100%;
+  background: #16a34a;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.task-progress-bar__fill--active {
+  background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.task-progress-bar__fill--active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  animation: progress-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.task-progress-bar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.task-progress-bar__label .spin {
+  color: #2563eb;
+}
+
+/* 暗色主题进度条 */
+:root[data-app-theme="dark"] .task-progress-bar__track {
+  background: #374151;
+}
+:root[data-app-theme="dark"] .task-progress-bar__fill {
+  background: #22c55e;
+}
+:root[data-app-theme="dark"] .task-progress-bar__fill--active {
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+}
+:root[data-app-theme="dark"] .task-progress-bar__label {
+  color: #9ca3af;
+}
+:root[data-app-theme="dark"] .task-progress-bar__label .spin {
+  color: #60a5fa;
+}
+
 .turn-inline-text {
   margin: 4px 0;
 }

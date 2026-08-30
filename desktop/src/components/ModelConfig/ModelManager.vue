@@ -459,7 +459,7 @@ onMounted(() => {
 .model-manager-body {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 /* 当前模型卡片 */
@@ -467,38 +467,38 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 60%, transparent));
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
-  border-radius: 12px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent-soft) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 15%, var(--border));
+  border-radius: 8px;
 }
 
 .current-model-info {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .current-model-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .current-model-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
 }
 
 .current-model-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
 
 .current-model-id {
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
   color: var(--text-faint);
 }
@@ -506,13 +506,15 @@ onMounted(() => {
 .current-model-check {
   color: var(--accent);
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 /* 模型列表 */
 .model-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
 .model-list-header {
@@ -520,58 +522,58 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 4px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .model-list-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
 }
 
 .model-list-count {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-faint);
 }
 
 .model-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  transition: all 0.15s ease;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: all 0.12s ease;
 }
 
 .model-card:hover {
-  border-color: var(--border-strong);
-  background: color-mix(in srgb, var(--surface-soft) 50%, var(--surface));
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
 }
 
 .model-card--current {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 30%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
 }
 
 .model-card-select {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   padding: 0;
   color: transparent;
-  background: var(--surface-soft);
+  background: transparent;
   border: 1.5px solid var(--border-strong);
   border-radius: 50%;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .model-card-select:hover:not(.active) {
   border-color: var(--text-muted);
-  background: var(--surface);
+  background: var(--surface-soft);
 }
 
 .model-card-select.active {
@@ -583,45 +585,45 @@ onMounted(() => {
 .model-provider-logo {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   background: var(--surface-soft);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 11px;
   font-weight: 700;
   font-style: normal;
   color: var(--text-muted);
 }
 
 .model-provider-logo--lg {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
 }
 
 .model-provider-logo img {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   object-fit: contain;
 }
 
 .model-provider-logo--lg img {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
 }
 
 .model-card-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
   flex: 1;
 }
 
 .model-card-info b {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
   overflow: hidden;
@@ -630,7 +632,7 @@ onMounted(() => {
 }
 
 .model-card-info small {
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
   color: var(--text-faint);
   overflow: hidden;
@@ -641,17 +643,17 @@ onMounted(() => {
 .model-card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
 .model-badge {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
   background: var(--surface-soft);
-  border-radius: 6px;
+  border-radius: 4px;
   font-style: normal;
 }
 
@@ -663,12 +665,12 @@ onMounted(() => {
 .model-action-btn {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: all 0.12s ease;
 }
 
@@ -687,17 +689,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  height: 44px;
+  height: 34px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border: 1.5px dashed var(--border-strong);
-  border-radius: 10px;
-  font-size: 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .add-model-btn:hover {
@@ -711,16 +713,16 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 140px;
-  padding: 24px;
+  min-height: 100px;
+  padding: 20px;
   color: var(--text-muted);
-  background: var(--surface);
-  border: 1.5px dashed var(--border-strong);
-  border-radius: 12px;
-  font-size: 14px;
-  transition: all 0.15s ease;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-size: 13px;
+  transition: all 0.12s ease;
 }
 
 .model-empty-btn:hover {
@@ -731,21 +733,21 @@ onMounted(() => {
 
 .model-error {
   margin: 0;
-  padding: 10px 14px;
+  padding: 8px 10px;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.08);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
-/* Modal 基础样式 */
+/* Modal 基础样式 - z-index高于设置弹窗 */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 2000;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 16px;
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
   animation: fadeIn 0.15s ease;
@@ -758,32 +760,32 @@ onMounted(() => {
 
 .modal-dialog {
   width: 100%;
-  max-width: 480px;
-  max-height: calc(100vh - 40px);
+  max-width: 380px;
+  max-height: calc(100vh - 32px);
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: slideUp 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .modal-dialog--lg {
-  max-width: 520px;
+  max-width: 420px;
 }
 
 .modal-dialog--sm {
-  max-width: 380px;
-  padding: 24px;
+  max-width: 320px;
+  padding: 20px;
   text-align: center;
 }
 
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -794,10 +796,10 @@ onMounted(() => {
 .modal-icon {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 16px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 12px;
+  border-radius: 10px;
 }
 
 .modal-icon--danger {
@@ -806,37 +808,37 @@ onMounted(() => {
 }
 
 .modal-title {
-  margin: 0 0 8px;
-  font-size: 16px;
+  margin: 0 0 6px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text);
 }
 
 .modal-desc {
-  margin: 0 0 20px;
-  font-size: 14px;
+  margin: 0 0 16px;
+  font-size: 13px;
   color: var(--text-muted);
   line-height: 1.5;
 }
 
 .modal-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-end;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 20px;
+  gap: 6px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
 }
 
 .modal-header h3 {
   margin: 0;
   flex: 1;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
@@ -844,12 +846,12 @@ onMounted(() => {
 .modal-back-btn {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   transition: all 0.12s ease;
 }
 
@@ -861,45 +863,45 @@ onMounted(() => {
 .modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .modal-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px;
+  gap: 8px;
+  padding: 10px 14px;
   border-top: 1px solid var(--border);
 }
 
 .modal-footer-right {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* 服务商网格 */
 .vendor-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  padding: 16px 20px 20px;
+  gap: 6px;
+  padding: 12px 14px 14px;
   overflow-y: auto;
 }
 
 .vendor-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
-  background: var(--surface);
+  gap: 10px;
+  padding: 10px;
+  background: transparent;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   text-align: left;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .vendor-card:hover {
@@ -910,27 +912,27 @@ onMounted(() => {
 .vendor-logo {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   background: var(--surface-soft);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   font-style: normal;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
 }
 
 .vendor-logo img {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
 }
 
 .vendor-name {
   flex: 1;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text);
 }
@@ -938,20 +940,22 @@ onMounted(() => {
 .vendor-arrow {
   color: var(--text-faint);
   transform: rotate(-90deg);
+  width: 14px;
+  height: 14px;
 }
 
 /* 表单样式 */
 .form-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .form-label {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
+  gap: 3px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text);
 }
@@ -964,22 +968,22 @@ onMounted(() => {
 .form-input,
 .form-select {
   width: 100%;
-  height: 40px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 10px;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: 6px;
+  font-size: 13px;
   outline: none;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   box-sizing: border-box;
 }
 
 .form-input:focus,
 .form-select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .form-input::placeholder {
@@ -993,20 +997,20 @@ onMounted(() => {
 }
 
 .input-with-action .form-input {
-  padding-right: 44px;
+  padding-right: 38px;
 }
 
 .input-action-btn {
   position: absolute;
-  right: 4px;
+  right: 3px;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   color: var(--text-muted);
   background: transparent;
-  border-radius: 6px;
+  border-radius: 5px;
   transition: all 0.12s ease;
 }
 
@@ -1018,13 +1022,13 @@ onMounted(() => {
 .link-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   align-self: flex-start;
   padding: 0;
-  margin-top: 4px;
+  margin-top: 2px;
   color: var(--accent);
   background: transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   transition: opacity 0.12s ease;
 }
@@ -1036,18 +1040,18 @@ onMounted(() => {
 /* 高级配置 */
 .form-advanced {
   border-top: 1px solid var(--border);
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .advanced-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   padding: 0;
   color: var(--text);
   background: transparent;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -1055,6 +1059,8 @@ onMounted(() => {
   margin-left: auto;
   color: var(--text-muted);
   transition: transform 0.2s ease;
+  width: 14px;
+  height: 14px;
 }
 
 .advanced-toggle svg.rotated {
@@ -1064,33 +1070,33 @@ onMounted(() => {
 .advanced-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 16px;
-  padding: 16px;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
   background: var(--surface-soft);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .input-with-chips {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .chip-group {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
 }
 
 .chip {
-  height: 28px;
-  padding: 0 12px;
+  height: 24px;
+  padding: 0 10px;
   color: var(--text-muted);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 500;
   transition: all 0.12s ease;
 }
@@ -1108,20 +1114,20 @@ onMounted(() => {
 
 .form-error {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   color: #ef4444;
   background: rgba(239, 68, 68, 0.08);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 .form-success {
   margin: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
   color: #10b981;
   background: rgba(16, 185, 129, 0.08);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: 6px;
+  font-size: 12px;
 }
 
 /* 按钮样式 */
@@ -1129,13 +1135,13 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font-size: 13px;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   white-space: nowrap;
 }
 
@@ -1177,6 +1183,8 @@ onMounted(() => {
 
 .spin {
   animation: spin 0.8s linear infinite;
+  width: 12px;
+  height: 12px;
 }
 
 @keyframes spin {
@@ -1192,7 +1200,7 @@ onMounted(() => {
 /* 暗色主题适配 */
 @media (prefers-color-scheme: dark) {
   .current-model-card {
-    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, var(--surface)), color-mix(in srgb, var(--accent) 8%, var(--surface)));
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   
   .modal-backdrop {
@@ -1200,7 +1208,7 @@ onMounted(() => {
   }
   
   .model-card--current {
-    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
 }
 

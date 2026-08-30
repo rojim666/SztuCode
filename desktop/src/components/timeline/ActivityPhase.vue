@@ -1,25 +1,29 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, nextTick } from "vue";
-import { Brain, Check, ChevronDown, Code2, Edit3, FolderOpen, LoaderCircle, Search, Terminal } from "@lucide/vue";
+import { Brain, Check, ChevronDown, Code2, Edit3, FolderOpen, LoaderCircle, Search, Terminal, XCircle } from "@lucide/vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
-import { reasoningSummary } from "../../utils/reasoningSummary";
+import { reasoningSummary, firstLine } from "../../utils/reasoningSummary";
 
 const props = defineProps<{
   thinking?: string;
   calls: ToolCallEntry[];
   running?: boolean;
   completed?: boolean;
+  stepIndex?: number;
+  stepTitle?: string;
 }>();
 
 const open = ref(false);
 const hasContent = computed(() => (props.thinking && props.thinking.trim().length > 0) || props.calls.length > 0);
 
-watch(() => props.running, (isRunning) => {
-  if (isRunning) {
+// 始终保持紧凑折叠，用户点击才展开；失败的工具自动展开提示
+const hasFailedCalls = computed(() => props.calls.some(c => c.status === "failed"));
+
+watch(() => [props.running, props.completed, hasFailedCalls.value], () => {
+  // 只有失败时自动展开，其他情况（包括运行中）都保持折叠，界面更清爽
+  if (hasFailedCalls.value) {
     open.value = true;
-  } else if (props.completed) {
-    open.value = false;
   }
 }, { immediate: true });
 
@@ -91,38 +95,71 @@ const groups = computed(() => {
   return Object.values(buckets);
 });
 
-// 摘要标签：优先显示思考状态
-const summaryLabel = computed(() => {
-  if (props.thinking && props.running && !props.calls.length) {
-    return "思考中";
-  }
-  if (props.running) {
-    return props.thinking ? "思考中" : "执行中";
-  }
-  if (!props.calls.length && props.thinking) {
-    return "思考完成";
-  }
-  const total = props.calls.length;
-  if (total === 0) return "已完成";
-  const parts = groups.value.map(g => `${g.label} ${g.count}`);
-  if (props.thinking && !props.completed) parts.unshift("思考");
-  return parts.join(" · ");
-});
+// 从思考文本中提取行为目的：清理前缀，保留简洁的目的描述
+function extractPurpose(thinking: string): string {
+  if (!thinking?.trim()) return "";
+  const first = firstLine(thinking).trim();
+  // 去掉常见的思考前缀/自语，保留核心动作
+  let cleaned = first
+    .replace(/^(好的|我来|让我|现在|接下来|首先|先|好，|好的，|嗯，|哦，|I need to|Let me|Now|First|Okay,?|Alright,?|So,?|I will|I should)\s*/i, "")
+    .replace(/[。！？\.\!\?]+.*$/, "") // 去掉句号后面的内容，只留第一句
+    .trim();
+  // 太长则截断
+  if (cleaned.length > 40) cleaned = cleaned.slice(0, 38) + "…";
+  return cleaned;
+}
 
-// 第一个工具的细节路径作为提示
-const detailHint = computed(() => {
-  if (props.thinking) return "";
+// 行为目的摘要：从思考中提取，或基于工具推断
+const purposeSummary = computed(() => {
+  // 优先从思考内容提取目的
+  const fromThinking = extractPurpose(props.thinking || displayedThinking.value);
+  if (fromThinking) return fromThinking;
+  // 没有思考时，根据工具推断目的
   const first = props.calls[0];
   if (!first) return "";
-  const value = first.params.command ?? first.params.cmd ?? first.params.path ?? first.params.query ?? first.params.description;
-  if (typeof value === "string") {
-    const parts = value.split(/[\\/]/);
-    return parts[parts.length - 1] || value.slice(0, 40);
+  const name = first.name.toLowerCase();
+  if (/read|file|dir|ls/i.test(name)) {
+    const path = first.params.path as string | undefined;
+    if (path) {
+      const parts = path.split(/[\\/]/);
+      return `查看 ${parts[parts.length - 1]}`;
+    }
+    return "读取文件";
+  }
+  if (/glob|search|grep|find/i.test(name)) {
+    const q = first.params.query ?? first.params.pattern ?? "";
+    if (typeof q === "string" && q) return `搜索 "${q.slice(0, 20)}"`;
+    return "搜索相关代码";
+  }
+  if (/edit|write|patch|create/i.test(name)) {
+    const path = first.params.path as string | undefined;
+    if (path) {
+      const parts = path.split(/[\\/]/);
+      return `修改 ${parts[parts.length - 1]}`;
+    }
+    return "编辑文件";
+  }
+  if (/bash|shell|terminal|command/i.test(name)) {
+    return "执行命令";
   }
   return "";
 });
 
-// 思考预览行：流式时跟随最后一行，完成后显示首行
+// 工具结果摘要：完成后显示操作统计
+const toolResultSummary = computed(() => {
+  const total = props.calls.length;
+  if (total === 0) return "";
+  const toolParts = groups.value.map(g => g.count > 1 ? `${g.label}${g.count}` : g.label);
+  return toolParts.join(" · ");
+});
+
+// 有效的目的描述：优先使用传入的stepTitle（来自plan），否则从思考/工具推断
+const effectivePurpose = computed(() => {
+  if (props.stepTitle?.trim()) return props.stepTitle.trim();
+  return purposeSummary.value;
+});
+
+// 思考预览行：流式时跟随最后一行，完成后显示首行（不做额外处理，由purposeSummary显示目的）
 const thinkingPreview = computed(() => reasoningSummary(displayedThinking.value, thinkingRunning.value));
 
 // 预览行自动滚到末尾（流式跟随）
@@ -135,28 +172,52 @@ watch([thinkingPreview, thinkingRunning], () => {
 </script>
 
 <template>
-  <div v-if="hasContent" class="activity-phase" :class="{ open, running: running, done: completed && !running, thinking: !!thinking }">
+  <div v-if="hasContent" class="activity-phase" :class="{ open, running: running, done: completed && !running, failed: hasFailedCalls, thinking: !!thinking }">
     <button
       type="button"
       class="activity-phase__trigger"
       :aria-expanded="open"
       @click="open = !open"
     >
+      <!-- 步骤序号圆 -->
       <span class="activity-phase__status">
-        <LoaderCircle v-if="running" class="spin" :size="13" />
-        <Check v-else-if="completed" :size="13" />
+        <!-- 运行中：蓝色旋转圆圈 -->
+        <template v-if="running">
+          <span v-if="stepIndex !== undefined" class="step-badge step-badge--running">{{ stepIndex }}</span>
+          <LoaderCircle v-else class="spin" :size="14" />
+        </template>
+        <!-- 失败：红色圆形叉号 -->
+        <template v-else-if="hasFailedCalls">
+          <XCircle :size="14" />
+        </template>
+        <!-- 完成：绿色圆形对勾 -->
+        <template v-else-if="completed">
+          <span v-if="stepIndex !== undefined" class="step-badge step-badge--done">{{ stepIndex }}</span>
+          <Check v-else :size="14" />
+        </template>
+        <!-- 默认/仅有思考：灰色脑图标 -->
         <Brain v-else :size="13" />
       </span>
 
-      <span class="activity-phase__label">{{ summaryLabel }}</span>
+      <!-- 行为目的描述 -->
+      <span v-if="effectivePurpose" class="activity-phase__purpose">
+        {{ effectivePurpose }}
+      </span>
 
-      <!-- 思考过程一行预览（流式快速输出，类似ThinkingPanel） -->
-      <span v-if="thinking" ref="previewRef" class="activity-phase__preview" :data-follow-end="thinkingRunning || undefined">
+      <!-- 思考流式预览：运行中跟随最后一行思考内容 -->
+      <span v-if="running && thinking && !effectivePurpose" ref="previewRef" class="activity-phase__preview" :data-follow-end="thinkingRunning || undefined">
         {{ thinkingPreview }}
       </span>
 
-      <!-- 工具提示（没有思考时才显示） -->
-      <span v-else-if="!open && detailHint" class="activity-phase__hint">{{ detailHint }}</span>
+      <!-- 完成后显示操作结果统计（绿色对勾旁边） -->
+      <span v-if="completed && !running && toolResultSummary && !hasFailedCalls" class="activity-phase__result">
+        {{ toolResultSummary }}
+      </span>
+
+      <!-- 失败显示提示 -->
+      <span v-if="hasFailedCalls" class="activity-phase__fail-hint">
+        操作失败，点击查看
+      </span>
 
       <ChevronDown v-if="hasContent" class="activity-phase__chevron" :size="11" />
     </button>
@@ -209,39 +270,107 @@ watch([thinkingPreview, thinkingRunning], () => {
 
 .activity-phase__status {
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   flex: 0 0 auto;
-  border-radius: 4px;
+  border-radius: 50%;
   color: #727983;
 }
 
-.activity-phase.running .activity-phase__status {
-  color: #2563eb;
+/* 步骤序号徽章 */
+.step-badge {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
+.step-badge--running {
+  color: #fff;
+  background: #2563eb;
+  animation: pulse-blue 1.5s ease-in-out infinite;
+}
+
+.step-badge--done {
+  color: #fff;
+  background: #16a34a;
+}
+
+@keyframes pulse-blue {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0); }
+}
+
+/* 运行中：蓝色旋转 */
+.activity-phase.running .activity-phase__status {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+/* 完成：绿色圆形背景对勾 */
 .activity-phase.done .activity-phase__status {
+  color: #fff;
+  background: #16a34a;
+}
+
+/* 失败：红色圆形背景叉号 */
+.activity-phase.failed .activity-phase__status {
+  color: #fff;
+  background: #dc2626;
+}
+
+/* 行为目的描述 */
+.activity-phase__purpose {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #374151;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.activity-phase.running .activity-phase__purpose {
+  color: #1f2937;
+}
+
+.activity-phase.done .activity-phase__purpose {
   color: #16a34a;
 }
 
-.activity-phase__label {
-  flex: 0 0 auto;
-  color: #59616b;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-
-.activity-phase.running .activity-phase__label {
-  color: #2563eb;
-}
-
-/* 分隔符 */
-.activity-phase__trigger .activity-phase__label::after {
+/* 分隔符 - 目的描述后面的点 */
+.activity-phase__purpose::after {
   content: "·";
   margin-left: 7px;
   color: #b2b7bd;
   font-weight: 400;
+}
+
+/* 完成结果统计 */
+.activity-phase__result {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 失败提示 */
+.activity-phase__fail-hint {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* 思考预览一行（核心：单行省略，流式时跟随末尾） */
@@ -258,23 +387,12 @@ watch([thinkingPreview, thinkingRunning], () => {
   text-overflow: clip;
 }
 
-.activity-phase__hint {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  color: #9ca3af;
-  font-family: "SF Mono", Consolas, monospace;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .activity-phase__chevron {
   flex: 0 0 auto;
   margin-left: auto;
   color: #8c9299;
   transition: opacity 0.15s ease, transform 0.18s ease;
-  opacity: 0;
+  opacity: 0.6;
 }
 
 .activity-phase__trigger:hover .activity-phase__chevron,
@@ -313,7 +431,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 
 .activity-phase__body {
   margin: 2px 0 6px 0;
-  padding-left: 26px;
+  padding-left: 27px;
   border-left: 1px solid rgb(118 126 136 / 22%);
   display: flex;
   flex-direction: column;
@@ -384,27 +502,48 @@ watch([thinkingPreview, thinkingRunning], () => {
 }
 :global(.dark) .activity-phase__status {
   color: #6b7280;
+  background: transparent;
+}
+:global(.dark) .step-badge--running {
+  color: #fff;
+  background: #3b82f6;
+}
+:global(.dark) .step-badge--done {
+  color: #fff;
+  background: #22c55e;
 }
 :global(.dark) .activity-phase.running .activity-phase__status {
   color: #60a5fa;
+  background: rgba(96, 165, 250, 0.15);
 }
 :global(.dark) .activity-phase.done .activity-phase__status {
-  color: #4ade80;
+  color: #fff;
+  background: #22c55e;
 }
-:global(.dark) .activity-phase__label {
+:global(.dark) .activity-phase.failed .activity-phase__status {
+  color: #fff;
+  background: #ef4444;
+}
+:global(.dark) .activity-phase__purpose {
   color: #d1d5db;
 }
-:global(.dark) .activity-phase.running .activity-phase__label {
-  color: #60a5fa;
+:global(.dark) .activity-phase.running .activity-phase__purpose {
+  color: #e5e7eb;
 }
-:global(.dark) .activity-phase__trigger .activity-phase__label::after {
+:global(.dark) .activity-phase.done .activity-phase__purpose {
+  color: #4ade80;
+}
+:global(.dark) .activity-phase__purpose::after {
   color: #4b5563;
+}
+:global(.dark) .activity-phase__result {
+  color: #4ade80;
+}
+:global(.dark) .activity-phase__fail-hint {
+  color: #f87171;
 }
 :global(.dark) .activity-phase__preview {
   color: #9ca3af;
-}
-:global(.dark) .activity-phase__hint {
-  color: #6b7280;
 }
 :global(.dark) .activity-phase__chevron {
   color: #6b7280;

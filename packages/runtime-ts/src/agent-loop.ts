@@ -2,7 +2,7 @@ import type { RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { ToolRegistry, type Tool, type ToolContext, type ToolResult } from "./tools.js";
 import type { PermissionGate } from "./permissions.js";
-import { ContextManager, sanitizeContextMessages, type ContentBlock, type ContextMessage } from "./context.js";
+import { ContextManager, IncrementalContextSanitizer, microcompactToolResults, type ContentBlock, type ContextMessage } from "./context.js";
 import { DenialTracker } from "./denial-tracker.js";
 import { StuckLoopTracker, stuckSignature } from "./stuck-tracker.js";
 import { createPhaseTracker } from "./phase.js";
@@ -12,6 +12,7 @@ import { validateSchema } from "./schema-validator.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 import { TaskCanvas } from "./task-canvas.js";
+import { ProviderError } from "./providers/errors.js";
 
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
@@ -38,7 +39,7 @@ export class EchoProvider implements ModelProvider {
 export class AgentLoop {
   constructor(private readonly provider: ModelProvider, private readonly tools: ToolRegistry, private readonly context: ToolContext, private readonly events: EventBus, private readonly permissions: PermissionGate, private readonly options: AgentLoopOptions = {}) {}
 
-  async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[]): Promise<AgentRunResult> {
+  async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[], steeringSignal?: () => AbortSignal): Promise<AgentRunResult> {
     const extensionRoot = this.options.workspaceRoot ?? this.context.workspace.root;
     const extensions = this.options.extensions;
     await extensions?.dispatch("before_agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
@@ -62,6 +63,7 @@ export class AgentLoop {
     let compacted = false;
     let lastContextPct = context.contextPct();
     const summaries: string[] = [];
+    const sanitizer = new IncrementalContextSanitizer();
     // 墙钟时间预算
     const maxWallClockMs = this.options.maxWallClockMs ?? nonNegativeEnv("SZTU_MAX_WALL_CLOCK_MS", 0);
     const runStartTime = Date.now();
@@ -202,7 +204,11 @@ export class AgentLoop {
         messages.push(...steering);
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Injected ${steering.length} steering message(s)`, ts: now() });
       }
-      const sanitized = sanitizeContextMessages(messages, context.budgetMaxToolResultChars());
+      if (lastContextPct >= compactThreshold * 0.8) {
+        const microcompacted = microcompactToolResults(messages);
+        if (microcompacted !== messages) { messages.splice(0, messages.length, ...microcompacted); context.notifyMutated(); }
+      }
+      const sanitized = sanitizer.sanitize(messages, context.budgetMaxToolResultChars());
       if (sanitized.length !== messages.length || sanitized.some((message, index) => message !== messages[index])) {
         messages.splice(0, messages.length, ...sanitized);
         context.notifyMutated();
@@ -210,14 +216,26 @@ export class AgentLoop {
       await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
       const requestTokens = context.tokenEstimate();
       let response: ModelResponse;
+      let streamedText = "";
       try {
         const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
-        response = await this.provider.complete(messages, this.tools, signal, tokenBuffer.push, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+        const generationSignal = combineSignals(signal, steeringSignal?.());
+        response = await this.provider.complete(messages, this.tools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
         tokenBuffer.flush();
         llmFailures = 0;
       } catch (error) {
         // 用户主动取消不是故障，照常上抛
         if (signal?.aborted) throw error;
+        const interruptedSteering = takeSteering?.() ?? [];
+        if (interruptedSteering.length) {
+          if (streamedText) messages.push({ role: "assistant", content: streamedText });
+          messages.push(...interruptedSteering);
+          this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Interrupted generation and injected ${interruptedSteering.length} steering message(s)`, ts: now() });
+          this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+          continue;
+        }
+        // Provider 已耗尽自己的物理重试预算时，不再由逻辑循环成倍放大请求。
+        if (error instanceof ProviderError && error.details.retryExhausted) throw error;
         llmFailures += 1;
         const reason = error instanceof Error ? error.message : String(error);
         if (llmFailures >= maxLlmFailures) throw error;
@@ -541,7 +559,18 @@ export class AgentLoop {
   private async conclude(runId: string, step: number, messages: ChatMessage[], usage: ModelUsage, previousContextPct: number, signal?: AbortSignal, taskCanvas?: TaskCanvas): Promise<{ complete: boolean; text: string; contextPct: number }> {
     messages.push({ role: "user", content: "The agent run has reached its step limit and must stop now. Give your final answer. If the goal is fully achieved, start with [COMPLETE]. If work remains, start with [INCOMPLETE] and list it. Do not call tools." });
     const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
-    const response = await this.provider.complete(messages, new ToolRegistry(), signal, tokenBuffer.push, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+    let response: ModelResponse;
+    try {
+      response = await this.provider.complete(messages, new ToolRegistry(), signal, tokenBuffer.push, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+    } catch (error) {
+      tokenBuffer.flush();
+      if (signal?.aborted) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      const text = `[INCOMPLETE] Final status generation failed: ${reason}`;
+      messages.push({ role: "assistant", content: text });
+      this.publish({ type: "log.line", run_id: runId, level: "ERROR", source: "llm", message: text, ts: now() });
+      return { complete: true, text, contextPct: previousContextPct };
+    }
     tokenBuffer.flush();
     usage.input_tokens += Number(response.usage?.input_tokens ?? 0);
     usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
@@ -575,6 +604,7 @@ const isTestCommand = (command: string): boolean => /(^|\s)(pytest|vitest|jest|n
 const testSummary = (command: string, output: string): string => { const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const relevant = lines.filter((line) => /passed|failed|error|test/i.test(line)); return (relevant.at(-1) ?? lines.at(-1) ?? command).slice(0, 300); };
 const retryableToolErrors = new Set<ToolResult["errorType"]>(["runtime_error", "rate_limited"]);
 const responseContent = (response: ModelResponse): ChatMessage["content"] => response.thinking_blocks?.length ? [...response.thinking_blocks, ...(response.text ? [{ type: "text", text: response.text }] : [])] : response.text;
+const combineSignals = (first?: AbortSignal, second?: AbortSignal): AbortSignal | undefined => first && second ? AbortSignal.any([first, second]) : first ?? second;
 
 async function invokeToolWithRetry(tool: Tool, input: Record<string, unknown>, context: ToolContext, maxRetries: number, retryBaseMs: number, onRetry: (attempt: number, failure: ToolResult) => void): Promise<ToolResult> {
   for (let attempt = 0; ; attempt += 1) {

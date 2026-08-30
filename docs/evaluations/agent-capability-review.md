@@ -151,26 +151,25 @@ grep 有并发读取与二进制/大文件跳过（tools.ts:352-359），工程�
 | # | 事项 | 要点 | 优先级 | 状态 |
 | --- | --- | --- | --- | --- |
 | 16 | run 级 checkpoint | ✅ 主体已上线（tool_batch/completed/failed 三路径 + sequence 关联）。剩余：写入节流（见 #20） | 已完成 | 已完成 |
-| 20 | **checkpoint 写入节流** | 每 N 步快照或 delta 记录，hash 相同跳过；消除每步 3 次全量 IO | **P0** | 未开始 |
-| 21 | **provider 重试纪律** | ProviderError 分类（status/request-id/Retry-After/billing-effect）、full jitter、全局并发预算、双层重试共享预算、上下文超限专用分支 | **P0** | 未开始 |
-| 22 | **MCP 修复三件套** | per-call deadline + AbortSignal、MCP 工具接入权限系统（默认 ask，非 blanket danger）、协议升级 2025-06（resources/prompts/协商）、非文本 content 保真 | **P0** | 未开始 |
-| 15 | 流式 steering | AbortSignal 分级：先中断当前 LLM 流、保留部分输出，注入用户纠正 | P1 | 未开始 |
-| 18 | microcompact 分层压缩 | 轻量层只清旧 tool 输出（无 LLM 调用），重 LLM 摘要留给真正需要时；与熔断退路天然衔接 | P1 | 未开始 |
-| 23 | 搜索升级 | 短期：grep 加截断标记（快修）；长期：`rg --json` 后端 + cursor/truncated 元数据 | P1 | 未开始 |
+| 20 | **checkpoint 写入节流** | 每 N 步快照或 delta 记录，hash 相同跳过；消除每步 3 次全量 IO | **P0** | **已完成（默认每 5 步，终态强制）** |
+| 21 | **provider 重试纪律** | ProviderError 分类（status/request-id/Retry-After/billing-effect）、full jitter、全局并发预算、双层重试共享预算、上下文超限专用分支 | **P0** | **部分完成（分类、Retry-After、jitter、逻辑重试去叠加；全局预算/fallback 待完成）** |
+| 22 | **MCP 修复三件套** | per-call deadline + AbortSignal、MCP 工具接入权限系统（默认 ask，非 blanket danger）、协议升级 2025-06（resources/prompts/协商）、非文本 content 保真 | **P0** | **部分完成（deadline/取消/权限/握手/content；重连与完整 capability negotiation 待完成）** |
+| 15 | 流式 steering | AbortSignal 分级：先中断当前 LLM 流、保留部分输出，注入用户纠正 | P1 | **已完成（generation-level signal + partial output）** |
+| 18 | microcompact 分层压缩 | 轻量层只清旧 tool 输出（无 LLM 调用），重 LLM 摘要留给真正需要时；与熔断退路天然衔接 | P1 | **已完成（旧 tool output 无模型截断）** |
+| 23 | 搜索升级 | 短期：grep 加截断标记（快修）；长期：`rg --json` 后端 + cursor/truncated 元数据 | P1 | **部分完成（截断可见；`rg` 后端/cursor 待完成）** |
 | 17 | 记忆巩固管道 | session 结束时 LLM 提炼 notes → project context.md，含用户审核闭环 | P2 | 未开始 |
 | 19 | MCP 升级 | 并入 #22 | — | 未开始 |
-| 24 | prompt cache 纪律 | goal 移出 system prompt 到 user 消息；git 快照/notes 移入 system-reminder 式动态段 | P2 | 未开始 |
-| 25 | sanitize 增量化 | 借鉴 UsageCache 模式：消息引用未变则跳过，消除每步 O(n) 全量扫描 | P2 | 未开始 |
-| 26 | conclude 容错 | conclude() 的 provider 调用纳入错误回注路径（快修，半小时工作量） | P1 | 未开始 |
+| 24 | prompt cache 纪律 | goal 移出 system prompt 到 user 消息；git 快照/notes 移入 system-reminder 式动态段 | P2 | **部分完成（goal/git 已移出；notes 与稳定 snapshot cache 待完成）** |
+| 25 | sanitize 增量化 | 借鉴 UsageCache 模式：消息引用未变则跳过，消除每步 O(n) 全量扫描 | P2 | **已完成（append-only 增量索引，替换时重建）** |
+| 26 | conclude 容错 | conclude() 的 provider 调用纳入错误回注路径（快修，半小时工作量） | P1 | **已完成（失败返回明确 INCOMPLETE）** |
 
 #20/#21/#22 是本轮新升 P0：三者分别对应"长会话不可持续"（IO 放大）、"限流场景行为
 退化"（成本与封锁风险）、"安全旁路"（MCP blanket danger）。#26 是一致性快修，建议
 随手带上。
 
-### 阶段五：Durable Run Core（承接第三版阶段 A，中期目标）
+### 阶段五：Durable Run Core（本轮已启动）
 
-阶段四完成后，按第三版审计的阶段 A-F 推进：append-only operation log（intent/result
-settle、sequence 恢复、幂等键）、`run.resume`/`run.replay` RPC、后台 task 控制面
+本轮已完成第一片：run 生命周期发出并持久化 `operation.started`/`operation.finished`，checkpoint 已有 operation/sequence/checkpoint_id 关联；`SessionStore.runEvents()` 可从磁盘读取 run 事件，`run.replay` 在内存事件不存在时回退到 durable JSONL。仍未完成 append-only operation log（intent/result settle、sequence 恢复、幂等键）、`run.resume`、后台 task 控制面
 （租约/取消树/输出分页）、policy engine 规则 AST 与审计解释、记忆巩固与评测门禁。
 当前 checkpoint 事件流的 sequence/operation_id 关联是这一步的正确地基。
 

@@ -284,7 +284,11 @@ export class ServerService {
       }
       case "run.replay": {
         const params = request.params as unknown as RunReplayParams;
-        return ok(request.id, { run_id: params.run_id, events: this.events.replayRun(params.run_id, params.max_events) });
+        const live = this.events.replayRun(params.run_id, params.max_events);
+        if (live.length) return ok(request.id, { run_id: params.run_id, events: live });
+        const sessionId = await this.sessions.findRunSession(params.run_id);
+        const durable = sessionId ? await this.sessions.runEvents(sessionId, params.run_id, params.max_events) : [];
+        return ok(request.id, { run_id: params.run_id, events: durable });
       }
       case "permission.respond": {
         const params = request.params as unknown as PermissionRespondParams;
