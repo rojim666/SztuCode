@@ -2,9 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, FileDiff, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
+import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
-import ThinkingBlock from "./ThinkingBlock.vue";
-import ToolSummaryRow from "./ToolSummaryRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import AgentLogo from "./AgentLogo.vue";
@@ -219,8 +218,7 @@ function isFirstToolEvent(turn: TurnView, event: TimelineEvent): boolean {
 
 type InlineSegment =
   | { type: "text"; text: string; isFinal?: boolean }
-  | { type: "thinking"; text: string }
-  | { type: "tools"; calls: ToolCallEntry[] };
+  | { type: "activity"; thinking: string; calls: ToolCallEntry[]; isRunning: boolean; stepIndex?: number; stepTitle?: string };
 
 function inlineSegments(turn: TurnView): InlineSegment[] {
   const segments: InlineSegment[] = [];
@@ -229,21 +227,29 @@ function inlineSegments(turn: TurnView): InlineSegment[] {
   for (const c of turn.completedCalls) visibleCalls.set(c.id, c);
   if (turn.liveToolCall) visibleCalls.set(turn.liveToolCall.id, turn.liveToolCall);
 
-  // 按事件顺序穿插：思考块、文本块、工具摘要块
-  // 连续相同类型的事件合并为一个 segment
+  // 将连续的思考+工具调用合并为一个activity块，只在遇到文本时分割
   let pendingCalls: ToolCallEntry[] = [];
   let pendingThinking = "";
   let pendingText = "";
+  let activityIndex = 0;
 
-  const flushCalls = () => {
-    if (pendingCalls.length) {
-      segments.push({ type: "tools", calls: [...pendingCalls] });
+  // 获取计划项，按顺序分配给activity块
+  const planItems = turn.aggregatedStep.plan ?? [];
+
+  const flushActivity = () => {
+    if (pendingThinking.trim() || pendingCalls.length) {
+      // 尝试匹配对应的plan项
+      const matchedPlan = planItems[activityIndex];
+      segments.push({
+        type: "activity",
+        thinking: pendingThinking.trim(),
+        calls: [...pendingCalls],
+        isRunning,
+        stepIndex: planItems.length > 0 ? activityIndex + 1 : undefined,
+        stepTitle: matchedPlan?.subject,
+      });
+      activityIndex++;
       pendingCalls = [];
-    }
-  };
-  const flushThinking = () => {
-    if (pendingThinking.trim()) {
-      segments.push({ type: "thinking", text: pendingThinking.trim() });
       pendingThinking = "";
     }
   };
@@ -256,16 +262,13 @@ function inlineSegments(turn: TurnView): InlineSegment[] {
 
   for (const event of turn.events) {
     if (event.kind === "thinking") {
-      flushCalls();
       flushText();
       if (event.text) pendingThinking += (pendingThinking ? "\n\n" : "") + event.text;
     } else if (event.kind === "text") {
-      flushCalls();
-      flushThinking();
+      flushActivity();
       if (event.text) pendingText += (pendingText ? "\n\n" : "") + event.text;
     } else if (event.kind === "tool" && event.tool && visibleCalls.has(event.tool.id)) {
       flushText();
-      flushThinking();
       pendingCalls.push(event.tool);
       visibleCalls.delete(event.tool.id);
     }
@@ -274,10 +277,18 @@ function inlineSegments(turn: TurnView): InlineSegment[] {
   for (const c of visibleCalls.values()) pendingCalls.push(c);
 
   flushText();
-  flushThinking();
-  flushCalls();
+  flushActivity();
 
   return segments;
+}
+
+// 计划进度：计算完成进度
+function getPlanProgress(turn: TurnView) {
+  const plan = turn.aggregatedStep.plan ?? [];
+  if (plan.length === 0) return null;
+  const completed = plan.filter(p => p.status === "completed").length;
+  const inProgress = plan.some(p => p.status === "in_progress");
+  return { total: plan.length, completed, inProgress, percent: Math.round((completed / plan.length) * 100) };
 }
 
 // 判断是否应该显示"正在规划下一步"（运行中且当前没有文本输出、没有活跃工具调用时）
@@ -416,26 +427,44 @@ const turns = computed<TurnView[]>(() => {
             </div>
           </div>
 
-          <!-- 展开态 / 运行中：事件流内联渲染，思考块/文本/工具摘要交替穿插 -->
+          <!-- 展开态 / 运行中：事件流内联渲染，活动过程(思考+工具)折叠为单一摘要行，文本直接展示 -->
           <div v-else class="turn-event-stream">
+            <!-- 长程任务进度条：有plan时显示 -->
+            <div v-if="getPlanProgress(turn)" class="task-progress-bar">
+              <div class="task-progress-bar__track">
+                <div
+                  class="task-progress-bar__fill"
+                  :class="{ 'task-progress-bar__fill--active': getPlanProgress(turn)?.inProgress }"
+                  :style="{ width: getPlanProgress(turn)?.percent + '%' }"
+                />
+              </div>
+              <span class="task-progress-bar__label">
+                <template v-if="turn.state === 'running' || turn.state === 'waiting'">
+                  <LoaderCircle class="spin" :size="11" />
+                  步骤 {{ Math.min((getPlanProgress(turn)?.completed ?? 0) + 1, getPlanProgress(turn)?.total ?? 1) }} / {{ getPlanProgress(turn)?.total }}
+                </template>
+                <template v-else>
+                  <Check :size="11" />
+                  完成 {{ getPlanProgress(turn)?.completed }} / {{ getPlanProgress(turn)?.total }} 个步骤
+                </template>
+              </span>
+            </div>
+
             <template v-for="(segment, segIdx) in inlineSegments(turn)" :key="segIdx">
-              <!-- 思考块：独立折叠行 -->
-              <ThinkingBlock
-                v-if="segment.type === 'thinking'"
-                :text="segment.text"
-                :running="turn.state === 'running' || turn.state === 'waiting'"
+              <!-- 活动块：思考+工具调用合并为一个可折叠行，默认只显示一行摘要 -->
+              <ActivityPhase
+                v-if="segment.type === 'activity'"
+                :thinking="segment.thinking"
+                :calls="segment.calls"
+                :running="segment.isRunning && (turn.state === 'running' || turn.state === 'waiting')"
                 :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
+                :step-index="segment.stepIndex"
+                :step-title="segment.stepTitle"
               />
-              <!-- 文本块：Agent输出的文字内容 -->
+              <!-- 文本块：Agent输出的文字内容，始终直接显示 -->
               <div v-else-if="segment.type === 'text'" class="turn-inline-text">
                 <TokenStream :tokens="[]" :final-text="segment.text" />
               </div>
-              <!-- 工具摘要：灰色折叠行，点击展开详情 -->
-              <ToolSummaryRow
-                v-else-if="segment.type === 'tools'"
-                :calls="segment.calls"
-                :running="turn.state === 'running' || turn.state === 'waiting'"
-              />
             </template>
             <!-- 进行中提示："正在规划下一步" -->
             <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">

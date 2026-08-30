@@ -1,4 +1,8 @@
+<!--
 When analyzing the conversation for compaction, focus on the recent messages that
 occurred after the earlier context retained in the summary. Do not repeat details
 already preserved in that earlier context. Capture only new requests, decisions,
 changes, errors, and pending work that the next agent needs.
+-->
+
+在分析对话以进行压缩时，重点关注摘要中保留的早期上下文之后出现的最近消息。不要重复该早期上下文中已保留的细节。仅捕获下一个代理需要的新请求、决策、更改、错误和待处理工作。

@@ -1,4 +1,5 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
+import { providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
@@ -24,7 +25,7 @@ export class AnthropicMessagesProvider implements ModelProvider {
       const systemValue = this.options.cacheControl && system ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] : system ? system : undefined;
       const streaming = Boolean(onToken);
       const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: this.options.maxTokens ?? 8192, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(this.options.reasoningEffort ? { thinking: { type: "adaptive" }, output_config: { effort: this.options.reasoningEffort } } : {}) }), signal: controller.signal });
-      if (!response.ok) throw new Error(`Anthropic request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+      if (!response.ok) throw await providerHttpError(response, "Anthropic");
       if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking);
       const data = await response.json() as AnthropicResponse; const content = data.content ?? []; const text = content.filter((block) => block.type === "text").map((block) => block.text ?? "").join(""); const calls = content.filter((block) => block.type === "tool_use" && block.id && block.name).map((block) => ({ id: block.id!, name: block.name!, input: block.input ?? {} }));
       const thinking_blocks = content.filter((block) => block.type === "thinking").map((block) => ({ type: "thinking", thinking: block.thinking ?? "", signature: block.signature ?? "" }));

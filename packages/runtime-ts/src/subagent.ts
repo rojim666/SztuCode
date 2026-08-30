@@ -51,7 +51,7 @@ export class SubagentManager {
     if (options.allowedPaths) tools.restrictTo(workflowCoderTools);
     const basePermissions = profile.permissionMode ? this.permissions.scoped(profile.permissionMode) : this.permissions;
     const permissions = options.allowedPaths ? scopedWorkflowPermissions(basePermissions, options.allowedPaths) : basePermissions;
-    const basePrompt = await buildSystemPrompt(this.workspaceRoot, role, { permissionMode: profile.permissionMode ?? this.permissions.getMode(), toolNames: tools.list().map((tool) => tool.name), taskText: goal });
+    const basePrompt = await buildSystemPrompt(this.workspaceRoot, role, { permissionMode: profile.permissionMode ?? this.permissions.getMode(), toolNames: tools.list().map((tool) => tool.name) });
     const context = { workspace: new Workspace(this.workspaceRoot), onFileChanged: (relativePath: string) => { const normalized = normalizeWorkflowPath(relativePath); options.changedPaths?.add(normalized); if (options.allowedPaths && !workflowPathIsAllowed(normalized, options.allowedPaths)) options.scopeEscalations?.add(normalized); } };
     const runtime = await this.createChildSession({ runId, sessionId, role, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, profile, tools, context, permissions, history });
     this.children.set(sessionId, { runId, sessionId, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, role, runtime });

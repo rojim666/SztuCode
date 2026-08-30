@@ -26,17 +26,18 @@
 
 .workspace-tab-strip {
   position: relative;
-  z-index: 3;
+  z-index: 20;
   display: flex;
   min-width: 0;
   align-items: center;
   padding: 0 12px;
+  overflow: visible;
   background: #fff;
   border: 0;
   border-radius: 0;
 }
 .project-inspector.file-rail > .workspace-tab-strip { border: 0; }
-.workspace-tool-menu-root { position: relative; flex: 0 0 auto; }
+.workspace-tool-menu-root { position: relative; z-index: 21; flex: 0 0 auto; overflow: visible; }
 .workspace-tool-menu-trigger,
 .workspace-browser-add,
 .workspace-expand,
@@ -46,7 +47,7 @@
 .workspace-browser-add:hover,
 .workspace-expand:hover,
 .workspace-panel-close:hover { color: #2e3330; background: #eceeec; }
-.workspace-open-tabs { display: flex; flex: 1 1 auto; min-width: 0; height: 100%; align-items: center; gap: 5px; margin-left: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.workspace-open-tabs { position: relative; z-index: 1; display: flex; flex: 1 1 auto; min-width: 0; height: 100%; align-items: center; gap: 5px; margin-left: 6px; overflow-x: auto; overflow-y: visible; scrollbar-width: none; }
 .workspace-open-tabs::-webkit-scrollbar { display: none; }
 .workspace-open-tab { position: relative; display: flex; flex: 0 0 auto; min-width: 0; height: 32px; align-items: center; background: transparent; border: 0; border-radius: 8px; transition: background-color 120ms ease, box-shadow 120ms ease; }
 .workspace-open-tab:hover { background: transparent; }

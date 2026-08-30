@@ -2040,17 +2040,48 @@ function handleReverted(runId: string) {
   timeline.value = next;
   void refreshIndex(false);
 }
-// 重试：回退该 run 的所有文件改动，再以相同的用户消息重跑
+// 重试：回退该 run 的所有文件改动，删除旧输出，从用户消息下方重新开始
 async function handleRetry(runId: string, userMessage: string) {
   const wsId = activeWorkspace.value?.workspace_id;
   if (!wsId) return;
   try {
+    // 1. 回退文件改动
     const changes = await listChanges(wsId, runId);
     const paths = changes.map((c) => c.path);
     if (paths.length) {
       await revertChanges(wsId, runId, paths);
     }
-    handleReverted(runId);
+
+    // 2. 删除该runId的所有旧输出，保留用户消息
+    discardPendingTimeline();
+    const next = new Map<number, TimelineStep>();
+
+    for (const [stepNum, item] of timeline.value) {
+      if (item.runId === runId) {
+        // 属于该run的step：如果包含用户消息，保留消息清空输出；否则跳过（删除）
+        if (item.userMessage) {
+          const resetStep: TimelineStep = {
+            ...emptyStep(stepNum),
+            userMessage: item.userMessage,
+            userMessageTime: item.userMessageTime,
+            permissionMode: item.permissionMode,
+          };
+          next.set(stepNum, resetStep);
+        }
+        // 没有userMessage的assistant输出step直接删除，不加入next
+      } else {
+        // 不属于该run的step完整保留
+        next.set(stepNum, item);
+      }
+    }
+
+    timeline.value = next;
+    void refreshIndex(false);
+
+    // 3. 滚动到底部，等待UI更新后重新提交任务
+    nextTick(() => {
+      keepTaskStreamAtBottom();
+    });
     await submitTask(userMessage, null);
   } catch (error) {
     window.alert(`重试失败：${error instanceof Error ? error.message : String(error)}`);
