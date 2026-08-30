@@ -252,6 +252,8 @@ export interface WorkflowResult { workflow_id: string; status: WorkflowStatus; r
 
 export interface CoreStartedEvent { type: "core.started"; listen_addr: string; version: string }
 export interface RunStartedEvent { type: "run.started"; run_id: string; goal: string; ts: string }
+export interface OperationStartedEvent { type: "operation.started"; run_id: string; operation_id: string; goal: string; ts: string }
+export interface OperationFinishedEvent { type: "operation.finished"; run_id: string; operation_id: string; status: "completed" | "failed" | "cancelled"; steps: number; ts: string }
 export interface RunFinishedEvent { type: "run.finished"; run_id: string; status: "success" | "failed" | "cancelled"; reason?: string; steps: number; total_input_tokens: number; total_output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number; parent_session_id?: string; ts: string }
 export interface StepStartedEvent { type: "step.started"; run_id: string; step: number; ts: string }
 export interface StepFinishedEvent { type: "step.finished"; run_id: string; step: number; ts: string }
@@ -299,7 +301,7 @@ export interface TestResultEvent { type: "test.result"; run_id: string; tool_use
 export interface ChangeAppliedEvent { type: "change.applied"; run_id: string; workspace_path: string; paths: string[]; ts: string }
 export interface PermissionModeChangedEvent { type: "permission.mode_changed"; old_mode: PermissionMode; new_mode: PermissionMode; ts: string }
 
-export type RuntimeEvent = CoreStartedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | PhaseChangedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionSnapshotEvent | SessionAttachedEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
+export type RuntimeEvent = CoreStartedEvent | OperationStartedEvent | OperationFinishedEvent | RunStartedEvent | RunFinishedEvent | StepStartedEvent | StepFinishedEvent | PhaseChangedEvent | LlmTokenEvent | LlmThinkingEvent | LlmUsageEvent | PermissionRequestedEvent | PermissionResolvedEvent | PermissionGrantedEvent | PermissionDeniedEvent | DenialInterventionEvent | StuckLoopEvent | ToolCallStartedEvent | ToolCallFinishedEvent | ToolCallFailedEvent | LogLineEvent | ContextInjectedEvent | SessionMessageReceivedEvent | QuestionRequestedEvent | QuestionResolvedEvent | SubagentStartedEvent | SubagentFinishedEvent | WorkflowTaskUpdatedEvent | WorkflowHandoffEvent | WorkflowReviewedEvent | WorkflowFinishedEvent | SessionLifecycleEvent | SessionSnapshotEvent | SessionAttachedEvent | SessionMessageSteeredEvent | SkillInvokedEvent | ContextCompactingEvent | ContextCompactedEvent | PlanUpdatedEvent | TestResultEvent | ChangeAppliedEvent | PermissionModeChangedEvent | WorkflowStartedEvent;
 
 export type ValidationResult<T> =
   | { ok: true; value: T }

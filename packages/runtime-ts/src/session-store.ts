@@ -69,6 +69,16 @@ export class SessionStore {
   async modelHistory(id: string): Promise<ContextMessage[]> { try { const value = JSON.parse(await readFile(path.join(this.root, id, "context.json"), "utf8")); if (Array.isArray(value)) return value as ContextMessage[]; } catch { /* use visible history until a model context exists */ } return (await this.history(id)).map((message) => ({ role: message.role, content: message.content })); }
   async replaceModelHistory(id: string, messages: ContextMessage[]): Promise<void> { const directory = path.join(this.root, id); await mkdir(directory, { recursive: true }); const file = path.join(directory, "context.json"); const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`; try { const { copyFile } = await import("node:fs/promises"); await copyFile(file, `${file}.bak`); } catch { /* no existing model context */ } await writeFile(temporary, `${JSON.stringify(messages)}\n`, "utf8"); await rename(temporary, file); }
   async appendRunEvent(id: string, event: SessionRunEvent): Promise<void> { await mkdir(path.join(this.root, id, "runs"), { recursive: true }); await writeFile(path.join(this.root, id, "runs", `${event.run_id ?? "unknown"}.jsonl`), `${JSON.stringify(event)}\n`, { encoding: "utf8", flag: "a" }); }
+  async runEvents(id: string, runId: string, maxEvents = 2_000): Promise<SessionRunEvent[]> {
+    try {
+      const rows = (await readFile(path.join(this.root, id, "runs", `${runId}.jsonl`), "utf8")).split(/\r?\n/).filter(Boolean);
+      return rows.slice(-Math.max(1, Math.min(maxEvents, 20_000))).flatMap((line) => { try { return [JSON.parse(line) as SessionRunEvent]; } catch { return []; } });
+    } catch { return []; }
+  }
+  async findRunSession(runId: string): Promise<string | null> {
+    for (const session of await this.list(true)) if (session.run_ids.includes(runId)) return session.id;
+    return null;
+  }
   async contextInjections(id: string): Promise<Array<{ run_id: string; source: string; label: string; chars: number; preview: string; text: string; ts: string }>> {
     const output: Array<{ run_id: string; source: string; label: string; chars: number; preview: string; text: string; ts: string }> = [];
     try { for (const entry of await readdir(path.join(this.root, id, "runs"), { withFileTypes: true })) { if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue; const lines = (await readFile(path.join(this.root, id, "runs", entry.name), "utf8")).split(/\r?\n/).filter(Boolean); for (const line of lines) { try { const event = JSON.parse(line) as Record<string, unknown>; if (event.type !== "context.injected") continue; const text = String(event.text ?? event.preview ?? ""); output.push({ run_id: String(event.run_id ?? entry.name.slice(0, -6)), source: String(event.source ?? "system"), label: String(event.label ?? "上下文注入"), chars: Number(event.chars ?? text.length), preview: String(event.preview ?? text.slice(0, 160)), text, ts: String(event.ts ?? "") }); } catch { /* ignore corrupt event rows */ } } } } catch { /* no run event directory */ }

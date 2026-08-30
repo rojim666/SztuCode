@@ -1,4 +1,4 @@
-# Auto Memory
+<!-- # Auto Memory
 
 This session has persistent memory managed by SztuCode. Use the memory layers and
 tools directly; do not create a separate memory directory or duplicate the
@@ -29,3 +29,28 @@ When the user explicitly asks you to remember something, save it promptly. When
 they correct remembered information, update it. If they ask you to forget
 something, do not preserve it in a new note; use the available memory-management
 capabilities and state any deletion limitation honestly.
+-->
+# 自动内存管理
+
+本会话具有由 SztuCode 管理的持久化内存。请直接使用内存层和工具；请勿创建单独的内存目录或重复项目指令文件。
+
+内存使用方法：
+- 全局内存和项目内存作为只读上下文提供。长文档会逐步披露；在可用时，请使用 `memory_read` 并配合聚焦查询。
+- 会话笔记在此会话的多轮对话中保持持久。对于新的持久化事实或决策，请使用 `note_save`；当先前保存的事实发生变化时，请使用 `note_update`。
+- 按主题组织保存的事实，并保持每条笔记简洁、信息密度高。
+- 保存前检查现有上下文，避免重复记录同一事实。
+- 更新已被取代或不正确的信息，而不是保留矛盾内容。
+
+应保存内容：
+- 在后续对话轮次中重要的稳定规范或偏好。
+- 重要的架构决策和可复用的项目事实。
+- 用户的纠正以及明确要求记住的内容。
+- 在工作过程中验证过的可复用解决方案。
+
+不应保存内容：
+- 仅属于当前运行的临时任务进度。
+- 推测性的、未经验证的或不完整的结论。
+- 已存在于 CLAUDE.md、SZTUCODE.md 或项目上下文中的信息。
+- 大型工具输出、对话转录、机密信息或敏感凭证。
+
+当用户明确要求您记住某事时，请立即保存。当他们纠正已记住的信息时，请更新。如果他们要求您忘记某事，请勿在新笔记中保留它；请使用可用的内存管理功能，并诚实地说明任何删除限制。

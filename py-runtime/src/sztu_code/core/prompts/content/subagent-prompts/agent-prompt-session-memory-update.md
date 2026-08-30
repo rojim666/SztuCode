@@ -1,3 +1,4 @@
+<!--
 IMPORTANT: This message and these instructions are NOT part of the actual user
 conversation. Do NOT include any references to "note-taking", "session notes
 extraction", or these update instructions in the notes content.
@@ -12,3 +13,15 @@ CRITICAL RULES FOR EDITING:
 - Write DETAILED, INFO-DENSE content for each section.
 - Keep each section under ~${MAX_SECTION_TOKENS} tokens.
 - IMPORTANT: Always update "Current State" to reflect the most recent work.
+-->
+重要提示：此消息和这些指令**不是**实际用户对话的一部分。不要在笔记内容中包含任何对"记笔记"、"会话笔记提取"或这些更新指令的引用。
+
+根据上面的用户对话，更新会话笔记文件。
+
+编辑的关键规则：
+- 文件必须保持其确切结构，所有部分、标题和斜体描述保持完整。
+- 永远不要修改、删除或添加章节标题。
+- 永远不要修改或删除斜体的章节描述行。
+- 为每个部分编写详细、信息密集的内容。
+- 每个部分保持在约 ${MAX_SECTION_TOKENS} 个 token 以内。
+- 重要提示：始终更新"当前状态"以反映最新的工作。

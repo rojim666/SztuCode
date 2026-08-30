@@ -2040,17 +2040,48 @@ function handleReverted(runId: string) {
   timeline.value = next;
   void refreshIndex(false);
 }
-// 重试：回退该 run 的所有文件改动，再以相同的用户消息重跑
+// 重试：回退该 run 的所有文件改动，删除旧输出，从用户消息下方重新开始
 async function handleRetry(runId: string, userMessage: string) {
   const wsId = activeWorkspace.value?.workspace_id;
   if (!wsId) return;
   try {
+    // 1. 回退文件改动
     const changes = await listChanges(wsId, runId);
     const paths = changes.map((c) => c.path);
     if (paths.length) {
       await revertChanges(wsId, runId, paths);
     }
-    handleReverted(runId);
+
+    // 2. 删除该runId的所有旧输出，保留用户消息
+    discardPendingTimeline();
+    const next = new Map<number, TimelineStep>();
+
+    for (const [stepNum, item] of timeline.value) {
+      if (item.runId === runId) {
+        // 属于该run的step：如果包含用户消息，保留消息清空输出；否则跳过（删除）
+        if (item.userMessage) {
+          const resetStep: TimelineStep = {
+            ...emptyStep(stepNum),
+            userMessage: item.userMessage,
+            userMessageTime: item.userMessageTime,
+            permissionMode: item.permissionMode,
+          };
+          next.set(stepNum, resetStep);
+        }
+        // 没有userMessage的assistant输出step直接删除，不加入next
+      } else {
+        // 不属于该run的step完整保留
+        next.set(stepNum, item);
+      }
+    }
+
+    timeline.value = next;
+    void refreshIndex(false);
+
+    // 3. 滚动到底部，等待UI更新后重新提交任务
+    nextTick(() => {
+      keepTaskStreamAtBottom();
+    });
     await submitTask(userMessage, null);
   } catch (error) {
     window.alert(`重试失败：${error instanceof Error ? error.message : String(error)}`);
@@ -2594,6 +2625,20 @@ async function onOpenFileLink(event: Event) {
   inspectorRef.value?.previewFile(fullPath);
 }
 
+// 文件变更徽章 → 打开对应文件的diff预览
+async function onOpenFileFromTimeline(rawPath: string) {
+  setInspectorOpen(true);
+  await nextTick();
+  inspectorRef.value?.openChangeDiff(rawPath);
+}
+
+// 打开所有变更面板
+async function onOpenChangesFromTimeline(_runId: string) {
+  setInspectorOpen(true);
+  await nextTick();
+  inspectorRef.value?.openChangesPanel();
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
@@ -2930,7 +2975,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->

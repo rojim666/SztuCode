@@ -57,7 +57,8 @@ def _accumulate_message(
             if isinstance(block, dict) and block.get("type") in {"tool_use", "tool_result"}
         ]
         raw["tools"] += _count(counter, tool_blocks)
-        raw["conversation"] += _count(counter, [block for block in content if block not in tool_blocks])
+        non_tool_blocks = [block for block in content if block not in tool_blocks]
+        raw["conversation"] += _count(counter, non_tool_blocks)
     else:
         raw["conversation"] += _count(counter, content)
 

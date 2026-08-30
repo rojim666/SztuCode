@@ -50,7 +50,8 @@ class _CodingScenarioProvider:
         *,
         step: int = 0,
         system: str | None = None,
-    )usage_estimator: object | None = None,
+    
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._step += 1
 

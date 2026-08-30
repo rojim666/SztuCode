@@ -1,8 +1,15 @@
-Ask the user one to three concise structured questions when a required decision or missing piece of information prevents correct progress. The tool waits for the user's response.
+<!-- Ask the user one to three concise structured questions when a required decision or missing piece of information prevents correct progress. The tool waits for the user's response. -->
+当需要做出决策或缺少信息导致无法正确推进时，向用户询问一到三个简洁的结构化问题。该工具会等待用户响应。
 
-Usage:
-- Use it to clarify ambiguous requirements, gather preferences, or obtain a consequential implementation decision.
-- Each question requires a stable `id` and user-facing `question`; IDs must be unique.
-- Optional choices may include up to eight items. Put a recommended option first and append `(Recommended)` to its label.
-- Set `multi_select=true` only when more than one choice may be selected.
-- Do not ask questions that can be answered safely by inspecting the workspace.
+<!-- Usage: -->
+使用方法：
+<!-- - Use it to clarify ambiguous requirements, gather preferences, or obtain a consequential implementation decision. -->
+- 用于澄清模糊需求、收集偏好或获取重要的实现决策。
+<!-- - Each question requires a stable `id` and user-facing `question`; IDs must be unique. -->
+- 每个问题需要一个稳定的 `id` 和面向用户的 `question`；ID 必须唯一。
+<!-- - Optional choices may include up to eight items. Put a recommended option first and append `(Recommended)` to its label. -->
+- 可选选项最多可包含八个项目。将推荐选项放在首位，并在其标签后附加 `(推荐)`。
+<!-- - Set `multi_select=true` only when more than one choice may be selected. -->
+- 仅当可以选择多个选项时设置 `multi_select=true`。
+<!-- - Do not ask questions that can be answered safely by inspecting the workspace. -->
+- 不要询问可以通过检查工作区安全回答的问题。

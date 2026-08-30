@@ -59,6 +59,35 @@ export function sanitizeContextMessages(messages: ContextMessage[], toolResultLi
   return pending.size ? truncated.slice(0, lastBalanced) : truncated;
 }
 
+export class IncrementalContextSanitizer {
+  private sourceLength = 0; private sourceTail: ContextMessage | undefined; private limit = 0;
+  private sanitized: ContextMessage[] = []; private readonly pending = new Set<string>(); private lastBalanced = 0;
+  sanitize(messages: ContextMessage[], toolResultLimit = 8_000): ContextMessage[] {
+    const appendOnly = this.limit === toolResultLimit && this.sourceLength <= messages.length && (this.sourceLength === 0 || messages[this.sourceLength - 1] === this.sourceTail);
+    if (!appendOnly) { this.sourceLength = 0; this.sourceTail = undefined; this.sanitized = []; this.pending.clear(); this.lastBalanced = 0; }
+    for (const source of messages.slice(this.sourceLength)) {
+      const message = truncateToolResults([source], toolResultLimit, Math.floor(toolResultLimit / 2))[0]!;
+      this.sanitized.push(message);
+      if (message.role === "assistant") for (const call of message.tool_calls ?? []) this.pending.add(call.id);
+      if (message.role === "tool" && message.tool_call_id) this.pending.delete(message.tool_call_id);
+      if (!this.pending.size) this.lastBalanced = this.sanitized.length;
+    }
+    this.sourceLength = messages.length; this.sourceTail = messages.at(-1); this.limit = toolResultLimit;
+    return this.pending.size ? this.sanitized.slice(0, this.lastBalanced) : this.sanitized;
+  }
+}
+
+export function microcompactToolResults(messages: ContextMessage[], keepRecent = 4, limit = 1_000): ContextMessage[] {
+  const toolIndexes = messages.map((message, index) => message.role === "tool" ? index : -1).filter((index) => index >= 0);
+  const compact = new Set(toolIndexes.slice(0, Math.max(0, toolIndexes.length - keepRecent)));
+  let changed = false;
+  const result = messages.map((message, index) => {
+    if (!compact.has(index) || typeof message.content !== "string" || message.content.length <= limit || message.content.includes(OFFLOAD_MARKER)) return message;
+    changed = true; return { ...message, content: truncateText(message.content, limit, message.is_error === true) };
+  });
+  return changed ? result : messages;
+}
+
 function messagesToText(messages: ContextMessage[]): string {
   return messages.map((message) => { const content = typeof message.content === "string" ? message.content : message.content.map((block) => `${block.type}: ${String(block.text ?? block.content ?? "")}`).join("\n"); const calls = message.tool_calls?.length ? `\nTool calls: ${message.tool_calls.map((call) => `${call.name}(${JSON.stringify(call.input)})`).join(", ")}` : ""; return `[${message.role.toUpperCase()}]\n${content}${calls}`; }).join("\n\n");
 }

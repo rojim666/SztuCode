@@ -30,6 +30,7 @@ class _EndTurnProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         return LlmResponse(stop_reason="end_turn", text="done")
 
@@ -49,6 +50,7 @@ class _LoopingProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._call += 1
         tc = ToolCallBlock(id=f"t{self._call}", name="unknown_tool", input={})
@@ -72,6 +74,7 @@ class _CapturingProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self.messages = [dict(m) for m in messages]
         self.system = system
@@ -107,6 +110,7 @@ new goal
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         self._calls += 1
         if self._calls == 1:
@@ -147,6 +151,7 @@ class _CancelableCompactingProvider:
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -200,6 +205,7 @@ finish without session
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -261,6 +267,7 @@ survive failure
         *,
         step: int = 0,
         system: str | None = None,
+        usage_estimator: object | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -907,6 +914,7 @@ async def test_session_registers_note_save_tool(tmp_path: Path) -> None:
             *,
             step: int = 0,
             system: str | None = None,
+            usage_estimator: object | None = None,
         ) -> LlmResponse:
             self.calls += 1
             if self.calls == 1:

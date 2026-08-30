@@ -84,6 +84,26 @@ test("agent loop continues after a max_tokens response without tool calls", asyn
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
+test("agent loop interrupts only the active generation for steering and preserves partial text", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-stream-steering-")); const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0; let controller = new AbortController(); let steering: Array<{ role: "user"; content: string }> = [];
+    const provider: ModelProvider = { complete: async (messages, _tools, signal, onToken) => {
+      calls += 1;
+      if (calls === 1) {
+        onToken?.("partial work"); steering.push({ role: "user", content: "change direction" }); controller.abort(new Error("steered"));
+        if (signal?.aborted) throw signal.reason;
+        await new Promise<void>((_resolve, reject) => signal?.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      }
+      assert.equal(messages.some((message) => message.role === "assistant" && message.content === "partial work"), true);
+      assert.equal(messages.some((message) => message.role === "user" && message.content === "change direction"), true);
+      return { text: "redirected", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }).run("steering-run", "work", 2, [], undefined, () => { const queued = steering.splice(0); if (controller.signal.aborted) controller = new AbortController(); return queued; }, () => controller.signal);
+    assert.equal(result.text, "redirected"); assert.equal(calls, 2);
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
 test("agent loop feeds malformed truncated tool arguments back as schema_error", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-schema-repair-loop-"));
   const events = new EventBus(path.join(root, "events.jsonl"));

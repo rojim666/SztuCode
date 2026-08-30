@@ -74,13 +74,17 @@ export async function buildSystemPrompt(workspaceRoot: string, role = "coder", r
   ].filter(Boolean);
   const instructions = await projectInstructions(workspaceRoot);
   if (instructions) sections.push(`# Project instructions\n${instructions}`);
-  const git = await gitSnapshot(workspaceRoot);
-  if (git) sections.push(`# Git status snapshot\n${git}`);
   try {
     const skills = (await new SkillLoader(workspaceRoot).list()).filter((skill) => skill.enabled);
     if (skills.length) sections.push(`# Available skills\n${skills.map((skill) => `- ${skill.name}: ${skill.description || "No description"}`).join("\n")}\nUse the skill tool to load full instructions when a skill is relevant.`);
   } catch { /* optional skill roots */ }
   return composeRuntimePrompt(sections.join("\n\n"), runtime);
+}
+
+/** Volatile workspace state belongs after the cacheable system prefix. */
+export async function buildDynamicContext(workspaceRoot: string): Promise<string> {
+  const git = await gitSnapshot(workspaceRoot);
+  return git ? `<system-reminder>\nCurrent git status snapshot:\n${git}\n</system-reminder>` : "";
 }
 
 function parseTomlProfile(text: string, name: string): AgentProfile {

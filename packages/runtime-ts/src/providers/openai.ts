@@ -1,4 +1,5 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
+import { providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
@@ -32,7 +33,7 @@ function imageUrlFromBlock(block: Record<string, unknown>): string {
 /** Convert provider-neutral/Anthropic history into strict OpenAI chat content. */
 function normalizeChatContent(message: ChatMessage): NormalizedContent {
   if (typeof message.content === "string") return {
-    content: message.content || (message.role === "assistant" ? null : ""),
+    content: message.content || (message.role === "assistant" ? "" : ""),
     ...(message.reasoning_content ? { reasoningContent: message.reasoning_content } : {}),
   };
   const text: string[] = [];
@@ -64,7 +65,7 @@ function normalizeChatContent(message: ChatMessage): NormalizedContent {
   }
   const content = media.length
     ? [...(text.length ? [{ type: "text", text: text.join("\n") }] : []), ...media]
-    : text.join("\n") || (message.role === "assistant" ? null : "");
+    : text.join("\n") || "";
   const reasoningContent = message.reasoning_content || undefined;
   return { content, ...(reasoningContent ? { reasoningContent } : {}) };
 }
@@ -135,7 +136,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       }).filter(Boolean).join("\n\n");
       const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning: { effort: this.options.reasoningEffort, summary: "auto" } } : {}) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters }, ...(tool.cache_control ? { cache_control: tool.cache_control } : {}) })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? { max_tokens: this.options.maxOutputTokens } : {}), ...this.samplingParams(), ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}) };
       const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
-      if (!response.ok) throw new Error(`LLM request failed (${response.status}): ${(await response.text()).slice(0, 500)}`);
+      if (!response.ok) throw await providerHttpError(response, "OpenAI-compatible");
       if (this.options.stream && response.body && response.headers.get("content-type")?.includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking);
       const payload = await response.json() as OpenAiResponse & ResponsesResponse;
       if (responses) return this.parseResponses(payload, onThinking);

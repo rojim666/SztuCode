@@ -334,6 +334,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       const globPattern = params.glob ? String(params.glob) : null;
       const result: string[] = [];
       const filesToSearch: string[] = [];
+      let filesTruncated = false;
 
       // 收集需要搜索的文件（流式遍历，提前终止）
       const targetStat = await stat(target);
@@ -344,7 +345,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
           if (globPattern && !globMatch(file, globPattern)) continue;
           filesToSearch.push(file);
           // 限制待搜索文件数量，防止遍历超大仓库
-          if (filesToSearch.length >= 2000) break;
+          if (filesToSearch.length >= 2000) { filesTruncated = true; break; }
         }
       }
 
@@ -383,7 +384,9 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
         if (result.length >= MAX_RESULTS) break;
       }
 
-      return ok(result.length ? result.join("\n") : "No matches found.");
+      const matchesTruncated = result.length >= MAX_RESULTS;
+      const footer = filesTruncated || matchesTruncated ? `\n[search truncated: files=${filesToSearch.length}${filesTruncated ? "+" : ""}, matches=${result.length}${matchesTruncated ? "+" : ""}; narrow path/glob/pattern to continue]` : "";
+      return ok((result.length ? result.join("\n") : "No matches found.") + footer);
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   const editSchema = { type: "object", properties: { old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" }, start_line: { type: "integer", minimum: 1 }, end_line: { type: "integer", minimum: 1 } }, required: ["old_string", "new_string"] };

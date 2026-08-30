@@ -36,6 +36,7 @@
 | [Agent 能力评审](evaluations/agent-capability-review.md) | 评审快照 | Runtime 各项能力打分、性能障碍与分阶段扩展路线 |
 | [Agent 能力审计（第二版）](evaluations/agent-capability-review-v2.md) | 评审快照 | 阶段二、三落地后的重新评分、性能瓶颈、顶级产品差距和 durable 路线 |
 | [Agent 能力审计（第三版）](evaluations/agent-capability-review-v3.md) | 评审快照 | Durable checkpoint 落地后的边界审计、性能回归、故障矩阵和 operation 恢复路线 |
+| [Agent 能力审计（第五版）](evaluations/agent-capability-review-v5.md) | 评审快照 | 阶段五 operation lifecycle、durable replay 与真正 resume 前置条件审计 |
 | [AI 辅助开发方法论](guides/ai-assisted-development.md) | 指南 | 使用 AI 开发时的验证、审查与取舍 |
 
 ## 历史资料
