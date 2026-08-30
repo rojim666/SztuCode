@@ -1,35 +1,35 @@
 # TypeScript Runtime Agent 能力评审（滚动版）
 
-[返回文档中心](../README.md) · [第二版快照](agent-capability-review-v2.md) · [第三版快照](agent-capability-review-v3.md)
+[返回文档中心](../README.md) · [第五版快照](agent-capability-review-v5.md) · [第二版快照](agent-capability-review-v2.md) · [第三版快照](agent-capability-review-v3.md)
 
-本文是对 `packages/runtime-ts` 的持续能力评审，随代码演进滚动更新。当前为**第四轮**
-（2026-08-30，基线 `759a6b9`）：阶段一至三全部落地、durable checkpoint 上线之后的全面
+本文是对 `packages/runtime-ts` 的持续能力评审，随代码演进滚动更新。当前为**第五轮**
+（2026-08-30，基线：阶段五首个 operation lifecycle/replay 增量）：阶段一至三全部落地、durable checkpoint 和 operation replay 基础上线之后的全面
 复审。方法：对 runtime 全部模块逐行审查 + 故障路径推演；没有真实基准数据的项目不作
 产品成绩推断。
 
-## 1. 能力评分卡（v1 → v4 演进）
+## 1. 能力评分卡（v1 → v5 演进）
 
-| 能力维度 | v1 | v4 | 判词 |
+| 能力维度 | v1 | v5 | 判词 |
 | --- | ---: | ---: | --- |
 | 上下文管理 | 72 | **80** | 增量 token 计数、后台并行压缩、熔断+硬丢弃退路齐备；缺 microcompact 分层，摘要无 provenance |
 | 工具系统 | 65 | **78** | 行号 Read、锚定 Edit、原子 MultiEdit 成立；grep 截断静默、无 rg/LSP/结构化 patch |
-| 权限与安全 | 60 | **70** | 参数级 glob + per-workspace 作用域到位；但 MCP 工具 blanket `danger_full_access`（见 2.1） |
-| 韧性 | 35 | **62** | 错误回注、partial messages、durable checkpoint 成立；无 resume、provider 重试纪律缺失（见 2.2） |
+| 权限与安全 | 60 | **71** | 参数级 glob + per-workspace 作用域到位；MCP 已接入可询问权限路径，正式 policy AST 仍缺 |
+| 韧性 | 35 | **65** | operation lifecycle、durable replay、partial messages 和 checkpoint 成立；无 resume、attempt ledger 仍是核心缺口 |
 | 编排能力 | 55 | **74** | spawn_agent + DAG + 证据一致性校验闭环；子代理同步阻塞、无后台任务控制面 |
-| 可观测性 | 85 | **81** | 事件总线 + telemetry span + TaskCanvas；EventBus 逐事件 appendFile 仍在 |
+| 可观测性 | 85 | **83** | 事件总线 + telemetry span + TaskCanvas + durable operation replay；EventBus 逐事件 appendFile 仍在 |
 | 记忆系统 | 50 | **59** | 三层 catalog + 渐进披露 + notes 版本链；无巩固管道、无语义检索 |
-| 扩展生态 | 45 | **60** | Skills 渐进披露成立；MCP 协议陈旧且无超时/取消（见 2.1） |
+| 扩展生态 | 45 | **62** | Skills 渐进披露成立；MCP 已有 deadline/取消/握手/content 保真，重连与完整协商仍缺 |
 | **综合** | **58** | **68** | 短任务与交互可信度显著提升；重启恢复、限流纪律、并行副作用仍是高风险 |
 
-与第三版的差异说明：权限 72→70、扩展 62→60，因本轮新确认 MCP 安全面与超时面缺口；
-其余维度持平。综合维持 68——自 v3 以来新增的是评测基建（Terminal-Bench 接入），不是
-runtime 能力本身。
+与第四轮相比：韧性 62→65、可观测性 81→83、权限 70→71、扩展 60→62，原因是 operation 生命周期、durable replay、MCP 权限/超时和事件关联已经落地；综合仍为 68，因为 replay 不是 resume，尚无副作用账本和故障恢复证明。
 
-## 2. 本轮新增的关键发现（P0）
+## 2. 第五轮复审：修复结果与新边界
+
+阶段四 P0 的部分问题已在当前代码中修复：MCP 已有 deadline/取消/较低默认权限，Provider 已有结构化错误、Retry-After 和 jitter，checkpoint 已节流，conclude 已容错，goal/git 已移出稳定 system 前缀。以下小节保留问题的演进记录；已修复项以本段和 V5 快照为准。
 
 阶段一修复了 v1 的四大致命缺陷，但本轮深挖出四个新的一级问题。
 
-### 2.1 MCP 三重洞：无超时 + blanket 权限 + 旧协议
+### 2.1 MCP：从三重洞到部分闭合
 
 `mcp.ts` 是当前安全与韧性模型的一个旁路：
 
@@ -47,7 +47,7 @@ runtime 能力本身。
 对比：Claude Code 对 MCP 工具默认套用权限系统（可配置 `mcp__server__tool` 粒度规则），
 调用带 deadline，server 崩溃自动重连。
 
-### 2.2 Provider 重试纪律缺失 + 双层重试叠加
+### 2.2 Provider：重试纪律部分闭合
 
 [configurable.ts:26](../../packages/runtime-ts/src/providers/configurable.ts#L26)：
 `Math.min(2_000, 200 * 2 ** attempt)`——退避上限 2 秒、不读 Retry-After、无 jitter。
@@ -63,7 +63,7 @@ Retry-After 传导。
 另外可重试性判断仍是正则匹配错误消息（`/\b(429|500|...)\b|timeout|.../`）——脆弱且
 无法区分"请求未送达（可安全重试）"与"响应已产生但中断（可能重复计费/副作用）"。
 
-### 2.3 Checkpoint 写入 O(n²)
+### 2.3 Checkpoint：节流后仍非事务日志
 
 [run-manager.ts:104](../../packages/runtime-ts/src/run-manager.ts#L104)：每个 tool_batch
 checkpoint 触发 `replaceModelHistory` —— 全量 `JSON.stringify(messages)` + `.bak` 拷贝
@@ -71,7 +71,7 @@ checkpoint 触发 `replaceModelHistory` —— 全量 `JSON.stringify(messages)`
 初始上下文的百倍以上。v3 已指出（P1），本轮确认仍在且是长会话最大的 IO 放大源；
 修法明确：每 N 步快照 + 增量 delta，或 hash 相同跳过。
 
-### 2.4 conclude 路径无容错 + goal 破坏 prompt cache 前缀
+### 2.4 conclude 与 prompt cache：快修已落地
 
 - [agent-loop.ts:544](../../packages/runtime-ts/src/agent-loop.ts#L544)：`conclude()` 的
   provider 调用没有 try/catch——与主循环"错误回注"哲学不一致。跑到 maxSteps 后的收尾
