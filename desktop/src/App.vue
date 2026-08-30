@@ -2,7 +2,7 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
-  GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil,
+  GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
   Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -35,7 +35,7 @@ import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
   archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listPendingUserQuestions, listSessions,
-  listWorkspaces, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
+  listWorkspaces, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
@@ -1956,6 +1956,30 @@ async function archiveProjectChats(item: Workspace) {
   }
   finally { projectActionBusy.value = false; }
 }
+async function removeProject(item: Workspace) {
+  if (projectActionBusy.value) return;
+  const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id);
+  projectActionsOpen.value = null;
+  const chatSummary = chats.length
+    ? `其中 ${chats.length} 个聊天会保留，并显示在临时聊天区域。`
+    : "该项目没有关联聊天。";
+  const accepted = await confirm(`从侧栏移除项目「${item.name}」？\n\n${chatSummary}\n磁盘目录不会被删除。`, { title: "移除项目", kind: "warning" });
+  if (!accepted) return;
+  projectActionBusy.value = true;
+  try {
+    await Promise.all(chats.map((session) => moveSession(session.session_id, null)));
+    await deleteWorkspace(item.workspace_id);
+    workspaces.value = workspaces.value.filter((workspaceItem) => workspaceItem.workspace_id !== item.workspace_id);
+    const wasCurrentWorkspace = workspace.value?.workspace_id === item.workspace_id;
+    await refreshIndex(false);
+    if (wasCurrentWorkspace) workspace.value = null;
+    await message(chats.length ? `项目已移除，${chats.length} 个聊天已转到临时聊天区域。` : "项目已从侧栏移除。", { title: "移除完成", kind: "info" });
+  } catch (error) {
+    await refreshIndex(false);
+    await message(error instanceof Error ? error.message : String(error), { title: "无法移除项目", kind: "error" });
+  }
+  finally { projectActionBusy.value = false; }
+}
 // 撤销后清除该 run 的全部改动，使变更卡片随之消失
 function handleReverted(runId: string) {
   discardPendingTimeline();
@@ -2733,6 +2757,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />创建永久工作树</button>
                 <div class="project-action-menu__separator" />
                 <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />归档聊天</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><Unlink :size="16" :stroke-width="1.8" />移除项目</button>
               </div>
             </div>
             <div class="project-task-list">
