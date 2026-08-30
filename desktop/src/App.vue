@@ -2,7 +2,7 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
-  GitBranch, Globe2, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
+  GitBranch, Globe2, Info, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
   Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
 import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -41,8 +41,17 @@ import {
 } from "./services/sztu-runtime";
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "source-control";
+type WorkMode = "code" | "chat";
 type AppMenu = "file" | "edit" | "view" | "help";
 type RuntimeEvent = Record<string, unknown>;
+type ProjectDialogTone = "neutral" | "success" | "danger";
+type ProjectDialogState = {
+  title: string;
+  message: string;
+  tone: ProjectDialogTone;
+  confirmLabel: string;
+  cancelLabel?: string;
+};
 type QueuedSubmission = {
   id: string;
   text: string;
@@ -62,6 +71,8 @@ const CONVERSATION_MIN_WIDTH = 320;
 // 窗口窄于该宽度时自动收起右侧功能栏
 const INSPECTOR_AUTO_COLLAPSE_WIDTH = 1000;
 const page = ref<Page>("work");
+const workMode = ref<WorkMode>("code");
+const modeMenuOpen = ref(false);
 const chatView = ref<ChatView>("home");
 // 正式界面暂时隐藏入口；视觉测试可用开发态查询参数覆盖，避免整套 ChatPortal 回归被跳过。
 const chatEntryVisible = import.meta.env.DEV
@@ -156,13 +167,15 @@ const tokenBatcher = createTokenFrameBatcher(
 );
 const prompt = ref("");
 const activePrompt = ref<HTMLTextAreaElement | null>(null);
-// 会话流“回到底部”悬浮按钮：离开底部超过阈值时显示，点击平滑回底
+// 会话流"回到底部"悬浮按钮：离开底部时显示，点击回到底部
 const taskStreamEl = ref<HTMLElement | null>(null);
 const streamScrolledUp = ref(false);
-let userScrollPaused = false; // 用户主动向上滚动时暂停自动跟随
+let userScrollPaused = false; // 用户主动滚动时暂停自动跟随
+let programmaticScroll = false; // 标记程序触发的滚动，避免误判用户操作
 let lastScrollTop = 0;
 
-function isNearBottom(el: HTMLElement, threshold = 40) {
+function isAtBottom(el: HTMLElement, threshold = 4) {
+  // 精确检测是否在最底部，阈值很小确保真的到底才恢复
   return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
 }
 
@@ -171,42 +184,55 @@ function handleTaskStreamScroll() {
   if (!el) return;
   const st = el.scrollTop;
 
+  // 跳过程序触发的滚动事件
+  if (programmaticScroll) {
+    lastScrollTop = st;
+    return;
+  }
+
   if (userScrollPaused) {
-    // 用户滚回到底部附近时恢复自动跟随
-    if (isNearBottom(el, 60)) {
+    // 只有当用户真正滚动到最底部时才恢复自动跟随
+    if (isAtBottom(el, 4)) {
       userScrollPaused = false;
       streamScrolledUp.value = false;
     }
   } else {
-    // 检测用户是否主动向上滚动：scrollTop 减小（拖拽滚动条、键盘等）
-    // 阈值2px避免自动滚动时的微小抖动误判
-    if (st < lastScrollTop - 2 && !isNearBottom(el, 150)) {
+    // 检测用户是否主动向上滚动：scrollTop 减小，即使很小的幅度也算
+    // 只要离开底部或者向上滚动，立即暂停，不抢占用户控制权
+    if (st < lastScrollTop - 1 || !isAtBottom(el, 8)) {
       userScrollPaused = true;
       streamScrolledUp.value = true;
-    } else {
-      streamScrolledUp.value = !isNearBottom(el, 120);
     }
   }
 
   lastScrollTop = st;
 }
 
-// 用户通过wheel/touch主动滚动时暂停自动跟随
+// 用户通过 wheel/touch/键盘 主动滚动时立即暂停自动跟随
 function markUserScrolling() {
   const el = taskStreamEl.value;
-  if (!el) return;
-  if (isNearBottom(el, 80)) return;
-  userScrollPaused = true;
-  streamScrolledUp.value = true;
+  if (!el || programmaticScroll) return;
+  // 只要用户主动交互且不在最底部，立即暂停
+  if (!isAtBottom(el, 8)) {
+    userScrollPaused = true;
+    streamScrolledUp.value = true;
+  }
 }
 
 function scrollTaskStreamToBottom() {
   const el = taskStreamEl.value;
   if (!el) return;
+  programmaticScroll = true;
   el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  streamScrolledUp.value = false;
-  userScrollPaused = false;
-  lastScrollTop = el.scrollHeight;
+  // 平滑滚动完成后重置标志
+  window.setTimeout(() => {
+    programmaticScroll = false;
+    if (el && isAtBottom(el, 8)) {
+      userScrollPaused = false;
+      streamScrolledUp.value = false;
+      lastScrollTop = el.scrollTop;
+    }
+  }, 400);
 }
 
 let autoScrollFrame: number | undefined;
@@ -216,13 +242,18 @@ function keepTaskStreamAtBottom() {
     autoScrollFrame = undefined;
     const el = taskStreamEl.value;
     if (!el || userScrollPaused) return;
-    // 双重检查：只在接近底部时才自动滚，避免在用户阅读中间内容时强行拉回
-    if (!isNearBottom(el, 150)) {
+    // 只有在底部时才自动跟随，用户离开底部后完全不干预
+    if (!isAtBottom(el, 20)) {
       streamScrolledUp.value = true;
       return;
     }
+    programmaticScroll = true;
     el.scrollTop = el.scrollHeight;
     lastScrollTop = el.scrollHeight;
+    // 下一帧重置程序滚动标志
+    window.requestAnimationFrame(() => {
+      programmaticScroll = false;
+    });
   });
 }
 
@@ -379,6 +410,8 @@ const projectEditingId = ref<string | null>(null);
 const projectEditName = ref("");
 const projectEditError = ref("");
 const projectActionBusy = ref(false);
+const projectDialog = ref<ProjectDialogState | null>(null);
+let projectDialogResolve: ((accepted: boolean) => void) | null = null;
 const sidebarToolsExpanded = ref(false);
 const taskQuery = ref("");
 const taskSearchOpen = ref(false);
@@ -1889,6 +1922,23 @@ function closeProjectEdit() {
   projectEditingId.value = null;
   projectEditError.value = "";
 }
+function settleProjectDialog(accepted: boolean) {
+  const resolve = projectDialogResolve;
+  projectDialogResolve = null;
+  projectDialog.value = null;
+  resolve?.(accepted);
+}
+function openProjectDialog(dialog: ProjectDialogState): Promise<boolean> {
+  projectDialogResolve?.(false);
+  projectDialog.value = dialog;
+  return new Promise((resolve) => { projectDialogResolve = resolve; });
+}
+async function showProjectNotice(title: string, dialogMessage: string, tone: ProjectDialogTone = "neutral") {
+  await openProjectDialog({ title, message: dialogMessage, tone, confirmLabel: "知道了" });
+}
+async function confirmProjectAction(title: string, dialogMessage: string, confirmLabel: string) {
+  return await openProjectDialog({ title, message: dialogMessage, tone: "danger", confirmLabel, cancelLabel: "取消" });
+}
 async function saveProjectEdit() {
   const item = projectBeingEdited.value;
   if (!item) return;
@@ -1910,7 +1960,7 @@ async function toggleProjectPinned(item: Workspace) {
     const updated = await pinWorkspace(item.workspace_id, !item.pinned);
     workspaces.value = workspaces.value.map((entry) => entry.workspace_id === updated.workspace_id ? updated : entry);
     projectActionsOpen.value = null;
-  } catch (error) { window.alert(error instanceof Error ? error.message : String(error)); }
+  } catch (error) { await showProjectNotice("操作失败", error instanceof Error ? error.message : String(error), "danger"); }
   finally { projectActionBusy.value = false; }
 }
 async function openProjectExplorer(item: Workspace) {
@@ -1918,7 +1968,7 @@ async function openProjectExplorer(item: Workspace) {
   try {
     await invoke("open_path_with_app", { path: item.path, appId: "explorer" });
   } catch (error) {
-    await message(error instanceof Error ? error.message : String(error), { title: "无法打开资源管理器", kind: "error" });
+    await showProjectNotice("无法打开资源管理器", error instanceof Error ? error.message : String(error), "danger");
   }
 }
 async function createProjectWorktree(item: Workspace) {
@@ -1928,13 +1978,13 @@ async function createProjectWorktree(item: Workspace) {
   try {
     const status = await workspaceStatus(item.workspace_id);
     if (!status.is_git_repository) {
-      await message("当前项目不是 Git 仓库，无法创建工作树。请先初始化 Git 并至少提交一次。", { title: "无法创建永久工作树", kind: "info" });
+      await showProjectNotice("无法创建永久工作树", "当前项目不是 Git 仓库。请先初始化 Git 并至少提交一次。");
       return;
     }
     const result = await invoke<{ path: string }>("create_persistent_worktree", { workspacePath: item.path, worktreeId: item.workspace_id, label: "project" });
-    await message(`已创建永久工作树：\n${result.path}`, { title: "永久工作树已创建", kind: "info" });
+    await showProjectNotice("永久工作树已创建", result.path, "success");
   } catch (error) {
-    await message(error instanceof Error ? error.message : String(error), { title: "无法创建永久工作树", kind: "error" });
+    await showProjectNotice("无法创建永久工作树", error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -1943,16 +1993,16 @@ async function archiveProjectChats(item: Workspace) {
   const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id && !session.archived);
   projectActionsOpen.value = null;
   if (!chats.length) {
-    await message("该项目没有可归档的聊天。", { title: "归档聊天", kind: "info" });
+    await showProjectNotice("归档聊天", "该项目没有可归档的聊天。");
     return;
   }
   projectActionBusy.value = true;
   try {
     await Promise.all(chats.map((session) => archiveSession(session.session_id)));
     await refreshIndex(false);
-    await message(`已归档 ${chats.length} 个聊天。`, { title: "归档完成", kind: "info" });
+    await showProjectNotice("归档完成", `已归档 ${chats.length} 个聊天。`, "success");
   } catch (error) {
-    await message(error instanceof Error ? error.message : String(error), { title: "无法归档聊天", kind: "error" });
+    await showProjectNotice("无法归档聊天", error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -1963,7 +2013,7 @@ async function removeProject(item: Workspace) {
   const chatSummary = chats.length
     ? `其中 ${chats.length} 个聊天会保留，并显示在临时聊天区域。`
     : "该项目没有关联聊天。";
-  const accepted = await confirm(`从侧栏移除项目「${item.name}」？\n\n${chatSummary}\n磁盘目录不会被删除。`, { title: "移除项目", kind: "warning" });
+  const accepted = await confirmProjectAction("移除项目", `从侧栏移除「${item.name}」？\n\n${chatSummary}\n磁盘目录不会被删除。`, "移除");
   if (!accepted) return;
   projectActionBusy.value = true;
   try {
@@ -1973,10 +2023,10 @@ async function removeProject(item: Workspace) {
     const wasCurrentWorkspace = workspace.value?.workspace_id === item.workspace_id;
     await refreshIndex(false);
     if (wasCurrentWorkspace) workspace.value = null;
-    await message(chats.length ? `项目已移除，${chats.length} 个聊天已转到临时聊天区域。` : "项目已从侧栏移除。", { title: "移除完成", kind: "info" });
+    await showProjectNotice("移除完成", chats.length ? `${chats.length} 个聊天已转到临时聊天区域。` : "项目已从侧栏移除。", "success");
   } catch (error) {
     await refreshIndex(false);
-    await message(error instanceof Error ? error.message : String(error), { title: "无法移除项目", kind: "error" });
+    await showProjectNotice("无法移除项目", error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -2264,7 +2314,8 @@ function closeSettings() {
 function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
-function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
+function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; modeMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
+function switchWorkMode(mode: WorkMode) { workMode.value = mode; modeMenuOpen.value = false; }
 async function submitChat(content: string) {
   const { content: payload, images } = buildMessagePayload(content);
   await submitTask(payload, null, images);
@@ -2469,6 +2520,7 @@ function handleDocumentPointerDown(event: PointerEvent) {
   if (!target?.closest(".project-row-shell")) projectActionsOpen.value = null;
   if (!target?.closest(".launcher-project-control")) launcherProjectMenuOpen.value = false;
   if (!target?.closest(".launcher-permission-control")) launcherPermissionMenuOpen.value = false;
+  if (!target?.closest(".mode-switch-wrap")) modeMenuOpen.value = false;
 }
 let stopEvents: (() => void) | undefined;
 let stopDisconnect: (() => void) | undefined;
@@ -2691,7 +2743,22 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <div class="sidebar-viewport">
       <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
       <header class="sidebar-brand">
-        <h1>SztuCode</h1>
+        <div class="mode-switch-wrap">
+          <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" aria-label="切换工作模式" @click="modeMenuOpen = !modeMenuOpen">
+            <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuChat' }}</h1>
+            <ChevronDown :size="14" :stroke-width="1.8" />
+          </button>
+          <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" aria-label="工作模式">
+            <button type="button" role="menuitemradio" :aria-checked="workMode === 'code'" @click="switchWorkMode('code')">
+              <span><b>SztuCode</b><small>编码模式</small></span>
+              <Check v-if="workMode === 'code'" :size="15" />
+            </button>
+            <button type="button" role="menuitemradio" :aria-checked="workMode === 'chat'" @click="switchWorkMode('chat')">
+              <span><b>SztuChat</b><small>聊天模式</small></span>
+              <Check v-if="workMode === 'chat'" :size="15" />
+            </button>
+          </div>
+        </div>
         <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
@@ -2926,7 +2993,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                      <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '随心输入' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '汝之所想，皆以言成' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                       <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
@@ -3044,6 +3111,24 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </div>
         <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
       </form>
+    </div>
+
+    <div v-if="projectDialog" class="project-dialog-backdrop" role="presentation" @mousedown.self="settleProjectDialog(false)">
+      <section class="project-dialog" :class="`project-dialog--${projectDialog.tone}`" :role="projectDialog.cancelLabel ? 'alertdialog' : 'dialog'" aria-modal="true" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-message" @keydown.esc.stop.prevent="settleProjectDialog(false)">
+        <div class="project-dialog__icon" aria-hidden="true">
+          <Check v-if="projectDialog.tone === 'success'" :size="18" />
+          <AlertTriangle v-else-if="projectDialog.tone === 'danger'" :size="18" />
+          <Info v-else :size="18" />
+        </div>
+        <div class="project-dialog__content">
+          <h2 id="project-dialog-title">{{ projectDialog.title }}</h2>
+          <p id="project-dialog-message">{{ projectDialog.message }}</p>
+        </div>
+        <footer>
+          <button v-if="projectDialog.cancelLabel" type="button" autofocus @click="settleProjectDialog(false)">{{ projectDialog.cancelLabel }}</button>
+          <button type="button" class="primary" :class="{ danger: projectDialog.tone === 'danger' }" :autofocus="!projectDialog.cancelLabel" @click="settleProjectDialog(true)">{{ projectDialog.confirmLabel }}</button>
+        </footer>
+      </section>
     </div>
 
 

@@ -47,6 +47,7 @@
   .model-editor-backdrop,
   .model-delete-backdrop,
   .permission-confirm-backdrop,
+  .project-dialog-backdrop,
   .skill-dialog-backdrop,
   .project-edit-backdrop,
   .preview-modal-backdrop
@@ -60,6 +61,7 @@
   .model-editor,
   .model-delete-dialog,
   .permission-confirm,
+  .project-dialog,
   .skill-dialog,
   .project-edit-dialog
 ) {
