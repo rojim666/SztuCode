@@ -6,8 +6,8 @@ import type { ModelInvocation } from "./agent-loop.js";
 export type ContentBlock = { type: string; text?: string; content?: string; [key: string]: unknown };
 export type ContextToolCall = { id: string; name: string; input: Record<string, unknown> };
 export type ContextMessage = { role: "system" | "user" | "assistant" | "tool"; content: string | ContentBlock[]; tool_call_id?: string; tool_calls?: ContextToolCall[]; reasoning_content?: string; is_error?: boolean };
-export type ContextCompactionProvider = { complete(messages: ContextMessage[], tools: { list(): unknown[] }, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation): Promise<{ text: string; usage?: { output_tokens?: number }; stop_reason?: string }> };
-export type ContextCompactionResult = { originalTokens: number; summaryTokens: number; removedMessages: number; summaryText: string; usedModel: boolean; deferred?: boolean; failed?: boolean };
+export type ContextCompactionProvider = { complete(messages: ContextMessage[], tools: { list(): unknown[] }, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation): Promise<{ text: string; usage?: { input_tokens?: number; output_tokens?: number }; stop_reason?: string }> };
+export type ContextCompactionResult = { originalTokens: number; summaryTokens: number; removedMessages: number; summaryText: string; usedModel: boolean; deferred?: boolean; failed?: boolean; usage?: { input_tokens?: number; output_tokens?: number } };
 
 const CJK_RANGES: Array<[number, number]> = [[0x3400, 0x4dbf], [0x4e00, 0x9fff], [0xf900, 0xfaff], [0x20000, 0x2a6df]];
 const isCjk = (char: string) => { const code = char.codePointAt(0) ?? 0; return CJK_RANGES.some(([low, high]) => code >= low && code <= high); };
@@ -16,16 +16,26 @@ const loadEncoder = (name: string): Tiktoken | null => { if (encoders.has(name))
 
 export class TokenCounter {
   private readonly encoder: Tiktoken | null;
-  constructor(readonly encodingName = "cl100k_base") { this.encoder = loadEncoder(encodingName); }
-  count(text: string): number {
-    if (this.encoder) { try { return this.encoder.encode(text).length + 4; } catch { /* use the CJK-aware fallback */ } }
-    if (!text) return 4;
+  // 默认 o200k_base：GPT-4o/5 系真实编码（js-tiktoken 支持），比 cl100k_base 更贴近现役模型分词
+  constructor(readonly encodingName = "o200k_base") { this.encoder = loadEncoder(encodingName); }
+  // 按 provider/模型名选择真实编码：OpenAI 系（gpt/o1/o3/o4/chatgpt）用 o200k_base；其余模型无本地真实 tokenizer，默认沿用 o200k_base 作为估算基准
+  static forModel(provider?: string, model?: string): TokenCounter {
+    const family = `${provider ?? ""} ${model ?? ""}`;
+    const isOpenAi = /openai/i.test(provider ?? "") || /gpt|o1|o3|o4|chatgpt/i.test(family);
+    return new TokenCounter(isOpenAi ? "o200k_base" : "o200k_base");
+  }
+  // 纯编码长度（不含每段 +4 开销），供消息级计数统一在消息层加一次开销，避免分块重复累加
+  rawCount(text: string): number {
+    if (this.encoder) { try { return this.encoder.encode(text).length; } catch { /* use the CJK-aware fallback */ } }
+    if (!text) return 0;
     let cjk = 0;
     for (const char of text) if (isCjk(char)) cjk += 1;
-    return Math.max(1, Math.ceil(cjk + (text.length - cjk) / 4) + 4);
+    return Math.max(1, Math.ceil(cjk + (text.length - cjk) / 4));
   }
+  count(text: string): number { return this.rawCount(text) + 4; }
   countJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.count(typeof value === "string" ? value : JSON.stringify(value)); }
-  countMessages(messages: ContextMessage[]): number { return Math.max(1, messages.reduce((total, message) => total + (typeof message.content === "string" ? this.count(message.content) : message.content.reduce((sum, block) => sum + this.count(String(block.text ?? block.content ?? "")), 0)), 0)); }
+  rawCountJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.rawCount(typeof value === "string" ? value : JSON.stringify(value)); }
+  countMessages(messages: ContextMessage[]): number { return Math.max(1, messages.reduce((total, message) => total + 4 + (typeof message.content === "string" ? this.rawCount(message.content) : message.content.reduce((sum, block) => sum + this.rawCount(String(block.text ?? block.content ?? "")), 0)), 0)); }
   get preciseAvailable(): boolean { return this.encoder !== null; }
 }
 
@@ -134,6 +144,9 @@ type UsageCache = {
 export class ContextManager {
   readonly counter: TokenCounter;
   private _usageCache: UsageCache | null = null;
+  // provider 服务端真实输入 token 对本地估算的校准系数（滑动平均），仅影响本地预判口径
+  private calibrationFactor = 1;
+  private calibrated = false;
   // 单条消息 token 缓存：避免同一条消息被重复计数（压缩/截断时清空）
   private _messageTokenCache = new WeakMap<ContextMessage, { conversation: number; category: "system" | "tool" | "other"; categoryTokens: number }>();
 
@@ -152,26 +165,26 @@ export class ContextManager {
     if (cached) return cached;
 
     let conversation = 0;
-    // content 部分
+    // content 部分（块内用 rawCount，避免每个分块重复叠加 +4 开销）
     if (typeof message.content === "string") {
-      conversation += this.counter.count(message.content);
+      conversation += this.counter.rawCount(message.content);
     } else {
       for (const block of message.content) {
-        conversation += this.counter.count(String(block.text ?? block.content ?? ""));
+        conversation += this.counter.rawCount(String(block.text ?? block.content ?? ""));
       }
     }
     // tool_calls 部分（assistant 消息的工具调用参数）
     if (message.tool_calls) {
       for (const call of message.tool_calls) {
-        conversation += this.counter.count(call.name);
-        conversation += this.counter.countJson(call.input);
+        conversation += this.counter.rawCount(call.name);
+        conversation += this.counter.rawCountJson(call.input);
       }
     }
     // reasoning_content 部分
     if (message.reasoning_content) {
-      conversation += this.counter.count(message.reasoning_content);
+      conversation += this.counter.rawCount(message.reasoning_content);
     }
-    // 每条消息基础开销（与 TokenCounter 对齐）
+    // 每条消息基础开销：仅在消息级计一次（修复分块 +4 双重累加导致的系统性高估）
     conversation += 4;
 
     // 分类计数（system/tool 用于单独统计）
@@ -239,7 +252,16 @@ export class ContextManager {
     return { system, conversation, tool };
   }
 
-  tokenEstimate(): number { return this.usageSnapshot().conversation; }
+  tokenEstimate(): number { return Math.ceil(this.usageSnapshot().conversation * this.calibrationFactor); }
+  // 用服务端返回的真实输入 token 校准本地估算：系数钳制在 [0.5, 2]，滑动平均（0.7 旧 + 0.3 新），首次直接采用
+  calibrate(serverInputTokens: number): void {
+    if (!(serverInputTokens > 0)) return;
+    const local = this.usageSnapshot().conversation;
+    if (!(local > 0)) return;
+    const ratio = Math.min(2, Math.max(0.5, serverInputTokens / local));
+    this.calibrationFactor = this.calibrated ? 0.7 * this.calibrationFactor + 0.3 * ratio : ratio;
+    this.calibrated = true;
+  }
   availableTokens(): number { return Math.max(0, this.budget.maxTokens - this.budget.reservedOutputTokens - this.tokenEstimate()); }
   budgetMaxToolResultChars(): number { return this.budget.maxToolResultChars; }
   contextPct(inputTokens?: number): number { return Math.max(0, Number(inputTokens ?? this.tokenEstimate())) / Math.max(1, this.budget.maxTokens); }
@@ -265,13 +287,15 @@ export class ContextManager {
     try {
       const response = await provider.complete([{ role: "user", content: prompt }], { list: () => [] }, signal, undefined, invocation ? { ...invocation, purpose: "compaction" } : undefined);
       const summaryText = response.text.trim(); const summaryTokens = Number(response.usage?.output_tokens ?? this.counter.count(summaryText));
-      const valid = response.stop_reason !== "max_tokens" && summaryText.length >= 40 && summaryTokens > 0 && summaryTokens < oldTokens && /goal|progress|next steps|open issues|decisions|目标|进展|决策|未决|下一步/i.test(summaryText);
-      if (!valid) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, failed: true };
+      // 摘要合法性：不强制关键词格式（模板关键词仅是建议），长度与截断性足够即放行；相等也放行避免边界误杀
+      const valid = response.stop_reason !== "max_tokens" && summaryText.length >= 40 && summaryTokens > 0 && summaryTokens <= oldTokens;
+      const usage = response.usage?.input_tokens !== undefined || response.usage?.output_tokens !== undefined ? { input_tokens: response.usage?.input_tokens, output_tokens: response.usage?.output_tokens } : undefined;
+      if (!valid) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, failed: true, usage };
       const appendedWhileCompacting = this.messages.slice(snapshotLength);
       const replacement = sanitizeContextMessages([...system, ...(fullFallback ? [] : preamble), { role: "user", content: continuationMessage(summaryText) }, { role: "assistant", content: continuationAck() }, ...flat(recentTurns), ...appendedWhileCompacting], this.budget.maxToolResultChars);
       this.messages.splice(0, this.messages.length, ...replacement);
       this.invalidateCache();
-      return { originalTokens, summaryTokens: this.tokenEstimate(), removedMessages: old.length, summaryText, usedModel: true };
+      return { originalTokens, summaryTokens: this.tokenEstimate(), removedMessages: old.length, summaryText, usedModel: true, usage };
     } catch { return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, failed: true }; }
   }
   async save(filePath: string): Promise<void> { await mkdir(path.dirname(filePath), { recursive: true }); await writeFile(filePath, `${JSON.stringify(this.messages)}\n`, "utf8"); }

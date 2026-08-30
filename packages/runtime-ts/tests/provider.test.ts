@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import os from "node:os";
+import path from "node:path";
+import { rm } from "node:fs/promises";
 import { OpenAiCompatibleProvider } from "../src/providers/openai.js";
 import { AnthropicMessagesProvider, toAnthropicMessages } from "../src/providers/anthropic.js";
+import { ConfigurableProvider } from "../src/providers/configurable.js";
+import { ProviderError, ProviderTimeoutError } from "../src/providers/errors.js";
+import { SettingsStore } from "../src/settings.js";
 import { ToolRegistry } from "../src/tools.js";
 
 test("OpenAI Responses provider uses /responses and parses text and function calls", async () => {
@@ -268,7 +274,9 @@ test("Anthropic messages provider streams and preserves signed thinking blocks",
     const result = await provider.complete([{ role: "user", content: "work" }], new ToolRegistry(), undefined, () => undefined, { runId: "run-thinking", step: 2 }, (delta) => thinking.push(delta));
     assert.deepEqual(thinking, ["inspect ", "files"]);
     assert.deepEqual(result.thinking_blocks, [{ type: "thinking", thinking: "inspect files", signature: "signed-1" }]);
-    assert.deepEqual(requestBody.thinking, { type: "adaptive" }); assert.deepEqual(requestBody.output_config, { effort: "high" });
+    assert.deepEqual(requestBody.thinking, { type: "enabled", budget_tokens: 24_576 });
+    assert.equal(requestBody.output_config, undefined);
+    assert.equal(requestBody.max_tokens, 24_576 + 4_096);
 
     const next = toAnthropicMessages([
       { role: "user", content: "work" },
@@ -339,3 +347,148 @@ test("Anthropic provider preserves max_tokens stop reason", async () => {
     assert.equal(result.stop_reason, "max_tokens");
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test("OpenAI Responses provider strips cache_control from tool definitions", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ output_text: "done", status: "completed" }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const tools = new ToolRegistry();
+    tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object" }, invoke: async () => ({ ok: true, output: "" }) });
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-test", apiFormat: "openai_responses", cacheControl: true }).complete([{ role: "user", content: "hi" }], tools);
+    assert.equal(JSON.stringify(requestBody.tools).includes("cache_control"), false);
+    assert.equal(requestBody.tools[0].name, "read_file");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider keeps cache_control in tool definitions", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const tools = new ToolRegistry();
+    tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object" }, invoke: async () => ({ ok: true, output: "" }) });
+    await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "cached-model", cacheControl: true }).complete([{ role: "user", content: "hi" }], tools);
+    assert.deepEqual(requestBody.tools[0].cache_control, { type: "ephemeral" });
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI chat provider adapts sampling parameters for reasoning models", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const reasoning = new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "o3-mini", maxOutputTokens: 4096, temperature: 0.7, topP: 0.9 });
+    await reasoning.complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(requestBody.max_completion_tokens, 4096);
+    assert.equal(requestBody.max_tokens, undefined);
+    assert.equal(requestBody.temperature, undefined);
+    assert.equal(requestBody.top_p, undefined);
+
+    const regular = new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-4o", maxOutputTokens: 4096, temperature: 0.7, topP: 0.9 });
+    await regular.complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(requestBody.max_tokens, 4096);
+    assert.equal(requestBody.max_completion_tokens, undefined);
+    assert.equal(requestBody.temperature, 0.7);
+    assert.equal(requestBody.top_p, 0.9);
+
+    const effort = new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "gpt-4o", maxOutputTokens: 4096, reasoningEffort: "high" });
+    await effort.complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(requestBody.max_completion_tokens, 4096);
+    assert.equal(requestBody.max_tokens, undefined);
+    assert.equal(requestBody.reasoning_effort, "high");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Provider timeout aborts produce retryable ProviderTimeoutError", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+    await new Promise((_resolve, reject) => { init?.signal?.addEventListener("abort", () => reject(init?.signal?.reason), { once: true }); });
+    return new Response("unreachable");
+  }) as typeof fetch;
+  try {
+    for (const [provider, errorName, prefix] of [
+      [new AnthropicMessagesProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "claude-test", timeoutMs: 30 }), "ProviderTimeoutError", "Anthropic"],
+      [new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test", timeoutMs: 30 }), "ProviderTimeoutError", "OpenAI-compatible"],
+    ] as const) {
+      await assert.rejects(
+        provider.complete([{ role: "user", content: "hi" }], new ToolRegistry()),
+        (error: unknown) => error instanceof ProviderTimeoutError && error instanceof ProviderError && error.name === errorName && error.message === `${prefix} request timed out after 30ms` && error.details.retryable === true && error.details.billingEffect === "none",
+      );
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Anthropic provider applies idle timeout between stream chunks", async () => {
+  const originalFetch = globalThis.fetch;
+  const tokens: string[] = [];
+  globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+    const encoder = new TextEncoder();
+    let aborted = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ index: 0, delta: { type: "text_delta", text: "slow" } })}\n\n`));
+        init?.signal?.addEventListener("abort", () => { aborted = true; try { controller.error(new Error("aborted")); } catch { /* 流已结束 */ } }, { once: true });
+      },
+      async pull(controller) { await new Promise((resolve) => setTimeout(resolve, 100)); if (aborted) return; controller.enqueue(encoder.encode(`event: content_block_delta\ndata: ${JSON.stringify({ index: 0, delta: { type: "text_delta", text: "late" } })}\n\n`)); controller.close(); },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      new AnthropicMessagesProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "claude-test", timeoutMs: 50 }).complete([{ role: "user", content: "hi" }], new ToolRegistry(), undefined, (token) => tokens.push(token)),
+      (error: unknown) => error instanceof ProviderTimeoutError && error.message.includes("50ms"),
+    );
+    assert.deepEqual(tokens, ["slow"]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI provider keeps streaming while chunks arrive within the idle timeout", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    const encoder = new TextEncoder();
+    const chunks = ["data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}\n\n", "data: {\"choices\":[{\"delta\":{\"content\":\"b\"}}]}\n\n", "data: [DONE]\n\n"];
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) { await new Promise((resolve) => setTimeout(resolve, 40)); controller.enqueue(encoder.encode(chunks.shift()!)); if (!chunks.length) controller.close(); },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  }) as typeof fetch;
+  try {
+    const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "gpt-test", stream: true, timeoutMs: 70 }).complete([{ role: "user", content: "hi" }], new ToolRegistry());
+    assert.equal(result.text, "ab");
+    assert.equal(result.streamed, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("configurable provider marks retry exhaustion even when max_retries exceeds the cap", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => { calls += 1; return new Response("unavailable", { status: 503, headers: { "retry-after": "0" } }); }) as typeof fetch;
+  const settingsDir = path.join(os.tmpdir(), `sztu-provider-retry-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const originalKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test";
+  try {
+    const settings = new SettingsStore(path.join(settingsDir, "runtime-settings.json"));
+    await settings.update({ max_retries: 99, timeout_s: 1, model: "gpt-test" });
+    await assert.rejects(
+      new ConfigurableProvider(settings).complete([{ role: "user", content: "hi" }], new ToolRegistry()),
+      (error: unknown) => error instanceof ProviderError && error.details.retryExhausted === true && error.details.retryable === true,
+    );
+    assert.equal(calls, 10);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+    await rm(settingsDir, { recursive: true, force: true });
+  }
+});
+

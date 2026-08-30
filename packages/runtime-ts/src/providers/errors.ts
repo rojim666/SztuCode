@@ -1,7 +1,7 @@
 export type BillingEffect = "none" | "possible" | "charged" | "unknown";
 
 export class ProviderError extends Error {
-  readonly name = "ProviderError";
+  readonly name: string = "ProviderError";
   constructor(message: string, readonly details: {
     status?: number;
     requestId?: string;
@@ -13,13 +13,21 @@ export class ProviderError extends Error {
   }) { super(message); }
 }
 
+/** 请求超时（连接首字节或流空闲），可重试且无计费影响。 */
+export class ProviderTimeoutError extends ProviderError {
+  readonly name = "ProviderTimeoutError";
+  constructor(provider: string, ms: number) {
+    super(`${provider} request timed out after ${ms}ms`, { retryable: true, billingEffect: "none" });
+  }
+}
+
 export async function providerHttpError(response: Response, provider: string): Promise<ProviderError> {
   const status = response.status;
   const requestId = response.headers.get("request-id") ?? response.headers.get("x-request-id") ?? undefined;
   const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
   const body = (await response.text()).slice(0, 500);
   return new ProviderError(`${provider} request failed (${status})${requestId ? ` [request ${requestId}]` : ""}: ${body}`, {
-    status, requestId, retryAfterMs, retryable: [408, 425, 429, 500, 502, 503, 504].includes(status), billingEffect: status >= 500 ? "unknown" : "none",
+    status, requestId, retryAfterMs, retryable: [408, 425, 429, 500, 502, 503, 504, 529].includes(status), billingEffect: status >= 500 ? "unknown" : "none",
   });
 }
 
@@ -40,7 +48,7 @@ export function retryDelayMs(error: unknown, attempt: number, random = Math.rand
 export function retryableProviderError(error: unknown): boolean {
   if (error instanceof ProviderError) return error.details.retryable;
   const message = error instanceof Error ? error.message : String(error);
-  return /\b(408|425|429|500|502|503|504)\b|timeout|fetch failed|network|socket|ECONN|ETIMEDOUT/i.test(message);
+  return /\b(408|425|429|500|502|503|504|529)\b|timeout|fetch failed|network|socket|ECONN|ETIMEDOUT/i.test(message);
 }
 
 export async function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {

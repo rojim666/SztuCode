@@ -23,18 +23,20 @@ export class ConfigurableProvider implements ModelProvider {
       return new OpenAiCompatibleProvider({ ...shared, apiFormat: config.api_format }).complete(messages, tools, signal, onToken, invocation, onThinking);
     };
     let lastError: unknown;
-    for (let attempt = 0; attempt <= Math.max(0, Math.min(10, config.max_retries)); attempt += 1) {
+    const maxAttempts = Math.min(10, Math.max(1, config.max_retries ?? 2));
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try { return await completeOnce(); } catch (error) {
         lastError = error;
         if (signal?.aborted || !retryableProviderError(error)) throw error;
-        if (attempt >= config.max_retries) {
+        if (attempt >= maxAttempts - 1) {
           if (error instanceof ProviderError) throw new ProviderError(error.message, { ...error.details, retryExhausted: true });
-          throw new ProviderError(error instanceof Error ? error.message : String(error), { retryable: true, billingEffect: "unknown", retryExhausted: true });
+          throw new ProviderError(error instanceof Error ? error.message : String(error), { retryable: retryableProviderError(error), billingEffect: "unknown", retryExhausted: true });
         }
         await abortableDelay(retryDelayMs(error, attempt), signal);
       }
     }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+    if (lastError instanceof ProviderError) throw lastError;
+    throw new ProviderError(lastError instanceof Error ? lastError.message : String(lastError), { retryable: retryableProviderError(lastError), billingEffect: "unknown", retryExhausted: true });
   }
 }
 

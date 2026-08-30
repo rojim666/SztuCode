@@ -93,11 +93,13 @@ export function deriveSessionStats(steps: readonly TimelineStep[]): SessionStats
 export function cacheHitPercent(stats: SessionStats): number | null {
   // Number() 归一化兜底：历史数据缺字段时 undefined/NaN 会被归零，
   // 否则 0 + undefined = NaN 会一路传染成「缓存命中 NaN%」
-  const input = Number(stats.inputTokens) || 0;
-  const cacheRead = Number(stats.cacheReadTokens) || 0;
-  const billedInput = input + cacheRead;
-  if (billedInput <= 0) return null;
-  return Math.round((cacheRead / billedInput) * 1000) / 10;
+  const input = Number(stats.inputTokens);
+  const cacheRead = Number(stats.cacheReadTokens);
+  // Provider usage reports input_tokens as the complete prompt size. Cached
+  // tokens are a subset of it, not an additional billed-input bucket.
+  if (!Number.isFinite(input) || !Number.isFinite(cacheRead) || input <= 0) return null;
+  const hitTokens = Math.min(Math.max(cacheRead, 0), input);
+  return Math.round((hitTokens / input) * 1000) / 10;
 }
 
 // 将后端 0～1 的上下文占用比例格式化为固定两位小数的百分比。

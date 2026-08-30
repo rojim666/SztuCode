@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { WorkspaceChangeTracker, activeRunChanges, revertRunChanges } from "../src/changes.js";
 
-test("token counter handles CJK and uses the precise encoder when available", () => { const counter = new TokenCounter(); assert.ok(counter.count("中文") > counter.count("ab")); assert.equal(counter.preciseAvailable, true); });
+test("token counter handles CJK and uses the precise encoder when available", () => { const counter = new TokenCounter(); assert.ok(counter.count("中文内容测试") > counter.count("ab")); assert.equal(counter.preciseAvailable, true); });
 test("truncateText preserves a bounded result and marker", () => { const result = truncateText("a".repeat(200), 80); assert.ok(result.length <= 80); assert.match(result, /original=200/); });
 test("context compaction preserves the initial goal and recent turns", () => { const history = [{ role: "user" as const, content: "original goal" }, ...Array.from({ length: 10 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `message-${index}` }))]; const context = new ContextManager(history); const result = context.compact(3); assert.equal(result.removedMessages, 4); assert.equal(context.messages[0]?.content, "original goal"); assert.match(String(context.messages.at(-1)?.content), /message-9/); });
 test("context compaction uses a validated model summary and preserves recent turns", async () => {
@@ -105,11 +105,11 @@ test("incremental usage snapshot falls back to full recount after message replac
   assert.equal(snap.system, context.messages.filter((m) => m.role === "system").reduce((sum, m) => sum + counter.countJson(m.content), 0));
   assert.equal(snap.tool, context.messages.filter((m) => m.role === "tool").reduce((sum, m) => sum + counter.countJson(m.content), 0));
 
-  // 替换后再追加仍保持增量正确（增量值 = 全量基准；单条 assistant 增量 = 文本计数 + 每消息开销）
+  // 替换后再追加仍保持增量正确（增量值 = 全量基准；单条 assistant 增量 = 文本计数 + 消息级开销，块内不再重复 +4）
   context.append({ role: "assistant", content: "after compaction" });
   const snap2 = context.usageSnapshot();
   assert.equal(snap2.conversation, recount());
-  assert.equal(snap2.conversation, snap.conversation + counter.count("after compaction") + 4);
+  assert.equal(snap2.conversation, snap.conversation + counter.count("after compaction"));
 });
 
 test("incremental usage snapshot stays consistent across compact()", () => {

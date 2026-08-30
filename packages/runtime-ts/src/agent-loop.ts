@@ -2,7 +2,7 @@ import type { RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { ToolRegistry, type Tool, type ToolContext, type ToolResult } from "./tools.js";
 import type { PermissionGate } from "./permissions.js";
-import { ContextManager, IncrementalContextSanitizer, microcompactToolResults, type ContentBlock, type ContextMessage } from "./context.js";
+import { ContextManager, IncrementalContextSanitizer, microcompactToolResults, type ContentBlock, type ContextCompactionResult, type ContextMessage } from "./context.js";
 import { DenialTracker } from "./denial-tracker.js";
 import { StuckLoopTracker, stuckSignature } from "./stuck-tracker.js";
 import { createPhaseTracker } from "./phase.js";
@@ -56,11 +56,13 @@ export class AgentLoop {
     const compactCooldownSteps = this.options.compactCooldownSteps ?? nonNegativeEnv("SZTU_COMPACT_COOLDOWN", 3);
     const compactCircuitBreaker = this.options.compactCircuitBreaker ?? nonNegativeEnv("SZTU_COMPACT_CIRCUIT_BREAKER", 3);
     const compactMinimumOldTokens = this.options.compactMinimumOldTokens ?? nonNegativeEnv("SZTU_COMPACT_MIN_OLD_TOKENS", 2_000);
-    let pendingCompaction: Promise<import("./context.js").ContextCompactionResult> | null = null;
+    let pendingCompaction: Promise<ContextCompactionResult> | null = null;
     let lastCompactStep = -compactCooldownSteps;
     let compactionFailures = 0;
     let compactionCount = 0;
     let compacted = false;
+    // 本 run 上下文溢出应急压缩次数（上限 2 次，超过后走原失败路径）
+    let emergencyCompactions = 0;
     let lastContextPct = context.contextPct();
     const summaries: string[] = [];
     const sanitizer = new IncrementalContextSanitizer();
@@ -144,6 +146,8 @@ export class AgentLoop {
       }
       const result = await pendingCompaction; pendingCompaction = null;
       if (result.failed) {
+        // 主 signal 已中止导致的压缩失败属于用户取消，不计入熔断（不是摘要质量问题）
+        if (signal?.aborted) return false;
         compactionFailures += 1;
         this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "context", message: `Compaction failed (${compactionFailures}/${compactCircuitBreaker || "unlimited"})`, ts: now() });
         // 熔断在本轮打开：立即硬丢弃一次，不等到下次触发才退化
@@ -158,6 +162,9 @@ export class AgentLoop {
       messages.splice(0, messages.length, ...compactMessages, ...appendedWhileCompacting);
       context.notifyMutated();
       compactionFailures = 0; compactionCount += 1; compacted = true;
+      // 压缩调用成本入账：摘要生成本身消耗的 token 计入运行用量（cache 两字段不动）
+      usage.input_tokens += Number(result.usage?.input_tokens ?? 0);
+      usage.output_tokens += Number(result.usage?.output_tokens ?? 0);
       if (result.summaryText) summaries.push(result.summaryText);
       // 更新任务画布
       taskCanvas.recordStep({ label: "上下文压缩", summary: `压缩了 ${result.removedMessages} 条消息`, toolNames: [], status: result.failed ? "failed" : "done" });
@@ -236,6 +243,15 @@ export class AgentLoop {
         }
         // Provider 已耗尽自己的物理重试预算时，不再由逻辑循环成倍放大请求。
         if (error instanceof ProviderError && error.details.retryExhausted) throw error;
+        // 上下文溢出应急通道：本地预判没拦住而 API 拒绝时，立即强制收缩后重试本步，不消耗 llmFailures 预算
+        if (emergencyCompactions < 2 && isContextOverflowError(error)) {
+          // 若存在进行中的后台压缩，先等待并尝试应用；无论如何随后置空，丢弃未完成结果避免干扰应急压缩
+          if (pendingCompaction) { try { await applyPendingCompaction(true); } catch { /* 丢弃未完成的后台压缩结果 */ } pendingCompaction = null; }
+          await applyHardDropCompaction();
+          emergencyCompactions += 1;
+          this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "context", message: `Context overflow detected from provider response; applied emergency compaction (${emergencyCompactions}/2) and retrying step ${step}`, ts: now() });
+          continue;
+        }
         llmFailures += 1;
         const reason = error instanceof Error ? error.message : String(error);
         if (llmFailures >= maxLlmFailures) throw error;
@@ -252,6 +268,8 @@ export class AgentLoop {
       const contextWindow = resolveContextWindow(this.options.contextWindow);
       const reservedOutputTokens = this.options.maxOutputTokens ?? 8_192;
       const responseInputTokens = Number(response.usage?.input_tokens ?? 0);
+      // provider usage 校准：服务端真实输入 token 修正本地估算（只影响本地预判，contextPct 仍优先用服务端值）
+      if (responseInputTokens > 0) context.calibrate(responseInputTokens);
       lastContextPct = context.contextPct(responseInputTokens > 0 ? responseInputTokens : requestTokens);
       this.options.onProgress?.({ steps: step, usage: { ...usage }, contextPct: lastContextPct });
       const usageSnapshot = context.usageSnapshot();
@@ -605,6 +623,12 @@ const testSummary = (command: string, output: string): string => { const lines =
 const retryableToolErrors = new Set<ToolResult["errorType"]>(["runtime_error", "rate_limited"]);
 const responseContent = (response: ModelResponse): ChatMessage["content"] => response.thinking_blocks?.length ? [...response.thinking_blocks, ...(response.text ? [{ type: "text", text: response.text }] : [])] : response.text;
 const combineSignals = (first?: AbortSignal, second?: AbortSignal): AbortSignal | undefined => first && second ? AbortSignal.any([first, second]) : first ?? second;
+// 识别上下文溢出错误：400 且消息提示上下文过长，或任何错误消息含 context_length_exceeded
+const isContextOverflowError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/context_length_exceeded/i.test(message)) return true;
+  return error instanceof ProviderError && error.details.status === 400 && /context length|context_length|too long|maximum context|prompt is too long|too many tokens/i.test(message);
+};
 
 async function invokeToolWithRetry(tool: Tool, input: Record<string, unknown>, context: ToolContext, maxRetries: number, retryBaseMs: number, onRetry: (attempt: number, failure: ToolResult) => void): Promise<ToolResult> {
   for (let attempt = 0; ; attempt += 1) {

@@ -1,5 +1,5 @@
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
-import { providerHttpError } from "./errors.js";
+import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
@@ -8,6 +8,24 @@ type AnthropicResponse = { content?: Array<{ type: string; text?: string; thinki
 export type AnthropicProviderOptions = { apiKey: string; baseUrl?: string; model: string; maxTokens?: number; timeoutMs?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; cacheControl?: boolean };
 type AnthropicBlock = Record<string, unknown> & { type: string };
 type AnthropicMessage = { role: "user" | "assistant"; content: AnthropicBlock[] };
+
+/** 超时管理器：到期前可重置（首字节到达或流块到达时续期），实现首字节 + 空闲超时而非全程总超时。 */
+function createIdleTimeout(onFire: () => void, ms: number): { reset: () => void; clear: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clear = () => { if (timer !== undefined) clearTimeout(timer); timer = undefined; };
+  const reset = () => { clear(); timer = setTimeout(onFire, ms); };
+  reset();
+  return { reset, clear };
+}
+
+/** effort 到官方 thinking budget 的映射（不区分大小写，未识别按 medium）。 */
+function thinkingBudget(effort: string): number {
+  switch (String(effort).trim().toLowerCase()) {
+    case "low": return 2_048;
+    case "high": return 24_576;
+    default: return 8_192;
+  }
+}
 
 export class AnthropicMessagesProvider implements ModelProvider {
   constructor(private readonly options: AnthropicProviderOptions) {}
@@ -20,19 +38,25 @@ export class AnthropicMessagesProvider implements ModelProvider {
   async complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, _invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
     const system = messages.filter((message) => message.role === "system").map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n");
     const bodyMessages = toAnthropicMessages(messages);
-    const controller = new AbortController(); const abort = () => controller.abort(signal?.reason); signal?.addEventListener("abort", abort, { once: true }); const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 120_000);
+    const timeoutMs = this.options.timeoutMs ?? 120_000;
+    const controller = new AbortController(); const abort = () => controller.abort(signal?.reason); signal?.addEventListener("abort", abort, { once: true });
+    let timedOut = false; const timeout = createIdleTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
       const systemValue = this.options.cacheControl && system ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] : system ? system : undefined;
       const streaming = Boolean(onToken);
-      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: this.options.maxTokens ?? 8192, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(this.options.reasoningEffort ? { thinking: { type: "adaptive" }, output_config: { effort: this.options.reasoningEffort } } : {}) }), signal: controller.signal });
+      const baseMaxTokens = this.options.maxTokens ?? 8192;
+      let maxTokens = baseMaxTokens; let thinking: { type: string; budget_tokens: number } | undefined;
+      if (this.options.reasoningEffort) { const budget = thinkingBudget(this.options.reasoningEffort); thinking = { type: "enabled", budget_tokens: budget }; if (baseMaxTokens <= budget) maxTokens = budget + 4_096; }
+      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: maxTokens, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(thinking ? { thinking } : {}) }), signal: controller.signal });
       if (!response.ok) throw await providerHttpError(response, "Anthropic");
-      if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking);
+      timeout.reset();
+      if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking, timeout.reset);
       const data = await response.json() as AnthropicResponse; const content = data.content ?? []; const text = content.filter((block) => block.type === "text").map((block) => block.text ?? "").join(""); const calls = content.filter((block) => block.type === "tool_use" && block.id && block.name).map((block) => ({ id: block.id!, name: block.name!, input: block.input ?? {} }));
       const thinking_blocks = content.filter((block) => block.type === "thinking").map((block) => ({ type: "thinking", thinking: block.thinking ?? "", signature: block.signature ?? "" }));
       if (thinking_blocks.length) onThinking?.(thinking_blocks.map((block) => block.thinking).filter(Boolean).join("\n\n"));
       if (text) onToken?.(text);
       return { text, thinking_blocks, tool_calls: calls, stop_reason: normalizeStopReason(data.stop_reason, calls.length > 0), model: this.options.model, streamed: Boolean(onToken), usage: { input_tokens: Number(data.usage?.input_tokens ?? 0), output_tokens: Number(data.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(data.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(data.usage?.cache_creation_input_tokens ?? 0) } };
-    } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
+    } catch (error) { if (timedOut) throw new ProviderTimeoutError("Anthropic", timeoutMs); throw error; } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
   }
 }
 
@@ -89,7 +113,7 @@ function contentText(content: ChatMessage["content"]): string {
 
 type AnthropicStreamState = { text: string; stopReason: string; calls: Map<number, { id: string; name: string; inputJson: string }>; thinking: Map<number, { thinking: string; signature: string }>; usage: ModelResponse["usage"] };
 
-async function parseAnthropicStream(body: ReadableStream<Uint8Array>, model: string, onToken?: (token: string) => void, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
+async function parseAnthropicStream(body: ReadableStream<Uint8Array>, model: string, onToken?: (token: string) => void, onThinking?: (thinking: string) => void, onProgress?: () => void): Promise<ModelResponse> {
   const decoder = new TextDecoder();
   const state: AnthropicStreamState = { text: "", stopReason: "end_turn", calls: new Map(), thinking: new Map(), usage: {} };
   let buffer = "";
@@ -125,7 +149,7 @@ async function parseAnthropicStream(body: ReadableStream<Uint8Array>, model: str
     }
     if (final && buffer.trim()) { const frame = buffer.trim(); buffer = ""; let event = "message"; let data = ""; for (const line of frame.split(/\r?\n/)) { if (line.startsWith("event:")) event = line.slice(6).trim(); else if (line.startsWith("data:")) data += line.slice(5).trim(); } consume(event, data); }
   };
-  for await (const chunk of body) { buffer += decoder.decode(chunk, { stream: true }); flush(false); }
+  for await (const chunk of body) { onProgress?.(); buffer += decoder.decode(chunk, { stream: true }); flush(false); }
   buffer += decoder.decode(); flush(true);
   const tool_calls = [...state.calls.values()].filter((call) => call.id && call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.inputJson) }));
   const thinking_blocks = [...state.thinking.values()].filter((block) => block.thinking || block.signature).map((block) => ({ type: "thinking", thinking: block.thinking, signature: block.signature }));
