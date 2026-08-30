@@ -7,11 +7,9 @@ export type CodeFont = "cascadia" | "jetbrains" | "consolas";
 export const MIN_UI_FONT_SIZE = 12;
 export const MAX_UI_FONT_SIZE = 18;
 
-// AI 输出正文的段落间距（em）：下限 0.2 保证段落仍有可辨分隔，上限 2 足够宽松
 export const MIN_PARAGRAPH_SPACING = 0.2;
 export const MAX_PARAGRAPH_SPACING = 2;
 
-// AI 输出正文的行高（行内行距倍率）：1.0 单倍紧凑，2.0 宽松
 export const MIN_LINE_HEIGHT = 1;
 export const MAX_LINE_HEIGHT = 2;
 
@@ -42,8 +40,8 @@ export type AppearanceSettings = {
   codeFont: CodeFont;
   fontSize: number;
   compact: boolean;
-  paragraphSpacing: number; // AI 输出正文段落间距（em），驱动 --markdown-paragraph-spacing
-  paragraphLineHeight: number; // AI 输出正文行高倍率，驱动 --markdown-line-height
+  paragraphSpacing: number; 
+  paragraphLineHeight: number; 
 };
 
 const STORAGE_KEY = "sztu.appearance";
@@ -137,14 +135,11 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
   root.style.setProperty("--text-control", `${Math.max(11, settings.fontSize - 1)}px`);
   root.style.setProperty("--text-caption", `${Math.max(10, settings.fontSize - 2)}px`);
   root.style.setProperty("--text-micro", `${Math.max(9, settings.fontSize - 3)}px`);
-  // AI 输出正文段落间距（em）；列表项间距按 0.39 比例同步缩放（默认 .28em ≈ .72em × .39）
   root.style.setProperty("--markdown-paragraph-spacing", `${settings.paragraphSpacing}em`);
   root.style.setProperty("--markdown-list-item-spacing", `${(settings.paragraphSpacing * 0.39).toFixed(3)}em`);
   root.style.setProperty("--markdown-line-height", String(settings.paragraphLineHeight));
   const wallpaperOpacity = settings.wallpaperIntensity / 100;
   root.style.setProperty("--wallpaper-opacity", String(wallpaperOpacity));
-  // Dark surfaces absorb substantially more of the wallpaper, so compensate before
-  // the per-region transparency layer is composited on top.
   root.style.setProperty("--wallpaper-opacity-dark", String(Math.min(1, wallpaperOpacity * 2.5)));
   root.style.setProperty("--chrome-surface-opacity", `${100 - settings.chromeTransparency}%`);
   root.style.setProperty("--conversation-surface-opacity", `${100 - settings.conversationTransparency}%`);
