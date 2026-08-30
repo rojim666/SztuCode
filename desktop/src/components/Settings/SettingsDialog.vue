@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { computed, onMounted, ref, watch } from "vue";
 import {
   Bot, Check, Coffee, Cpu, Download, ExternalLink, GitFork, Globe2, Image, Info,
-  Monitor, Moon, Palette, Plus, Power, Settings2, SlidersHorizontal, Sun, Trash2,
+  LoaderCircle, Monitor, Moon, Palette, Plus, Power, Settings2, SlidersHorizontal, Sun, Trash2,
   Type, Upload, X,
 } from "@lucide/vue";
 import appPackage from "../../../package.json";
@@ -446,6 +446,24 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               <div class="integration-row"><span><Power :size="18" /></span><div><b>本地运行时</b><p>Agent、终端与项目文件服务</p></div><em class="online">已启用</em></div>
               <div class="integration-row"><span><Coffee :size="18" /></span><div><b>后台任务</b><p>关闭设置后继续执行当前任务</p></div><em class="online">可用</em></div>
             </section>
+            <section class="settings-block">
+              <div class="settings-block__heading"><div><h3>模型供应商导入</h3><p>从 CC Switch 一键导入已配置的模型</p></div></div>
+              <button type="button" class="btn btn--primary" :disabled="ccswitchLoading" @click="loadCcswitchProviders">
+                <Download :size="15" />
+                {{ ccswitchLoading ? '加载中...' : '从 CC Switch 导入' }}
+              </button>
+              <div v-if="ccswitchError" class="settings-error" role="alert">{{ ccswitchError }}</div>
+              <div v-if="ccswitchOpen && ccswitchProviders.length" class="ccswitch-list">
+                <p class="ccswitch-hint">选择要导入的供应商配置：</p>
+                <div class="ccswitch-providers">
+                  <button v-for="provider in ccswitchProviders" :key="provider.id" type="button" class="ccswitch-provider" :disabled="ccswitchApplying === provider.id" @click="useCcswitchProvider(provider.id)">
+                    <span class="ccswitch-provider-name">{{ provider.name }}</span>
+                    <LoaderCircle v-if="ccswitchApplying === provider.id" class="spin" :size="14" />
+                    <Plus v-else :size="14" />
+                  </button>
+                </div>
+              </div>
+            </section>
           </template>
 
           <template v-else>
@@ -621,6 +639,22 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 .about-details button svg:last-child { flex: 0 0 auto; color: var(--text-faint); }
 .about-product > .settings-error { margin: 0 22px 14px; }
 .settings-error { margin: 9px 0 0; color: var(--danger); font-size: 11px; line-height: 1.5; }
+
+/* CC Switch 导入 */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s ease; white-space: nowrap; border: 1px solid transparent; }
+.btn--primary { color: #fff; background: var(--text); border-color: var(--text); }
+.btn--primary:hover:not(:disabled) { opacity: 0.9; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ccswitch-list { margin-top: 12px; }
+.ccswitch-hint { margin: 0 0 8px; font-size: 11px; color: var(--text-muted); }
+.ccswitch-providers { display: flex; flex-direction: column; gap: 4px; }
+.ccswitch-provider { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 8px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; color: var(--text); cursor: pointer; transition: all 0.12s ease; }
+.ccswitch-provider:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.ccswitch-provider:disabled { opacity: 0.6; cursor: not-allowed; }
+.ccswitch-provider-name { font-weight: 500; }
+.spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
 @keyframes settings-fade { from { opacity: 0; } }
 @keyframes settings-rise { from { opacity: 0; transform: translateY(8px) scale(.99); } }
 @keyframes wallpaper-mist-flow { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
