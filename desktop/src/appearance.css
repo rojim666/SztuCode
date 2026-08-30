@@ -296,6 +296,7 @@
   .project-action-menu,
   .project-popover,
   .launcher-popover,
+  .brand-mode-popover,
   .timeline-user-message__meta,
   .tool-call-card,
   .tool-call-card > button,
@@ -313,7 +314,8 @@
   .session-menu__submenu button,
   .project-action-menu button,
   .project-popover button,
-  .launcher-popover button
+  .launcher-popover button,
+  .brand-mode-popover button
 ) { color: var(--text) !important; }
 
 :root[data-app-theme="dark"] :is(
@@ -322,10 +324,34 @@
   .session-menu__submenu button,
   .project-action-menu button,
   .project-popover button,
-  .launcher-popover button
+  .launcher-popover button,
+  .brand-mode-popover button
 ):hover { background: var(--surface-soft) !important; }
 
+:root[data-app-theme="dark"] .brand-mode-popover small { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] .brand-mode-popover button svg { color: var(--text) !important; }
+:root[data-app-theme="dark"] .brand-mode-trigger:hover { background: var(--surface-raised) !important; }
+:root[data-app-theme="dark"] .brand-mode-trigger svg { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] .brand-mode-trigger[aria-expanded="true"] svg { color: var(--text) !important; }
+
 :root[data-app-theme="dark"] .session-menu__submenu { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; }
+:root[data-app-theme="dark"] .project-dialog { color: var(--text); background: var(--surface-raised); border-color: var(--border); box-shadow: 0 18px 48px rgb(0 0 0 / 42%); }
+:root[data-app-theme="dark"] .project-dialog h2 { color: var(--text); }
+:root[data-app-theme="dark"] .project-dialog p { color: var(--text); opacity: .88; }
+:root[data-app-theme="dark"] .project-dialog__icon { color: #b4bbc3; background: var(--surface-soft); }
+:root[data-app-theme="dark"] .project-dialog--success .project-dialog__icon { color: #66d496; background: rgb(55 150 91 / 16%); }
+:root[data-app-theme="dark"] .project-dialog--danger .project-dialog__icon { color: #f08a84; background: rgb(190 68 61 / 16%); }
+:root[data-app-theme="dark"] .project-dialog > footer { border-color: var(--border); }
+:root[data-app-theme="dark"] .project-dialog > footer button:not(.primary) { color: var(--text); background: var(--surface-soft); border-color: var(--border); }
+:root[data-app-theme="dark"] .project-edit-dialog { color: var(--text); background: var(--surface-raised); border-color: var(--border); box-shadow: 0 18px 48px rgb(0 0 0 / 42%); }
+:root[data-app-theme="dark"] .project-edit-dialog > header h2 { color: var(--text); }
+:root[data-app-theme="dark"] .project-edit-dialog > header p { color: var(--text); opacity: .82; }
+:root[data-app-theme="dark"] .project-edit-dialog__body label { color: var(--text); }
+:root[data-app-theme="dark"] .project-edit-dialog > header button:hover { color: var(--text); background: var(--surface-soft); }
+:root[data-app-theme="dark"] .project-edit-dialog__body input { color: var(--text); background: var(--surface-soft); border-color: var(--border); }
+:root[data-app-theme="dark"] .project-edit-dialog__body input[readonly] { color: var(--text); background: var(--surface); opacity: .82; }
+:root[data-app-theme="dark"] .project-edit-dialog > footer { background: var(--surface); border-color: var(--border); }
+:root[data-app-theme="dark"] .project-edit-dialog > footer button:not(.primary) { color: var(--text); background: var(--surface-soft); border-color: var(--border); }
 :root[data-app-theme="dark"] .app-menu-item > button { color: var(--text-muted); }
 :root[data-app-theme="dark"] .app-menu-item > button:hover,
 :root[data-app-theme="dark"] .app-menu-item > button[aria-expanded="true"] { color: var(--text); background: rgb(255 255 255 / 9%); }

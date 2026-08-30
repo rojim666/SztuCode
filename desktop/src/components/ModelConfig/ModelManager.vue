@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Check, ChevronDown, ExternalLink, Eye, EyeOff, Info, LoaderCircle, Pencil, Play, Plus, Settings2, Trash2, X, Zap } from "@lucide/vue";
+import { ArrowLeft, Check, ChevronDown, ExternalLink, Eye, EyeOff, Info, LoaderCircle, Pencil, Plus, Trash2 } from "@lucide/vue";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
@@ -225,106 +225,134 @@ function resetFormDefaults() {
 }
 onMounted(() => {
   void refresh();
-  void setInitialFocus(managerDialog);
 });
 </script>
 
 <template>
-  <section ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }" :role="props.embedded ? undefined : 'dialog'" :aria-modal="props.embedded ? undefined : 'true'" aria-label="模型管理" tabindex="-1" @keydown.esc="addStep !== 'idle' ? closeEditor() : emit('close')">
-    <header>
-      <div class="model-manager-heading">
-        <h1>模型管理</h1>
-        <p>配置供应商与当前使用的模型</p>
-      </div>
-      <button v-if="addStep === 'idle'" type="button" :disabled="Boolean(deleteTarget || deletingId)" aria-label="关闭模型管理" @click="emit('close')"><X :size="18" /></button>
-    </header>
-
+  <div ref="managerDialog" class="model-manager" :class="{ 'model-manager--embedded': props.embedded }">
     <div v-if="addStep === 'idle'" ref="modelManagerBody" class="model-manager-body" tabindex="-1" :inert="Boolean(deleteTarget || deletingId)">
-      <div class="model-manager-toolbar">
-        <div class="model-manager-summary" aria-label="模型概览">
-          <div class="model-stat"><b>{{ models.length }}</b><small>已配置</small></div>
-          <div v-if="currentModel" class="model-current"><Check :size="13" /><span>当前：<b>{{ currentModel.name }}</b></span></div>
+      <!-- 当前模型卡片 -->
+      <div v-if="currentModel" class="current-model-card">
+        <div class="current-model-info">
+          <i class="model-provider-logo model-provider-logo--lg">
+            <img v-if="logoForVendor(currentModel.vendor)" :src="logoForVendor(currentModel.vendor) || undefined" alt="" />
+            <span v-else>{{ currentModel.vendor.slice(0, 1).toUpperCase() }}</span>
+          </i>
+          <div class="current-model-text">
+            <span class="current-model-label">当前模型</span>
+            <b class="current-model-name">{{ currentModel.name }}</b>
+            <small class="current-model-id">{{ currentModel.model }}</small>
+          </div>
         </div>
-        <button ref="editorTrigger" type="button" class="model-add-button" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
-          <Plus :size="15" />添加模型
+        <Check class="current-model-check" :size="20" />
+      </div>
+
+      <!-- 模型列表 -->
+      <div class="model-list">
+        <div class="model-list-header">
+          <span class="model-list-title">所有模型</span>
+          <span class="model-list-count">{{ models.length }} 个</span>
+        </div>
+        
+        <div v-for="item in models" :key="item.id" class="model-card" :class="{ 'model-card--current': item.is_current }">
+          <button class="model-card-select" :class="{ active: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" @click="selectModel(item)">
+            <Check v-if="item.is_current" :size="14" />
+          </button>
+          <i class="model-provider-logo">
+            <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
+            <span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span>
+          </i>
+          <div class="model-card-info">
+            <b :title="item.name">{{ item.name }}</b>
+            <small :title="item.model">{{ item.model }}</small>
+          </div>
+          <div class="model-card-actions">
+            <span v-if="item.is_current" class="model-badge model-badge--active">使用中</span>
+            <span v-else-if="item.builtin" class="model-badge">内置</span>
+            <template v-else>
+              <button type="button" class="model-action-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)">
+                <Pencil :size="14" />
+              </button>
+              <button type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)">
+                <Trash2 :size="14" />
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <button v-if="!models.length" class="model-empty-btn" ref="editorTrigger" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
+          <Plus :size="18" />
+          <span>添加第一个模型</span>
         </button>
       </div>
-      <div class="model-table">
-        <div v-if="models.length" class="model-table-header">
-          <span></span>
-          <span>模型</span>
-          <span>操作</span>
-        </div>
-        <div v-for="item in models" :key="item.id" class="model-table-row">
-          <span class="model-row-check">
-            <button type="button" class="model-toggle" :class="{ on: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" :aria-label="item.is_current ? `${item.name} 是当前模型` : `将 ${item.name} 设为当前模型`" @click="selectModel(item)"><i /></button>
-          </span>
-          <span class="model-row-info">
-            <i class="model-provider-logo"><img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" /><span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span></i>
-            <span class="model-name-text">
-              <b :title="item.name">{{ item.name }}</b>
-              <small :title="item.model">{{ item.model }}</small>
-            </span>
-          </span>
-          <span class="model-row-actions">
-            <em v-if="item.is_current" class="model-current-badge"><Check :size="12" />当前</em>
-            <em v-else-if="item.builtin" class="model-builtin-badge">内置</em>
-            <template v-else>
-              <button type="button" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)"><Pencil :size="14" /></button>
-              <button type="button" class="model-delete-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)"><Trash2 :size="14" /></button>
-            </template>
-          </span>
-        </div>
-        <p v-if="!models.length" class="model-empty">暂无模型，点击「添加模型」开始配置。</p>
-      </div>
-      <p v-if="error && addStep === 'idle'" class="model-manager-error" role="alert" aria-live="assertive">{{ error }}</p>
+
+      <!-- 添加模型按钮 -->
+      <button v-if="models.length > 0" ref="editorTrigger" type="button" class="add-model-btn" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
+        <Plus :size="16" />
+        <span>添加模型</span>
+      </button>
+
+      <p v-if="error && addStep === 'idle'" class="model-error" role="alert" aria-live="assertive">{{ error }}</p>
     </div>
 
     <!-- 删除确认 -->
-    <div v-if="deleteTarget" class="model-delete-backdrop" @mousedown.self="cancelRemove">
-      <section ref="deleteDialog" class="model-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="model-delete-title" aria-describedby="model-delete-description" @keydown.esc.stop="cancelRemove" @keydown.tab="trapTab($event, deleteDialog)">
-        <header><span class="model-delete-icon"><Trash2 :size="18" /></span><div><h2 id="model-delete-title">删除模型</h2><p id="model-delete-description">确定要删除"{{ deleteTarget.name }}"吗？此操作无法撤销。</p></div></header>
-        <footer><button ref="deleteCancelButton" type="button" autofocus :disabled="Boolean(deletingId)" @click="cancelRemove">取消</button><button type="button" class="danger" :disabled="Boolean(deletingId)" @click="confirmRemove"><LoaderCircle v-if="deletingId" class="spin" :size="13" />{{ deletingId ? "删除中" : "确认删除" }}</button></footer>
+    <div v-if="deleteTarget" class="modal-backdrop" @mousedown.self="cancelRemove">
+      <section ref="deleteDialog" class="modal-dialog modal-dialog--sm" role="alertdialog" aria-modal="true" aria-labelledby="model-delete-title" aria-describedby="model-delete-description" @keydown.esc.stop="cancelRemove" @keydown.tab="(e: KeyboardEvent) => trapTab(e, deleteDialog)">
+        <div class="modal-icon modal-icon--danger">
+          <Trash2 :size="20" />
+        </div>
+        <h3 id="model-delete-title" class="modal-title">删除模型</h3>
+        <p id="model-delete-description" class="modal-desc">确定要删除 "{{ deleteTarget.name }}" 吗？此操作无法撤销。</p>
+        <div class="modal-actions">
+          <button ref="deleteCancelButton" type="button" class="btn btn--ghost" :disabled="Boolean(deletingId)" @click="cancelRemove">取消</button>
+          <button type="button" class="btn btn--danger" :disabled="Boolean(deletingId)" @click="confirmRemove">
+            <LoaderCircle v-if="deletingId" class="spin" :size="14" />
+            {{ deletingId ? "删除中" : "确认删除" }}
+          </button>
+        </div>
       </section>
     </div>
 
     <!-- 服务商选择 -->
-    <div v-if="addStep === 'vendor'" class="model-editor-backdrop" @mousedown.self="closeEditor">
-      <section ref="vendorDialog" class="model-vendor-picker" role="dialog" aria-modal="true" aria-label="添加模型" @keydown.esc.stop="closeEditor" @keydown.tab="trapTab($event, vendorDialog)">
-        <header>
-          <h2>添加模型</h2>
-          <button type="button" aria-label="关闭" @click="closeEditor"><X :size="18" /></button>
+    <div v-if="addStep === 'vendor'" class="modal-backdrop" @mousedown.self="closeEditor">
+      <section ref="vendorDialog" class="modal-dialog" role="dialog" aria-modal="true" aria-label="选择服务商" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, vendorDialog)">
+        <header class="modal-header">
+          <h3>选择服务商</h3>
         </header>
-        <div class="model-vendor-grid">
-          <button v-for="item in vendors" :key="item.name" type="button" class="model-vendor-card" @click="chooseVendor(item)">
-            <i class="model-vendor-logo"><img v-if="item.logo" :src="item.logo" alt="" /><span v-else class="model-vendor-mark">{{ item.mark }}</span></i>
-            <span class="model-vendor-name">{{ item.name }}</span>
-            <ChevronDown class="model-vendor-arrow" :size="14" />
+        <div class="vendor-grid">
+          <button v-for="item in vendors" :key="item.name" type="button" class="vendor-card" @click="chooseVendor(item)">
+            <i class="vendor-logo">
+              <img v-if="item.logo" :src="item.logo" alt="" />
+              <span v-else>{{ item.mark }}</span>
+            </i>
+            <span class="vendor-name">{{ item.name }}</span>
+            <ChevronDown class="vendor-arrow" :size="16" />
           </button>
         </div>
       </section>
     </div>
 
     <!-- 配置表单 -->
-    <div v-if="addStep === 'form' && selectedVendor" class="model-editor-backdrop" @mousedown.self="closeEditor">
-      <section ref="formDialog" class="model-form-dialog" role="dialog" aria-modal="true" :aria-label="editingModel ? '编辑模型' : '通过服务商添加'" @keydown.esc.stop="closeEditor" @keydown.tab="trapTab($event, formDialog)">
-        <header class="model-form-header">
-          <button v-if="!editingModel" type="button" class="model-form-back" aria-label="返回选择服务商" @click="backToVendor"><ArrowLeft :size="16" /></button>
-          <h2>{{ editingModel ? "编辑模型" : "通过服务商添加" }}</h2>
-          <button type="button" aria-label="关闭" @click="closeEditor"><X :size="18" /></button>
+    <div v-if="addStep === 'form' && selectedVendor" class="modal-backdrop" @mousedown.self="closeEditor">
+      <section ref="formDialog" class="modal-dialog modal-dialog--lg" role="dialog" aria-modal="true" :aria-label="editingModel ? '编辑模型' : '添加模型'" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, formDialog)">
+        <header class="modal-header">
+          <button v-if="!editingModel" type="button" class="modal-back-btn" aria-label="返回" @click="backToVendor">
+            <ArrowLeft :size="18" />
+          </button>
+          <h3>{{ editingModel ? "编辑模型" : "添加模型" }}</h3>
         </header>
 
-        <div class="model-form-body">
-          <div class="model-form-field">
-            <label class="model-form-label"><span class="model-required">*</span>服务商</label>
-            <select v-model="selectedVendor" class="model-form-select" @change="chooseVendor(selectedVendor)">
+        <div class="modal-body">
+          <div class="form-field">
+            <label class="form-label"><span class="required">*</span>服务商</label>
+            <select v-model="selectedVendor" class="form-select" @change="chooseVendor(selectedVendor)">
               <option v-for="v in vendors" :key="v.name" :value="v">{{ v.name }}</option>
             </select>
           </div>
 
-          <div class="model-form-field">
-            <label class="model-form-label"><span class="model-required">*</span>模型</label>
-            <input v-model="modelId" class="model-form-input" placeholder="选择模型" list="model-suggestions" />
+          <div class="form-field">
+            <label class="form-label"><span class="required">*</span>模型</label>
+            <input v-model="modelId" class="form-input" placeholder="选择或输入模型 ID" list="model-suggestions" />
             <datalist id="model-suggestions">
               <option v-if="selectedVendor.name === 'DeepSeek'" value="deepseek-chat">DeepSeek V3</option>
               <option v-if="selectedVendor.name === 'DeepSeek'" value="deepseek-reasoner">DeepSeek R1</option>
@@ -341,795 +369,861 @@ onMounted(() => {
             </datalist>
           </div>
 
-          <div class="model-form-field">
-            <label class="model-form-label"><span class="model-required">*</span>API 密钥</label>
-            <div class="model-form-key-row">
-              <input v-model="apiKey" class="model-form-input model-form-key-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? '留空保持不变' : '请输入 API Key'" />
-              <button type="button" class="model-form-key-toggle" :aria-label="showKey ? '隐藏 API Key' : '显示 API Key'" @click="showKey = !showKey"><EyeOff v-if="showKey" :size="16" /><Eye v-else :size="16" /></button>
+          <div class="form-field">
+            <label class="form-label"><span class="required">*</span>API 密钥</label>
+            <div class="input-with-action">
+              <input v-model="apiKey" class="form-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? '留空保持不变' : '请输入 API Key'" />
+              <button type="button" class="input-action-btn" :aria-label="showKey ? '隐藏 API Key' : '显示 API Key'" @click="showKey = !showKey">
+                <EyeOff v-if="showKey" :size="16" />
+                <Eye v-else :size="16" />
+              </button>
             </div>
-            <button v-if="selectedVendor.apiKeyUrl" type="button" class="model-form-getkey" @click="getApiKey">获取 API 密钥<ExternalLink :size="12" /></button>
+            <button v-if="selectedVendor.apiKeyUrl" type="button" class="link-btn" @click="getApiKey">
+              获取 API 密钥
+              <ExternalLink :size="12" />
+            </button>
           </div>
 
-          <div class="model-form-advanced">
-            <button type="button" class="model-form-advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
+          <div class="form-advanced">
+            <button type="button" class="advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
               <span>高级配置</span>
-              <ChevronDown :size="14" :class="{ rotated: advancedOpen }" />
+              <ChevronDown :size="16" :class="{ rotated: advancedOpen }" />
             </button>
 
-            <div v-if="advancedOpen" class="model-form-advanced-body">
-              <div class="model-form-field model-form-field--inline">
-                <label class="model-form-label">上下文窗口（Token）</label>
-                <div class="model-input-with-chips">
-                  <input v-model.number="contextWindow" class="model-form-input" type="number" min="1000" placeholder="请输入数值，留空则使用最佳默认值" />
-                  <div class="model-chips">
-                    <button type="button" :class="{ active: contextWindow === 131072 }" @click="setContextWindow(131072)">128k</button>
-                    <button type="button" :class="{ active: contextWindow === 262144 }" @click="setContextWindow(262144)">256k</button>
-                    <button type="button" :class="{ active: contextWindow === 524288 }" @click="setContextWindow(524288)">512k</button>
-                    <button type="button" :class="{ active: contextWindow === 1048576 }" @click="setContextWindow(1048576)">1M</button>
+            <div v-if="advancedOpen" class="advanced-body">
+              <div class="form-field">
+                <label class="form-label">上下文窗口</label>
+                <div class="input-with-chips">
+                  <input v-model.number="contextWindow" class="form-input" type="number" min="1000" placeholder="Token 数量" />
+                  <div class="chip-group">
+                    <button type="button" class="chip" :class="{ active: contextWindow === 131072 }" @click="setContextWindow(131072)">128k</button>
+                    <button type="button" class="chip" :class="{ active: contextWindow === 262144 }" @click="setContextWindow(262144)">256k</button>
+                    <button type="button" class="chip" :class="{ active: contextWindow === 524288 }" @click="setContextWindow(524288)">512k</button>
+                    <button type="button" class="chip" :class="{ active: contextWindow === 1048576 }" @click="setContextWindow(1048576)">1M</button>
                   </div>
                 </div>
               </div>
 
-              <div class="model-form-field model-form-field--inline">
-                <label class="model-form-label">输出</label>
-                <div class="model-input-with-chips">
-                  <input v-model.number="maxOutputTokens" class="model-form-input" type="number" min="1" placeholder="请输入数值，留空则使用最佳默认值" />
-                  <div class="model-chips">
-                    <button type="button" :class="{ active: maxOutputTokens === 4096 }" @click="setMaxOutput(4096)">4k</button>
-                    <button type="button" :class="{ active: maxOutputTokens === 16384 }" @click="setMaxOutput(16384)">16k</button>
-                    <button type="button" :class="{ active: maxOutputTokens === 32768 }" @click="setMaxOutput(32768)">32k</button>
-                    <button type="button" :class="{ active: maxOutputTokens === 131072 }" @click="setMaxOutput(131072)">128k</button>
+              <div class="form-field">
+                <label class="form-label">最大输出</label>
+                <div class="input-with-chips">
+                  <input v-model.number="maxOutputTokens" class="form-input" type="number" min="1" placeholder="Token 数量" />
+                  <div class="chip-group">
+                    <button type="button" class="chip" :class="{ active: maxOutputTokens === 4096 }" @click="setMaxOutput(4096)">4k</button>
+                    <button type="button" class="chip" :class="{ active: maxOutputTokens === 16384 }" @click="setMaxOutput(16384)">16k</button>
+                    <button type="button" class="chip" :class="{ active: maxOutputTokens === 32768 }" @click="setMaxOutput(32768)">32k</button>
+                    <button type="button" class="chip" :class="{ active: maxOutputTokens === 131072 }" @click="setMaxOutput(131072)">128k</button>
                   </div>
                 </div>
               </div>
 
-              <div class="model-form-field">
-                <label class="model-form-label">工具调用轮数</label>
-                <input v-model.number="maxRetries" class="model-form-input" type="number" min="0" max="100" value="500" />
+              <div class="form-field">
+                <label class="form-label">工具调用轮数</label>
+                <input v-model.number="maxRetries" class="form-input" type="number" min="0" max="100" />
               </div>
 
-              <div class="model-form-field model-form-radio-group">
-                <label class="model-form-label model-form-label--radio">
-                  支持图片输入
-                  <Info :size="12" class="model-form-info" title="模型是否支持图片输入" />
-                </label>
-                <div class="model-radio-row">
-                  <label class="model-radio"><input type="radio" :checked="true" disabled /><span>支持</span></label>
-                  <label class="model-radio"><input type="radio" :checked="false" disabled /><span>不支持</span></label>
-                </div>
-              </div>
-
-              <div class="model-form-field model-form-radio-group">
-                <label class="model-form-label model-form-label--radio">
-                  思考模式
-                  <Info :size="12" class="model-form-info" title="是否启用思考模式" />
-                </label>
-                <div class="model-radio-row">
-                  <label class="model-radio"><input type="radio" name="thinking" :checked="reasoningEffort === ''" @change="reasoningEffort = ''" /><span>跟随模型默认配置</span></label>
-                  <label class="model-radio"><input type="radio" name="thinking" :checked="reasoningEffort !== ''" @change="reasoningEffort = 'medium'" /><span>开启</span></label>
-                  <label class="model-radio"><input type="radio" name="thinking" :checked="false" disabled /><span>关闭</span></label>
-                </div>
-              </div>
-
-              <div class="model-form-section-title">
-                <span>采样参数</span>
-                <Info :size="12" class="model-form-info" title="控制模型输出的随机性" />
-              </div>
-
-              <div class="model-form-field model-form-field--inline">
-                <label class="model-form-label model-form-label--sampling">Temperature</label>
-                <input v-model.number="temperature" class="model-form-input" type="number" min="0" max="2" step="0.1" placeholder="留空使用最佳配置，或输入 0 ~ 2 之间的数值" />
-              </div>
-
-              <div class="model-form-field model-form-field--inline">
-                <label class="model-form-label model-form-label--sampling">Top P</label>
-                <input v-model.number="topP" class="model-form-input" type="number" min="0" max="1" step="0.1" placeholder="留空使用最佳配置，或输入 0 ~ 1 之间的数值" />
-              </div>
-
-              <div class="model-form-field model-form-field--inline">
-                <label class="model-form-label model-form-label--sampling">Top K</label>
-                <input class="model-form-input" type="number" min="1" max="100" placeholder="留空使用最佳配置，或输入 1 ~ 100 之间的数值" disabled />
-              </div>
-
-              <div v-if="selectedVendor.name === '自定义模型'" class="model-form-field model-form-field--inline">
-                <label class="model-form-label">API 地址</label>
-                <input v-model="baseUrl" class="model-form-input" placeholder="https://api.example.com/v1" />
+              <div v-if="selectedVendor.name === '自定义模型'" class="form-field">
+                <label class="form-label">API 地址</label>
+                <input v-model="baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
               </div>
             </div>
           </div>
 
-          <p v-if="error" class="model-form-error">{{ error }}</p>
-          <p v-else-if="testResult" class="model-form-success">{{ testResult }}</p>
+          <p v-if="error" class="form-error">{{ error }}</p>
+          <p v-else-if="testResult" class="form-success">{{ testResult }}</p>
         </div>
 
-        <footer class="model-form-footer">
-          <div class="model-form-footer-note">
-            <Info :size="12" />
-            <span>连通性测试会发起一次真实请求，会消耗少量模型Token</span>
-          </div>
-          <div class="model-form-footer-actions">
-            <button type="button" class="model-form-reset" @click="resetFormDefaults">重置</button>
-            <button type="button" class="primary model-form-submit" :disabled="!canSave || saving || testing" @click="save">{{ saving ? '保存中' : (editingModel ? '保存' : '添加模型') }}</button>
+        <footer class="modal-footer">
+          <button type="button" class="btn btn--ghost" @click="testConnection" :disabled="!canSave || saving || testing">
+            <LoaderCircle v-if="testing" class="spin" :size="14" />
+            {{ testing ? '测试中' : '测试连接' }}
+          </button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn--ghost" @click="resetFormDefaults">重置</button>
+            <button type="button" class="btn btn--primary" :disabled="!canSave || saving || testing" @click="save">
+              <LoaderCircle v-if="saving" class="spin" :size="14" />
+              {{ saving ? '保存中' : (editingModel ? '保存' : '添加') }}
+            </button>
           </div>
         </footer>
       </section>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
 .model-manager {
-  grid-template-rows: 64px minmax(0, 1fr);
-}
-.model-manager-heading {
-  display: grid;
-  gap: 2px;
-}
-.model-manager-heading h1 {
-  font-size: 17px;
-  font-weight: 620;
-}
-.model-manager-heading p {
-  margin: 0;
-  color: #8a9097;
-  font-size: 11px;
+  width: 100%;
 }
 
 .model-manager-body {
-  padding: 18px 24px 28px;
-}
-.model-manager-toolbar {
-  min-height: 40px;
-}
-.model-manager-summary {
-  gap: 14px;
-}
-.model-stat {
-  min-width: 44px;
-}
-.model-stat b {
-  font-size: 16px;
-}
-.model-current {
-  max-width: min(320px, 45vw);
-  padding: 6px 9px;
-  background: #f4f8f5;
-  border-color: #e1e9e3;
-}
-
-.model-add-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 16px;
-  color: #fff;
-  background: #2f3338;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.15s ease;
-}
-.model-add-button:hover { background: #1f2327; }
-.model-add-button:disabled { opacity: 0.4; cursor: default; }
-
-.model-table {
-  margin-top: 10px;
-  overflow: hidden;
-  border: 1px solid #e8eaec;
-  border-radius: 8px;
-}
-.model-table-header {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 16px;
-  color: #868b92;
-  background: #f7f8f9;
-  border-bottom: 1px solid #e8eaec;
-  font-size: 12px;
-  font-weight: 500;
-}
-.model-table-row {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 54px;
-  padding: 6px 16px;
-  background: #fff;
-  border-bottom: 1px solid #f0f1f2;
-  transition: background 0.12s ease;
-}
-.model-table-row:last-child { border-bottom: none; }
-.model-table-row:hover { background: #fafbfc; }
-
-.model-row-check { display: flex; align-items: center; justify-content: center; }
-.model-toggle {
-  position: relative;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  padding: 0;
-  background: transparent;
-  border: 2px solid #d1d5db;
-  border-radius: 50%;
-  transition: all 0.15s ease;
-}
-.model-toggle i { display: none; }
-.model-toggle.on {
-  background: #2563eb;
-  border-color: #2563eb;
-}
-.model-toggle.on::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 8px;
-  height: 8px;
-  background: #fff;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-}
-.model-toggle:hover:not(.on) { border-color: #9ca3af; background: #f3f4f6; }
-.model-toggle.on:hover { background: #1d4ed8; border-color: #1d4ed8; }
-
-.model-row-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-.model-provider-logo {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  place-items: center;
-  background: #f5f6f7;
-  border: 1px solid #e8eaec;
-  border-radius: 6px;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 700;
-  color: #6b7280;
-}
-.model-provider-logo img { width: 19px; height: 19px; object-fit: contain; }
-.model-name-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.model-name-text b { font-size: 13px; font-weight: 600; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-name-text small { font-size: 12px; color: #9ca3af; font-family: "SF Mono", Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.model-row-actions { display: flex; align-items: center; gap: 4px; }
-.model-current-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  color: #059669;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  border-radius: 5px;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 500;
-}
-.model-builtin-badge {
-  padding: 3px 8px;
-  color: #737980;
-  background: #f3f4f5;
-  border: 1px solid #e5e7e9;
-  border-radius: 5px;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 500;
-}
-.model-row-actions button {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #6b7280;
-  background: transparent;
-  border-radius: 6px;
-  transition: all 0.12s ease;
-}
-.model-row-actions button:hover { color: #374151; background: #f3f4f6; }
-.model-row-actions .model-delete-btn:hover { color: #dc2626; background: #fef2f2; }
-
-.model-empty {
-  padding: 48px 16px;
-  margin: 0;
-  color: #9ca3af;
-  font-size: 13px;
-  text-align: center;
-}
-
-/* 删除对话框图标 */
-.model-delete-icon {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  color: #dc2626;
-  background: #fef2f2;
-  border-radius: 10px;
-}
-
-/* 服务商选择弹窗 */
-.model-vendor-picker {
-  width: min(520px, calc(100vw - 28px));
-  max-height: calc(100vh - 28px);
-  overflow: hidden;
-  background: #fff;
-  border: 1px solid #dedfe2;
-  border-radius: 8px;
-  box-shadow: 0 25px 65px rgba(0,0,0,0.18);
   display: flex;
   flex-direction: column;
+  gap: 20px;
 }
-.model-vendor-picker > header {
+
+/* 当前模型卡片 */
+.current-model-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid #f0f1f2;
+  background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--accent-soft) 60%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: 12px;
 }
-.model-vendor-picker h2 { margin: 0; font-size: 17px; font-weight: 600; }
-.model-vendor-picker > header button {
+
+.current-model-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.current-model-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.current-model-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.current-model-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.current-model-id {
+  font-size: 12px;
+  font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
+  color: var(--text-faint);
+}
+
+.current-model-check {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* 模型列表 */
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  margin-bottom: 4px;
+}
+
+.model-list-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-list-count {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.model-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: all 0.15s ease;
+}
+
+.model-card:hover {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-soft) 50%, var(--surface));
+}
+
+.model-card--current {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 30%, var(--surface));
+}
+
+.model-card-select {
   display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  color: transparent;
+  background: var(--surface-soft);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  transition: all 0.15s ease;
+}
+
+.model-card-select:hover:not(.active) {
+  border-color: var(--text-muted);
+  background: var(--surface);
+}
+
+.model-card-select.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.model-provider-logo {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-style: normal;
+  color: var(--text-muted);
+}
+
+.model-provider-logo--lg {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+}
+
+.model-provider-logo img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.model-provider-logo--lg img {
+  width: 24px;
+  height: 24px;
+}
+
+.model-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.model-card-info b {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-card-info small {
+  font-size: 12px;
+  font-family: var(--font-mono, 'SF Mono', Consolas, monospace);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.model-badge {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-soft);
+  border-radius: 6px;
+  font-style: normal;
+}
+
+.model-badge--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model-action-btn {
+  display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 6px;
+  transition: all 0.12s ease;
+}
+
+.model-action-btn:hover {
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
+.model-action-btn--danger:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 添加模型按钮 */
+.add-model-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.add-model-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model-empty-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 140px;
+  padding: 24px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 12px;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.model-empty-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.model-error {
+  margin: 0;
+  padding: 10px 14px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* Modal 基础样式 */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
   place-items: center;
-  color: #6b7280;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-dialog {
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.modal-dialog--lg {
+  max-width: 520px;
+}
+
+.modal-dialog--sm {
+  max-width: 380px;
+  padding: 24px;
+  text-align: center;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  border-radius: 12px;
+}
+
+.modal-icon--danger {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.modal-title {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-desc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-back-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-muted);
   background: transparent;
   border-radius: 8px;
+  transition: all 0.12s ease;
 }
-.model-vendor-picker > header button:hover { background: #f3f4f6; }
 
-.model-vendor-grid {
+.modal-back-btn:hover {
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-footer-right {
+  display: flex;
+  gap: 8px;
+}
+
+/* 服务商网格 */
+.vendor-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
   padding: 16px 20px 20px;
   overflow-y: auto;
-  background: #fafbfc;
 }
-.model-vendor-card {
+
+.vendor-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #fff;
-  border: 1px solid #e8eaec;
-  border-radius: 8px;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   text-align: left;
   transition: all 0.15s ease;
 }
-.model-vendor-card:hover {
-  background: #fff;
-  border-color: #aeb3b8;
+
+.vendor-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
-.model-vendor-logo {
+
+.vendor-logo {
   display: grid;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
   place-items: center;
-  background: #f8f9fa;
-  border: 1px solid #f0f1f2;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   font-style: normal;
-}
-.model-vendor-logo img { width: 20px; height: 20px; object-fit: contain; }
-.model-vendor-mark {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  color: #6b7280;
+  color: var(--text-muted);
 }
-.model-vendor-name {
+
+.vendor-logo img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.vendor-name {
   flex: 1;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--text);
 }
-.model-vendor-arrow {
-  color: #9ca3af;
+
+.vendor-arrow {
+  color: var(--text-faint);
   transform: rotate(-90deg);
 }
 
-/* 配置表单弹窗 */
-.model-form-dialog {
-  width: min(520px, calc(100vw - 28px));
-  max-height: calc(100vh - 28px);
-  overflow: hidden;
-  background: #f7f8f9;
-  border: 1px solid #dedfe2;
-  border-radius: 8px;
-  box-shadow: 0 25px 65px rgba(0,0,0,0.18);
-  display: flex;
-  flex-direction: column;
-}
-.model-form-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 16px;
-  background: #fff;
-  border-bottom: 1px solid #f0f1f2;
-}
-.model-form-header h2 { margin: 0; flex: 1; font-size: 16px; font-weight: 600; }
-.model-form-back {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #4b5563;
-  background: transparent;
-  border-radius: 8px;
-}
-.model-form-back:hover { background: #f3f4f6; }
-.model-form-header > button:last-child {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  color: #6b7280;
-  background: transparent;
-  border-radius: 8px;
-}
-.model-form-header > button:last-child:hover { background: #f3f4f6; }
-
-.model-form-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.model-form-field {
+/* 表单样式 */
+.form-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.model-form-field--inline {
-  flex-direction: column;
-}
-.model-form-label {
+
+.form-label {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
   font-weight: 500;
-  color: #374151;
+  color: var(--text);
 }
-.model-required { color: #ef4444; font-weight: 700; }
-.model-form-input,
-.model-form-select {
+
+.required {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.form-input,
+.form-select {
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  color: #1f2937;
-  background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 7px;
-  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
-.model-form-input:focus,
-.model-form-select:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-.model-form-input::placeholder { color: #9ca3af; }
 
-.model-form-key-row { position: relative; display: flex; align-items: center; }
-.model-form-key-input { padding-right: 44px; }
-.model-form-key-toggle {
+.form-input:focus,
+.form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.form-input::placeholder {
+  color: var(--text-faint);
+}
+
+.input-with-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-action .form-input {
+  padding-right: 44px;
+}
+
+.input-action-btn {
   position: absolute;
   right: 4px;
   display: grid;
+  place-items: center;
   width: 32px;
   height: 32px;
-  place-items: center;
-  color: #6b7280;
+  padding: 0;
+  color: var(--text-muted);
   background: transparent;
   border-radius: 6px;
+  transition: all 0.12s ease;
 }
-.model-form-key-toggle:hover { background: #f3f4f6; color: #374151; }
-.model-form-getkey {
+
+.input-action-btn:hover {
+  color: var(--text);
+  background: var(--surface-soft);
+}
+
+.link-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   align-self: flex-start;
   padding: 0;
-  margin-top: 2px;
-  color: #2563eb;
+  margin-top: 4px;
+  color: var(--accent);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
+  transition: opacity 0.12s ease;
 }
-.model-form-getkey:hover { color: #1d4ed8; text-decoration: underline; }
 
-.model-form-advanced { border-top: 1px solid #e8eaec; padding-top: 12px; }
-.model-form-advanced-toggle {
+.link-btn:hover {
+  opacity: 0.8;
+}
+
+/* 高级配置 */
+.form-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.advanced-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
   padding: 0;
-  color: #374151;
+  color: var(--text);
   background: transparent;
   font-size: 13px;
   font-weight: 500;
 }
-.model-form-advanced-toggle svg:last-child {
-  margin-left: auto;
-  transition: transform 0.2s ease;
-  color: #9ca3af;
-}
-.model-form-advanced-toggle svg.rotated { transform: rotate(180deg); }
 
-.model-form-advanced-body {
+.advanced-toggle svg:last-child {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.advanced-toggle svg.rotated {
+  transform: rotate(180deg);
+}
+
+.advanced-body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 12px;
+  margin-top: 16px;
   padding: 16px;
-  background: #fff;
-  border: 1px solid #e8eaec;
-  border-radius: 8px;
+  background: var(--surface-soft);
+  border-radius: 10px;
 }
 
-.model-input-with-chips { display: flex; flex-direction: column; gap: 8px; }
-.model-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.model-chips button {
+.input-with-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chip-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
   height: 28px;
   padding: 0 12px;
-  color: #6b7280;
-  background: #f3f4f6;
-  border: 1px solid transparent;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   transition: all 0.12s ease;
 }
-.model-chips button:hover { background: #e5e7eb; color: #374151; }
-.model-chips button.active { color: #2563eb; background: #eff6ff; border-color: #bfdbfe; }
 
-.model-form-radio-group { gap: 8px; }
-.model-form-label--radio { display: inline-flex; align-items: center; gap: 4px; }
-.model-form-info { color: #9ca3af; cursor: help; }
-.model-radio-row { display: flex; gap: 20px; padding-top: 2px; }
-.model-radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #374151; cursor: pointer; }
-.model-radio input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #2563eb;
-  margin: 0;
+.chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
 }
-.model-radio input:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.model-form-section-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding-top: 4px;
+.chip.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.form-error {
+  margin: 0;
+  padding: 10px 12px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 8px;
   font-size: 13px;
-  font-weight: 600;
-  color: #374151;
 }
 
-.model-form-label--sampling { width: 100px; flex-shrink: 0; }
-
-.model-form-error {
+.form-success {
   margin: 0;
   padding: 10px 12px;
-  color: #dc2626;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 7px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.model-form-success {
-  margin: 0;
-  padding: 10px 12px;
-  color: #059669;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  border-radius: 7px;
-  font-size: 12px;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 8px;
+  font-size: 13px;
 }
 
-.model-form-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 20px;
-  background: #fff;
-  border-top: 1px solid #f0f1f2;
-}
-.model-form-footer-note {
+/* 按钮样式 */
+.btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  color: #9ca3af;
-  font-size: 11px;
-}
-.model-form-footer-actions { display: flex; gap: 8px; }
-.model-form-reset {
   height: 36px;
   padding: 0 16px;
-  color: #6b7280;
-  background: #f3f4f6;
-  border-radius: 7px;
+  border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
-  transition: background 0.12s ease;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
-.model-form-reset:hover { background: #e5e7eb; color: #374151; }
-.model-form-submit {
-  height: 36px;
-  padding: 0 20px;
+
+.btn--ghost {
+  color: var(--text);
+  background: var(--surface-soft);
+  border: 1px solid transparent;
+}
+
+.btn--ghost:hover {
+  background: color-mix(in srgb, var(--border) 40%, var(--surface-soft));
+}
+
+.btn--primary {
   color: #fff;
-  background: #1f2937;
-  border-radius: 7px;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.15s ease;
+  background: var(--text);
+  border: 1px solid var(--text);
 }
-.model-form-submit:hover:not(:disabled) { background: #111827; }
-.model-form-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
-@media (max-width: 720px) {
-  .model-manager {
-    grid-template-rows: 58px minmax(0, 1fr);
+.btn--primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn--danger {
+  color: #fff;
+  background: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 嵌入模式 */
+.model-manager--embedded {
+  padding: 0;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .current-model-card {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, var(--surface)), color-mix(in srgb, var(--accent) 8%, var(--surface)));
   }
-  .model-manager > header {
-    padding: 0 16px;
+  
+  .modal-backdrop {
+    background: rgba(0, 0, 0, 0.6);
   }
-  .model-manager-heading p {
-    display: none;
-  }
-  .model-manager-body {
-    padding: 14px 14px 22px;
-  }
-  .model-manager-toolbar {
-    min-height: 0;
-    align-items: center;
-    flex-direction: row;
-    gap: 10px;
-  }
-  .model-manager-summary {
-    flex: 1;
-    width: auto;
-    gap: 9px;
-  }
-  .model-current {
-    max-width: none;
-    flex: 1;
-  }
-  .model-add-button {
-    width: 34px;
-    padding: 0;
-    justify-content: center;
-    font-size: 0;
-  }
-  .model-table-header,
-  .model-table-row {
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    padding-right: 8px;
-    padding-left: 8px;
-  }
-  .model-table-header {
-    min-height: 32px;
-  }
-  .model-table-row {
-    min-height: 52px;
-  }
-  .model-row-info {
-    gap: 8px;
-  }
-  .model-provider-logo {
-    width: 28px;
-    height: 28px;
-  }
-  .model-provider-logo img {
-    width: 17px;
-    height: 17px;
-  }
-  .model-row-actions button {
-    width: 28px;
-    height: 28px;
-  }
-  .model-current-badge,
-  .model-builtin-badge {
-    padding: 3px 6px;
-  }
-  .model-form-body {
-    padding: 14px;
-  }
-  .model-form-footer {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 10px 14px;
-  }
-  .model-form-footer-actions {
-    justify-content: flex-end;
-  }
-  .model-form-footer-note {
-    line-height: 1.4;
-  }
-  .model-radio-row {
-    gap: 12px;
-    flex-wrap: wrap;
+  
+  .model-card--current {
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   }
 }
 
-/* 暗色主题 */
-:global(.dark) .model-manager { color: #e5e7eb; background: #1a1a1a; border-color: #2a2a2a; }
-:global(.dark) .model-manager > header { background: #1e1e1e; border-color: #2a2a2a; }
-:global(.dark) .model-manager-heading p { color: #858b93; }
-:global(.dark) .model-stat b { color: #e5e7eb; }
-:global(.dark) .model-current { color: #6ee7a2; background: #1d2b22; border-color: #2b4132; }
-:global(.dark) .model-add-button { background: #3b82f6; }
-:global(.dark) .model-add-button:hover { background: #2563eb; }
-:global(.dark) .model-table { border-color: #2a2a2a; background: #1e1e1e; }
-:global(.dark) .model-table-header { background: #232323; border-color: #2a2a2a; color: #9ca3af; }
-:global(.dark) .model-table-row { background: #1e1e1e; border-color: #252525; }
-:global(.dark) .model-table-row:hover { background: #252525; }
-:global(.dark) .model-provider-logo { background: #252525; border-color: #333; color: #9ca3af; }
-:global(.dark) .model-name-text b { color: #e5e7eb; }
-:global(.dark) .model-name-text small { color: #6b7280; }
-:global(.dark) .model-toggle { border-color: #4b5563; }
-:global(.dark) .model-toggle:hover:not(.on) { background: #333; border-color: #6b7280; }
-:global(.dark) .model-row-actions button { color: #9ca3af; }
-:global(.dark) .model-row-actions button:hover { color: #e5e7eb; background: #333; }
-:global(.dark) .model-row-actions .model-delete-btn:hover { color: #f87171; background: rgba(239,68,68,0.1); }
-:global(.dark) .model-current-badge { color: #34d399; background: rgba(5,150,105,0.15); border-color: rgba(52,211,153,0.3); }
-:global(.dark) .model-builtin-badge { color: #a4a9b0; background: #292929; border-color: #373737; }
-:global(.dark) .model-empty { color: #6b7280; }
-:global(.dark) .model-vendor-picker { background: #1e1e1e; }
-:global(.dark) .model-vendor-picker > header { background: #1e1e1e; border-color: #2a2a2a; }
-:global(.dark) .model-vendor-picker > header button:hover { background: #333; }
-:global(.dark) .model-vendor-grid { background: #1a1a1a; }
-:global(.dark) .model-vendor-card { background: #252525; border-color: #333; }
-:global(.dark) .model-vendor-card:hover { border-color: #3b82f6; background: #2a2a2a; box-shadow: 0 2px 8px rgba(59,130,246,0.15); }
-:global(.dark) .model-vendor-logo { background: #1a1a1a; border-color: #333; }
-:global(.dark) .model-vendor-mark { color: #9ca3af; }
-:global(.dark) .model-vendor-name { color: #e5e7eb; }
-:global(.dark) .model-form-dialog { background: #1a1a1a; }
-:global(.dark) .model-form-header { background: #1e1e1e; border-color: #2a2a2a; }
-:global(.dark) .model-form-header h2 { color: #e5e7eb; }
-:global(.dark) .model-form-back:hover { background: #333; }
-:global(.dark) .model-form-header > button:last-child:hover { background: #333; }
-:global(.dark) .model-form-body { background: #1a1a1a; }
-:global(.dark) .model-form-label { color: #d1d5db; }
-:global(.dark) .model-form-input, :global(.dark) .model-form-select { background: #252525; border-color: #404040; color: #e5e7eb; }
-:global(.dark) .model-form-input:focus, :global(.dark) .model-form-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
-:global(.dark) .model-form-key-toggle:hover { background: #333; color: #d1d5db; }
-:global(.dark) .model-form-getkey { color: #60a5fa; }
-:global(.dark) .model-form-advanced { border-color: #2a2a2a; }
-:global(.dark) .model-form-advanced-body { background: #252525; border-color: #333; }
-:global(.dark) .model-chips button { background: #333; color: #9ca3af; }
-:global(.dark) .model-chips button:hover { background: #404040; color: #d1d5db; }
-:global(.dark) .model-chips button.active { color: #60a5fa; background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.3); }
-:global(.dark) .model-radio { color: #d1d5db; }
-:global(.dark) .model-form-section-title { color: #d1d5db; }
-:global(.dark) .model-form-error { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: #f87171; }
-:global(.dark) .model-form-success { background: rgba(5,150,105,0.1); border-color: rgba(52,211,153,0.2); color: #34d399; }
-:global(.dark) .model-form-footer { background: #1e1e1e; border-color: #2a2a2a; }
-:global(.dark) .model-form-reset { background: #333; color: #d1d5db; }
-:global(.dark) .model-form-reset:hover { background: #404040; color: #fff; }
-:global(.dark) .model-form-submit { background: #3b82f6; }
-:global(.dark) .model-form-submit:hover:not(:disabled) { background: #2563eb; }
-:global(.dark) .model-delete-dialog { background: #1e1e1e; color: #e5e7eb; }
-:global(.dark) .model-delete-dialog header p { color: #9ca3af; }
-:global(.dark) .model-delete-dialog > footer { background: #252525; }
-:global(.dark) .model-delete-dialog > footer button { background: #333; border-color: #404040; color: #d1d5db; }
-:global(.dark) .model-delete-dialog > footer button:hover { background: #404040; }
+/* 响应式 */
+@media (max-width: 640px) {
+  .vendor-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+  
+  .modal-footer-right {
+    width: 100%;
+  }
+  
+  .modal-footer-right .btn {
+    flex: 1;
+  }
+  
+  .modal-footer .btn--ghost:first-child {
+    width: 100%;
+  }
+}
 </style>

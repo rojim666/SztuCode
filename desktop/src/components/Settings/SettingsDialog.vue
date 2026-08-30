@@ -255,7 +255,7 @@ async function useCcswitchProvider(providerId: string) {
 const sections: Array<{ id: SettingsSection; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "外观", icon: Palette },
   { id: "general", label: "通用", icon: SlidersHorizontal },
-  { id: "agent", label: "Agent", icon: Bot },
+  { id: "agent", label: "模型管理", icon: Cpu },
   { id: "integrations", label: "连接", icon: Globe2 },
   { id: "about", label: "关于", icon: Info },
 ];
@@ -433,18 +433,9 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           </template>
 
           <template v-else-if="activeSection === 'agent'">
-            <header class="settings-pane-title"><div><h2>Agent</h2><p>审批策略与模型配置</p></div><Bot :size="20" /></header>
-            <section class="settings-block">
-              <div class="settings-block__heading"><div><h3>任务审批</h3><p>决定 Agent 执行操作前的确认范围</p></div></div>
-              <label class="select-row"><span><b>权限模式</b><small>高风险操作仍应谨慎授权</small></span><select :value="runtimeSettings?.permission_mode ?? 'normal'" @change="emit('permissionChange', ($event.target as HTMLSelectElement).value as RuntimeSettings['permission_mode'])"><option value="normal">标准审批</option><option value="plan">计划模式</option><option value="accept_edits">允许编辑</option><option value="auto">全部允许</option></select></label>
-              <p v-if="permissionError" class="settings-error">{{ permissionError }}</p>
-            </section>
-            <section class="settings-block">
-              <div class="settings-block__heading"><div><h3>模型管理</h3><p>当前会话使用的模型与供应商</p></div><Cpu :size="17" /></div>
+            <header class="settings-pane-title"><div><h2>模型管理</h2></div><Cpu :size="20" /></header>
+            <section class="settings-block settings-block--full">
               <ModelManager embedded @close="close" @updated="handleModelUpdated" />
-              <div class="button-row"><button type="button" :disabled="ccswitchLoading" @click="ccswitchOpen ? (ccswitchOpen = false) : loadCcswitchProviders()"><Download :size="15" />{{ ccswitchLoading ? '加载中' : '从 cc-switch 导入' }}</button></div>
-              <div v-if="ccswitchOpen" class="provider-list"><article v-for="item in ccswitchProviders" :key="item.id"><i :class="{ online: item.has_api_key }" /><div><b>{{ item.name }}</b><span>{{ item.model }}</span><small>{{ item.base_url }}</small></div><button type="button" :disabled="ccswitchApplying === item.id" @click="useCcswitchProvider(item.id)">{{ ccswitchApplying === item.id ? '应用中' : '使用' }}</button></article><p v-if="!ccswitchProviders.length && !ccswitchLoading">未发现可导入的供应商</p></div>
-              <p v-if="ccswitchError" class="settings-error">{{ ccswitchError }}</p>
             </section>
           </template>
 
@@ -505,6 +496,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 .settings-pane-title p { margin: 4px 0 0; color: var(--text-faint); font-size: var(--text-caption); }
 .settings-pane-title > svg { color: var(--text-faint); }
 .settings-block { margin-bottom: 14px; padding: 16px; background: color-mix(in srgb, var(--surface-soft) 76%, transparent); border: 1px solid var(--border); border-radius: 8px; }
+.settings-block--full { padding: 0; background: transparent; border: none; }
 .settings-block__heading { display: flex; min-height: 34px; align-items: flex-start; margin-bottom: 13px; }
 .settings-block__heading > div { margin-right: auto; }
 .settings-block__heading h3 { margin: 0; color: var(--text); font-size: var(--text-control); font-weight: 650; }
