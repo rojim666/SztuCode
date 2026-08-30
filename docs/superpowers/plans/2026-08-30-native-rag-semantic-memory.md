@@ -1,37 +1,40 @@
-# 原生RAG/语义检索与记忆增强 Implementation Plan
+# 原生代码语义搜索与会话记忆增强 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为SztuCode添加轻量级原生RAG能力，支持文档向量化、语义检索、智能记忆巩固，让Agent能够基于大规模代码库/文档库进行问答，不再依赖纯grep关键词搜索，同时提升跨会话记忆的语义检索能力。
+**Goal:** 为SztuCode添加轻量级原生**代码语义搜索**和**会话记忆语义检索**能力。新增`semantic_search`工具让Agent基于概念/语义搜索代码（"认证中间件在哪"、"错误处理逻辑"），不再仅依赖grep关键词匹配；同时升级记忆系统支持语义查询历史notes。
+
+**与Issue #15的边界：**
+- 本Issue：**代码库语义检索** + **会话记忆语义查询** - 解决"找代码"和"回忆之前聊过什么"的问题
+- Issue #15：**项目/行业规范知识库RAG** - 解决"编码规范是什么"、"安全规则有哪些"的问题
+- 两者**共享底层嵌入层和向量存储基础设施**，但索引内容和检索目标完全不同，不重叠
 
 **Architecture:**
 - 分层设计：嵌入层 → 向量存储层 → 检索层 → 记忆增强层
-- 默认使用纯JS实现，零原生依赖：`@xenova/transformers`做本地嵌入，`vectra`（或简单内存向量索引）做存储
+- 默认使用纯JS实现，零原生依赖：`@xenova/transformers`做本地嵌入，内存+JSONL做持久化向量存储
 - 支持切换云端嵌入API（OpenAI/Cohere等）
 - 向量索引按workspace隔离，存储在`.sztu/vector/`目录
 - 新增`semantic_search`工具，与现有grep_search互补
-- 扩展memory系统：会话记忆自动向量化，支持语义查询notes
-- 可选增量索引：文件变更时自动更新向量
+- 扩展memory系统：会话notes自动向量化，支持语义查询历史对话
+- 懒索引：首次使用时自动构建索引，文件变更增量更新
 
-**Tech Stack:** TypeScript, @xenova/transformers (local embeddings), vectra / lancedb (vector store), 现有tools/memory/context架构
+**Tech Stack:** TypeScript, @xenova/transformers (local embeddings), 现有tools/memory/context架构
 
 ---
 
 ## 问题背景
 
 当前状态：
-- 只有基于关键词的grep_search/glob_search，无法进行语义搜索
+- 只有基于关键词的grep_search/glob_search，无法进行语义搜索（不知道确切函数名就搜不到）
 - 记忆系统是纯Markdown文件+关键词子串匹配，无法查询"我们之前讨论过的那个架构问题"
-- 大代码库/文档库中，Agent经常搜不到需要的内容（因为不知道确切关键词）
-- 没有文档导入和分块机制，长文档只能手动分页读取
-- 记忆只有三层静态文件，没有自动巩固和语义关联
+- 大代码库中，Agent经常搜不到需要的内容（因为功能描述和代码命名不完全匹配）
+- 跨会话记忆查找困难，只有笔记标题和关键词匹配
 
 对标差距：
 - Cursor有@Codebase索引，支持语义搜索代码
 - Claude Code有项目记忆和语义检索能力
-- Codex可以引用大型文档库回答问题
 
-本计划采用渐进式RAG，先做轻量级本地语义搜索，不强制要求重型向量数据库。
+本计划采用渐进式RAG，先做轻量级本地代码语义搜索和记忆语义化，不做重型规范知识库（由#15负责）。
 
 ---
 
