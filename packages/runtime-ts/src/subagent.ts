@@ -21,6 +21,19 @@ const roleNames: Record<WorkflowRole, string> = { planner: "planner", coder: "co
 const workflowCoderTools = ["read_file", "write_file", "edit_file", "list_dir", "grep_search", "glob_search"];
 export type SubagentRunOptions = { signal?: AbortSignal; parentSessionId?: string; parentRunId?: string; allowedPaths?: string[]; changedPaths?: Set<string>; scopeEscalations?: Set<string> };
 
+export type SubagentHandleStatus = "running" | "completed" | "failed" | "cancelled";
+export interface SubagentHandle {
+  handle: string;
+  role: string;
+  goal: string;
+  startedAt: string;
+  status: SubagentHandleStatus;
+  finishedAt?: string;
+  text?: string;
+  usageTokens?: number;
+  error?: string;
+}
+
 export interface ChildSessionInfo { runId: string; sessionId: string; parentRunId: string; parentSessionId: string | null; role: WorkflowRole; runtime: AgentSession }
 
 export interface PersistedWorkflowState {
@@ -35,6 +48,8 @@ export interface PersistedWorkflowState {
 
 export class SubagentManager {
   private readonly children = new Map<string, ChildSessionInfo>();
+  private readonly handles = new Map<string, SubagentHandle>();
+  private readonly handleControllers = new Map<string, AbortController>();
   private readonly workflowRoot: string;
   private workflowWrite = Promise.resolve();
   constructor(private readonly provider: ModelProvider, private readonly workspaceRoot: string, private readonly events: EventBus, private readonly permissions: PermissionManager, private readonly sessionBackend: SessionBackend = new JsonlSessionBackend(), workflowRoot = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "workflows"), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) { this.workflowRoot = workflowRoot; }
@@ -81,6 +96,58 @@ export class SubagentManager {
     if (!child) throw new Error(`child session is not active: ${sessionId}`);
     return child.runtime.subscribe(listener);
   }
+
+  // 异步后台子代理：立即返回句柄，结果/错误写入 handles 记录，不 await 也不产生 unhandled rejection
+  spawn(role: WorkflowRole, goal: string, context?: string, opts: SubagentRunOptions = {}): { handle: string } {
+    const handle = randomUUID();
+    const startedAt = new Date().toISOString();
+    const record: SubagentHandle = { handle, role: roleNames[role], goal, startedAt, status: "running" };
+    this.handles.set(handle, record);
+    const controller = new AbortController();
+    this.handleControllers.set(handle, controller);
+    const goalText = context ? `${goal}\n\nAdditional context:\n${context}` : goal;
+    void this.run(role, goalText, [], opts.parentRunId ?? "", { ...opts, signal: controller.signal }).then((result) => {
+      const current = this.handles.get(handle);
+      if (!current || current.status === "cancelled") return;
+      current.status = "completed"; current.finishedAt = new Date().toISOString(); current.text = result.text; current.usageTokens = result.tokens;
+    }).catch((error) => {
+      const current = this.handles.get(handle);
+      if (!current || current.status === "cancelled") return;
+      current.status = "failed"; current.finishedAt = new Date().toISOString(); current.error = error instanceof Error ? error.message : String(error);
+    }).finally(() => { this.handleControllers.delete(handle); });
+    return { handle };
+  }
+
+  handleStatus(handle: string): Omit<SubagentHandle, "text"> {
+    const record = this.handles.get(handle);
+    if (!record) throw new Error(`Unknown handle: ${handle}`);
+    const { text: _text, ...summary } = record;
+    return summary;
+  }
+
+  handleResult(handle: string): SubagentHandle | { status: "running"; role: string; goal: string; startedAt: string; note: string } {
+    const record = this.handles.get(handle);
+    if (!record) throw new Error(`Unknown handle: ${handle}`);
+    if (record.status === "running") return { status: "running", role: record.role, goal: record.goal, startedAt: record.startedAt, note: "subagent still running, poll again later" };
+    return record;
+  }
+
+  handleCancel(handle: string): { status: string; message: string } {
+    const record = this.handles.get(handle);
+    if (!record) return { status: "unknown", message: `Unknown handle: ${handle}` };
+    if (record.status !== "running") return { status: record.status, message: `subagent already ${record.status}` };
+    const controller = this.handleControllers.get(handle);
+    if (!controller) { record.status = "cancelled"; record.finishedAt = new Date().toISOString(); record.error = "cancel not supported"; return { status: "cancelled", message: "cancel not supported" }; }
+    record.status = "cancelled"; record.finishedAt = new Date().toISOString();
+    controller.abort(new Error("subagent cancelled"));
+    return { status: "cancelled", message: "cancelled" };
+  }
+
+  handleList(): Omit<SubagentHandle, "text">[] {
+    return [...this.handles.values()].map((record) => { const { text: _text, ...summary } = record; return summary; });
+  }
+  // 本次仅交付工具面控制（spawn_agent / subagent_status / subagent_result / subagent_cancel）；
+  // agent.subagent_status 之类 RPC 暂不实现，待 ServerService 需要跨进程暴露时再在此接出。
 
   private async createChildSession(input: { runId: string; sessionId: string; role: WorkflowRole; parentRunId: string; parentSessionId: string | null; profile: Awaited<ReturnType<typeof loadAgentProfile>>; tools: import("./tools.js").ToolRegistry; context: import("./tools.js").ToolContext; permissions: PermissionGate; history: ChatMessage[] }): Promise<AgentSession> {
     const now = new Date().toISOString();

@@ -8,6 +8,8 @@ import { JsonlSessionBackend } from "@sztucode/session-fs";
 import { EventBus } from "../src/event-bus.js";
 import { PermissionManager } from "../src/permissions.js";
 import { SubagentManager } from "../src/subagent.js";
+import { createSubagentResultTool } from "../src/tools.js";
+import { Workspace } from "../src/workspace.js";
 import type { ModelProvider } from "../src/agent-loop.js";
 
 const task = (id: string, dependencies: string[] = [], owner: "planner" | "coder" | "tester" | "reviewer" = "coder"): WorkflowTask => ({ id, title: id, description: id, owner, dependencies, completion_criteria: ["done"], allowed_paths: ["src"], depth: dependencies.length, token_budget: 0, time_budget_s: 0, max_retries: 0 });
@@ -79,5 +81,42 @@ test("workflow persists node state and propagates DAG failure to dependents", as
     assert.equal(result.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "c")?.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "d")?.status, "blocked");
     const persisted = await manager.loadWorkflow(workflowRunId);
     assert.equal(persisted.status, "failed"); assert.equal(persisted.parent_session_id, "parent");
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("spawn returns a handle immediately; handleResult is async and handleList tracks handles", async () => {
+  const { root, events, backend, permissions } = await setup();
+  try {
+    const provider: ModelProvider = { complete: async () => { await new Promise((resolve) => setTimeout(resolve, 50)); return { text: "child output", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 2 } }; } };
+    const manager = new SubagentManager(provider, root, events, permissions, backend);
+    const { handle } = manager.spawn("coder", "child goal");
+    assert.ok(handle, "spawn must return a handle immediately");
+    const early = manager.handleResult(handle);
+    assert.equal((early as { status?: string }).status, "running");
+    assert.ok((early as { note?: string }).note, "still-running result must carry a note");
+    assert.equal(manager.handleList().length, 1);
+    const deadline = Date.now() + 3000;
+    let done: { status?: string; text?: string } = {};
+    while (Date.now() < deadline) { done = manager.handleResult(handle) as { status?: string; text?: string }; if (done.status === "completed") break; await new Promise((resolve) => setTimeout(resolve, 20)); }
+    assert.equal(done.status, "completed");
+    assert.equal(done.text, "child output");
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("subagent_result validates planner output as a WorkflowGraph after completion", async () => {
+  const { root, events, backend, permissions } = await setup();
+  try {
+    const graph: WorkflowGraph = { workflow_id: "wf", goal: "g", planner_summary: "s", tasks: [task("a")] };
+    const provider: ModelProvider = { complete: async () => ({ text: JSON.stringify(graph), tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } }) };
+    const manager = new SubagentManager(provider, root, events, permissions, backend);
+    const resultTool = createSubagentResultTool(manager);
+    const { handle } = manager.spawn("planner", "plan it");
+    const deadline = Date.now() + 3000;
+    let done: { status?: string } = {};
+    while (Date.now() < deadline) { done = manager.handleResult(handle) as { status?: string }; if (done.status === "completed") break; await new Promise((resolve) => setTimeout(resolve, 20)); }
+    assert.equal(done.status, "completed");
+    const toolResult = await resultTool.invoke({ handle }, { workspace: new Workspace(root) });
+    assert.equal(toolResult.ok, true);
+    assert.deepEqual(JSON.parse(toolResult.output).workflow, graph);
   } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });

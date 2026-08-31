@@ -1,6 +1,19 @@
 import path from "node:path";
 import { readFile, writeFile, readdir, stat, realpath } from "node:fs/promises";
 
+// 遍历时排除的噪音目录：覆盖版本控制、依赖、构建产物、缓存、虚拟环境、IDE 配置等。
+// 与 tools.ts 的 walkFiles 共享同一份集合（Workspace.list / glob / grep 语义一致）
+export const ignored = new Set([
+  ".git", "node_modules", "__pycache__", ".venv", ".codegraph", "dist", "build",
+  ".next", ".nuxt", ".svelte-kit", "target", "out", "coverage",
+  ".cache", ".parcel-cache", ".turbo", ".eslintcache",
+  ".idea", ".vscode", ".vs",
+  "venv", "env", ".env", "virtualenv",
+  "bower_components", "jspm_packages",
+  ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+  "bin", "obj", "Debug", "Release",  // .NET build artifacts
+]);
+
 export class WorkspaceBoundaryError extends Error {}
 
 export class Workspace {
@@ -43,7 +56,8 @@ export class Workspace {
     const root = this.resolve(relativePath); const output: string[] = [`${root}/`]; let count = 0;
     const walk = async (directory: string, depth: number, prefix: string): Promise<void> => {
       if (depth > maxDepth || count >= maxEntries) return;
-      const entries = (await readdir(directory, { withFileTypes: true })).sort((a, b) => Number(a.isFile()) - Number(b.isFile()) || a.name.localeCompare(b.name));
+      // 跳过噪音目录（.git/node_modules 等），保持树形输出干净
+      const entries = (await readdir(directory, { withFileTypes: true })).filter((entry) => !(entry.isDirectory() && ignored.has(entry.name))).sort((a, b) => Number(a.isFile()) - Number(b.isFile()) || a.name.localeCompare(b.name));
       for (let index = 0; index < entries.length && count < maxEntries; index += 1) {
         const entry = entries[index]; const last = index === entries.length - 1; const suffix = entry.isDirectory() ? "/" : "";
         output.push(`${prefix}${last ? "└── " : "├── "}${entry.name}${suffix}`); count += 1;

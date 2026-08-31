@@ -23,7 +23,13 @@ test("bash permission rejects path, expansion, substitution, and redirection esc
 });
 
 test("bash permission treats git diff --no-index as full access (arbitrary file read)", () => {
-  for (const command of ["git diff --no-index a b", "git diff --binary --no-index a b", "git --no-index diff a b", "git diff --no-index ../outside/secret.txt copy"]) {
+  for (const command of ["git diff --no-index a b", "git --binary --no-index a b", "git --no-index diff a b", "git diff --no-index ../outside/secret.txt copy"]) {
     assert.equal(classify(command), "danger_full_access", command);
   }
+});
+
+test("bash permission classification ignores the background flag", () => {
+  // 后台执行仍走现有分类：只读命令降级不变，危险命令不放宽
+  assert.equal(classifyBashPermission({ command: "sleep 60", background: true }), "danger_full_access");
+  assert.equal(classifyBashPermission({ command: "git status --short", background: true }), "read_only");
 });

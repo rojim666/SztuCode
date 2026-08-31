@@ -631,10 +631,31 @@ const isContextOverflowError = (error: unknown): boolean => {
 };
 
 async function invokeToolWithRetry(tool: Tool, input: Record<string, unknown>, context: ToolContext, maxRetries: number, retryBaseMs: number, onRetry: (attempt: number, failure: ToolResult) => void): Promise<ToolResult> {
+  // 工具级超时：tool.timeoutMs 为正数时对 invoke 做超时竞赛（如 bash 这类自带进程级超时的工具不设）
+  const timeoutMs = Number(tool.timeoutMs) > 0 ? Number(tool.timeoutMs) : 0;
   for (let attempt = 0; ; attempt += 1) {
     context.signal?.throwIfAborted();
     let result: ToolResult;
-    try { result = await tool.invoke(input, context); }
+    try {
+      if (timeoutMs) {
+        // 超时返回 timeout 错误（不可重试）；并用内部 AbortController 尽力联动 context.signal，让工具尽早停
+        const controller = new AbortController();
+        const forwardAbort = () => controller.abort(context.signal?.reason);
+        context.signal?.addEventListener("abort", forwardAbort, { once: true });
+        let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+        try {
+          result = await Promise.race([
+            tool.invoke(input, { ...context, signal: controller.signal }),
+            new Promise<ToolResult>((resolve) => { timer = setTimeout(() => { controller.abort(new Error(`Tool timed out after ${timeoutMs}ms`)); resolve({ ok: false, output: "", error: `Tool timed out after ${timeoutMs}ms`, errorType: "timeout" }); }, timeoutMs); }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+          context.signal?.removeEventListener("abort", forwardAbort);
+        }
+      } else {
+        result = await tool.invoke(input, context);
+      }
+    }
     catch (error) {
       context.signal?.throwIfAborted();
       result = { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "runtime_error" };

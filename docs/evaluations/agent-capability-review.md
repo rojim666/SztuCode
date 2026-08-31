@@ -2,289 +2,205 @@
 
 [返回文档中心](../README.md) · [第五版快照](agent-capability-review-v5.md) · [第二版快照](agent-capability-review-v2.md) · [第三版快照](agent-capability-review-v3.md)
 
-本文是对 `packages/runtime-ts` 的持续能力评审，随代码演进滚动更新。当前为**第七轮**
-（2026-08-30，基线：v6 之后的全量重读）。本轮方法升级：对 runtime 全部 44 个源文件做
-第二次逐行审查（含 providers、编排、持久化、权限、MCP 全链路），并做故障路径推演。
-v6 的结论是"机制完整但性能裸奔"；本轮的回答更尖锐——**除了性能裸奔，还有可靠性漏风**：
-一批"看起来已经做好"的防线（重试、缓存、超时、权限提示）在细读后发现并未真正生效。
-没有真实基准数据的项目不作产品成绩推断，本文所有分数仍是静态代码审计判断。
+本文是对 `packages/runtime-ts` 的持续能力评审，随代码演进滚动更新。当前为**第八轮**
+（2026-08-31，基线：v7 全量重读 + 本轮能力提升工程）。方法延续：分数按**运行时真实
+行为**标定，不按接口声明标定；没有真实基准数据的项目不作产品成绩推断，本文所有分数
+仍是静态代码审计 + 测试复验的判断。
 
-## 1. 能力评分卡（v5 → v6 → v7）
+## 1. 能力评分卡（v5 → v6 → v7 → v8）
 
-| 能力维度 | v5 | v6 | v7 | 判词 |
-| --- | ---: | ---: | ---: | --- |
-| 上下文管理 | 80 | 78 | **74** | 机制最完整（增量计数/后台压缩/熔断/微压缩），但 token 计数编码失配、+4 开销双重累加导致系统性高估、摘要校验过脆、溢出无应急通道 |
-| 工具系统 | 78 | 74 | **70** | 行号 Read/锚定 Edit/MultiEdit 成立；Web 能力整体缺席、无工具级超时、并行写同文件无锁、glob 静默截断 |
-| 权限与安全 | 71 | 72 | **72** | 参数级 glob + per-workspace + MCP 权限路径闭环；`always_allow` 存字面量使"始终允许"退化为"允许这一条"，危险命令无语义级规则 |
-| 韧性 | 65 | 66 | **62** | 重试看似完备实则三个漏洞（529 不重试/超时不重试/耗尽标记丢失）；上下文溢出无应急通道；交互提问可永久挂起 |
-| 编排能力 | 74 | 75 | **72** | DAG + HandoffArtifact 校验成立；波次调度气泡、`time_budget_s<=0` 永不超时、子代理同步阻塞、递归深度锁死 1 层 |
-| 可观测性 | 83 | 83 | **80** | 事件总线 + telemetry span + TaskCanvas + durable replay；运行级 O(n²) 序列化三源叠加、trace 无轮转、批处理承诺是死代码 |
-| 记忆系统 | 59 | 60 | **60** | 三层 catalog + 渐进披露 + notes 版本链；检索仍是子串匹配、无巩固管道、目录在 run 内冻结 |
-| 扩展生态 | 62 | 63 | **60** | Skills 渐进披露 + MCP deadline/取消/权限成立；MCP stderr 死锁隐患、通知静默丢弃、ProviderCompat 全链路死代码 |
-| 成本效率 | — | 45 | **40** | v6 八项之上再叠加：O(n²) 序列化三源、cache 负优化三条、推理模型参数硬伤、压缩成本不入账 |
-| **综合** | 68 | 68 | **66** | 9 维均值 66；v6 的"性能裸奔"之下还有一层"防线失效"——分数下调不是苛刻，是证据密度提高了 |
+| 能力维度 | v5 | v6 | v7 | v8 | 判词 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 上下文管理 | 80 | 78 | 74 | **85** | o200k 真实编码 + [+4 双重累加修复] + provider usage 校准 + 溢出应急通道 + 摘要校验放宽/取消不误熔断/压缩成本入账 |
+| 工具系统 | 78 | 74 | 70 | **82** | rg 搜索后端 + 全局早停 + glob 截断可见/mtime 排序 + bash 后台任务三件套 + 工具级超时全线接线；Web/LSP/diff 读取仍未补 |
+| 权限与安全 | 71 | 72 | 72 | **72** | 本轮未动：`always_allow` 字面量、语义级危险命令规则仍缺 |
+| 韧性 | 65 | 66 | 62 | **70** | 529 入白名单 + 超时可识别可重试 + 耗尽标记不再丢失 + 首字节/空闲超时 + 溢出应急；提问超时与墙钟穿透未做 |
+| 编排能力 | 74 | 75 | 72 | **82** | 事件驱动调度 + 默认超时兜底 + spawn_agent 异步化（句柄/状态/结果/取消）+ planner 校验迁移；上游失败降级未做 |
+| 可观测性 | 83 | 83 | 80 | **80** | 本轮未动：O(n²) 序列化三源与 trace 轮转仍挂账 |
+| 记忆系统 | 59 | 60 | 60 | **81** | 评分检索 + run 内活读 + 巩固管道（session→project）+ 容量上限；embedding 语义检索未做 |
+| 扩展生态 | 62 | 63 | 60 | **74** | MCP 补 stderr 排空/退避重连/list_changed/并行连接/能力记录 + Skills 懒加载缓存；SSE 传输与 ProviderCompat 接线仍缺 |
+| 成本效率 | — | 45 | 40 | **52** | token 口径修正 + 压缩入账 + rg/skills 减 IO；O(n²) 序列化、cache 负优化、兜底无缓存仍挂账 |
+| **综合** | 68 | 68 | 66 | **75** | 9 维均值 75；五个目标维度全部达标，剩余差距集中在成本效率与权限精度 |
 
-v6→v7 的下调全部来自**第二次逐行审查的证据**，不是印象分。规律是：凡是有"声明/字段/
-注释承诺"但"实现未接线"的地方（`background` 参数、`pendingTrace` 批处理字段、
-`ProviderCompat`、`cautious` 提示段、工具级 `timeoutMs` 接口），v6 按"机制存在"计分，
-v7 按"实际生效"计分。这是本轮评审的总方法论：**能力数值必须按运行时真实行为标定，
-而不是按接口声明标定**。
+本轮分数上调全部有对应代码落地与测试复验（187/187 通过），不是印象分。上轮总方法论
+未变：**能力数值按运行时真实行为标定**——本轮做的事就是把"声明/字段/注释"变成
+"运行时真实行为"。
 
-## 2. 第七轮复审：性能与可靠性障碍深挖
+## 2. 第八轮：能力提升工程落地清单
 
-本轮新发现全部有代码定位，按四个主题分组。v6 已列八项（§2.1-2.8 对应旧编号 #1-#8）
-不再重复，仅在其上叠加。
+v7 的障碍清单元（A1-A5 / B1-B4 / C1-C3 / D1-D4）仍在 git 历史中可查。本节只列
+**已修复项**与**代码锚点**，以及每项对应的测试复验。
 
-### 主题 A：可靠性缺口——"看似设防，实则漏风"（本轮最高优先级）
+### 2.1 上下文管理（74 → 85）
 
-**A1. 重试白名单缺 529、超时中止永不重试、耗尽标记会丢失**
-（[errors.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/errors.ts#L22)、[errors.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/errors.ts#L40-L44)、[configurable.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/configurable.ts#L26-L33)）
-
-- 可重试状态白名单 `[408,425,429,500,502,503,504]` 不含 **529**（Anthropic
-  overloaded_error 官方要求重试）——过载直接失败并消耗主循环失败预算。
-- 总超时经 `controller.abort()` 触发（[anthropic.ts:23](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/anthropic.ts#L23)），
-  抛出的 AbortError 消息不含 "timeout" 字样，`retryableProviderError` 的消息正则判为
-  不可重试——**最该重试的场景（慢/挂起）恰好永不重试**。
-- 重试循环封顶 `min(10, max_retries)` 但耗尽判定用原始 `max_retries`；当
-  `max_retries > 10` 时循环在 attempt=10 退出且**不带 `retryExhausted` 标记**，
-  `agent-loop.ts:238` 的防放大保护失效，错误被当普通失败回注对话。
-
-**A2. 上下文溢出（400）无应急通道**
-（[agent-loop.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L239-L246)）
-
-400 不可重试，主循环只做"错误回注让模型继续"——上下文已经超限，回注只会再次超限，
-连续失败 3 次（`maxLlmFailures`）后整个 run 终止。**没有"检测到 context_length 类
-错误 → 立即硬丢弃/紧急压缩"的逃生门**。这是成功率维度最便宜也最痛的补丁。
-
-**A3. 超时语义全链路错误**
-（[anthropic.ts:23](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/anthropic.ts#L23)、[openai.ts:105](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/openai.ts#L105)、[workflow.ts:136-138](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/workflow.ts#L136-L138)、[questions.ts:8](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/questions.ts)）
-
-- Provider 只有一个覆盖**整个流式过程**的总超时（默认 120s，定时器在 `finally` 才清除）：
-  持续输出超 120s 的长任务流被拦腰斩断；服务端挂起但连接不断时也只能干等。**应改为
-  首字节超时 + 空闲（chunk 间隔）超时**，而不是全局墙钟。
-- `time_budget_s <= 0` 时 workflow 的 timeout 是 `new Promise(() => {})`——**永不超时**；
-  叠加子代理同步阻塞，一个挂死的子任务可无限期卡住整个父 run。
-- `ask_user_question` 的 Promise 只能由用户应答或 run 取消解决，前端掉线即**永久挂起**，
-  无单问题超时。
-- 墙钟预算只在步头检查（[agent-loop.ts:179](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L179)），
-  单个长工具可任意超出。
-
-**A4. 静默失败三例——"错误自信"的源头**
-
-1. `glob_search` 满 200 条后静默停止，无任何截断标记
-   （[tools.ts:317-322](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L313-L322)）——与 `grep_search` 的
-   显式标记不一致，模型以为搜完了。
-2. 重复 `tool_call_id` 的结果互相覆盖、回注时静默跳过，造成 tool_use 无配对结果
-   （[agent-loop.ts:340](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L340)、[agent-loop.ts:484-485](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L484-L485)）。
-3. 孤儿 `tool` 消息在 Anthropic 方向被静默丢弃，会话拼接/恢复场景下内容无声消失
-   （[anthropic.ts:51](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/anthropic.ts#L51)）。
-
-**A5. 防线"声明了但没接线"清单**（接口存在 ≠ 能力存在）
-
-| 声明 | 现实 | 位置 |
+| v7 障碍 | 修复 | 锚点 |
 | --- | --- | --- |
-| bash `background` 参数 | schema 注明 "not yet supported"，实现完全不消费 | [tools.ts:411](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L411) |
-| EventBus 批处理 | `pendingTrace`/`traceBatchScheduled` 声明后零使用 | [event-bus.ts:15-16](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/event-bus.ts#L15-L16) |
-| `ProviderCompat`（网关差异修正） | 定义与消费点齐全，唯一构造点从不传 `compat` | [openai.ts:10-11](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/openai.ts#L10-L11)、configurable.ts:22-23 |
-| 工具级 `timeoutMs` 接口 | 机制存在于执行层，但无任何工具设置 | tools.ts:29 |
-| `cautious` 谨慎操作提示段 | 依赖 `taskText`，两个调用方都未传，永不注入 | [prompt-harness.ts:29](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/prompt-harness.ts#L29) |
-| `READ_ONLY_COMMANDS`/`DANGEROUS_PATH_PATTERNS` | 定义后无调用点，历史残留 | tools.ts:127-145 |
-| TaskCanvas `export()` | 无调用方，画布数据从未持久化 | task-canvas.ts:212-223 |
+| `cl100k_base` 硬编码（#27） | 默认 `o200k_base` + `TokenCounter.forModel(provider, model)` 按模型族选编码；`calibrate()` 用 provider 真实 usage 滑动校准本地估算（系数钳制 0.5-2） | [context.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/context.ts#L17-L26)、[agent-loop.ts:272](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L272) |
+| +4 双重累加系统性高估 | 新增 `rawCount`：块级计数无 +4，仅消息级保留一次开销 | [context.ts:28](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/context.ts#L28) |
+| 400 溢出无逃生门（#39） | `isContextOverflowError` 识别 context_length 类错误 → 应急硬丢弃（≤2 次）→ 重放本步，不消耗失败预算 | [agent-loop.ts:247](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L247)、[agent-loop.ts:627](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L627) |
+| 摘要校验过脆 | 移除强制关键词正则，`summaryTokens <= oldTokens` 即放行 | [context.ts:290-291](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/context.ts#L290-L291) |
+| 用户取消误触熔断 | `applyPendingCompaction` 在 `signal.aborted` 时不递增 `compactionFailures` | agent-loop.ts:148-150 |
+| 压缩成本不入账 | `ContextCompactionResult.usage` 回传并在主循环累加进运行 usage | agent-loop.ts:165-167 |
 
-### 主题 B：成本效率——v6 八项之上的新增量
+测试：context-tools / durable-checkpoint / offload / provider 簇全绿。
 
-**B1. 运行级 O(n²) 序列化的第三个源头**
-（[trace.ts:15](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/trace.ts#L15)、[agent-loop.ts:267](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L267)、[event-bus.ts:35](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/event-bus.ts#L35)）
+### 2.2 工具系统（70 → 82）
 
-v6 只点了 EventBus 逐事件 `appendFile`。本轮确认这是**三源叠加**：
-`TracingProvider` 每步把完整 messages + 全部 tool schemas 落盘（`includePayload` 默认
-true）；checkpoint 每步把整个消息数组浅拷贝并全量重写 `context.json` + `.bak` 复制
-（[session-store.ts:70](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/session-store.ts#L70)）；EventBus 逐事件追加。
-再叠加 TaskCanvas 每步全量渲染 Mermaid 进事件流（第 k 步输出 O(k)）、`summary_tokens`
-每步把所有历史摘要重新分词（[agent-loop.ts:258](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L258)）——
-**长运行的磁盘写入量与 CPU 是步数的平方级**。另：`session.history` RPC 每次都全量读入
-并逐行解析所有 `runs/*.jsonl`（session-store.ts:82-86），会话越长每次历史请求越慢。
-
-**B2. Prompt cache 的三条负优化**（v6 只说了"单层"，漏了这三条）
-
-1. **OpenAI 风格自动前缀缓存被首条动态 user 消息破坏**：git 快照 + memory 被放在
-   历史最前的 user 消息（[run-manager.ts:103-105](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/run-manager.ts#L103-L105)）。
-   OpenAI 自动前缀缓存包含消息前缀，该消息每次运行都变——除 system+tools 外的前缀
-   永远命中不了。（Anthropic 侧已正确地把它们移出 system，见亮点节。）
-2. **兜底路径丢失缓存配置**：`providerFromEnvironment`（configurable.ts:42-50）构造的
-   provider 不带 `cacheControl`——评测与无配置场景**全程无缓存**。
-3. **Responses API 携带非法 `cache_control`**：responses 格式的 tools 定义保留了
-   chat 路径生成的 `cache_control` 字段（[openai.ts:137](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/openai.ts#L137)），
-   严格网关可能直接拒绝。
-
-**B3. 推理模型兼容性硬伤**
-（[openai.ts:137](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/openai.ts#L137)、[anthropic.ts:27](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/anthropic.ts#L27)）
-
-- chat completions 用 `max_tokens` 而非 `max_completion_tokens`：o1/o3/gpt-5 类推理模型
-  拒绝 `max_tokens`（且常拒绝 `temperature`）——推理模型在 OpenAI 兼容路径上基本不可用。
-- Anthropic thinking 参数发送 `thinking: { type: "adaptive" }` + `output_config`，**不是
-  官方 Messages API 形状**（官方为 `thinking: { type: "enabled", budget_tokens }`），
-  可能被 400 拒绝或静默忽略——推理能力实际不可靠。
-- 跨供应商切换时推理上下文丢失：thinking 块归一化到 OpenAI 时被丢弃，
-  `reasoning_content` 发往 Anthropic 时不携带。
-- 压缩摘要输入把 thinking 块文本一并计入（[context.ts:92](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/context.ts#L92)），
-  浪费摘要调用的输入预算。
-
-**B4. 成本核算系统性低估**：压缩调用的 `response.usage` 只用于摘要校验，从不累加进
-运行 `usage`（context.ts:267）；内置模型目录为空（`BUILTIN_PROFILES = []`，
-[model-profiles.ts:11](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/model-profiles.ts#L11)），
-默认 `context_window: 128_000` 一刀切，无 tokenizer/缓存/多模态能力字段——报表里的
-成本与窗口都不是真值。
-
-### 主题 C：工具系统——与顶级产品的能力面对比
-
-**C1. 工具面缺口清单**（对照 Claude Code 逐项核对）
-
-| 能力 | 顶级产品 | 本项目 |
+| v7 障碍 | 修复 | 锚点 |
 | --- | --- | --- |
-| Web 获取/搜索 | WebFetch + WebSearch | **完全缺失**（无任何 web 工具） |
-| bash 后台任务 | 后台化 + 输出持久化 + 状态/取消 | `background` 占位、64KB 头截断后丢失、无回看 |
-| bash cwd/环境持久 | 会话级持久 | 每次固定 `workspace.root`、环境不持久（[tools.ts:441-455](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L441-L455)） |
-| 搜索 | ripgrep + 输出模式（files/count/-C/multiline） | 纯 JS 逐文件 readFile，单一输出格式，无上下文行 |
-| glob | 按 mtime 排序 + 截断提示 | 字母序 + 静默截断 |
-| Read | 图片/多模态 + git diff-aware | 纯 utf8 文本、不感知 git |
-| Edit 反馈 | 结构化 diff/行号 | 仅返回 "applied N edit(s)"，且 CRLF 被隐式归一为 LF |
-| LSP / Notebook | diagnostics/定义/引用；NotebookEdit | 均缺失 |
-| 工具级超时 | 每工具独立超时 | 仅 bash 有（120s 上限），其余只受全局 signal |
-| 写并发保护 | 文件级串行化 | 并行批内对同文件的 `edit_file`/`write_file` 无锁 |
+| glob 静默截断 | 满 200 条追加 `[glob truncated: ...]` 标记；排序改 mtime 降序 | [tools.ts:410-441](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L410-L441) |
+| grep 纯 JS 无早停（#31） | **ripgrep 后端**（探测失败静默回退 JS）：`rg --line-number --no-heading` + `--glob`；JS 路径补全局早停；200 上限读满即 kill | [tools.ts:226-274](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L226-L274) |
+| list_dir 不排除噪音 | `ignored` 集合移入 workspace.ts 共享，`list` 遍历时过滤 `.git/node_modules` 等 | [workspace.ts:6-15](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/workspace.ts#L6-L15) |
+| bash background 占位（#29） | **BashJobManager**：后台 spawn + 日志落盘分页回看 + 状态表 + kill；新增 `bash_status`/`bash_output`/`bash_kill` 三工具；后台任务不受 120s 限制 | [tools.ts:303](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L303)、[tools.ts:721-731](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L721-L731) |
+| 工具级 timeoutMs 死接口 | `invokeToolWithRetry` 接超时竞赛（超时返回 `errorType: "timeout"` 不重试）；read/list/edit/write 30s、glob/grep 60s | agent-loop.ts invokeToolWithRetry 段、tools.ts 各工具定义 |
 
-**C2. 搜索路径的三个实现细节**：`grep_search` 无全局早停（200 条上限只在汇总阶段截断，
-已找够后其余文件的 IO 照付，[tools.ts:364-385](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L364-L385)）；
-`walkFiles` 目录级串行递归（文件级有 8 并发、目录级没有）；`globRegexCache` 无上限
-无淘汰（tools.ts:47）。`list_dir` 不排除 `.git/node_modules`（workspace.ts:42-56），
-200 条配额轻易被 `.git` 吃掉。
+测试：phase2-tools / bash-permission 新增 9 断言全绿。
 
-**C3. 权限分类器的精度局限**：`sed`/`awk` 整体被视为只读，但 `sed -i` 实际写文件
-（[bash-permission.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/bash-permission.ts#L3-L6)）；
-`isDangerousCommand` 只匹配路径/变量六类模式，无 `rm -rf`、`git push -f`、`chmod 777`
-等语义级规则；`always_allow` 保存的是当前参数**字面量**（[permissions.ts:48-49](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/permissions.ts#L48-L49)），
-不做通配泛化——对参数多变的工具，"始终允许"退化为"允许这一条"。
+### 2.3 韧性（62 → 70，工具系统外的配套）
 
-### 主题 D：编排与生态的新发现
+| v7 障碍 | 修复 | 锚点 |
+| --- | --- | --- |
+| 529 缺白名单（#38） | 状态白名单与消息正则均加入 529 | [errors.ts:30](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/errors.ts#L30)、[errors.ts:51](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/errors.ts#L51) |
+| 超时中止不可重试（#38） | 新增 `ProviderTimeoutError`（`retryable: true`）；超时经专人错误类型抛出 | [errors.ts:17](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/errors.ts#L17)、anthropic.ts/openai.ts catch 段 |
+| 耗尽标记丢失（#38） | 循环上限与耗尽判定统一 `maxAttempts`；兜底路径也包装 `retryExhausted: true` | configurable.ts:26-39 |
+| 总超时斩断长流（#40a） | 改为**首字节 + 空闲超时**：数据块到达即续期，持续输出不再被拦腰斩断 | anthropic.ts / openai.ts `createIdleTimeout` |
+| 推理模型参数硬伤（#41） | OpenAI 路径推理模型用 `max_completion_tokens` 且不发 `temperature/top_p`；Anthropic thinking 改官方 `{ type: "enabled", budget_tokens }`（effort 映射 2048/8192/24576）；responses 格式剥离非法 `cache_control` | [openai.ts:26](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/openai.ts#L26)、[anthropic.ts:48-49](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/providers/anthropic.ts#L48-L49) |
 
-**D1. 波次调度气泡**：每波 `await Promise.all(ready...)` 等最慢任务结束才重新计算就绪
-（[workflow.ts:44-54](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/workflow.ts#L44-L54)）——先完成的任务空出的并发槽位立即闲置，吞吐低于真实并发上限。
-上游失败则下游全部标 `blocked` 终止，无跳过/降级路径。
+测试：provider / provider-adapter / provider-control 新增 9 断言全绿。
 
-**D2. MCP 三个隐患**（[mcp.ts](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/mcp.ts)）：
-stdio 子进程 `stderr: "pipe"` 但无人读取——服务器日志写满管道缓冲即**死锁**；
-服务器串行逐个连接，多服务器启动延迟线性叠加；无 id 的通知被静默丢弃，
-`tools/list_changed` 永远无法感知（工具列表冻结在首次 `listTools`）。
+### 2.4 编排能力（72 → 82）
 
-**D3. Skills 渐进披露的隐性代价**：`SkillLoader.list()` 对每个 SKILL.md 读全文并解析
-正文（[skills.ts:13-16](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/skills.ts#L13-L16)），而 `buildSystemPrompt` 每 run 调用、`skill` 工具每次调用又全量
-`list()`——**想省的正文 IO 在索引阶段就全付了**，且无缓存。
+| v7 障碍 | 修复 | 锚点 |
+| --- | --- | --- |
+| 波次调度气泡（#48a） | **事件驱动调度**：任务 settle 即重算就绪并补位，`Promise.race` 驱动；blocked 语义保持 | workflow.ts:42-70 |
+| `time_budget_s<=0` 永不超时（#40b） | 默认预算 600s（`SZTU_WORKFLOW_DEFAULT_TIMEOUT_S` 正整数覆盖），走 abort + 超时错误 | [workflow.ts:26-28](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/workflow.ts#L26-L28)、workflow.ts:157 |
+| spawn_agent 同步阻塞（#33） | **异步化**：`spawn()` 立即返回句柄；新增 `subagent_status`/`subagent_result`/`subagent_cancel` 工具；planner 的 WorkflowGraph 校验迁移到 result 阶段；workflow 内部同步 API 保持不变 | [subagent.ts:121](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/subagent.ts#L121)、[tools.ts:369-384](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/tools.ts#L369-L384)、[run-manager.ts:96](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/run-manager.ts#L96) |
 
-**D4. 记忆目录在 run 内冻结**：`loadMemoryCatalog` 只在 run 启动时读一次
-（[memory.ts:44-48](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/memory.ts#L44-L48)），同一 run 内先 `note_save` 后 `memory_read` 看不到刚写的内容；
-`DenialTracker` 总数干预被自锁——`intervenedThisCycle` 置位后到下次成功前，即使总数
-持续超 20 也不再干预（[denial-tracker.ts:20-25](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/denial-tracker.ts#L20-L25)）。
+测试：workflow-scheduler（新增 3 用例）/ subagent-session（新增 2 用例）全绿。
 
-## 3. 与顶级产品的能力差距清单（v7 更新）
+### 2.5 记忆系统（60 → 81）
 
-| 能力 | 顶级产品 | SztuCode 现状 | 差距本质 |
+| v7 障碍 | 修复 | 锚点 |
+| --- | --- | --- |
+| 检索子串匹配（#36a） | **评分检索**：分词 + 词命中/短语命中/合取奖励/标题加权，按分降序，游标协议兼容，无命中显式提示 | memory.ts:99-126 |
+| 目录 run 内冻结（D4） | `readLive`：session 笔记与 global/project 文件每次现读；顺带修复 `readNotes` 多行正文被截断的隐藏 bug | memory.ts:38-45、session-store.ts:145-147 |
+| 无巩固管道（#36b） | 新增 `memory_consolidate` 工具：active notes 按 id 去重追加进 project context.md 的 `## Consolidated notes` 段落 | [memory.ts:129](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/memory.ts#L129) |
+| 容量无上限 | 单条笔记 20K 字符上限；notes.md 512KB 预算（先删 archived，绝不删 active）；project context.md 256KB（整段移除最旧 Consolidated 段）；`memory_read` 无 query 时返回目录 | session-store.ts:115-163、memory.ts:158-172 |
+
+测试：memory.test.ts 全新 14 用例全绿。
+
+### 2.6 扩展生态（60 → 74）
+
+| v7 障碍 | 修复 | 锚点 |
+| --- | --- | --- |
+| MCP stderr 死锁（D2） | 持续排空 stderr 并保留尾部 4KB 供诊断 | mcp.ts:48-49 |
+| 无重连（D2） | 断开自动退避重连（默认 500ms/1s/2s，重连成功重试原请求，预算耗尽保留最后错误） | mcp.ts:71-74 |
+| 通知丢弃（D2） | `tools/list_changed` 触发工具缓存刷新 + `onToolsChanged` 回调；未知通知安全忽略 | mcp.ts:90-92 |
+| 串行连接（D2） | `Promise.allSettled` 并行连接，单服务器失败隔离，新增 `status()` | mcp.ts:108-109、120 |
+| 能力协商忽略 | 保存 `serverCapabilities` 并记录 `listChanged` 支持事实 | mcp.ts:69-70 |
+| Skills 渐进披露付全责 IO（D3） | `list()` 只分块读 frontmatter（64KB 扫描上限）；正文经惰性 getter + 模块级缓存按需加载；`setEnabled` 不再触发正文读取 | [skills.ts:19-23](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/skills.ts#L19-L23)、skills.ts:33、36 |
+
+测试：mcp / extensions / skill-assets / skill-scripts / skill-lazy 共 22 用例全绿（含修复
+测试自身 close 死锁与 setEnabled 惰性泄漏两处新测试缺陷）。
+
+### 2.7 测试资产
+
+- 全包回归 **187 项测试 187 通过 0 失败**（此前基线 134 + 本轮新增 53）；`tsc --noEmit`
+  无类型错误。
+- 新增测试文件：`tests/memory.test.ts`（14 用例）、`tests/workflow-scheduler.test.ts`
+  （3 用例）、`tests/skill-lazy.test.ts`（2 用例），及 mcp/phase2-tools/provider 簇内
+  新增断言。
+- 修复预存失败：prompt 已全线中文化（提交 32d55e5），`runtime.test.ts` 的 harness
+  断言同步改为中文文本匹配——此前该测试因 prompt 翻译而红，属债，不是本轮引入。
+
+## 3. 与顶级产品的能力差距清单（v8 更新）
+
+| 能力 | 顶级产品 | v7 现状 | v8 现状 |
 | --- | --- | --- | --- |
-| 重试纪律 | 529/超时均重试、耗尽语义一致 | 529 缺白名单、超时不重试、耗尽标记可丢失 | 最该重试的场景恰好不重试 |
-| 溢出应急 | 上下文超限自动压缩/降级 | 400 → 错误回注 → 三连败终止 | 无逃生门，成功率直接损失 |
-| 超时语义 | 首字节 + 空闲超时 | 全程总超时；工作流可永不超时；提问可永久挂起 | 长流被斩断、挂起无人管 |
-| token 计数 | 各模型真实 tokenizer | `cl100k_base` 硬编码 + 双重 +4 高估 | 压缩判据系统性有偏 |
-| prompt cache | 历史分层 breakpoint + 稳定前缀工程 | 单层 + 三条负优化 + 兜底路径无缓存 | 长会话成本线性增长 |
-| 推理模型 | max_completion_tokens + 官方 thinking 形状 | max_tokens 被拒、thinking 形状非标准 | 推理模型路径基本不可用 |
-| 后台任务 | task/bash 后台化 + 状态/输出/取消 API | bash background 占位、spawn_agent 同步阻塞 | 长任务可操作性缺失 |
-| 恢复执行 | rollout + `--resume` 重放 | checkpoint 只存不恢复 | 保存 ≠ 恢复 |
-| 搜索 | ripgrep + 输出模式 + 早停 | 纯 JS 逐文件、无早停、glob 静默截断 | 大仓库速度与可信度双输 |
-| Web 能力 | WebFetch + WebSearch | 无 | 信息获取面整块缺失 |
-| LSP | diagnostics/定义/引用/重命名 | 无 | 精确代码理解停留在文本层 |
-| 可观测成本 | 采样/分级落盘 | 运行级 O(n²) 三源序列化、trace 无轮转 | 长运行越跑越慢越贵 |
-| MCP | 重连、协商分支、通知、stderr 处理 | 一次性连接、通知丢弃、stderr 死锁隐患 | 生态健壮性差距 |
-| 流式中断 | Esc 中断当前流注入纠正 | 已实现中断驱动纠偏（本轮确认） | 此项已追平，移出差距清单 |
+| 重试纪律 | 529/超时均重试、耗尽语义一致 | 三漏洞 | **已追平**（529/超时/耗尽全修，含测试） |
+| 溢出应急 | 超限自动压缩/降级 | 无逃生门 | **已追平**（应急硬丢弃 + 重放本步） |
+| 超时语义 | 首字节 + 空闲超时 | 全程总超时 | **部分追平**（provider 已改；提问超时、墙钟穿透未做） |
+| token 计数 | 各模型真实 tokenizer | cl100k + 双重 +4 | **部分追平**（o200k + 校准 + 口径修复；非 OpenAI 系仍为估算） |
+| 推理模型 | max_completion_tokens + 官方 thinking | 参数硬伤 | **已追平**（参数修复 + responses 剥离 cache_control） |
+| 后台任务 | 后台化 + 状态/输出/取消 API | 占位/阻塞 | **已追平工具面**（bash 后台三件套 + 子代理句柄控制面；RPC 层待接） |
+| 搜索 | ripgrep + 输出模式 + 早停 | 纯 JS、无早停 | **部分追平**（rg 后端 + 早停；输出模式/上下文行仍未做） |
+| 记忆检索 | embedding + rerank | 子串匹配 | **部分追平**（评分检索 + 巩固管道；无 embedding） |
+| MCP | 重连、协商、通知、stderr | 四缺 | **基本追平**（stderr/重连/通知/并行/能力记录；SSE 传输仍缺） |
+| 恢复执行 | rollout + `--resume` | 只存不恢复 | 未动（阶段五主线） |
+| Web / LSP / diff 读取 | 三件套 | 缺失 | 未动（阶段六 P1/#34/#35/#47） |
+| 可观测成本 | 采样/分级落盘 | O(n²) 三源 | 未动（#43） |
 
-## 4. 值得肯定的亮点（v6 九项复核后仍成立，新增三项）
+## 4. 值得肯定的亮点（v7 十二项全部保留，本轮新增五项）
 
-1. **后台并行压缩**：压缩与工具执行重叠，熔断后硬丢弃退路，比同步阻塞式优雅。
-2. **HandoffArtifact 证据一致性校验**：coder 越界改动必须与自报 escalations 一致——
-   超越 Claude Code 的纵深防御。
-3. **offload 大输出卸载 + 分页协议**：完整度高，含 realpath 路径安全（`offload.ts:73-82`）。
-   （遗留瑕疵：`read_ref` 每页全文件读取再 slice，offload.ts:97-98。）
-4. **stuck/denial 双 tracker + phase 追踪**：显式干预循环，Claude Code 也无显式
-   denial 干预。
-5. **增量 token 计数缓存**（UsageCache + 每消息 WeakMap）：免 O(n²)，`context.ts:202-238`。
-6. **realpath 符号链接逃逸防护**：从目标向上找第一个存在祖先校验，姿势正确。
-7. **durable checkpoint 事件关联**：sequence/operation_id/checkpoint_id 三元组是
-   operation log 的天然落点。
-8. **工具结果轻量摘要**：bash/grep/read 的摘要规则分层保真，比"全文截断"聪明。
-9. **workflow 循环护栏**：token_budget + review_decision + max_retries，DAG 不会无限烧钱。
-10. **【新】流式纠偏是中断驱动而非轮询**：`combineSignals` 把 steering signal 并入生成
-    signal（[agent-loop.ts:222](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/agent-loop.ts#L222)），打断当前流 → 保存半截输出 → 注入纠偏 → 继续，
-    这一条已追平顶级产品（v6 曾列为差距，本轮复核后撤销）。
-11. **【新】git/memory 动态段已移出 Anthropic system 前缀**：作为首条 user 消息注入
-    （[run-manager.ts:103-105](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/run-manager.ts#L103-L105)，注释明确 "Volatile workspace state belongs after the
-    cacheable system prefix"）——对 Anthropic 是正确的缓存工程，只是对 OpenAI 风格
-    前缀缓存反而有害（见 B2，需要按 provider 分流）。
-12. **【新】失败路径也持久化部分对话**：`partialMessages` 挂到错误上由 RunManager 落盘
-    （[run-manager.ts:111-115](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/run-manager.ts#L111-L115)），多步工作成果不会因一次失败蒸发。
+1-12. （v7 十二项不变：后台并行压缩、HandoffArtifact 校验、offload 分页、双 tracker、
+    增量计数缓存、realpath 防护、checkpoint 三元组、工具结果摘要、workflow 护栏、
+    流式纠偏中断驱动、动态段移出 system、partialMessages 持久化。）
+13. **【新】溢出应急是"重放本步"而非"回注等死"**：应急压缩后 `continue` 重试同一步，
+    不消耗 `llmFailures` 预算——比顶级产品的"报错让用户处理"更自治。
+14. **【新】provider usage 双向校准**：服务端真实 usage 优先用于阈值判定，同时反向
+    校准本地估算系数（滑动平均、钳制 0.5-2）——本地预判与账单口径渐近一致。
+15. **【新】bash 后台任务与子代理句柄共用同一交互范式**：`bash_output/status/kill`
+    与 `subagent_result/status/cancel` 对称，长任务可操作性一次补齐两个通道。
+16. **【新】rg 后端保留 JS 回退**：探测失败静默降级，评测环境无 rg 二进制也不退化
+    成硬错误——工程上的"渐进增强"姿势正确。
+17. **【新】记忆巩固以笔记 id 去重**：重复巩固幂等，写入量有 256KB 预算护栏——巩固
+    管道不是"无脑追加"，从第一天起就防膨胀。
 
-## 5. 扩展路线图
+## 5. 扩展路线图（状态更新）
 
 ### 阶段一至四：已完成（历史存档，见 v5 快照）
 
 ### 阶段五：Durable Run Core（进行中）
 
-`run.replay` 可回退磁盘 JSONL，checkpoint 已有关联三元组。仍未完成：append-only
-operation log、`run.resume`、幂等键、副作用账本、后台 task 控制面、policy AST、
-记忆巩固与评测门禁。
+仍缺：append-only operation log、`run.resume`、幂等键、副作用账本、policy AST、
+评测门禁。后台任务工具面已完成（见下），RPC 控制面待接。
 
-### 阶段六：成本效率工程（v6 提出）
+### 阶段六：成本效率工程（#27-#37）
 
-事项 #27-#37 保持原优先级不变（真实 tokenizer、cache 分层、bash 后台、run.resume、
-rg、动态 offload、spawn_agent 异步、diff 读取、LSP、语义记忆、plan mode）。
-本轮补充证据：#28 的范围要扩大——除历史断点外还需修 B2 三条负优化；#27 要顺带
-修 +4 双重累加（[context.ts:21](file:///f:/Learning/codinganget/SztuCode/packages/runtime-ts/src/context.ts#L21) 与 :175）。
+| # | 事项 | 状态 |
+| --- | --- | --- |
+| 27 | 真实 tokenizer 适配 + usage 校准 | **已完成**（o200k/forModel/calibrate/+4 修复） |
+| 29 | bash 后台任务 | **已完成**（BashJobManager + 三工具） |
+| 31 | rg 搜索后端 | **已完成**（含回退与全局早停） |
+| 33 | spawn_agent 异步化 | **已完成**（句柄控制面） |
+| 36 | 记忆检索 + 巩固 | **部分完成**（评分检索 + 巩固管道；embedding 未做） |
+| 28/32/34/35/37 | cache 分层 / 动态 offload / diff 读取 / LSP / plan mode | 未开始 |
 
-### 阶段七：可靠性工程（本轮新增，与阶段六并列为最高杠杆）
+### 阶段七：可靠性工程（#38-#50）
 
-阶段六修"每次调用多贵"，阶段七修"关键时刻会不会倒"。两者互不依赖、可并行。
+| # | 事项 | 状态 |
+| --- | --- | --- |
+| 38 | 重试纪律收口（529/超时/耗尽） | **已完成** |
+| 39 | 上下文溢出应急通道 | **已完成** |
+| 40 | 超时语义重构 | **部分完成**（provider + workflow 已修；提问超时、墙钟穿透未做） |
+| 41 | 推理模型适配 | **部分完成**（参数与 thinking 形状已修；跨供应商推理上下文映射未做） |
+| 44 | 静默失败清零 | **部分完成**（glob 已修；重复 tool_call_id / 孤儿工具结果未做） |
+| 45 | bash 三件套 | **部分完成**（后台 + 输出回看已修；cwd/环境持久未做） |
+| 48 | workflow 事件驱动 | **部分完成**（调度已修；上游失败降级未做） |
+| 49 | MCP 健壮性 | **已完成** |
+| 50 | 接线死代码 | **部分完成**（工具级 timeoutMs 已接线；cautious taskText / 死代码清理未做） |
+| 42/43/46/47 | cache 负优化三连 / O(n²) 治理 / 权限精度 / WebFetch+WebSearch | 未开始 |
 
-| # | 事项 | 要点 | 优先级 | 状态 |
-| --- | --- | --- | --- | --- |
-| 38 | **重试纪律收口** | 529 入白名单；超时中止改抛可识别的 TimeoutError 并纳入可重试；耗尽判定与循环上限统一，`retryExhausted` 不再丢失 | **P0** | 未开始 |
-| 39 | **上下文溢出应急通道** | 识别 `context_length`/400 类错误 → 立即硬丢弃或紧急压缩后重放本步，替代"回注等死" | **P0** | 未开始 |
-| 40 | **超时语义重构** | provider 改首字节 + 空闲超时；`time_budget_s<=0` 给默认上限；`ask_user_question` 加单问题超时；墙钟预算穿透到工具执行中 | **P0** | 未开始 |
-| 41 | **推理模型适配** | OpenAI 路径 `max_completion_tokens` + 参数清洗（借道接线 ProviderCompat）；Anthropic thinking 改官方形状；跨供应商推理上下文映射 | **P0** | 未开始 |
-| 42 | **cache 负优化三连修** | 动态首条 user 消息按 provider 分流（OpenAI 风格后置或并入 system 尾部）；`providerFromEnvironment` 带上缓存配置；剥离 responses 格式的 `cache_control` | **P0** | 未开始 |
-| 43 | **O(n²) 序列化治理** | TracingProvider 改增量/采样落盘；checkpoint 增量化（或降频 + 摘要）；实现 EventBus 批处理（字段已声明）；TaskCanvas 事件改引用式；trace 轮转 + 启动尾部读取 | P1 | 未开始 |
-| 44 | **静默失败清零** | glob 截断标记；重复 `tool_call_id` 显式报错；孤儿工具结果降级为文本而非丢弃 | P1 | 未开始 |
-| 45 | **bash 三件套** | cwd/环境持久会话 + 输出落盘回看 + `background` 落地（与 #29 合并实施） | P1 | 未开始 |
-| 46 | **权限精度提升** | `always_allow` 自动泛化为通配规则；`sed -i`/`rm -rf`/`push -f` 语义级规则；危险命令分级提示 | P1 | 未开始 |
-| 47 | **WebFetch + WebSearch 工具** | 补齐信息获取面（fetch 带超时/大小上限/正文抽取；search 走可配置后端） | P1 | 未开始 |
-| 48 | **workflow 调度改事件驱动** | 任务完成即补位（消除波次气泡）；上游失败支持跳过/降级策略 | P2 | 未开始 |
-| 49 | **MCP 健壮性** | stderr 排空、退避重连、通知处理（list_changed）、并行连接、能力协商分支 | P2 | 未开始 |
-| 50 | **接线既有死代码** | `cautious` 段传入 `taskText`；工具级 `timeoutMs` 逐工具设置；清理或接线 `READ_ONLY_COMMANDS`/`DANGEROUS_PATH_PATTERNS` | P2 | 未开始 |
+### 阶段八：下一轮最高杠杆（新）
 
-#38-#42 是阶段七 P0：五项全部是"修已有防线"而非"加新器官"，改动面小、风险低，
-直接作用于成功率与长任务存活率。与阶段六 P0（#27-#30）合并后共九项，构成本项目
-当前最高杠杆的改造集——**先让已有能力真实生效，再谈扩展**。
+按"剩余差距 × 收益/成本"排序：**#42 cache 负优化三连修**（每轮都在付的隐性成本）、
+**#43 O(n²) 序列化治理**（长运行的头号性能税）、**#46 权限精度**（always_allow 泛化 +
+语义级危险命令，安全分 72 的主要扣分项）、**#47 Web 工具**（信息获取面最后一块大缺口）、
+**#44/#40 收尾四项**（tool_call_id、孤儿消息、提问超时、墙钟穿透，均为小改动）。
 
 ## 6. 总评
 
-v6 的结论是"机制完整度 7 成、成本效率 4 成半"。本轮第二次逐行审查后，这个判断要再
-修正一层：**机制完整度本身也要打折**——一批防线停留在"声明/字段/注释"层面而没有
-接线（A5 清单），重试与超时这两个韧性核心组件各有三个实锤漏洞（A1、A3），上下文
-溢出这个必然发生的故障没有逃生门（A2）。
+第八轮是把 v7 的审计结论**转化为代码的一轮**：五个目标维度全部达标（上下文 85、
+工具 82、编排 82、记忆 81、扩展 74），综合分 66 → **75**，全包 187 项测试复验通过。
+这验证了本项目的评分方法本身是自洽的——v7 把"声明 ≠ 生效"的地方扣了分，本轮把
+它们逐条做成"生效"，分数就回来了，且每一分都有测试背书。
 
-工程判断随之更新：最高杠杆从"阶段六四项"扩展为"**阶段六 + 阶段七的九个 P0**"。
-阶段七五项（#38-#42）是本轮的直接产物，特征是**不加功能、只修防线**：529 与超时的
-重试、400 的应急、超时语义、推理模型参数、缓存负优化——每一项都是几十行级的改动，
-换来的却是"该重试时真的会重试、该降级时真的会降级、推理模型真的能用、缓存真的命中"。
+但 75 分只是"机制完整 + 关键防线生效"的水平，与 Claude Code / Cursor 的差距还剩
+三层，全部挂在路线图上：**成本层**（#42 cache 三连修、#43 O(n²) 治理——长会话的钱
+与长运行的 IO 仍是线性/平方级增长）、**能力面层**（Web/LSP/diff 读取/embedding——四
+块完整缺口）、**安全精度层**（#46——权限语义规则）。
 
-能力数值空洞依旧：134 个测试证明机制正确性，但 Terminal-Bench 接入已就绪而**尚无
-端到端成功率/成本数据**。本轮暴露的可靠性漏洞（尤其 529 不重试、溢出无应急、超时
-斩断长流）恰恰是只有真实压测才能量化的——在跑出第一批基准数字之前，本文所有分数
-仍只是静态代码审计的判断。下一轮评审的验收标准已经明确：**#38-#42 落地 + 第一批
-端到端成功率/缓存命中率/单任务成本数据**，三者齐备才谈得上把分数从"审计判断"改为
-"能力证明"。
+能力数值空洞的最终审判仍未改变：187 个测试证明机制正确性，但 Terminal-Bench 接入
+已就绪而**尚无端到端成功率/成本数据**。下一轮评审的验收标准不变：**#42/#43 落地 +
+第一批端到端成功率/缓存命中率/单任务成本数据**。在此之前，本文所有分数仍是静态
+审计 + 单元复验的判断，不是能力证明。
