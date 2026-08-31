@@ -2,7 +2,7 @@ import { readdir, stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createChunker } from "../chunking/index.js";
+import { createChunker, type Chunk } from "../chunking/index.js";
 import type { Embedder } from "../embedding/types.js";
 import type { VectorStore } from "../vector-store/types.js";
 import { ignored, Workspace } from "../workspace.js";
@@ -23,6 +23,13 @@ export interface IndexAllOptions {
 export interface IndexResult {
   files_indexed: number;
   chunks_indexed: number;
+}
+
+/** 构造统一的嵌入文本；展示给用户的正文仍保存在 Chunk.text 中。 */
+export function formatEmbeddingText(source: string, chunk: Chunk): string {
+  const symbol = typeof chunk.metadata.symbol === "string" ? `\n符号：${chunk.metadata.symbol}` : "";
+  const kind = typeof chunk.metadata.symbol_kind === "string" ? `\n符号类型：${chunk.metadata.symbol_kind}` : "";
+  return `${source}${symbol}${kind}\n\n${chunk.text}`;
 }
 
 /** 负责把工作区文件转换成向量记录，不负责注册工具或持久化存储。 */
@@ -53,7 +60,7 @@ export class WorkspaceIndexer {
     if (buffer.includes(0)) throw new Error(`二进制文件不能建立文本索引：${source}`);
     const content = buffer.toString("utf8");
     const chunks = createChunker(source).split(content, { source });
-    const vectors = await this.embedder.embed(chunks.map((chunk) => `${source}\n\n${chunk.text}`));
+    const vectors = await this.embedder.embed(chunks.map((chunk) => formatEmbeddingText(source, chunk)));
     if (vectors.length !== chunks.length) throw new Error(`嵌入结果数量与分块数量不一致：${source}`);
 
     // 先完成嵌入，再替换旧记录；模型失败时保留旧索引，避免索引出现空洞。

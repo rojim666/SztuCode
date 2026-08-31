@@ -30,7 +30,7 @@ test("索引单文件时会分块、携带路径上下文并保存元数据", as
     const indexer = new WorkspaceIndexer(root, createEmbedder(calls), store);
     const count = await indexer.indexFile("auth.ts");
     assert.equal(count, 1);
-    assert.match(calls[0]![0]!, /^auth\.ts\n\n/);
+    assert.match(calls[0]![0]!, /^auth\.ts\n符号：checkPermission\n符号类型：function\n\n/);
     const result = await store.search([0, 1], 1);
     assert.equal(result[0]!.record.metadata.source, "auth.ts");
     assert.equal(result[0]!.record.metadata.workspace_id, root);

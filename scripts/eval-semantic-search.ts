@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createTransformersEmbedder } from "../packages/runtime-ts/src/embedding/index.js";
 import { MemoryVectorStore } from "../packages/runtime-ts/src/vector-store/index.js";
 import { createChunker } from "../packages/runtime-ts/src/chunking/index.js";
+import { formatEmbeddingText } from "../packages/runtime-ts/src/indexing/workspace-indexer.js";
 
 type Sample = { path: string; text: string };
 type QueryCase = { query: string; expected: string[] };
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
   const embedder = createTransformersEmbedder();
   const store = new MemoryVectorStore(embedder.dimensions);
   const chunks = samples.flatMap((sample) => createChunker(sample.path, { maxChars: 3_500, overlapLines: 20 }).split(sample.text, { source: sample.path }));
-  const vectors = await embedder.embed(chunks.map((chunk) => chunk.text));
+  const vectors = await embedder.embed(chunks.map((chunk) => formatEmbeddingText(String(chunk.metadata.source), chunk)));
   await store.add(chunks.map((chunk, index) => ({
     vector: vectors[index]!,
     text: chunk.text,
