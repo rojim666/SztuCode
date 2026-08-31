@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 import type { ToolPermission } from "./tools-types.js";
 import type { Workspace } from "./workspace.js";
 import { ignored } from "./workspace.js";
