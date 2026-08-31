@@ -20,7 +20,10 @@ const cliSource = resolve(repositoryRoot, "packages/cli/src/main.ts"); const cli
 rmSync(cliTarget, { recursive: true, force: true }); mkdirSync(cliTarget, { recursive: true });
 const runtimeTarget = resolve(packageRoot, "runtime"); rmSync(runtimeTarget, { recursive: true, force: true }); mkdirSync(runtimeTarget, { recursive: true });
 const runtimeSource = resolve(repositoryRoot, "packages/runtime-ts/src/main.ts");
-const sharedBuildOptions = { bundle: true, platform: "node", format: "esm", absWorkingDir: repositoryRoot };
+// ESM 产物中 CJS 依赖（如 mammoth/xlsx）的 require("fs") 会落入 esbuild 的抛错 shim；
+// 注入 createRequire 提供真实 require，保证捆绑的 Node 内置模块解析正常
+const requireBanner = { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" };
+const sharedBuildOptions = { bundle: true, platform: "node", format: "esm", absWorkingDir: repositoryRoot, banner: requireBanner };
 await build({ ...sharedBuildOptions, entryPoints: [cliSource], outfile: resolve(cliTarget, "main.js") });
 await build({ ...sharedBuildOptions, entryPoints: [runtimeSource], outfile: resolve(runtimeTarget, "main.js") });
 console.log("Bundled the TypeScript runtime and CLI for npm publishing.");
