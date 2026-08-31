@@ -5,6 +5,7 @@ import { createTransformersEmbedder } from "../packages/runtime-ts/src/embedding
 import { MemoryVectorStore } from "../packages/runtime-ts/src/vector-store/index.js";
 import { createChunker } from "../packages/runtime-ts/src/chunking/index.js";
 import { formatEmbeddingText } from "../packages/runtime-ts/src/indexing/workspace-indexer.js";
+import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "../packages/runtime-ts/src/retrieval/index.js";
 
 type Sample = { path: string; text: string };
 type QueryCase = { query: string; expected: string[] };
@@ -65,20 +66,19 @@ async function main(): Promise<void> {
     text: chunk.text,
     metadata: Object.fromEntries(Object.entries(chunk.metadata).filter(([, value]) => value !== undefined)) as Record<string, string | number | boolean>,
   })));
+  const lexical = new LexicalIndex();
+  for (const sample of samples) {
+    lexical.replace(sample.path, chunks.filter((chunk) => chunk.metadata.source === sample.path));
+  }
   const indexMs = performance.now() - started;
 
   const rows: EvalRow[] = [];
   for (const testCase of queryCases) {
     const queryStarted = performance.now();
     const queryVector = await embedder.embedQuery(testCase.query);
-    const chunkResults = await store.search(queryVector, 10);
-    const bestBySource = new Map<string, (typeof chunkResults)[number]>();
-    for (const result of chunkResults) {
-      const source = String(result.record.metadata.source);
-      const previous = bestBySource.get(source);
-      if (!previous || result.score > previous.score) bestBySource.set(source, result);
-    }
-    const results = [...bestBySource.values()].sort((left, right) => right.score - left.score).slice(0, 5);
+    const chunkResults = await store.search(queryVector, await store.count());
+    const lexicalResults = lexical.search(testCase.query, await store.count());
+    const results = deduplicateBySource(mergeHybridResults(chunkResults, lexicalResults), 5);
     const queryMs = performance.now() - queryStarted;
     const paths = results.map((result) => String(result.record.metadata.source));
     rows.push({

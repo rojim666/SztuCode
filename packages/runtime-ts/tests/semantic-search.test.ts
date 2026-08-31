@@ -54,6 +54,26 @@ test("semantic_search 支持路径、类型、分数和空索引选项", async (
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("semantic_search 混合排序会提升精确符号命中", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-semantic-hybrid-"));
+  try {
+    await writeFile(path.join(root, "generic.ts"), "export function handleRequest() { return true; }", "utf8");
+    await writeFile(path.join(root, "auth.ts"), "export function checkPermission() { return true; }", "utf8");
+    const embedder: Embedder = {
+      name: "hybrid-test",
+      dimensions: 2,
+      maxTokens: 128,
+      async embed(texts) { return texts.map((text) => text.includes("handleRequest") ? [1, 0] : [0.8, 0.6]); },
+      async embedQuery() { return [1, 0]; },
+    };
+    const tool = createSemanticSearchTool({ createEmbedder: () => embedder });
+    const result = await tool.invoke({ query: "checkPermission", top_k: 1 }, { workspace: new Workspace(root) });
+    assert.equal(result.ok, true);
+    const firstResult = result.output.split("\n")[3] ?? "";
+    assert.match(firstResult, /auth\.ts/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("createWorkspaceTools 注册 semantic_search 且保持只读权限", () => {
   const tool = createWorkspaceTools().get("semantic_search");
   assert.ok(tool);

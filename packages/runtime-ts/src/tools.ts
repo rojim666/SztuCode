@@ -16,7 +16,7 @@ import type { ParsedDocument } from "./document-parser/types.js";
 import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
 import { MemoryVectorStore } from "./vector-store/index.js";
-import { LexicalIndex } from "./retrieval/index.js";
+import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
 
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
@@ -460,14 +460,19 @@ export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}
           await state.indexPromise;
         }
         const queryVector = await state.embedder.embedQuery(query);
-        const candidates = await state.store.search(queryVector, Math.min(100, topK * 5), undefined);
-        const filtered = candidates.filter((result) => {
+        const filter = { pathPrefix: relativePath, fileType: fileType as "code" | "markdown" | "document" | "any" };
+        const recordCount = await state.store.count();
+        const candidates = await state.store.search(queryVector, Math.max(1, recordCount), undefined);
+        const semanticCandidates = candidates.filter((result) => {
           const source = String(result.record.metadata.source ?? "");
           const type = String(result.record.metadata.type ?? "text");
           const pathMatches = !relativePath || source === relativePath || source.startsWith(`${relativePath}/`);
           const typeMatches = fileType === "any" || (fileType === "code" && type === "code") || (fileType === "markdown" && type === "markdown") || (fileType === "document" && type === "document");
           return pathMatches && typeMatches && result.score >= minScore;
-        }).slice(0, topK);
+        });
+        const lexicalCandidates = state.lexical.search(query, Math.max(1, recordCount), filter);
+        const hybrid = mergeHybridResults(semanticCandidates, lexicalCandidates);
+        const filtered = deduplicateBySource(hybrid, topK);
         if (filtered.length === 0) return ok(`No semantic results for: "${query}"`);
         const lines = [`Semantic search results for: "${query}"`, "Score | File:Line Range | Preview", "------|-------------------|--------"];
         for (const result of filtered) {
