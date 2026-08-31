@@ -94,29 +94,40 @@ export class SessionStore {
   async writeSummary(id: string, text: string): Promise<string> { const directory = path.join(this.root, id); await mkdir(directory, { recursive: true }); const file = path.join(directory, `summary_${compactTimestamp()}_${randomUUID().replace(/-/g, "").slice(0, 8)}.md`); await writeFile(file, text, "utf8"); return file; }
   async attachRun(id: string, runId: string): Promise<void> { const session = await this.get(id); if (!session.run_ids.includes(runId)) session.run_ids.push(runId); session.updated_at = new Date().toISOString(); await this.save(session); }
   async recordRunStats(id: string, runId: string, stats: RunStats): Promise<void> { const session = await this.get(id); session.run_stats ??= {}; session.run_stats[runId] = stats; session.updated_at = new Date().toISOString(); await this.save(session); }
+  // 解析 notes.md 的 frontmatter 块（保留原始边界文本），供容量裁剪与笔记解析复用
+  async noteBlocks(id: string): Promise<NoteBlock[]> {
+    let raw = ""; try { raw = await readFile(path.join(this.root, id, "notes.md"), "utf8"); } catch { return []; }
+    return [...raw.matchAll(NOTE_BLOCK_RE)].map((match) => blockMeta(match[0]));
+  }
   async readNotes(id: string): Promise<string> {
     let raw = ""; try { raw = await readFile(path.join(this.root, id, "notes.md"), "utf8"); } catch { return ""; }
     if (!raw.includes("---")) return raw.trim();
     const active: string[] = [];
-    for (const match of raw.trim().matchAll(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*?)(?=\r?\n\r?\n---\r?\n|$)/gm)) {
-      if (!/^status:\s*active\s*$/m.test(match[1]!)) continue;
-      const runId = match[1]!.match(/^run_id:\s*(\S+)/m)?.[1];
-      active.push(`## Note${runId ? ` (${runId})` : ""}\n${match[2]!.trim()}`);
+    for (const block of await this.noteBlocks(id)) {
+      if (block.status !== "active") continue;
+      const body = block.raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "").trim();
+      active.push(`## Note${block.raw.match(/^run_id:\s*(\S+)/m)?.[1] ? ` (${block.raw.match(/^run_id:\s*(\S+)/m)?.[1]})` : ""}\n${body}`);
     }
     return active.join("\n\n");
   }
   async appendNote(id: string, content: string, runId: string, supersedes = ""): Promise<string> {
+    // 单条笔记上限 20000 字符：防止一次写入撑爆 notes.md
+    if (content.length > MAX_NOTE_CHARS) throw new Error(`note too large (>20000 chars): ${content.length} chars`);
     const noteId = `note-${randomUUID().replace(/-/g, "").slice(0, 12)}`; const directory = path.join(this.root, id); await mkdir(directory, { recursive: true });
     const block = `---\nid: ${noteId}\nstatus: active\nsupersedes: ${supersedes}\nsuperseded_by: \nts: ${new Date().toISOString()}\nrun_id: ${runId}\n---\n${content.trim()}\n\n`;
-    await writeFile(path.join(directory, "notes.md"), block, { encoding: "utf8", flag: "a" }); return noteId;
+    const file = path.join(directory, "notes.md");
+    let existing = ""; try { existing = await readFile(file, "utf8"); } catch { /* 首条笔记：文件不存在 */ }
+    const trimmed = trimToNotesBudget(existing, content.length);
+    await writeFile(file, trimmed + block, "utf8"); return noteId;
   }
   async updateNote(id: string, noteId: string, content: string, runId: string): Promise<string | null> {
+    if (content.length > MAX_NOTE_CHARS) throw new Error(`note too large (>20000 chars): ${content.length} chars`);
     const file = path.join(this.root, id, "notes.md"); let raw = ""; try { raw = await readFile(file, "utf8"); } catch { return null; }
     const marker = `id: ${noteId}\nstatus: active`; if (!raw.includes(marker)) return null;
     const nextId = `note-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const archived = raw.replace(marker, `id: ${noteId}\nstatus: archived`).replace(`id: ${noteId}\nstatus: archived\nsupersedes:`, `id: ${noteId}\nstatus: archived\nsupersedes:`).replace(new RegExp(`(id: ${escapeRegex(noteId)}[\\s\\S]*?superseded_by:)\\s*`), `$1 ${nextId}`);
     const block = `---\nid: ${nextId}\nstatus: active\nsupersedes: ${noteId}\nsuperseded_by: \nts: ${new Date().toISOString()}\nrun_id: ${runId}\n---\n${content.trim()}\n\n`; const temporary = `${file}.${Date.now()}.tmp`;
-    await writeFile(temporary, `${archived.trimEnd()}\n\n${block}`, "utf8"); await rename(temporary, file); return nextId;
+    await writeFile(temporary, `${trimToNotesBudget(archived, block.length).trimEnd()}\n\n${block}`, "utf8"); await rename(temporary, file); return nextId;
   }
   private async save(session: Session): Promise<void> {
     const dir = path.join(this.root, session.id); await mkdir(dir, { recursive: true });
@@ -128,3 +139,26 @@ export class SessionStore {
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const compactTimestamp = () => new Date().toISOString().replace(/[-:]/g, "").replace("T", "_").slice(0, 15);
+const MAX_NOTE_CHARS = 20_000; // 单条笔记上限
+const NOTES_MAX_BYTES = 512 * 1024; // notes.md 总量上限
+type NoteBlock = { id: string; status: string; ts: string; raw: string };
+// 块边界必须以行首 --- 起始，避免正文内容误匹配为 frontmatter；
+// 结束用 (?![\s\S]) 而非 $（m 标志下 $ 会在每行末命中，把多行正文截断到首行）
+const NOTE_BLOCK_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n[\s\S]*?(?=\r?\n---\r?\n|(?![\s\S]))/gm;
+const blockMeta = (raw: string): NoteBlock => {
+  const header = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
+  return { id: header.match(/^id:\s*(\S+)/m)?.[1] ?? "", status: header.match(/^status:\s*(\S+)/m)?.[1] ?? "", ts: header.match(/^ts:\s*(\S+)/m)?.[1] ?? "", raw };
+};
+// notes.md 总量裁剪：超限先删最旧 archived，仍超限再删最旧非 active；active 块绝不删
+function trimToNotesBudget(existing: string, incomingBytes: number): string {
+  if (Buffer.byteLength(existing, "utf8") + incomingBytes <= NOTES_MAX_BYTES) return existing;
+  const blocks = [...existing.matchAll(NOTE_BLOCK_RE)].map((match) => blockMeta(match[0]));
+  const ordered = blocks.slice().sort((a, b) => a.ts.localeCompare(b.ts));
+  for (const pass of [ordered.filter((block) => block.status === "archived"), ordered.filter((block) => block.status !== "active")] as const) {
+    for (const block of pass) {
+      if (Buffer.byteLength(existing, "utf8") + incomingBytes <= NOTES_MAX_BYTES) break;
+      existing = existing.replace(block.raw, "").replace(/\r?\n{3,}/g, "\n\n");
+    }
+  }
+  return existing;
+}

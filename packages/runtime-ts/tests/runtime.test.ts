@@ -551,14 +551,14 @@ test("system prompt loads TypeScript-owned prompts and project instructions", as
 
 test("prompt harness injects only rules required by runtime capabilities", async () => {
   const basic = await runtimePromptEntries({ toolNames: ["read_file"], taskText: "read config" });
-  assert.ok(basic.some((entry) => /read files/i.test(entry)));
-  assert.ok(!basic.some((entry) => /Auto Mode Active/.test(entry)));
+  assert.ok(basic.some((entry) => /read_file|读取文件/i.test(entry)));
+  assert.ok(!basic.some((entry) => /自动模式已激活/.test(entry)));
   const dynamic = await runtimePromptEntries({ permissionMode: "auto", memoryEnabled: true, toolNames: ["bash", "task_get"], taskText: "删除旧分支并推送" });
-  assert.ok(dynamic.some((entry) => /Auto Mode Active/.test(entry)));
-  assert.ok(dynamic.some((entry) => /Auto Memory/.test(entry)));
-  assert.ok(dynamic.some((entry) => /Executing actions with care/.test(entry)));
-  assert.ok(dynamic.some((entry) => /Task Management/.test(entry)));
-  assert.ok(dynamic.some((entry) => /parallel/i.test(entry)));
+  assert.ok(dynamic.some((entry) => /自动模式已激活/.test(entry)));
+  assert.ok(dynamic.some((entry) => /自动内存管理/.test(entry)));
+  assert.ok(dynamic.some((entry) => /谨慎执行操作/.test(entry)));
+  assert.ok(dynamic.some((entry) => /任务管理/.test(entry)));
+  assert.ok(dynamic.some((entry) => /并行|parallel/i.test(entry)));
 });
 
 test("agent profiles load role prompts and enforce tool allowlists", async () => {

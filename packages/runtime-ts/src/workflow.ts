@@ -23,6 +23,12 @@ class WorkflowCancelledError extends Error {
   constructor() { super("workflow cancelled"); this.name = "WorkflowCancelledError"; }
 }
 
+// 未显式声明 time_budget_s（<=0）时的默认超时秒数；仅接受正整数，可用 SZTU_WORKFLOW_DEFAULT_TIMEOUT_S 覆盖
+const workflowDefaultTimeoutSeconds = (): number => {
+  const value = Number(process.env.SZTU_WORKFLOW_DEFAULT_TIMEOUT_S);
+  return Number.isInteger(value) && value > 0 ? value : 600;
+};
+
 export class WorkflowOrchestrator {
   private readonly maxConcurrency: number;
 
@@ -39,10 +45,23 @@ export class WorkflowOrchestrator {
     const completed = new Map<string, HandoffArtifact>();
     for (const task of graph.tasks) results.set(task.id, { task, status: "pending", attempts: 0, artifact: null, error: "", tokens: 0 });
 
-    while ([...results.values()].some((result) => result.status === "pending" || result.status === "running")) {
+    // 事件驱动调度：任一任务 settle 即重算 ready 并补位，避免“波次气泡”（快任务等最慢任务）
+    const running = new Map<string, Promise<void>>();
+    const settled = new Set<string>();
+    const snapshot = () => [...results.values()].map((result) => ({ id: result.task.id, dependencies: result.task.dependencies, status: result.status }));
+    const hasPending = () => [...results.values()].some((result) => result.status === "pending" || result.status === "running");
+
+    while (running.size > 0 || hasPending()) {
       if (signal?.aborted) { await this.cancelUnfinished(results); break; }
-      const ready = readyTaskIds([...results.values()].map((result) => ({ id: result.task.id, dependencies: result.task.dependencies, status: result.status }))).slice(0, this.maxConcurrency);
-      if (!ready.length) {
+      while (running.size < this.maxConcurrency) {
+        if (signal?.aborted) break;
+        const next = readyTaskIds(snapshot()).find((id) => !running.has(id));
+        if (!next) break;
+        const promise = this.runTask(graph.workflow_id, results.get(next)!, completed, signal);
+        running.set(next, promise);
+        void promise.then(() => settled.add(next), () => settled.add(next));
+      }
+      if (running.size === 0) {
         for (const result of results.values()) {
           if (result.status !== "pending") continue;
           result.status = "blocked";
@@ -51,7 +70,9 @@ export class WorkflowOrchestrator {
         }
         break;
       }
-      await Promise.all(ready.map((id) => this.runTask(graph.workflow_id, results.get(id)!, completed, signal)));
+      await Promise.race([...running.values()]);
+      for (const id of settled) running.delete(id);
+      settled.clear();
     }
 
     const values = [...results.values()];
@@ -133,9 +154,11 @@ export class WorkflowOrchestrator {
       else if (parentSignal) { cancel = () => reject(new WorkflowCancelledError()); parentSignal.addEventListener("abort", cancel, { once: true }); }
     });
     let timer: NodeJS.Timeout | undefined;
-    const timeout = task.time_budget_s > 0 ? new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { const error = new WorkflowTimeoutError(task.id); controller.abort(error); reject(error); }, task.time_budget_s * 1000);
-    }) : new Promise<never>(() => {});
+    // time_budget_s>0 按显式值超时；<=0 使用默认预算（600_000ms / SZTU_WORKFLOW_DEFAULT_TIMEOUT_S 正整数覆盖），保证永不超时的兜底仍会 abort + 超时错误
+    const timeoutSeconds = task.time_budget_s > 0 ? task.time_budget_s : workflowDefaultTimeoutSeconds();
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => { const error = new WorkflowTimeoutError(task.id); controller.abort(error); reject(error); }, timeoutSeconds * 1000);
+    });
     try {
       return await Promise.race([this.executeTask(task, execution), timeout, cancellation]);
     } finally {
