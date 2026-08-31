@@ -16,6 +16,7 @@
     "cli:ts": "tsx packages/cli/src/main.ts",
     "cli:py": "uv run --project py-runtime --offline python -m sztu_code.cli",
     "eval": "tsx packages/evaluation/src/main.ts",
+    "eval:semantic": "tsx scripts/eval-semantic-search.ts",
     "bench:tbench": "node scripts/run-tbench.mjs",
     "bench:tbench:ts": "node scripts/run-tbench.mjs --ts",
     "docs:protocol": "tsx scripts/gen_protocol_doc.ts",

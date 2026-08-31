@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 import type { ToolPermission } from "./tools-types.js";
 import type { Workspace } from "./workspace.js";
 import { ignored } from "./workspace.js";
@@ -12,6 +13,10 @@ import { classifyBashPermission } from "./bash-permission.js";
 import { SkillLoader } from "./skills.js";
 import { detectDocumentFormat } from "./document-parser/detect.js";
 import type { ParsedDocument } from "./document-parser/types.js";
+import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
+import { WorkspaceIndexer } from "./indexing/index.js";
+import { MemoryVectorStore } from "./vector-store/index.js";
+import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
 
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
@@ -391,6 +396,100 @@ export function createWorkflowTool(run: (graph: unknown) => Promise<unknown>): T
   return { name: "run_workflow", description: "Execute a validated planner WorkflowGraph as a parallel specialist workflow", permission: "workspace_write", schema: { type: "object", properties: { workflow: { type: "object" } }, required: ["workflow"] }, async invoke(params) { try { return ok(JSON.stringify(await run(params.workflow))); } catch (error) { return fail(error instanceof Error ? error.message : String(error), "schema_error"); } } };
 }
 
+export interface SemanticSearchToolOptions {
+  createEmbedder?: () => Embedder;
+}
+
+type SemanticIndexState = {
+  embedder: Embedder;
+  indexer: WorkspaceIndexer;
+  store: MemoryVectorStore;
+  lexical: LexicalIndex;
+  indexPromise?: Promise<{ files_indexed: number; chunks_indexed: number }>;
+};
+
+/** 创建按工作区懒加载的语义搜索工具。 */
+export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}): Tool {
+  const states = new Map<string, SemanticIndexState>();
+  const getState = (root: string): SemanticIndexState => {
+    const existing = states.get(root);
+    if (existing) return existing;
+    const embedder = options.createEmbedder?.() ?? createTransformersEmbedder();
+    const store = new MemoryVectorStore(embedder.dimensions);
+    const lexical = new LexicalIndex();
+    const state = { embedder, indexer: new WorkspaceIndexer(root, embedder, store, (source, chunks) => lexical.replace(source, chunks)), store, lexical };
+    states.set(root, state);
+    return state;
+  };
+
+  return {
+    name: "semantic_search",
+    description: "使用语义和含义搜索工作区代码与文档；不知道确切关键词时使用，并与 grep_search 互补。",
+    permission: "read_only",
+    timeoutMs: 120_000,
+    schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", minLength: 1, description: "描述目标代码或内容的自然语言查询" },
+        top_k: { type: "integer", minimum: 1, maximum: 20, default: 5, description: "返回结果数量" },
+        path: { type: "string", description: "可选的工作区相对目录前缀" },
+        file_type: { type: "string", enum: ["code", "markdown", "document", "any"], default: "any" },
+        min_score: { type: "number", minimum: -1, maximum: 1, default: 0, description: "最低余弦相似度；默认不过滤" },
+        auto_index: { type: "boolean", default: true, description: "索引为空时自动建立工作区索引" },
+      },
+      required: ["query"],
+    },
+    async invoke(params, context) {
+      const query = str(params, "query")?.trim();
+      if (!query) return fail("query is required", "schema_error");
+      const topK = params.top_k === undefined ? 5 : Number(params.top_k);
+      if (!Number.isInteger(topK) || topK < 1 || topK > 20) return fail("top_k must be an integer between 1 and 20", "schema_error");
+      const fileType = params.file_type === undefined ? "any" : String(params.file_type);
+      if (!["code", "markdown", "document", "any"].includes(fileType)) return fail("file_type is invalid", "schema_error");
+      const minScore = params.min_score === undefined ? 0 : Number(params.min_score);
+      if (!Number.isFinite(minScore) || minScore < -1 || minScore > 1) return fail("min_score must be between -1 and 1", "schema_error");
+      const relativePath = params.path === undefined ? "" : String(params.path).replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
+      if (relativePath.split("/").some((part) => part === "..")) return fail("path must stay inside the workspace", "schema_error");
+
+      try {
+        const state = getState(context.workspace.root);
+        const autoIndex = params.auto_index === undefined ? true : Boolean(params.auto_index);
+        if (await state.store.count() === 0) {
+          if (!autoIndex) return ok("Semantic index is empty. Set auto_index=true or build the index before searching.");
+          state.indexPromise ??= state.indexer.indexAll().catch((error) => { state.indexPromise = undefined; throw error; });
+          await state.indexPromise;
+        }
+        const queryVector = await state.embedder.embedQuery(query);
+        const filter = { pathPrefix: relativePath, fileType: fileType as "code" | "markdown" | "document" | "any" };
+        const recordCount = await state.store.count();
+        const candidates = await state.store.search(queryVector, Math.max(1, recordCount), undefined);
+        const semanticCandidates = candidates.filter((result) => {
+          const source = String(result.record.metadata.source ?? "");
+          const type = String(result.record.metadata.type ?? "text");
+          const pathMatches = !relativePath || source === relativePath || source.startsWith(`${relativePath}/`);
+          const typeMatches = fileType === "any" || (fileType === "code" && type === "code") || (fileType === "markdown" && type === "markdown") || (fileType === "document" && type === "document");
+          return pathMatches && typeMatches && result.score >= minScore;
+        });
+        const lexicalCandidates = state.lexical.search(query, Math.max(1, recordCount), filter);
+        const hybrid = mergeHybridResults(semanticCandidates, lexicalCandidates);
+        const filtered = deduplicateBySource(hybrid, topK);
+        if (filtered.length === 0) return ok(`No semantic results for: "${query}"`);
+        const lines = [`Semantic search results for: "${query}"`, "Score | File:Line Range | Preview", "------|-------------------|--------"];
+        for (const result of filtered) {
+          const source = String(result.record.metadata.source);
+          const start = Number(result.record.metadata.start_line ?? 1);
+          const end = Number(result.record.metadata.end_line ?? start);
+          const preview = result.record.text.split(/\r?\n/).slice(0, 3).join(" ").replace(/\s+/g, " ").slice(0, 240);
+          lines.push(`${result.score.toFixed(4)} | ${source}:${start}-${end} | ${preview}`);
+        }
+        return ok(lines.join("\n"));
+      } catch (error) {
+        return fail(error instanceof Error ? error.message : String(error));
+      }
+    },
+  };
+}
+
 export function createPlanTools(events: EventBus, runId: string, sessionId = "", tasksDir = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu"), "runs", runId.replace(/[^A-Za-z0-9_.-]/g, "_"), "tasks")): Tool[] {
   const manager = new TaskManager(tasksDir);
   const publish = async () => { const items = await manager.listAll(); events.publish({ type: "plan.updated", run_id: runId, session_id: sessionId, items: items.map(({ id, subject, status, blocked_by }) => ({ id, subject, status, blocked_by })), ts: new Date().toISOString() }); };
@@ -429,6 +528,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       return ok(`${numbered}${suffix}`.trimEnd());
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
+  registry.register(createSemanticSearchTool());
   registry.register({ name: "parse_document", description: "Extract readable text, tables and metadata from binary documents (PDF, DOCX, XLSX) as Markdown", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path to the document, relative to workspace root" }, format: { type: "string", enum: ["auto", "pdf", "docx", "xlsx"], description: "Force a parser instead of extension/magic detection", default: "auto" }, max_pages: { type: "integer", minimum: 1, maximum: 200, description: "PDF: parse only the first N pages (default: all)" }, max_rows: { type: "integer", minimum: 1, maximum: 5000, description: "XLSX: maximum rows per sheet (default: 500)" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
     try {
@@ -448,7 +548,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       return ok(formatDocumentMarkdown(doc));
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
-  registry.register({ name: "write_file", description: "Write a UTF-8 file inside the workspace", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }, async invoke(params, context) {
+  registry.register({ name: "write_file", timeoutMs: 30_000, description: "Write a UTF-8 file inside the workspace", permission: "workspace_write", schema: { type: "object", properties: { path: { type: "string" }, content: { type: "string" } }, required: ["path", "content"] }, async invoke(params, context) {
     const file = str(params, "path"); const content = str(params, "content"); if (!file || content === null) return fail("path and content are required", "schema_error");
     try { const target = await context.workspace.resolveExisting(file); const before = await readFile(target, "utf8").catch(() => null); await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, content, "utf8"); if (before !== content) context.onFileChanged?.(path.relative(context.workspace.root, target).split(path.sep).join("/")); return ok(`wrote ${file}`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
