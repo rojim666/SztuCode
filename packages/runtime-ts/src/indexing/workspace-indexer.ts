@@ -25,6 +25,8 @@ export interface IndexResult {
   chunks_indexed: number;
 }
 
+export type IndexObserver = (source: string, chunks: readonly Chunk[]) => Promise<void> | void;
+
 /** 构造统一的嵌入文本；展示给用户的正文仍保存在 Chunk.text 中。 */
 export function formatEmbeddingText(source: string, chunk: Chunk): string {
   const symbol = typeof chunk.metadata.symbol === "string" ? `\n符号：${chunk.metadata.symbol}` : "";
@@ -41,6 +43,7 @@ export class WorkspaceIndexer {
     workspaceRoot: string,
     private readonly embedder: Embedder,
     private readonly vectorStore: VectorStore,
+    private readonly observer?: IndexObserver,
   ) {
     this.workspace = new Workspace(workspaceRoot);
     this.workspaceId = this.workspace.root;
@@ -50,6 +53,7 @@ export class WorkspaceIndexer {
     const source = this.normalizeRelativePath(relativePath);
     if (!this.shouldIndex(source)) {
       await this.vectorStore.delete({ source });
+      await this.observer?.(source, []);
       return 0;
     }
     const absolute = await this.workspace.resolveExisting(source);
@@ -65,7 +69,10 @@ export class WorkspaceIndexer {
 
     // 先完成嵌入，再替换旧记录；模型失败时保留旧索引，避免索引出现空洞。
     await this.vectorStore.delete({ source });
-    if (chunks.length === 0) return 0;
+    if (chunks.length === 0) {
+      await this.observer?.(source, []);
+      return 0;
+    }
     await this.vectorStore.add(chunks.map((chunk, index) => ({
       vector: vectors[index]!,
       text: chunk.text,
@@ -75,6 +82,7 @@ export class WorkspaceIndexer {
         workspace_id: this.workspaceId,
       } as Record<string, string | number | boolean>,
     })));
+    await this.observer?.(source, chunks);
     return chunks.length;
   }
 
@@ -109,7 +117,10 @@ export class WorkspaceIndexer {
       try {
         await this.indexFile(source);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") await this.vectorStore.delete({ source });
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          await this.vectorStore.delete({ source });
+          await this.observer?.(source, []);
+        }
         else throw error;
       }
     }

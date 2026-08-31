@@ -16,6 +16,7 @@ import type { ParsedDocument } from "./document-parser/types.js";
 import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
 import { MemoryVectorStore } from "./vector-store/index.js";
+import { LexicalIndex } from "./retrieval/index.js";
 
 export type { ToolPermission } from "./tools-types.js";
 export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
@@ -403,6 +404,7 @@ type SemanticIndexState = {
   embedder: Embedder;
   indexer: WorkspaceIndexer;
   store: MemoryVectorStore;
+  lexical: LexicalIndex;
   indexPromise?: Promise<{ files_indexed: number; chunks_indexed: number }>;
 };
 
@@ -414,7 +416,8 @@ export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}
     if (existing) return existing;
     const embedder = options.createEmbedder?.() ?? createTransformersEmbedder();
     const store = new MemoryVectorStore(embedder.dimensions);
-    const state = { embedder, indexer: new WorkspaceIndexer(root, embedder, store), store };
+    const lexical = new LexicalIndex();
+    const state = { embedder, indexer: new WorkspaceIndexer(root, embedder, store, (source, chunks) => lexical.replace(source, chunks)), store, lexical };
     states.set(root, state);
     return state;
   };

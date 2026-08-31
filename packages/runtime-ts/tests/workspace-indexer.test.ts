@@ -38,6 +38,20 @@ test("索引单文件时会分块、携带路径上下文并保存元数据", as
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("索引完成后通知观察者，嵌入失败时不提前替换观察结果", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-index-observer-"));
+  try {
+    await writeFile(path.join(root, "auth.ts"), "export function checkPermission() { return true; }", "utf8");
+    const observed: Array<[string, number]> = [];
+    const store = new MemoryVectorStore(2);
+    const indexer = new WorkspaceIndexer(root, createEmbedder(), store, (source, chunks) => observed.push([source, chunks.length]));
+    await indexer.indexFile("auth.ts");
+    await writeFile(path.join(root, "auth.ts"), "", "utf8");
+    await indexer.indexFile("auth.ts");
+    assert.deepEqual(observed, [["auth.ts", 1], ["auth.ts", 0]]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("全量索引过滤噪音目录、扩展名和文件数量，并报告进度", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-index-all-"));
   try {
