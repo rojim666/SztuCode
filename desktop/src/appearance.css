@@ -418,6 +418,74 @@
   border-color: var(--border-strong);
 }
 
+/* Settings is rendered in a portal, so keep its controls tied to the app theme
+   instead of relying on the operating-system color preference. */
+:root[data-app-theme="dark"] :is(
+  .settings-backdrop,
+  .settings-dialog,
+  .settings-dialog__header,
+  .settings-dialog__body,
+  .settings-dialog__nav,
+  .settings-dialog__content,
+  .settings-block,
+  .setting-row,
+  .appearance-split,
+  .custom-wallpaper,
+  .about-details,
+  .model-manager-dialog
+) {
+  color: var(--text) !important;
+}
+
+:root[data-app-theme="dark"] .settings-backdrop { background: rgb(0 0 0 / 68%) !important; }
+:root[data-app-theme="dark"] :is(.settings-dialog, .settings-dialog__header, .settings-dialog__nav, .settings-dialog__content) {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] :is(.settings-dialog__header h1, .settings-dialog__nav > button, .settings-block__heading h3, .setting-row b, .form-grid label > span, .select-row > span, .about-details dt) { color: var(--text) !important; }
+:root[data-app-theme="dark"] :is(.settings-dialog__header p, .settings-dialog__nav-foot, .settings-block__heading p, .setting-row p, .select-row small, .about-details dd, .settings-dialog__nav-foot small) { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] :is(.settings-dialog__nav > button:hover, .settings-dialog__nav > button.active, .theme-options button:hover, .wallpaper-option:hover, .font-family-options button:hover) { background: var(--accent-soft) !important; color: var(--text) !important; }
+:root[data-app-theme="dark"] :is(.theme-options button, .wallpaper-option, .font-family-options button, .option-btn, .wallpaper-btn, .custom-wallpaper, .form-grid select, .select-row select, .about-details button, .ccswitch-provider) {
+  color: var(--text) !important;
+  background: var(--surface-soft) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] :is(.theme-options button.selected, .wallpaper-option.selected, .font-family-options button.selected, .option-btn.selected, .wallpaper-btn.selected, .custom-wallpaper.selected) {
+  color: var(--text) !important;
+  background: var(--accent-soft) !important;
+  border-color: var(--accent) !important;
+}
+:root[data-app-theme="dark"] :is(.custom-wallpaper__actions button, .about-details button) { color: var(--text) !important; }
+:root[data-app-theme="dark"] .settings-dialog :is(.btn, .btn--primary) { color: var(--accent-contrast) !important; background: var(--accent) !important; border-color: var(--accent) !important; }
+:root[data-app-theme="dark"] .settings-dialog input:not([type="range"]),
+:root[data-app-theme="dark"] .settings-dialog textarea {
+  color: var(--text) !important;
+  background: var(--surface-soft) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] .settings-dialog input::placeholder { color: var(--text-faint) !important; }
+:root[data-app-theme="dark"] .settings-dialog :is(.switch, .stepper) { background: var(--surface-soft) !important; border-color: var(--border) !important; color: var(--text) !important; }
+:root[data-app-theme="dark"] .settings-dialog .switch.enabled { background: var(--accent) !important; }
+:root[data-app-theme="dark"] .settings-dialog .switch span { background: var(--surface-raised) !important; }
+:root[data-app-theme="dark"] .settings-dialog .wallpaper-option__preview { border-color: var(--border) !important; filter: brightness(.8); }
+
+/* Workspace rail and inspector still contain a few legacy light-surface rules. */
+:root[data-app-theme="dark"] :is(.task-canvas, .inspector-panel, .inspector-panel--blank, .file-tree, .change-list, .file-tree-view, .workspace-empty-view, .code-preview) {
+  color: var(--text) !important;
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] :is(.inspector-panel section, .inspector-notice, .inspector-search form, .file-preview--files, .files-body) {
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] :is(.file-tree > button, .inspector-panel li, .context-item, .workspace-open-tab > button:first-child, .workspace-tab-close) { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] :is(.file-tree > button:hover, .workspace-open-tab.active, .workspace-open-tab.active:hover, .workspace-tab-close:hover) { color: var(--text) !important; background: var(--accent-soft) !important; }
+:root[data-app-theme="dark"] :is(.inspector-panel h2, .inspector-panel li.done, .context-item b, .preview-breadcrumb, .code-preview-meta) { color: var(--text) !important; }
+:root[data-app-theme="dark"] :is(.inspector-panel li svg, .context-item span, .inspector-empty, .inspector-notice, .workspace-open-tab:not(.active) > button:first-child) { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] .workspace-tab-close { background: var(--surface-raised) !important; }
+
 :root[data-app-theme="dark"] .markdown-body hr {
   height: 1px;
   margin: 18px 0;

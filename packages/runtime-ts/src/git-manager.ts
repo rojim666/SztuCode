@@ -8,8 +8,39 @@ export type ChangeSummary = { path: string; index_status: string; worktree_statu
 export class GitManager {
   constructor(private readonly workspaces: WorkspaceManager) {}
   private async cwd(id: string): Promise<string> { return (await this.workspaces.get(id)).path; }
+  private parseNumstat(output: string): { additions: number; deletions: number } {
+    const row = output.split(/\r?\n/).find((line) => line.trim());
+    if (!row) return { additions: 0, deletions: 0 };
+    const [added, deleted] = row.split("\t");
+    const additions = Number.parseInt(added ?? "", 10);
+    const deletions = Number.parseInt(deleted ?? "", 10);
+    return { additions: Number.isFinite(additions) ? additions : 0, deletions: Number.isFinite(deletions) ? deletions : 0 };
+  }
+  private async stats(cwd: string, file: string, untracked: boolean): Promise<{ additions: number; deletions: number }> {
+    if (untracked) {
+      try {
+        // --no-index exits with status 1 when files differ; execFile still exposes its stdout on the error.
+        await exec("git", ["diff", "--no-index", "--numstat", "--", process.platform === "win32" ? "NUL" : "/dev/null", file], { cwd });
+      } catch (reason) {
+        return this.parseNumstat(String((reason as { stdout?: string }).stdout ?? ""));
+      }
+      return { additions: 0, deletions: 0 };
+    }
+    try {
+      return this.parseNumstat((await exec("git", ["diff", "HEAD", "--numstat", "--", file], { cwd })).stdout);
+    } catch {
+      try {
+        return this.parseNumstat((await exec("git", ["diff", "--cached", "--numstat", "--", file], { cwd })).stdout);
+      } catch { return { additions: 0, deletions: 0 }; }
+    }
+  }
   async list(id: string): Promise<ChangeSummary[]> {
-    const cwd = await this.cwd(id); try { const { stdout } = await exec("git", ["status", "--porcelain=v1"], { cwd }); return stdout.split(/\r?\n/).filter(Boolean).map((line) => ({ index_status: line[0] ?? " ", worktree_status: line[1] ?? " ", path: line.slice(3).trim() })); } catch { return []; }
+    const cwd = await this.cwd(id);
+    try {
+      const { stdout } = await exec("git", ["status", "--porcelain=v1"], { cwd });
+      const entries = stdout.split(/\r?\n/).filter(Boolean).map((line) => ({ index_status: line[0] ?? " ", worktree_status: line[1] ?? " ", path: line.slice(3).trim() }));
+      return await Promise.all(entries.map(async (entry) => ({ ...entry, ...await this.stats(cwd, entry.path, entry.index_status === "?" && entry.worktree_status === "?") })));
+    } catch { return []; }
   }
   async diff(id: string, file?: string | null): Promise<string> { const cwd = await this.cwd(id); const args = ["diff", "--no-ext-diff", "--", ...(file ? [file] : [])]; try { return (await exec("git", args, { cwd, maxBuffer: 16 * 1024 * 1024 })).stdout; } catch { return ""; } }
   async stage(id: string, paths: string[]): Promise<string[]> { const cwd = await this.cwd(id); await exec("git", ["add", "--", ...paths], { cwd }); return paths; }

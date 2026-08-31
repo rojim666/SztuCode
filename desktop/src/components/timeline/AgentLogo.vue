@@ -3,6 +3,12 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 
 const props = defineProps<{ active?: boolean; size?: "small" | "large" }>();
 const root = ref<HTMLElement | null>(null);
+// 主题适配：浅色模式黑底白瞳，深色模式白底黑瞳；跟随 data-app-theme 属性实时同步
+const themeDark = ref(false);
+let themeObserver: MutationObserver | null = null;
+function syncTheme() {
+  themeDark.value = document.documentElement.dataset.appTheme === "dark";
+}
 
 type Expression = "normal" | "happy" | "sleep" | "squint";
 const expression = ref<Expression>("normal");
@@ -53,11 +59,16 @@ function trackPointer(event: PointerEvent) {
 
 onMounted(() => {
   window.addEventListener("pointermove", trackPointer, { passive: true });
+  syncTheme();
+  themeObserver = new MutationObserver(syncTheme);
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-app-theme"] });
   scheduleNext();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("pointermove", trackPointer);
+  themeObserver?.disconnect();
+  themeObserver = null;
   clearTimers();
 });
 </script>
@@ -67,7 +78,7 @@ onBeforeUnmount(() => {
     ref="root"
     class="app-icon"
     :class="[
-      { active: props.active },
+      { active: props.active, 'theme-dark': themeDark },
       `app-icon--${props.size ?? 'small'}`,
       `expr-${expression}`,
     ]"
@@ -117,6 +128,13 @@ onBeforeUnmount(() => {
   background: #000;
   box-shadow: none;
   overflow: hidden;
+}
+/* 深色主题：白底黑瞳；浅色主题保持默认的黑底白瞳 */
+.app-icon.theme-dark .logo {
+  color: #000;
+  border: 1px solid #d9dddf;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
 }
 .app-icon--large { --logo-size: 48px; width: 62px; height: 62px; }
 
