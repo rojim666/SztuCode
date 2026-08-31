@@ -12,6 +12,8 @@ const runtimeRoot = path.dirname(output);
 const lockPath = path.join(path.dirname(runtimeRoot), ".runtime-prep.lock");
 
 async function acquireLock() {
+  // resources 目录被 .gitignore 忽略，干净 CI 中可能尚不存在。
+  await mkdir(path.dirname(lockPath), { recursive: true });
   const deadline = Date.now() + 120_000;
   for (;;) {
     try {
@@ -43,7 +45,7 @@ const bundledNode = path.join(runtimeRoot, process.platform === "win32" ? "node.
 await cp(process.execPath, bundledNode);
 if (process.platform !== "win32") await chmod(bundledNode, 0o755);
 const esbuild = path.join(repositoryRoot, "node_modules", "esbuild", "bin", "esbuild");
-const esbuildArgs = [path.join(repositoryRoot, "packages", "runtime-ts", "src", "main.ts"), "--bundle", "--platform=node", "--format=esm", `--outfile=${output}`,
+const esbuildArgs = [path.join(repositoryRoot, "packages", "runtime-ts", "src", "main.ts"), "--bundle", "--platform=node", "--format=esm", "--loader:.node=file", `--outfile=${output}`,
   // ESM 产物中 CJS 依赖的动态 require 会落入 esbuild 抛错 shim，注入真实 require
   `--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);`];
 const nativeEsbuild = process.platform === "win32"
