@@ -248,7 +248,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `run_id` | `string` | yes |
-| `status` | `"running" \| "completed" \| "cancelled" \| "unknown"` | yes |
+| `status` | `"running" \| "completed" \| "failed" \| "cancelled" \| "unknown"` | yes |
 
 ### RunReplayResult
 
@@ -683,6 +683,27 @@
 | `type` | `"run.started"` | yes |
 | `run_id` | `string` | yes |
 | `goal` | `string` | yes |
+| `ts` | `string` | yes |
+
+### OperationStartedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"operation.started"` | yes |
+| `run_id` | `string` | yes |
+| `operation_id` | `string` | yes |
+| `goal` | `string` | yes |
+| `ts` | `string` | yes |
+
+### OperationFinishedEvent
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"operation.finished"` | yes |
+| `run_id` | `string` | yes |
+| `operation_id` | `string` | yes |
+| `status` | `"completed" \| "failed" \| "cancelled"` | yes |
+| `steps` | `number` | yes |
 | `ts` | `string` | yes |
 
 ### RunFinishedEvent
