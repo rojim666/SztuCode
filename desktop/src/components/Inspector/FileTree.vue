@@ -474,19 +474,23 @@ onMounted(() => void loadDir(null));
       <!-- 顶部操作栏：标签 + Open + 折叠按钮 -->
       <div class="file-tabs-bar" v-if="tabs.length" @wheel="handleTabsWheel">
         <div ref="tabsScrollRef" class="file-tabs-scroll">
-          <button
+          <div
             v-for="tab in tabs"
             :key="tab.path"
             class="file-tab"
             :class="{ active: tab.path === activeTabPath, 'has-error': !!tab.error }"
+            role="button"
+            tabindex="0"
             @click="switchTab(tab.path)"
+            @keydown.enter.self.prevent="switchTab(tab.path)"
+            @keydown.space.self.prevent="switchTab(tab.path)"
           >
             <Folder :size="13" />
             <span class="file-tab-name" :title="tab.path">{{ tab.name }}</span>
             <button class="file-tab-close" @click="closeTab(tab.path, $event)" title="关闭">
               <X :size="12" />
             </button>
-          </button>
+          </div>
         </div>
         <div class="file-tabs-actions">
           <!-- Open 按钮 -->

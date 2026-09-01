@@ -1,0 +1,209 @@
+/* 文档画布面板：AI 画布文档的实时渲染视图（悬浮于会话区右侧，不挤压布局） */
+.canvas-panel {
+  position: absolute;
+  top: 56px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 24;
+  width: 400px;
+  max-width: calc(100% - 20px);
+  min-width: 280px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e3e5e7);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 10%), 0 2px 8px rgb(0 0 0 / 6%);
+  overflow: hidden;
+  animation: canvas-panel-in 0.18s ease;
+}
+
+@keyframes canvas-panel-in {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.canvas-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border, #eceef0);
+  background: var(--surface-soft, #f7f8f9);
+  flex-shrink: 0;
+}
+
+.canvas-panel__icon {
+  display: inline-flex;
+  color: var(--text-muted, #6b7280);
+  flex-shrink: 0;
+}
+
+.canvas-panel__title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #1f2328);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-panel__version {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--text-muted, #6b7280);
+  background: var(--surface-raised, #eceef0);
+  border-radius: 999px;
+}
+
+.canvas-panel__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.canvas-panel__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-muted, #6b7280);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.canvas-panel__action:hover:not(:disabled) { color: var(--text, #1f2328); background: var(--surface-raised, #e9ebed); }
+.canvas-panel__action:disabled { opacity: 0.4; cursor: default; }
+
+.canvas-panel__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+
+.canvas-panel__tab {
+  max-width: 140px;
+  padding: 4px 10px;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+  background: transparent;
+  border: 1px solid var(--border, #e3e5e7);
+  border-radius: 999px;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.canvas-panel__tab:hover { color: var(--text, #1f2328); background: var(--surface-soft, #f4f5f6); }
+.canvas-panel__tab.active {
+  color: var(--accent-contrast, #fff);
+  background: var(--accent, #2b3032);
+  border-color: var(--accent, #2b3032);
+}
+
+.canvas-panel__body {
+  flex: 1;
+  min-height: 0;
+  padding: 14px 18px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+/* markdown-body 主题适配：让全局浅色的 .markdown-body 跟随面板主题变量 */
+.canvas-panel__body.markdown-body { color: var(--text, #25282d); }
+.canvas-panel__body.markdown-body h1,
+.canvas-panel__body.markdown-body h2,
+.canvas-panel__body.markdown-body h3 { color: var(--text, #191b1f); }
+.canvas-panel__body.markdown-body h1:first-child,
+.canvas-panel__body.markdown-body h2:first-child,
+.canvas-panel__body.markdown-body h3:first-child,
+.canvas-panel__body.markdown-body p:first-child { margin-top: 0; }
+.canvas-panel__body.markdown-body code { color: var(--text, #2e3339); background: var(--surface-soft, #f2f3f4); }
+.canvas-panel__body.markdown-body pre { color: var(--text, #30343a); background: var(--surface-soft, #f5f5f5); border-color: var(--border, #e2e3e5); overflow-x: auto; }
+.canvas-panel__body.markdown-body pre code { background: transparent; }
+.canvas-panel__body.markdown-body table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-color: var(--border-strong, #d8dade);
+  white-space: nowrap;
+}
+.canvas-panel__body.markdown-body th,
+.canvas-panel__body.markdown-body td { border-color: var(--border, #d8dade); }
+.canvas-panel__body.markdown-body th { background: var(--surface-soft, #f4f4f5); }
+.canvas-panel__body.markdown-body blockquote { color: var(--text-muted, #666c74); border-left-color: var(--border-strong, #d5d9dd); }
+.canvas-panel__body.markdown-body a { color: var(--accent, #1877f2); }
+.canvas-panel__body.markdown-body img {
+  display: block;
+  max-width: 100%;
+  margin: 12px auto;
+  border: 1px solid var(--border, #e3e5e7);
+  border-radius: 8px;
+}
+.canvas-panel__body.markdown-body img.canvas-img-pending {
+  min-height: 48px;
+  background: var(--surface-soft, #f2f3f4);
+}
+
+.canvas-img-failed {
+  display: block;
+  margin: 12px 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--text-faint, #8a9199);
+  background: var(--surface-soft, #f5f5f5);
+  border: 1px dashed var(--border-strong, #d8dade);
+  border-radius: 8px;
+}
+
+.canvas-panel__footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 14px;
+  font-size: 11px;
+  color: var(--text-faint, #9aa0a6);
+  border-top: 1px solid var(--border, #eceef0);
+  flex-shrink: 0;
+}
+
+/* 画布开关按钮（work-header 内），带文档计数徽标 */
+.canvas-toggle { position: relative; }
+.canvas-toggle__badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  color: var(--accent-contrast, #fff);
+  background: var(--accent, #2b3032);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-panel { animation: none; }
+  .canvas-panel__action,
+  .canvas-panel__tab { transition: none; }
+}

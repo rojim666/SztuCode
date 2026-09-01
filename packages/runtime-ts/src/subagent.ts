@@ -4,6 +4,7 @@ import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { EventBus } from "./event-bus.js";
 import { PermissionManager } from "./permissions.js";
 import { createPlanTools, createWorkspaceTools } from "./tools.js";
+import { createCanvasTools } from "./canvas-document.js";
 import { Workspace } from "./workspace.js";
 import { WorkflowOrchestrator } from "./workflow.js";
 import { buildSystemPrompt, loadAgentProfile } from "./prompt-loader.js";
@@ -61,7 +62,7 @@ export class SubagentManager {
     const runId = randomUUID(); const sessionId = randomUUID(); const effectiveParentRunId = options.parentRunId ?? parentRunId; const ts = new Date().toISOString();
     const profile = await loadAgentProfile(this.workspaceRoot, roleNames[role]);
     const rolePrompt = profile.systemPrompt || `Act as the ${role} role for this task.`;
-    const tools = createWorkspaceTools(createPlanTools(this.events, runId, sessionId));
+    const tools = createWorkspaceTools([...createPlanTools(this.events, runId, sessionId), ...createCanvasTools(this.events, runId, sessionId)]);
     if (profile.allowedTools?.length) tools.restrictTo(profile.allowedTools);
     if (options.allowedPaths) tools.restrictTo(workflowCoderTools);
     const basePermissions = profile.permissionMode ? this.permissions.scoped(profile.permissionMode) : this.permissions;

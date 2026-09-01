@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, FileText, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, Info, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
   Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
-import { confirm, message, open as openDialog } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import SessionActions from "./components/session/SessionActions.vue";
@@ -25,6 +21,7 @@ import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
 import UserQuestionComposer from "./components/UserQuestions/UserQuestionComposer.vue";
 import SourceControlPanel from "./components/SourceControl/SourceControlPanel.vue";
+import CanvasPanel, { type CanvasDoc } from "./components/Canvas/CanvasPanel.vue";
 import { slashMenuItems } from "./components/CommandPalette/slash-menu";
 import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, TimelineEvent, TimelineStep, ToolCallEntry, WorkflowTaskEntry } from "./components/timeline/types";
 import { isMacOSPlatform } from "./lib/platform";
@@ -32,6 +29,7 @@ import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "
 import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
+import { friendlyError } from "./utils/errorNotice";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
   archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listPendingUserQuestions, listSessions,
@@ -418,6 +416,10 @@ const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
 const inspectorOpen = ref(true);
 const inspectorRendered = ref(true);
+// 文档画布：AI 通过 canvas_* 工具产出的 Markdown 交付文档，按会话分组，右侧面板渲染
+const canvasPanelOpen = ref(false);
+const canvasDocsBySession = reactive(new Map<string, CanvasDoc[]>());
+const canvasSelectionBySession = reactive(new Map<string, string>());
 // 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
 const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
@@ -486,6 +488,12 @@ const activeSessionWorkspace = computed(() => {
   return workspaceId ? workspaces.value.find((item) => item.workspace_id === workspaceId) ?? null : null;
 });
 const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.archived));
+// 当前会话的画布文档与选中文档
+const activeCanvasDocs = computed(() => (activeId.value ? canvasDocsBySession.get(activeId.value) : undefined) ?? []);
+const activeCanvasDocId = computed(() => (activeId.value ? canvasSelectionBySession.get(activeId.value) : undefined) ?? null);
+function selectCanvasDoc(id: string) {
+  if (activeId.value) canvasSelectionBySession.set(activeId.value, id);
+}
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
@@ -594,7 +602,8 @@ const permissionModeLabel = computed(() => ({
   accept_edits: "允许编辑",
   auto: "全部允许",
 }[runtimeSettings.value?.permission_mode ?? "normal"]));
-const taskStatusLabel = (item: Session) => item.status === "active" ? "等待输入" : item.status === "waiting_for_input" ? "已完成" : "已完成";
+// 状态语义与后端一致：active=会话进行中（含新建未跑完一轮）、waiting_for_input=等待用户输入、closed=已完成
+const taskStatusLabel = (item: Session) => item.status === "active" ? "进行中" : item.status === "waiting_for_input" ? "等待输入" : "已完成";
 function formatSessionUsage(item: Session): string {
   const tokens = Number(item.total_input_tokens ?? 0) + Number(item.total_output_tokens ?? 0);
   const seconds = Number(item.total_elapsed_s ?? 0);
@@ -1189,6 +1198,29 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     return;
   }
   if (!relatedRunId) return;
+  // 文档画布：AI 通过 canvas_* 工具产出/更新 Markdown 交付文档 → 按会话归档，新建时自动展开面板
+  if (type === "canvas.document") {
+    const payload = event.document as Record<string, unknown> | undefined;
+    if (!payload || typeof payload.id !== "string") return;
+    const doc: CanvasDoc = {
+      id: payload.id,
+      title: String(payload.title ?? "未命名文档"),
+      content: String(payload.content ?? ""),
+      version: Number(payload.version ?? 1),
+      updatedAt: String(payload.updated_at ?? event.ts ?? ""),
+    };
+    // 注意：必须生成新数组再 set——同引用 set 不会触发 Vue 响应式更新
+    const list = [...(canvasDocsBySession.get(sessionId) ?? [])];
+    const index = list.findIndex((item) => item.id === doc.id);
+    if (index >= 0) list[index] = doc; else list.push(doc);
+    canvasDocsBySession.set(sessionId, list);
+    if (!canvasSelectionBySession.get(sessionId)) canvasSelectionBySession.set(sessionId, doc.id);
+    if (String(event.action ?? "") === "create" && sessionId === activeId.value) {
+      canvasSelectionBySession.set(sessionId, doc.id);
+      canvasPanelOpen.value = true;
+    }
+    return;
+  }
   if (type === "run.started") {
     const messageStep = maxTimelineStep(sessionId);
     setStep(messageStep || 1, (current) => ({ ...current, status: "thinking", runId, runStartedAt: String(event.ts ?? new Date().toISOString()) }));
@@ -1716,7 +1748,7 @@ async function steerQueuedSubmission(id: string) {
     await steerPrompt(sessionId, item.text + item.contentSuffix, item.images);
     view.queue = view.queue.filter((entry) => entry.id !== id);
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : String(error));
+    void showProjectNotice("转入当前轮失败", friendlyError(error).message, "danger");
   } finally {
     view.queueBusyId = null;
   }
@@ -1782,6 +1814,26 @@ async function chooseTask(id: string) {
   await loadSessionHistory(id);
 }
 async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
+// 解析 URL hash (#session=<id>) 并激活对应会话：支撑"在新窗口打开"与"复制会话链接"，
+// 链接失效或会话已删除时静默回退到默认启动页。
+function consumeSessionHash() {
+  const match = /#session=([^&]+)/.exec(window.location.hash ?? "");
+  if (!match) return;
+  const sessionId = decodeURIComponent(match[1]);
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  const tryActivate = (attempt: number) => {
+    const session = sessions.value.find((item) => item.session_id === sessionId);
+    if (session) {
+      const owner = workspaces.value.find((item) => item.workspace_id === session.workspace_id);
+      if (owner) workspace.value = owner;
+      void chooseTask(sessionId);
+      return;
+    }
+    // 会话索引尚未加载完成时重试；期间用户已手动选择会话则放弃
+    if (attempt < 10 && !activeId.value) window.setTimeout(() => tryActivate(attempt + 1), 600);
+  };
+  tryActivate(0);
+}
 async function createProjectTask(item: Workspace) {
   projectActionsOpen.value = null;
   beginTask(item);
@@ -1814,7 +1866,7 @@ async function deleteProject(item: Workspace) {
     await deleteWorkspace(item.workspace_id);
   } catch (error) {
     // 删除失败（如命中安全护栏）时保留列表并提示
-    window.alert(error instanceof Error ? error.message : String(error));
+    void showProjectNotice("删除项目失败", friendlyError(error).message, "danger");
     return;
   }
   workspaces.value = workspaces.value.filter((entry) => entry.workspace_id !== item.workspace_id);
@@ -1878,7 +1930,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
           prompt.value = "";
           attachedFiles.value = [];
         } else {
-          window.alert(message);
+          void showProjectNotice("发送失败", friendlyError(error).message, "danger");
         }
       } finally {
         steering.value = false;
@@ -1902,6 +1954,8 @@ function onComposerKeydown(event: KeyboardEvent) {
     }
     if (event.key === "Escape") {
       event.preventDefault();
+      // 阻止冒泡到全局快捷键，避免"关闭斜杠菜单"被误当作"停止任务"
+      event.stopPropagation();
       slashMenuDismissed.value = true;
       return;
     }
@@ -2096,7 +2150,7 @@ async function handleRetry(runId: string, userMessage: string) {
     });
     await submitTask(userMessage, null);
   } catch (error) {
-    window.alert(`重试失败：${error instanceof Error ? error.message : String(error)}`);
+    void showProjectNotice("重试失败", friendlyError(error).message, "danger");
   }
 }
 // 中断任务的"继续执行"：向当前会话补发一条续跑消息，复用交接摘要作为上下文
@@ -2167,20 +2221,29 @@ function buildMessagePayload(baseText: string): { content: string; images: Image
   }
   return { content: [baseText, ...sections].filter(Boolean).join("\n\n"), images };
 }
+// 被跳过的附件统一汇总为一次提示，避免多文件时连续弹窗
+function notifySkippedAttachments(skipped: string[]) {
+  if (!skipped.length) return;
+  const shown = skipped.slice(0, 4).join("；");
+  const more = skipped.length > 4 ? `；其余 ${skipped.length - 4} 个也已跳过` : "";
+  void showProjectNotice("部分附件已跳过", shown + more, "danger");
+}
 // 处理「添加附件」读取结果：图片/文本归档，超限或二进制在 error 中提示并跳过
 function addReadAttachments(results: Attachment[]) {
   const added: PendingAttachment[] = [];
+  const skipped: string[] = [];
   for (const item of results) {
-    if (item.error) { window.alert(`${item.name}：${item.error}`); continue; }
+    if (item.error) { skipped.push(`${item.name}：${friendlyError(item.error).message}`); continue; }
     if (item.mime_type?.startsWith("image/") && item.data_base64) {
       added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64 });
     } else if (item.is_text && item.text_content != null) {
       added.push({ path: item.path, name: item.name, size: item.size, kind: "text", textContent: item.text_content });
     } else {
-      window.alert(`${item.name}：暂不支持作为附件`);
+      skipped.push(`${item.name}：暂不支持作为附件`);
     }
   }
   if (added.length) attachedFiles.value = [...attachedFiles.value, ...added];
+  notifySkippedAttachments(skipped);
 }
 async function selectAttachments() {
   if ("__TAURI_INTERNALS__" in window) {
@@ -2195,18 +2258,26 @@ async function selectAttachments() {
     input.multiple = true;
     input.style.display = "none";
     input.addEventListener("change", () => {
-      for (const file of Array.from(input.files ?? [])) void addBrowserFile(file);
+      const files = Array.from(input.files ?? []);
+      void (async () => {
+        const skipped: string[] = [];
+        for (const file of files) {
+          const reason = await addBrowserFile(file);
+          if (reason) skipped.push(reason);
+        }
+        notifySkippedAttachments(skipped);
+      })();
       input.remove();
     });
     document.body.appendChild(input);
     input.click();
   }
 }
-// 浏览器回退：把 File 读成图片 base64 或文本内容，附带同样的限制
-async function addBrowserFile(file: File) {
+// 浏览器回退：把 File 读成图片 base64 或文本内容，附带同样的限制；返回跳过原因（null 表示已添加）
+async function addBrowserFile(file: File): Promise<string | null> {
   const isImage = file.type.startsWith("image/");
   const limit = isImage ? 5 * 1024 * 1024 : 1024 * 1024;
-  if (file.size > limit) { window.alert(`${file.name} 超过 ${isImage ? "5MB" : "1MB"} 限制，已跳过`); return; }
+  if (file.size > limit) return `${file.name} 超过 ${isImage ? "5MB" : "1MB"} 限制，已跳过`;
   if (isImage) {
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -2217,10 +2288,10 @@ async function addBrowserFile(file: File) {
     const comma = dataUrl.indexOf(",");
     const dataBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
     if (dataBase64) attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
-    return;
+    return dataBase64 ? null : `${file.name}：读取失败`;
   }
   const textLike = !file.type || file.type.startsWith("text/") || ["application/json", "application/xml"].includes(file.type);
-  if (!textLike) { window.alert(`${file.name}：暂不支持作为附件`); return; }
+  if (!textLike) return `${file.name}：暂不支持作为附件`;
   const text = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ""));
@@ -2228,6 +2299,7 @@ async function addBrowserFile(file: File) {
     reader.readAsText(file);
   }).catch(() => "");
   attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
+  return null;
 }
 // 处理输入框粘贴：剪贴板含图片时读取为附件并阻止默认行为，纯文本粘贴正常放行
 function onPasteImage(event: ClipboardEvent) {
@@ -2262,7 +2334,7 @@ async function applyPermissionMode(value: RuntimeSettings["permission_mode"]) {
     if (result) runtimeSettings.value = result;
     launcherPermissionMenuOpen.value = false;
   } catch (error) {
-    permissionSettingsError.value = error instanceof Error ? error.message : String(error);
+    permissionSettingsError.value = friendlyError(error).message;
   } finally {
     permissionSaving.value = false;
   }
@@ -2333,7 +2405,7 @@ async function openWorkspaceInIde() {
   const target = activeSessionWorkspace.value;
   if (!target) return;
   try { await invoke("open_workspace_in_ide", { workspaceId: target.workspace_id, workspacePath: target.path }); }
-  catch (error) { await message(String(error), { title: "无法打开 IDE", kind: "error" }); }
+  catch (error) { void showProjectNotice("无法打开 IDE", friendlyError(error).message, "danger"); }
 }
 async function openProjectHomepage() {
   const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -2552,6 +2624,7 @@ function handleGlobalShortcut(event: KeyboardEvent) {
   if (event.key === "Escape") {
     if (activeAppMenu.value) closeAppMenu();
     else if (permissionConfirmOpen.value) permissionConfirmOpen.value = false;
+    else if (slashMenuOpen.value) slashMenuDismissed.value = true;
     else if (isRunActive.value) void stopActiveRun();
     else closeLauncherMenus();
   }
@@ -2662,6 +2735,8 @@ onMounted(() => {
     ]).then((unlisteners) => { trayListeners = unlisteners; });
   }
   void refreshRuntime(true);
+  consumeSessionHash();
+  window.addEventListener("hashchange", consumeSessionHash);
   nextTick(refreshTurnObserver);
 });
 onBeforeUnmount(() => {
@@ -2689,6 +2764,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   window.removeEventListener("sztu:open-file", onOpenFileLink);
+  window.removeEventListener("hashchange", consumeSessionHash);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
   stopDisconnect?.();
@@ -2907,7 +2983,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </div>
 
       <footer v-if="statusBarVisible" class="sidebar-footer">
-        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>本地服务</b><small>{{ connected ? '已连接' : runtimeConnectionError || '未连接' }}</small></span></div>
+        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>本地服务</b><small>{{ connected ? '已连接' : runtimeConnectionError ? '连接中断，正在重连…' : '未连接' }}</small></span></div>
         <button ref="settingsButton" class="settings-link" title="设置" aria-label="设置" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
       </footer>
       </aside>
@@ -2958,6 +3034,18 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
+                  <button
+                    class="workspace-panel-toggle canvas-toggle"
+                    title="文档画布"
+                    aria-label="文档画布"
+                    :aria-expanded="canvasPanelOpen"
+                    :class="{ active: canvasPanelOpen }"
+                    :disabled="!activeCanvasDocs.length"
+                    @click="canvasPanelOpen = !canvasPanelOpen"
+                  >
+                    <FileText :size="18" />
+                    <span v-if="activeCanvasDocs.length && !canvasPanelOpen" class="canvas-toggle__badge">{{ activeCanvasDocs.length }}</span>
+                  </button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
               </header>
@@ -3046,6 +3134,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     </form>
                 </QueueDock>
               </div>
+              <CanvasPanel
+                v-if="canvasPanelOpen && activeCanvasDocs.length"
+                :docs="activeCanvasDocs"
+                :active-id="activeCanvasDocId"
+                :workspace-id="activeSessionWorkspace?.workspace_id"
+                @close="canvasPanelOpen = false"
+                @select="selectCanvasDoc($event)"
+              />
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
               <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" style="touch-action: none;" @pointerdown="startDividerDrag" />

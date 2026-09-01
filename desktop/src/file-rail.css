@@ -292,8 +292,10 @@
   transition: background-color 120ms ease, color 120ms ease;
   white-space: nowrap;
   cursor: pointer;
+  outline: none;
 }
 .file-tab:hover { background: #f3f5f3; color: #2f3531; }
+.file-tab:focus-visible { box-shadow: 0 0 0 2px rgb(42 48 44 / 18%); }
 .file-tab.active {
   color: #1d221f;
   background: #f0f2f0;
@@ -688,4 +690,250 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .workspace-tool-menu, .summary-section-body, .preview-modal, .summary-plan-list li.in_progress svg, .browser-loading svg, .spin, .summary-progress-dots i.in_progress { animation: none; transition: none; }
+}
+
+/* ── 暗色主题适配 ───────────────────────────────── */
+:root[data-app-theme="dark"] {
+  /* 根容器 */
+  .project-inspector.file-rail {
+    color: var(--text) !important;
+    background: var(--surface) !important;
+  }
+
+  /* 标签栏 */
+  .workspace-tab-strip { background: var(--surface) !important; }
+  .workspace-tool-menu-trigger,
+  .workspace-browser-add,
+  .workspace-expand,
+  .workspace-panel-close { color: var(--text-muted) !important; }
+  .workspace-tool-menu-trigger:hover,
+  .workspace-tool-menu-trigger.active,
+  .workspace-browser-add:hover,
+  .workspace-expand:hover,
+  .workspace-panel-close:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .workspace-open-tab.active:hover { background: var(--surface-soft) !important; }
+  .workspace-open-tab.active { background: var(--surface-soft) !important; box-shadow: 0 1px 3px rgb(0 0 0 / 20%) !important; }
+  .workspace-open-tab > button:first-child { color: var(--text) !important; }
+  .workspace-open-tab:not(.active) > button:first-child { color: var(--text-muted) !important; }
+  .workspace-open-tab.active > button:first-child { color: var(--text) !important; }
+  .workspace-tab-close { color: var(--text-muted) !important; background: var(--surface-raised) !important; }
+  .workspace-tab-close:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .workspace-header-divider { background: var(--border) !important; }
+
+  /* 浏览器工作区 */
+  .browser-workspace { background: var(--surface) !important; }
+  .browser-toolbar { background: var(--surface) !important; border-bottom-color: var(--border) !important; }
+  .browser-toolbar-action,
+  .browser-toolbar-menu { color: var(--text-muted) !important; }
+  .browser-toolbar-action:hover:not(:disabled),
+  .browser-toolbar-menu:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .browser-toolbar-action:active:not(:disabled),
+  .browser-toolbar-menu:active { background: var(--surface-raised) !important; }
+  .browser-toolbar-action:focus-visible,
+  .browser-toolbar-menu:focus-visible,
+  .browser-toolbar-submit:focus-visible { outline-color: var(--text-muted) !important; }
+  .browser-toolbar-action:disabled { color: var(--text-disabled) !important; }
+  .browser-address { color: var(--text-muted) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: none !important; }
+  .browser-address:focus-within { border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgb(120 174 234 / 15%) !important; }
+  .browser-address input { color: var(--text) !important; }
+  .browser-address input::placeholder { color: var(--text-disabled) !important; }
+  .browser-toolbar-submit { color: var(--text-muted) !important; }
+  .browser-toolbar-submit:hover:not(:disabled) { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .browser-toolbar-submit:disabled { color: var(--text-disabled) !important; }
+  .browser-stage { background: var(--surface) !important; }
+  .browser-renderer,
+  .browser-renderer iframe { background: var(--surface) !important; }
+  .browser-empty { color: var(--text-muted) !important; background: var(--surface) !important; }
+  .browser-empty p { color: var(--text-muted) !important; }
+  .browser-loading { color: var(--text-muted) !important; background: rgb(23 26 27 / 88%) !important; }
+
+  /* 工作区首页 */
+  .workspace-home-header { background: var(--surface) !important; }
+  .home-workspace { background: var(--surface) !important; }
+  .home-launcher__prompt { color: var(--text-muted) !important; }
+  .home-launcher__button { color: var(--text) !important; }
+  .home-launcher__button:hover { background: var(--surface-soft) !important; }
+  .home-launcher__button:focus-visible { background: var(--surface-raised) !important; }
+  .home-launcher__button svg { color: var(--text-muted) !important; }
+
+  /* 任务摘要视图 */
+  .task-summary-view { background: var(--surface) !important; }
+  .summary-section { background: var(--surface) !important; border-bottom-color: var(--border) !important; }
+  .summary-section-trigger { color: var(--text) !important; }
+  .summary-section-trigger:hover { color: var(--text) !important; }
+  .summary-section-trigger small { color: var(--text-muted) !important; }
+  .summary-section-trigger > svg { color: var(--text-muted) !important; }
+  .summary-progress-dots i { color: var(--text-disabled) !important; }
+  .summary-progress-dots i.completed { color: var(--accent) !important; }
+  .summary-progress-dots i.in_progress { color: var(--accent) !important; box-shadow: 0 0 0 3px rgb(120 174 234 / 15%) !important; }
+  .summary-plan-list li { color: var(--text) !important; }
+  .summary-plan-list li > span { color: var(--text-muted) !important; }
+  .summary-plan-list li.completed { color: var(--text-muted) !important; }
+  .summary-plan-list li.completed > span { color: var(--accent-contrast) !important; background: var(--text-muted) !important; }
+  .summary-plan-list li.in_progress { color: var(--text) !important; }
+  .summary-plan-list li.in_progress > span { color: var(--accent) !important; }
+  .summary-empty { color: var(--text-muted) !important; }
+  .summary-empty-icon { color: var(--text-muted) !important; background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: none !important; }
+  .summary-empty b { color: var(--text) !important; }
+  .summary-empty p { color: var(--text-muted) !important; }
+  .summary-refresh { color: var(--text-muted) !important; }
+  .summary-refresh:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .reference-row > span, .reference-context > span { color: var(--text-muted) !important; }
+  .reference-row > small { color: var(--text-muted) !important; }
+  .skill-list span { color: var(--text) !important; }
+  .reference-context b { color: var(--text) !important; }
+  .reference-context small { color: var(--text-muted) !important; }
+
+  /* 项目档案 */
+  .project-profile-toolbar p b { color: var(--text) !important; }
+  .project-profile-toolbar p small { color: var(--text-muted) !important; }
+  .project-profile-loading { color: var(--text-muted) !important; }
+  .project-profile-error { color: #fd9851 !important; background: rgba(217,119,6,0.14) !important; border-color: rgba(217,119,6,0.30) !important; }
+  .project-profile-meta { color: var(--text-muted) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .project-profile-meta b { color: var(--text) !important; }
+  .project-profile-meta code { color: var(--text) !important; }
+  .project-profile-badge { color: #72c5a8 !important; background: rgba(38,116,93,0.20) !important; }
+  .project-profile-warning { color: #fd9851 !important; background: rgba(217,119,6,0.18) !important; }
+  .project-profile-overview { border-color: var(--border) !important; background: var(--surface-raised) !important; }
+  .project-profile-overview > span + span { border-left-color: var(--border) !important; }
+  .project-profile-overview strong { color: var(--text) !important; }
+  .project-profile-overview small { color: var(--text-muted) !important; }
+  .project-profile-component { background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: none !important; }
+  .project-profile-component > header { border-bottom-color: var(--border) !important; }
+  .project-profile-component__icon { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .project-profile-component > header b { color: var(--text) !important; }
+  .project-profile-component > header small { color: var(--text-muted) !important; }
+  .project-profile-component__index { color: var(--text-muted) !important; }
+  .project-profile-subheading b { color: var(--text) !important; }
+  .project-profile-subheading small { color: var(--text-muted) !important; }
+  .project-technology-grid > section { background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .project-technology-grid > section > b { color: var(--text) !important; }
+  .project-technology-grid > section > small { color: var(--text-muted) !important; }
+  .project-technology-list > span { color: var(--text) !important; background: var(--surface-raised) !important; }
+  .project-technology-list em { color: var(--text) !important; }
+  .project-technology-list small { color: var(--text-muted) !important; }
+  .project-validation-group + .project-validation-group { border-top-color: var(--border) !important; }
+  .project-validation-group > header b { color: var(--text) !important; }
+  .project-validation-group > header small { color: var(--text-muted) !important; }
+  .project-validation-empty { color: var(--text-muted) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .project-validation-command { background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .project-validation-command code { color: var(--text) !important; }
+  .project-validation-command > div > span, .project-validation-command > small { color: var(--text-muted) !important; }
+  .project-validation-command p { color: var(--text) !important; }
+  .project-recommendation-note { color: var(--text-muted) !important; }
+  .project-evidence { color: var(--text-muted) !important; }
+  .project-evidence summary { color: var(--text) !important; }
+  .project-evidence li { background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .project-evidence code { color: var(--text) !important; }
+  .project-evidence li > span { color: var(--text-muted) !important; }
+  .project-evidence li > small { color: var(--text-muted) !important; }
+
+  /* 产物列表 */
+  .artifact-list > button { color: var(--text) !important; }
+  .artifact-list > button:hover { background: var(--surface-soft) !important; }
+  .artifact-list > button > span:first-child { color: var(--text-muted) !important; background: var(--surface-raised) !important; }
+  .artifact-list b { color: var(--text) !important; }
+  .artifact-list small { color: var(--text-muted) !important; }
+  .artifact-list code { color: #f0a35c !important; background: rgba(217,119,6,0.14) !important; }
+  .artifact-list > button > svg { color: var(--text-muted) !important; }
+
+  /* 文件浏览器 */
+  .files-workspace { background: var(--surface) !important; }
+  .file-tree-view { background: var(--surface) !important; }
+  .file-tree-view .file-preview--files { background: var(--surface) !important; }
+  .files-loading, .files-error { color: var(--text-muted) !important; }
+  .files-empty { color: var(--text-muted) !important; }
+  .files-error { color: #f87171 !important; }
+  .file-row { color: var(--text) !important; }
+  .file-row:hover { background: var(--surface-soft) !important; }
+  .file-row.active { color: var(--accent) !important; background: var(--accent-soft) !important; }
+  .file-row .row-chevron { color: var(--text-muted) !important; }
+  .file-row .row-icon { color: var(--text-muted) !important; }
+  .file-row.dir .row-icon { color: #78aeea !important; }
+  .file-tree-divider::after { background: var(--border) !important; }
+  .file-tree-divider:hover::after, .file-tree-divider:active::after { background: var(--border-strong) !important; }
+
+  /* 文件标签栏 */
+  .file-tabs-bar { background: var(--surface) !important; border-bottom-color: var(--border) !important; }
+  .file-tabs-actions { background: var(--surface) !important; box-shadow: -6px 0 8px -6px rgb(0 0 0 / 30%) !important; }
+  .file-tab { color: var(--text-muted) !important; }
+  .file-tab:hover { background: var(--surface-soft) !important; color: var(--text) !important; }
+  .file-tab.active { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .file-tab.has-error { color: #f87171 !important; }
+  .file-tab-close { color: var(--text-muted) !important; }
+  .file-tab-close:hover { color: var(--text) !important; background: var(--surface-raised) !important; }
+  .file-open-btn { color: var(--text) !important; }
+  .file-open-btn:hover { background: var(--surface-soft) !important; }
+  .file-open-btn svg:first-child { color: var(--accent) !important; }
+  .file-open-btn svg:last-child { color: var(--text-muted) !important; }
+  .file-open-menu { background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: 0 12px 36px rgb(0 0 0 / 40%), 0 3px 10px rgb(0 0 0 / 20%) !important; }
+  .file-open-item { color: var(--text) !important; }
+  .file-open-item:hover:not(.disabled) { background: var(--surface-soft) !important; }
+  .file-open-item.disabled { color: var(--text-disabled) !important; }
+  .file-open-icon { background: var(--surface-soft) !important; color: var(--text-muted) !important; }
+  .file-open-item:hover:not(.disabled) .file-open-icon { background: var(--surface-raised) !important; }
+  .tree-toggle-btn { color: var(--text-muted) !important; }
+  .tree-toggle-btn:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
+  .tree-toggle-btn--solo:hover { background: var(--surface-soft) !important; }
+  .files-preview-placeholder { color: var(--text-muted) !important; }
+  .files-preview-placeholder svg { color: var(--text-muted) !important; }
+  .files-preview-placeholder b { color: var(--text) !important; }
+  .files-preview-placeholder p { color: var(--text-muted) !important; }
+  .preview-error { color: var(--text-muted) !important; }
+  .preview-error svg { color: #f87171 !important; }
+  .preview-error b { color: var(--text) !important; }
+  .preview-error p { color: var(--text-muted) !important; }
+
+  /* 代码预览弹窗（Teleport 到 body，外层选择器无法覆盖） */
+  .preview-modal-backdrop { background: rgb(0 0 0 / 55%) !important; }
+  .preview-modal { background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: 0 24px 60px rgb(0 0 0 / 50%) !important; }
+  .preview-modal > header { border-bottom-color: var(--border) !important; }
+  .preview-modal > header .preview-modal__title { color: var(--text) !important; }
+  .preview-modal > header b { color: var(--text) !important; }
+  .preview-modal__select { color: var(--text) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .preview-modal > header > button { color: var(--text-muted) !important; }
+  .preview-modal > header > button:hover { background: var(--surface-soft) !important; }
+  .preview-tab i { background: var(--accent) !important; }
+  .code-preview { background: var(--surface) !important; }
+  .code-preview-meta { border-bottom-color: var(--border) !important; }
+  .code-preview-meta > span { color: var(--text-muted) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
+  .code-preview-meta .format-badge { color: #78aeea !important; border-color: rgba(120,174,234,0.30) !important; background: rgba(45,111,190,0.18) !important; }
+  .code-preview-meta .truncated-badge { color: #f0a35c !important; border-color: rgba(217,119,6,0.30) !important; background: rgba(217,119,6,0.14) !important; }
+  .preview-breadcrumb { color: var(--text-muted) !important; border-bottom-color: var(--border) !important; }
+  .preview-breadcrumb i { color: var(--text-disabled) !important; }
+  .code-preview-scroll { color: var(--text) !important; background: var(--surface) !important; }
+  .code-preview-scroll::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 30%) !important; }
+  .code-preview-scroll:hover::-webkit-scrollbar-thumb { background: rgb(120 130 145 / 45%) !important; }
+  .code-line:hover { background: var(--surface-soft) !important; }
+  .code-line:has(.hljs-addition) { background: rgba(22,163,74,0.12) !important; }
+  .code-line:has(.hljs-deletion) { background: rgba(239,68,68,0.10) !important; }
+  .line-number { color: var(--text-disabled) !important; border-right-color: var(--border) !important; }
+  .code-preview-empty { color: var(--text-muted) !important; }
+  .code-preview-empty svg { color: var(--text-muted) !important; }
+  .code-preview-empty b { color: var(--text) !important; }
+  .media-preview { background: var(--surface-soft) !important; }
+  .media-preview img { box-shadow: 0 8px 24px rgb(0 0 0 / 40%) !important; }
+
+  /* 代码语法高亮暗色 */
+  .code-preview .hljs-comment, .code-preview .hljs-quote { color: #6b7280 !important; }
+  .code-preview .hljs-keyword, .code-preview .hljs-selector-tag, .code-preview .hljs-literal { color: #c084fc !important; }
+  .code-preview .hljs-string, .code-preview .hljs-regexp, .code-preview .hljs-addition { color: #4ade80 !important; }
+  .code-preview .hljs-number, .code-preview .hljs-built_in, .code-preview .hljs-type { color: #fbbf24 !important; }
+  .code-preview .hljs-title, .code-preview .hljs-title.function_, .code-preview .hljs-section { color: #60a5fa !important; }
+  .code-preview .hljs-variable, .code-preview .hljs-template-variable, .code-preview .hljs-attr, .code-preview .hljs-attribute { color: #f97316 !important; }
+  .code-preview .hljs-meta, .code-preview .hljs-symbol, .code-preview .hljs-bullet { color: #22d3ee !important; }
+  .code-preview .hljs-deletion { color: #f87171 !important; }
+
+  /* 通知提示 */
+  .inspector-notice { color: #fd9851 !important; background: rgba(217,119,6,0.14) !important; border-color: rgba(217,119,6,0.30) !important; box-shadow: 0 4px 14px rgb(0 0 0 / 30%) !important; }
+
+  /* 工具菜单 */
+  .workspace-tool-menu { background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: 0 8px 24px rgb(0 0 0 / 35%) !important; }
+  .workspace-tool-menu button { color: var(--text) !important; }
+  .workspace-tool-menu button:hover { background: var(--surface-soft) !important; }
+  .workspace-tool-menu button svg { color: var(--text-muted) !important; }
+
+  /* 终端 */
+  .sandbox-workspace { background: var(--surface) !important; }
+  .xterm-shell { background: var(--surface) !important; }
 }
