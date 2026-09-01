@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Check, Clipboard, GitCommitHorizontal, LocateFixed, RefreshCw } from "@lucide/vue";
 import type { GitCommitEntry } from "../../services/sztu-runtime";
 
@@ -10,7 +10,17 @@ type GraphCommit = GitCommitEntry & { lane: number; color: string; segments: Seg
 const rowHeight = 34;
 const laneGap = 16;
 const laneInset = 10;
-const colors = ["#262626", "#525252", "#737373", "#404040", "#171717", "#a3a3a3", "#525252"];
+// 泳道色承担"区分分支"的功能，用可区分的语义色而非灰阶；跟随应用主题切换深浅两套
+const themeDark = ref(document.documentElement.dataset.appTheme === "dark");
+let themeObserver: MutationObserver | undefined;
+onMounted(() => {
+  themeObserver = new MutationObserver(() => { themeDark.value = document.documentElement.dataset.appTheme === "dark"; });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-app-theme"] });
+});
+onBeforeUnmount(() => themeObserver?.disconnect());
+const colors = computed(() => themeDark.value
+  ? ["#f0a35c", "#4ade80", "#a78bfa", "#22d3ee", "#f472b6", "#a3e635", "#e8c07d"]
+  : ["#b45309", "#16a34a", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#9333ea"]);
 const selectedHash = ref("");
 const copied = ref(false);
 const graphElement = ref<HTMLElement | null>(null);
@@ -23,18 +33,18 @@ const graph = computed(() => {
   const rows: GraphCommit[] = props.commits.map((commit) => {
     let lane = active.indexOf(commit.hash);
     if (lane < 0) { lane = active.length; active.push(commit.hash); }
-    const commitColor = colorByHash.get(commit.hash) ?? colors[lane % colors.length];
+    const commitColor = colorByHash.get(commit.hash) ?? colors.value[lane % colors.value.length];
     colorByHash.set(commit.hash, commitColor);
     const before = [...active];
     const next = [...active];
     next.splice(lane, 1);
     commit.parents.forEach((parent, index) => {
       if (!next.includes(parent)) next.splice(Math.min(lane + index, next.length), 0, parent);
-      colorByHash.set(parent, index === 0 ? commitColor : colors[(lane + index) % colors.length]);
+      colorByHash.set(parent, index === 0 ? commitColor : colors.value[(lane + index) % colors.value.length]);
     });
     const segments: Segment[] = [];
     before.forEach((hash, from) => {
-      const laneColor = colorByHash.get(hash) ?? colors[from % colors.length];
+      const laneColor = colorByHash.get(hash) ?? colors.value[from % colors.value.length];
       // 每条进入当前行的活跃轨道都必须画到行中点，否则旁路分支会在行间断开。
       segments.push({ from, to: from, color: laneColor, upper: true });
       if (hash === commit.hash) {

@@ -37,23 +37,26 @@ function relativePath(path: string): string {
 
 <template>
   <div class="file-changes-badge" :class="{ open }">
-    <button class="file-changes-badge__trigger" @click="open = !open">
-      <span class="file-changes-badge__icon">
-        <FileDiff :size="16" />
-      </span>
-      <span class="file-changes-badge__label">
-        <b>{{ files.length }}</b> 个文件已更改
-      </span>
-      <ChevronDown class="file-changes-badge__chevron" :size="16" />
-      <span v-if="hasStats" class="file-changes-badge__stats">
-        <span class="additions">+{{ totalAdditions }}</span>
-        <span class="deletions">-{{ totalDeletions }}</span>
-      </span>
+    <!-- 触发区为容器 + 两个兄弟按钮：避免 button 嵌套 button 的非法 HTML -->
+    <div class="file-changes-badge__trigger">
+      <button type="button" class="file-changes-badge__toggle" :aria-expanded="open" @click="open = !open">
+        <span class="file-changes-badge__icon">
+          <FileDiff :size="16" />
+        </span>
+        <span class="file-changes-badge__label">
+          <b>{{ files.length }}</b> 个文件已更改
+        </span>
+        <ChevronDown class="file-changes-badge__chevron" :size="16" />
+        <span v-if="hasStats" class="file-changes-badge__stats">
+          <span class="additions">+{{ totalAdditions }}</span>
+          <span class="deletions">-{{ totalDeletions }}</span>
+        </span>
+      </button>
       <span class="file-changes-badge__divider" />
-      <button class="file-changes-badge__open-all" title="在右侧查看所有变更" @click.stop="emit('openAll')">
+      <button type="button" class="file-changes-badge__open-all" title="在右侧查看所有变更" aria-label="在右侧查看所有变更" @click.stop="emit('openAll')">
         <ExternalLink :size="16" />
       </button>
-    </button>
+    </div>
 
     <div v-if="open" class="file-changes-badge__list">
       <button
@@ -99,6 +102,16 @@ function relativePath(path: string): string {
   gap: 8px;
   min-height: 40px;
   padding: 8px 4px 8px 10px;
+}
+
+/* 展开/收起主按钮：占满触发区左侧，样式与原 trigger 一致 */
+.file-changes-badge__toggle {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
   background: transparent;
   border: 0;
   color: #334155;
@@ -259,73 +272,77 @@ function relativePath(path: string): string {
 }
 
 /* 暗色主题 */
-:global(.dark) .file-changes-badge {
+:global([data-app-theme="dark"]) .file-changes-badge {
   background: #1e293b;
   border-color: #334155;
 }
 
-:global(.dark) .file-changes-badge:hover {
+:global([data-app-theme="dark"]) .file-changes-badge:hover {
   border-color: #475569;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-:global(.dark) .file-changes-badge__trigger {
+:global([data-app-theme="dark"]) .file-changes-badge__trigger {
   color: #cbd5e1;
 }
 
-:global(.dark) .file-changes-badge__icon {
+:global([data-app-theme="dark"]) .file-changes-badge__toggle {
+  color: #cbd5e1;
+}
+
+:global([data-app-theme="dark"]) .file-changes-badge__icon {
   color: #94a3b8;
   background: #334155;
 }
 
-:global(.dark) .file-changes-badge__label b {
+:global([data-app-theme="dark"]) .file-changes-badge__label b {
   color: #f1f5f9;
 }
 
-:global(.dark) .file-changes-badge__chevron {
+:global([data-app-theme="dark"]) .file-changes-badge__chevron {
   color: #64748b;
 }
 
-:global(.dark) .file-changes-badge__divider {
+:global([data-app-theme="dark"]) .file-changes-badge__divider {
   background: #334155;
 }
 
-:global(.dark) .file-changes-badge__open-all {
+:global([data-app-theme="dark"]) .file-changes-badge__open-all {
   color: #94a3b8;
 }
 
-:global(.dark) .file-changes-badge__open-all:hover {
+:global([data-app-theme="dark"]) .file-changes-badge__open-all:hover {
   color: #60a5fa;
   background: rgba(37, 99, 235, 0.15);
 }
 
-:global(.dark) .file-changes-badge__list {
+:global([data-app-theme="dark"]) .file-changes-badge__list {
   border-top-color: #334155;
   background: #0f172a;
 }
 
-:global(.dark) .file-changes-badge__item {
+:global([data-app-theme="dark"]) .file-changes-badge__item {
   color: #94a3b8;
 }
 
-:global(.dark) .file-changes-badge__item:hover {
+:global([data-app-theme="dark"]) .file-changes-badge__item:hover {
   background: #1e293b;
 }
 
-:global(.dark) .file-changes-badge__item + .file-changes-badge__item {
+:global([data-app-theme="dark"]) .file-changes-badge__item + .file-changes-badge__item {
   border-top-color: #1e293b;
 }
 
-:global(.dark) .file-changes-badge__item-icon {
+:global([data-app-theme="dark"]) .file-changes-badge__item-icon {
   color: #fbbf24;
   background: rgba(245, 158, 11, 0.15);
 }
 
-:global(.dark) .file-changes-badge__item-name {
+:global([data-app-theme="dark"]) .file-changes-badge__item-name {
   color: #f1f5f9;
 }
 
-:global(.dark) .file-changes-badge__item-path {
+:global([data-app-theme="dark"]) .file-changes-badge__item-path {
   color: #64748b;
 }
 </style>

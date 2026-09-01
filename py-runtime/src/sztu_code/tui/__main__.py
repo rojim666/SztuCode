@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from sztu_code.core.config import get_config
-from sztu_code.tui.app import KamaTuiApp
+from sztu_code.tui.app import SztuTuiApp
 from sztu_code.tui.launcher import _setup_logging
 
 
@@ -19,7 +19,7 @@ def main() -> None:
 
     config = get_config()
     _setup_logging(config.logging.level)
-    app = KamaTuiApp(config.host, config.port, replay_run_id=args.replay)
+    app = SztuTuiApp(config.host, config.port, replay_run_id=args.replay)
     app.run(inline=True, inline_no_clear=True)
 
 

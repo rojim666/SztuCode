@@ -149,12 +149,13 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
   color: #16a34a;
 }
 
+/* 失败使用橙色 warning 语义（项目约定：不用红色表达操作失败） */
 .tool-call-event.failed > button {
-  color: #dc2626;
+  color: #b45309;
 }
 
 .tool-call-event.failed > button > svg:first-child {
-  color: #dc2626;
+  color: #d97706;
 }
 
 .tool-call-event__action {
@@ -255,60 +256,60 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
 }
 
 /* 暗色主题 */
-:global(.dark) .tool-call-event > button:hover:not(:disabled) {
+:global([data-app-theme="dark"]) .tool-call-event > button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.06);
 }
 
-:global(.dark) .tool-call-event.running > button > svg:first-child,
-:global(.dark) .tool-call-event.running .spin {
+:global([data-app-theme="dark"]) .tool-call-event.running > button > svg:first-child,
+:global([data-app-theme="dark"]) .tool-call-event.running .spin {
   color: #60a5fa;
 }
 
-:global(.dark) .tool-call-event.done > button > svg:first-child {
+:global([data-app-theme="dark"]) .tool-call-event.done > button > svg:first-child {
   color: #4ade80;
 }
 
-:global(.dark) .tool-call-event.failed > button {
-  color: #f87171;
+:global([data-app-theme="dark"]) .tool-call-event.failed > button {
+  color: #fd9851;
 }
 
-:global(.dark) .tool-call-event.failed > button > svg:first-child {
-  color: #f87171;
+:global([data-app-theme="dark"]) .tool-call-event.failed > button > svg:first-child {
+  color: #fd9851;
 }
 
-:global(.dark) .tool-call-event__action {
+:global([data-app-theme="dark"]) .tool-call-event__action {
   color: #d1d5db;
 }
 
-:global(.dark) .timeline-row__separator {
+:global([data-app-theme="dark"]) .timeline-row__separator {
   color: #4b5563;
 }
 
-:global(.dark) .tool-call-event__detail {
+:global([data-app-theme="dark"]) .tool-call-event__detail {
   color: #9ca3af;
 }
 
-:global(.dark) .tool-call-event__detail.is-path {
+:global([data-app-theme="dark"]) .tool-call-event__detail.is-path {
   color: #d1d5db;
 }
 
-:global(.dark) .tool-call-event__elapsed {
+:global([data-app-theme="dark"]) .tool-call-event__elapsed {
   color: #6b7280;
 }
 
-:global(.dark) .timeline-row__chevron {
+:global([data-app-theme="dark"]) .timeline-row__chevron {
   color: #6b7280;
 }
 
-:global(.dark) .tool-call-event__details {
+:global([data-app-theme="dark"]) .tool-call-event__details {
   border-left-color: #374151;
 }
 
-:global(.dark) .tool-call-event__details > b {
+:global([data-app-theme="dark"]) .tool-call-event__details > b {
   color: #6b7280;
 }
 
-:global(.dark) .tool-call-event__details pre {
+:global([data-app-theme="dark"]) .tool-call-event__details pre {
   color: #d1d5db;
   background: #1f2937;
   border-color: #374151;

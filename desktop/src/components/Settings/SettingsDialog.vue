@@ -1811,16 +1811,14 @@ const accents: Array<{ id: AccentColor; label: string }> = [
   line-height: 1.5;
 }
 
-/* ========== 暗色主题适配 ========== */
-@media (prefers-color-scheme: dark) {
-  .settings-backdrop {
-    background: rgba(0, 0, 0, 0.6);
-  }
-  
-  .wallpaper-preview {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: #2a2f31;
-  }
+/* ========== 暗色主题适配（跟随应用内主题设置，而非操作系统偏好） ========== */
+:global([data-app-theme="dark"]) .settings-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+:global([data-app-theme="dark"]) .wallpaper-preview {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #2a2f31;
 }
 
 /* ========== 响应式 ========== */

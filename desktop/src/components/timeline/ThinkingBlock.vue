@@ -213,21 +213,21 @@ const preview = computed(() => reasoningSummary(displayed.value, thinkingActive.
 }
 
 /* 暗色主题 */
-:global(.dark) .thinking-block__trigger:hover {
+:global([data-app-theme="dark"]) .thinking-block__trigger:hover {
   background: rgba(255, 255, 255, 0.04);
 }
-:global(.dark) .thinking-block__icon { color: #6b7280; }
-:global(.dark) .thinking-block.running .thinking-block__icon { color: #a5b4fc; }
-:global(.dark) .thinking-block__label { color: #9ca3af; }
-:global(.dark) .thinking-block.running .thinking-block__label { color: #a5b4fc; }
-:global(.dark) .thinking-block__preview { color: #6b7280; }
-:global(.dark) .thinking-block__chevron { color: #4b5563; }
-:global(.dark) .thinking-block__bubble {
+:global([data-app-theme="dark"]) .thinking-block__icon { color: #6b7280; }
+:global([data-app-theme="dark"]) .thinking-block.running .thinking-block__icon { color: #a5b4fc; }
+:global([data-app-theme="dark"]) .thinking-block__label { color: #9ca3af; }
+:global([data-app-theme="dark"]) .thinking-block.running .thinking-block__label { color: #a5b4fc; }
+:global([data-app-theme="dark"]) .thinking-block__preview { color: #6b7280; }
+:global([data-app-theme="dark"]) .thinking-block__chevron { color: #4b5563; }
+:global([data-app-theme="dark"]) .thinking-block__bubble {
   color: #9ca3af;
   background: #1f2937;
   border-color: #374151;
 }
-:global(.dark) .thinking-block__bubble::-webkit-scrollbar-thumb {
+:global([data-app-theme="dark"]) .thinking-block__bubble::-webkit-scrollbar-thumb {
   background: #4b5563;
 }
 

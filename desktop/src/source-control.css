@@ -1480,3 +1480,27 @@
   background: rgba(127, 29, 29, 0.3);
   border-color: rgba(239, 68, 68, 0.2);
 }
+
+/* 补充暗色主题基础适配 */
+:root[data-app-theme="dark"] {
+  .source-control-host {
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface) 100%);
+  }
+  .source-control-page {
+    color: var(--text);
+  }
+  .source-control-header {
+    border-bottom-color: var(--border);
+    background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface) 100%);
+  }
+  .source-control-back,
+  .source-control-refresh {
+    color: var(--text-muted);
+  }
+  .source-control-back:hover,
+  .source-control-refresh:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--surface-soft);
+    border-color: var(--border);
+  }
+}

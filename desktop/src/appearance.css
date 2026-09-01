@@ -475,6 +475,43 @@
   background: var(--surface) !important;
   border-color: var(--border) !important;
 }
+
+/* 主框架容器暗色适配 */
+:root[data-app-theme="dark"] :is(.kimi-shell, .kimi-titlebar, .kimi-sidebar, .kimi-main, .sidebar-viewport, .agent-sidebar) {
+  color: var(--text) !important;
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] .kimi-shell {
+  background: var(--surface) !important;
+}
+:root[data-app-theme="dark"] .window-action:hover {
+  color: var(--text) !important;
+  background: var(--surface-soft) !important;
+}
+:root[data-app-theme="dark"] .nav-toggle {
+  color: var(--text-muted) !important;
+}
+:root[data-app-theme="dark"] .nav-toggle:hover {
+  color: var(--text) !important;
+  background: var(--surface-soft) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] .session-menu,
+:root[data-app-theme="dark"] .slash-menu,
+:root[data-app-theme="dark"] .permission-menu {
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 16px 38px rgb(0 0 0 / 40%) !important;
+}
+:root[data-app-theme="dark"] .timeline-activity {
+  background: var(--surface-raised) !important;
+  border-color: var(--border) !important;
+}
+:root[data-app-theme="dark"] .file-preview {
+  background: var(--surface) !important;
+}
 :root[data-app-theme="dark"] :is(.inspector-panel section, .inspector-notice, .inspector-search form, .file-preview--files, .files-body) {
   color: var(--text) !important;
   background: var(--surface-raised) !important;

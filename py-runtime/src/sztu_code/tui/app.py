@@ -780,7 +780,7 @@ class TrustScreen(Screen[str]):
             self.dismiss("abort")
 
 
-class KamaTuiApp(App[None]):
+class SztuTuiApp(App[None]):
     """Codex-style workspace TUI backed by the existing agent event stream."""
 
     TITLE = "SztuCode"
@@ -2361,7 +2361,7 @@ class KamaTuiApp(App[None]):
             ))
 
 
-# TUI 入口：读取配置并启动 KamaTuiApp
+# TUI 入口：读取配置并启动 SztuTuiApp
 def run(config: SztuConfig, replay_run_id: str | None = None) -> None:
-    app = KamaTuiApp(config.host, config.port, replay_run_id=replay_run_id)
+    app = SztuTuiApp(config.host, config.port, replay_run_id=replay_run_id)
     app.run(inline=True, inline_no_clear=True)

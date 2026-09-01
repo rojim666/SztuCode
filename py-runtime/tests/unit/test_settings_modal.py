@@ -4,7 +4,7 @@ from pathlib import Path
 
 from textual.widgets import Static
 
-from sztu_code.tui.app import KamaTuiApp
+from sztu_code.tui.app import SztuTuiApp
 from sztu_code.tui.settings import SettingsModal, _cycle_index, _Row, _row_value
 
 
@@ -57,8 +57,8 @@ class _FakeClient:
 
 
 # 构建挂载可用的 App：trust=True 跳过信任检查，禁用真实 socket 循环并注入 fake client
-def _make_app() -> tuple[KamaTuiApp, _FakeClient]:
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(Path.cwd()), trust=True)
+def _make_app() -> tuple[SztuTuiApp, _FakeClient]:
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(Path.cwd()), trust=True)
     app._start_socket_loop = lambda: None  # type: ignore[method-assign]
     client = _FakeClient()
     app._client = client  # type: ignore[assignment]

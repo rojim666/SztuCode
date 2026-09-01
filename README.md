@@ -32,6 +32,20 @@ SztuCode 面向真实代码仓库工作。桌面工作台使用 TypeScript daemo
 
 并不是说要重复造轮子，做一个超越codex和claude code的产品，而是理解与学习，带着批判的目光去看清现有的agent真正的运作方式，知己知彼方能百战不殆。
 
+## 项目宣言：技术民主化
+
+我们坚信**技术民主化**——前沿技术不应该只存在于大厂的闭源仓库里，它应该属于每一个愿意学习、愿意动手、愿意参与的人。
+
+技术民主化有三层内涵：
+
+- **访问的民主**：降低门槛，让普通人不需要昂贵的资源、复杂的配置就能接触到前沿技术。我们内置免费模型、提供零配置启动，就是为此。
+- **理解的民主**：真正的民主不是让人"用魔法"，而是让人"理解魔法如何运作"。我们把 Agent Loop、工具调用、权限系统、上下文压缩这些工程细节全部摊开，用双语言实现、详尽的架构文档，让你不仅能用，还能读懂、能修改、能批判。
+- **创造的民主**：从使用者到创造者。我们降低参与开源的门槛，让学生和初学者能通过 Issue → PR → Review 完整参与真实的工程协作，而不是永远停留在"调用 API"的层面。
+
+当前 AI Coding Agent 赛道呈现"大厂闭源竞速"的格局，但这不应该是唯一的形态。SztuCode 的存在本身就是一个宣言：**我们要做 Agent 时代的教学操作系统**——不是给你一个黑盒工具让你依赖它，而是给你一套完整的、可触摸的、可拆解的工程实现，让你真正理解智能体的运作原理，从而有能力去构建、去改进、去创造属于你自己的东西。
+
+负责任的开放是我们的底线：四级权限模式、范围升级留痕、工作区边界保护——给你能力，也给你缰绳；让你探索，也保护你不受伤。
+
 > [!IMPORTANT]
 > 项目目前处于 `0.x` 快速开发阶段，接口和界面仍可能变化。请在独立分支和可恢复的工作区中使用 Agent，并谨慎启用 `auto` 权限模式。
 
@@ -141,7 +155,6 @@ desktop / packages/cli
 | 变更审阅 | 桌面端展示文件变化和 Diff，支持接受、暂存与回退 |
 | 项目指令 | 自动发现并注入工作区及父目录的 `CLAUDE.md`、`SZTUCODE.md` 等规则 |
 | 多 Agent 工作流 | Planner → Coder / Tester / Reviewer 结构化 DAG 编排，范围升级留 Trace 证据 |
-| Agent 评测 | TS：`packages/evaluation`；Python：`py-runtime/src/sztu_code/evaluation`，统一任务协议与 SWE-bench 适配 |
 | Agent 评测 | TS：`packages/evaluation`；Python：`py-runtime/src/sztu_code/evaluation`，统一任务协议与 SWE-bench 适配 |
 
 项目级语义索引、统一 LSP、领域 RAG、安全扫描闭环和完整多智能体工作流仍在路线图中，不将设计目标描述为已完成能力。
@@ -260,7 +273,6 @@ sztu-ts [项目路径]
 
 ```bash
 npm run daemon            # 默认入口：py-runtime 中的 Python daemon（7437）
-npm run daemon            # 默认入口：py-runtime 中的 Python daemon（7437）
 npm run daemon:py         # 等价 npm run daemon
 ```
 
@@ -342,12 +354,10 @@ SztuCode/
 │  └─ evaluation/            #   评测 runner 与报告
 ├─ desktop/                  # Tauri 2 + Vue 3 桌面工作台（连 TS daemon）
 ├─ py-runtime/src/sztu_code/            # Python 链
-├─ py-runtime/src/sztu_code/            # Python 链
 │  ├─ core/                  #   Python daemon（Agent Loop、bus、权限、workflow、skills 等）
 │  ├─ cli/                   #   sztu-py 命令行客户端
 │  ├─ tui/                   #   Textual TUI（sztu-tui）
 │  └─ evaluation/            #   Python 评测 harness 与报告
-├─ py-runtime/tests/         # Python 测试（pytest）
 ├─ py-runtime/tests/         # Python 测试（pytest）
 ├─ scripts/                  # 协议生成、链接检查等工程脚本（.ts 与 .py 成对）
 ├─ tmp/                      # 本地评测产物（不提交）
@@ -362,7 +372,6 @@ SztuCode/
 Python 主链检查：
 
 ```bash
-cd py-runtime
 cd py-runtime
 uv run ruff check src tests
 uv run mypy src
@@ -392,7 +401,6 @@ TypeScript 评测——离线运行 10 个内部 Coding Agent 基准并生成 JS
 npm run eval -- run --manifest packages/evaluation/tasks/internal-v1.json --repeat 3 --output-dir tmp/eval
 ```
 
-Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / models / reporting / runners）。两版任务格式、真实 daemon runner、指标定义和 SWE-bench Lite 小样本流程见[评测指南](docs/guides/evaluation.md)。
 Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / models / reporting / runners）。两版任务格式、真实 daemon runner、指标定义和 SWE-bench Lite 小样本流程见[评测指南](docs/guides/evaluation.md)。
 
 ## 路线图

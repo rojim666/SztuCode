@@ -12,7 +12,7 @@ from pathlib import Path
 
 from sztu_code.core.config import get_config
 from sztu_code.core.trust import add_trusted, is_trusted
-from sztu_code.tui.app import KamaTuiApp
+from sztu_code.tui.app import SztuTuiApp
 
 _DEFAULT_TUI_LOG = "~/.sztu/logs/tui.log"
 
@@ -98,7 +98,7 @@ def main() -> None:
         )
     if args.trust and not is_trusted(target):
         add_trusted(target)
-    app = KamaTuiApp(
+    app = SztuTuiApp(
         config.host,
         config.port,
         project_path=str(target),

@@ -624,7 +624,7 @@ onMounted(() => {
 }
 
 .model-card-select.active {
-  color: #fff;
+  color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -1281,19 +1281,17 @@ onMounted(() => {
   padding: 0;
 }
 
-/* 暗色主题适配 */
-@media (prefers-color-scheme: dark) {
-  .current-model-card {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  
-  .modal-backdrop {
-    background: rgba(0, 0, 0, 0.6);
-  }
-  
-  .model-card--current {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-  }
+/* 暗色主题适配（跟随应用内主题设置，而非操作系统偏好） */
+:global([data-app-theme="dark"]) .current-model-card {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+:global([data-app-theme="dark"]) .modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+:global([data-app-theme="dark"]) .model-card--current {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 /* 响应式 */
@@ -1783,6 +1781,14 @@ onMounted(() => {
 @keyframes mmSpin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* 暗色主题适配 */
+[data-app-theme="dark"] .btn--primary,
+[data-app-theme="dark"] .mm-btn--primary {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* 响应式 */

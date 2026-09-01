@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
 import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
+import { friendlyError } from "../../utils/errorNotice";
 
 const props = defineProps<{ session: Session; active?: boolean }>();
 const emit = defineEmits<{ changed: []; closed: [] }>();
@@ -84,7 +85,7 @@ async function togglePinned() {
     closeMenu();
     emit("changed");
   } catch (error) {
-    notice.value = error instanceof Error ? `置顶失败：${error.message}` : `置顶失败：${String(error)}`;
+    notice.value = `置顶失败：${friendlyError(error).message}`;
   } finally {
     busy.value = false;
   }
@@ -123,7 +124,7 @@ async function run(operation: () => Promise<unknown>, closes = false) {
     if (closes) emit("closed");
     else emit("changed");
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : String(error);
+    notice.value = friendlyError(error).message;
   } finally {
     busy.value = false;
   }
@@ -166,7 +167,7 @@ async function copyText(value: string, message = "已复制") {
     }
     notice.value = message;
   } catch (error) {
-    notice.value = error instanceof Error ? error.message : String(error);
+    notice.value = `复制失败：${friendlyError(error).message}`;
   }
 }
 
@@ -180,7 +181,7 @@ async function share() {
     else await copyText(data.url, "会话链接已复制");
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    notice.value = error instanceof Error ? error.message : String(error);
+    notice.value = `分享失败：${friendlyError(error).message}`;
   }
 }
 
@@ -248,7 +249,7 @@ onBeforeUnmount(() => {
           <div class="session-menu__separator" />
           <button role="menuitem" @click="openInNewWindow"><ExternalLink :size="19" />在新窗口中打开</button>
         </template>
-        <p v-if="notice">{{ notice }}</p>
+        <p v-if="notice" role="alert">{{ notice }}</p>
       </div>
     </Teleport>
   </div>

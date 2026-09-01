@@ -95,11 +95,12 @@ export function cacheHitPercent(stats: SessionStats): number | null {
   // 否则 0 + undefined = NaN 会一路传染成「缓存命中 NaN%」
   const input = Number(stats.inputTokens);
   const cacheRead = Number(stats.cacheReadTokens);
-  // Provider usage reports input_tokens as the complete prompt size. Cached
-  // tokens are a subset of it, not an additional billed-input bucket.
-  if (!Number.isFinite(input) || !Number.isFinite(cacheRead) || input <= 0) return null;
-  const hitTokens = Math.min(Math.max(cacheRead, 0), input);
-  return Math.round((hitTokens / input) * 1000) / 10;
+  const safeInput = Number.isFinite(input) ? Math.max(input, 0) : 0;
+  const safeCacheRead = Number.isFinite(cacheRead) ? Math.max(cacheRead, 0) : 0;
+  // 计费输入 = 未缓存输入 + 缓存读（input_tokens 为未缓存部分，见上方公式注释）
+  const billedInput = safeInput + safeCacheRead;
+  if (billedInput <= 0) return null;
+  return Math.round((safeCacheRead / billedInput) * 1000) / 10;
 }
 
 // 将后端 0～1 的上下文占用比例格式化为固定两位小数的百分比。

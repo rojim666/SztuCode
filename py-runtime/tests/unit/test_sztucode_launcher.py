@@ -5,7 +5,7 @@ import socket
 from pathlib import Path
 
 from sztu_code.tui import launcher
-from sztu_code.tui.app import KamaTuiApp
+from sztu_code.tui.app import SztuTuiApp
 
 
 # 功能：验证 daemon 端口已开通时 ensure_daemon 直接返回 True 且不拉起进程
@@ -33,17 +33,17 @@ def test_ensure_daemon_returns_false_when_unreachable(monkeypatch) -> None:
 
 
 # 功能：验证只读或显式信任时跳过信任确认屏
-# 设计：构造 KamaTuiApp 并直接调用 _needs_trust_check，覆盖 read_only/trust 两条短路路径
+# 设计：构造 SztuTuiApp 并直接调用 _needs_trust_check，覆盖 read_only/trust 两条短路路径
 def test_needs_trust_check_skipped_for_read_only_or_trust(
     tmp_path: Path, monkeypatch,
 ) -> None:
     project = tmp_path / "proj"
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
 
-    assert KamaTuiApp(
+    assert SztuTuiApp(
         "127.0.0.1", 7437, project_path=str(project), read_only=True
     )._needs_trust_check() is False
-    assert KamaTuiApp(
+    assert SztuTuiApp(
         "127.0.0.1", 7437, project_path=str(project), trust=True
     )._needs_trust_check() is False
 
@@ -62,10 +62,10 @@ def test_needs_trust_check_depends_on_trust_store(
     )
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(store_path))
 
-    assert KamaTuiApp(
+    assert SztuTuiApp(
         "127.0.0.1", 7437, project_path=str(trusted_dir)
     )._needs_trust_check() is False
-    assert KamaTuiApp(
+    assert SztuTuiApp(
         "127.0.0.1", 7437, project_path=str(untrusted_dir)
     )._needs_trust_check() is True
 
@@ -75,10 +75,10 @@ def test_needs_trust_check_depends_on_trust_store(
 async def test_trust_screen_shown_and_escape_aborts(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    from sztu_code.tui.app import KamaTuiApp, TrustScreen
+    from sztu_code.tui.app import SztuTuiApp, TrustScreen
 
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    app = KamaTuiApp("127.0.0.1", 7437, project_path=str(tmp_path / "proj"))
+    app = SztuTuiApp("127.0.0.1", 7437, project_path=str(tmp_path / "proj"))
     async with app.run_test() as pilot:
         assert isinstance(app.screen_stack[-1], TrustScreen)
         await pilot.press("escape")
@@ -90,13 +90,13 @@ async def test_trust_screen_enter_records_trust(
     tmp_path: Path, monkeypatch,
 ) -> None:
     from sztu_code.core.trust import is_trusted
-    from sztu_code.tui.app import KamaTuiApp, TrustScreen
+    from sztu_code.tui.app import SztuTuiApp, TrustScreen
 
     store_path = tmp_path / "trusted.json"
     project = tmp_path / "proj"
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(store_path))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 7437, project_path=str(project))
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 7437, project_path=str(project))
     async with app.run_test() as pilot:
         assert isinstance(app.screen_stack[-1], TrustScreen)
         await pilot.press("enter")
@@ -109,11 +109,11 @@ async def test_trust_screen_enter_records_trust(
 async def test_run_outputs_merged_into_single_block(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    from sztu_code.tui.app import KamaTuiApp, RunBlock
+    from sztu_code.tui.app import SztuTuiApp, RunBlock
 
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 7437, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 7437, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         for event in [
             {"type": "run.started", "run_id": "run-1", "goal": "hi"},

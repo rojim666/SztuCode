@@ -9,6 +9,7 @@
 // Default mode is a dry run. Pass --apply to actually terminate the processes.
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,11 +45,24 @@ function isDesktopResidual(name, command) {
   return false;
 }
 
+function resolvePowerShell() {
+  // Some toolchains (IDE terminals, CI wrappers) strip System32\WindowsPowerShell
+  // from PATH, so resolve the absolute path before spawning.
+  const systemRoot = process.env.SystemRoot || "C:\\Windows";
+  const fullPath = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  try {
+    if (existsSync(fullPath)) return fullPath;
+  } catch {
+    // Fall through to the bare command and let the OS resolve it.
+  }
+  return "powershell";
+}
+
 function listProcesses() {
   const rows = [];
   if (process.platform === "win32") {
     const out = execFileSync(
-      "powershell",
+      resolvePowerShell(),
       [
         "-NoProfile",
         "-Command",

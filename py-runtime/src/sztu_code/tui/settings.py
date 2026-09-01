@@ -13,7 +13,7 @@ from textual.widgets import Static
 from sztu_code.tui.theme import THEMES, WALLPAPER_ORDER, c
 
 if TYPE_CHECKING:
-    from sztu_code.tui.app import KamaTuiApp
+    from sztu_code.tui.app import SztuTuiApp
 
 # 权限模式的可选值（与 permission.set_mode 契约一致）
 _MODE_NAMES = ("auto", "accept_edits", "plan")
@@ -91,7 +91,7 @@ class SettingsModal(ModalScreen[None]):
 
     # 供类型检查使用的宿主 App 引用（运行时即 self.app）
     @property
-    def _host_app(self) -> KamaTuiApp:
+    def _host_app(self) -> SztuTuiApp:
         return self.app  # type: ignore[return-value]
 
     def compose(self) -> ComposeResult:

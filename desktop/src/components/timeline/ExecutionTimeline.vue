@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
@@ -63,7 +63,7 @@ const retryingTurn = ref<string | number | null>(null);
 let copyTimer: number | undefined;
 let clockTimer: number | undefined;
 onMounted(() => { clockTimer = window.setInterval(() => { now.value = Date.now(); }, 1000); });
-onBeforeUnmount(() => { window.clearInterval(clockTimer); window.clearTimeout(copyTimer); });
+onBeforeUnmount(() => { window.clearInterval(clockTimer); window.clearTimeout(copyTimer); window.clearTimeout(retryTimer); });
 
 function thinkingTextOf(steps: TimelineStep[]): string {
   return [...new Set(steps.map((step) => step.thinking?.trim()).filter(Boolean))].join("\n\n");
@@ -182,10 +182,15 @@ async function copyTurnSummary(turn: TurnView) {
   copyTimer = window.setTimeout(() => { copiedTurn.value = null; }, 1600);
 }
 
+let retryTimer: number | undefined;
+
 function retryTurn(turn: TurnView) {
   if (!turn.runId || !turn.userMessage) return;
   retryingTurn.value = turn.key;
   emit("retry", turn.runId, turn.userMessage);
+  // 兜底复位：父级重试失败时已弹错误提示，这里避免按钮永久停留在转圈态
+  window.clearTimeout(retryTimer);
+  retryTimer = window.setTimeout(() => { retryingTurn.value = null; }, 20_000);
 }
 
 function stepText(step: TimelineStep): string {
@@ -410,14 +415,26 @@ const turns = computed<TurnView[]>(() => {
     };
   });
 });
+
+// 重试生效（该轮重新进入运行/等待态）后立即结束按钮 loading
+watch(
+  () => turns.value.find((turn) => turn.key === retryingTurn.value)?.state,
+  (state) => {
+    if (state === "running" || state === "waiting") {
+      window.clearTimeout(retryTimer);
+      retryingTurn.value = null;
+    }
+  },
+);
 </script>
 
 <template>
-  <section class="execution-timeline" aria-live="polite">
+  <!-- 不使用 aria-live：流式输出期间每个 token 批次都会触发读屏通告，造成噪音 -->
+  <section class="execution-timeline">
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, turn.state === 'running' ? now : null]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null]"
       class="timeline-step"
     >
       <div v-if="turn.userMessage" class="timeline-user-message">
@@ -433,10 +450,13 @@ const turns = computed<TurnView[]>(() => {
             v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"
             class="turn-history-toggle"
-            :class="{ expanded: isTurnExpanded(turn) }"
+            :class="{ expanded: isTurnExpanded(turn), 'turn-history-toggle--failed': turn.state === 'failed' || turn.state === 'interrupted' }"
             :aria-expanded="isTurnExpanded(turn)"
             @click="toggleTurn(turn)"
           >
+            <!-- 失败/中断的轮次在折叠态给出可见标记，避免用户不展开就发现不了异常 -->
+            <em v-if="turn.state === 'failed'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />失败</em>
+            <em v-else-if="turn.state === 'interrupted'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />已中断</em>
             <span>{{ isTurnExpanded(turn) ? '收起过程' : `查看过程 · ${elapsedLabel(turn)}` }}</span>
             <ChevronDown :size="15" />
           </button>

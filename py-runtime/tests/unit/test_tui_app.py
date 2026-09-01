@@ -10,7 +10,7 @@ from textual.widgets import Static
 
 from sztu_code.tui.app import (
     _MAX_LOG_CHILDREN,
-    KamaTuiApp,
+    SztuTuiApp,
     LLMStreamBlock,
     PermissionBlock,
     PermissionSelect,
@@ -38,15 +38,15 @@ def test_param_summary_prefers_key_fields() -> None:
 
 
 def test_tui_banner_keeps_the_large_sztucode_wordmark() -> None:
-    assert "███████╗" in KamaTuiApp._BANNER
-    assert "输入消息开始对话" in KamaTuiApp._BANNER
+    assert "███████╗" in SztuTuiApp._BANNER
+    assert "输入消息开始对话" in SztuTuiApp._BANNER
 
 
 async def test_tui_mounts_workbench_layout_without_banner(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp(
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp(
         "127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True,
     )
     async with app.run_test(size=(100, 30)) as pilot:
@@ -64,12 +64,12 @@ async def test_tui_mounts_workbench_layout_without_banner(
 
 
 def test_tui_uses_the_launch_directory_as_the_initial_project_path() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     assert app._project_path
 
 
 def test_welcome_card_matches_sztucode_model_switcher_style() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999, project_path="/tmp/example")
+    app = SztuTuiApp("127.0.0.1", 9999, project_path="/tmp/example")
     rendered = app._welcome_text()
 
     assert "SztuCode" in rendered
@@ -80,7 +80,7 @@ def test_welcome_card_matches_sztucode_model_switcher_style() -> None:
 
 
 def test_model_command_is_available_in_slash_completion() -> None:
-    names = {name for name, _description in KamaTuiApp("127.0.0.1", 9999)._builtin_slash_items()}
+    names = {name for name, _description in SztuTuiApp("127.0.0.1", 9999)._builtin_slash_items()}
     assert "model" in names
 
 
@@ -91,7 +91,7 @@ def test_header_does_not_show_the_internal_conversation_id() -> None:
         def update(self, value: str) -> None:
             self.value = value
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     app._session_id = "internal-session-id"
     header = _Header()
     app.query_one = lambda *_args, **_kwargs: header  # type: ignore[method-assign]
@@ -102,7 +102,7 @@ def test_header_does_not_show_the_internal_conversation_id() -> None:
 
 
 async def test_tab_cycles_only_the_three_visible_permission_modes() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     selected: list[str] = []
 
     async def record(mode: str) -> None:
@@ -118,7 +118,7 @@ async def test_tab_cycles_only_the_three_visible_permission_modes() -> None:
 # 功能：验证模式标签仅显示当前模式，三合一紧凑设计
 # 设计：默认 auto 模式只显示 AUTO 富文本，不泄露其他两档；标签嵌入 header 栏不再单独占位
 def test_mode_switcher_keeps_controls_near_the_composer() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
 
     rendered = app._mode_label()
 
@@ -136,7 +136,7 @@ async def test_mode_changes_do_not_append_timeline_status() -> None:
             assert (method, params) == ("permission.set_mode", {"mode": "plan"})
             return {"ok": True}
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._client = _Client()  # type: ignore[assignment]
     app._append = lambda widget: appended.append(widget)  # type: ignore[method-assign]
@@ -155,7 +155,7 @@ async def test_provider_status_updates_the_current_model() -> None:
             assert params == {}
             return {"model": "configured-model"}
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     app._client = _Client()  # type: ignore[assignment]
     app._update_header = lambda state: None  # type: ignore[method-assign]
 
@@ -181,7 +181,7 @@ def test_permission_prompt_explains_the_action_and_keyboard_choices() -> None:
 # 设计：monkey-patch _append 收集追加的 widgets，断言 token 追加到同一块；
 #       发送非 token 事件后新 block 被重置，下一个 token 开启新块
 def test_llm_tokens_accumulate_in_block() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -205,7 +205,7 @@ def test_llm_block_finalize_renders_markdown() -> None:
 # 功能：验证非 token 事件后 _current_llm 被重置，下一个 token 开启新块
 # 设计：插入 step.started 中断流，验证之前的 block 被 finalize，之后的 llm.token 创建新 LLMStreamBlock
 def test_llm_block_resets_after_non_token_event() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -224,8 +224,8 @@ async def test_run_started_creates_run_block_with_content(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         app._handle_event({
             "type": "run.started", "run_id": "run-abc", "goal": "do the thing", "ts": "t"
@@ -245,8 +245,8 @@ async def test_run_finished_success_shows_completed(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         app._handle_event({"type": "run.started", "run_id": "r", "goal": "g", "ts": "t"})
         await pilot.pause()  # 等待 RunBlock compose（标题）先挂载
@@ -268,8 +268,8 @@ async def test_run_finished_failed_shows_red(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         app._handle_event({"type": "run.started", "run_id": "r", "goal": "g", "ts": "t"})
         await pilot.pause()  # 等待 RunBlock compose（标题）先挂载
@@ -289,7 +289,7 @@ async def test_run_finished_failed_shows_red(
 # 功能：验证 tool.call_started 追加 ToolCallBlock，call_finished 更新其结果
 # 设计：直接调用 _handle_event 两次，通过 _pending_tool_blocks 验证状态流转
 def test_tool_call_started_and_finished() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -344,7 +344,7 @@ async def test_input_submit_appends_user_turn_and_disables_prompt() -> None:
         async def send_command(self, method: str, params: dict) -> dict:
             return {"run_id": "run-1"}
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
     app._update_header = lambda state: None  # type: ignore[method-assign]
@@ -370,7 +370,7 @@ async def test_model_command_opens_model_settings() -> None:
         value = "/model"
         text_area = _FakeArea()
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     opened: list[bool] = []
     app.action_open_model = lambda: opened.append(True)  # type: ignore[method-assign]
 
@@ -383,7 +383,7 @@ async def test_model_command_opens_model_settings() -> None:
 # 功能：验证未知事件类型不抛异常也不追加任何 widget
 # 设计：发送 type 为 unknown 的事件，断言 appended 为空
 def test_unknown_event_silently_ignored() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -398,8 +398,8 @@ async def test_log_view_caps_children_and_keeps_run_block(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         for i in range(800):
             app._append(Static(f"line {i}"))
@@ -423,8 +423,8 @@ async def test_llm_stream_throttles_high_frequency_tokens(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp("127.0.0.1", 9999, project_path=str(tmp_path / "proj"), trust=True)
     async with app.run_test() as pilot:
         block = LLMStreamBlock()
         app._append(block)
@@ -456,8 +456,8 @@ async def test_wallpaper_regenerates_on_resize(
     tmp_path: Path, monkeypatch,
 ) -> None:
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
-    monkeypatch.setattr(KamaTuiApp, "_start_socket_loop", lambda self: None)
-    app = KamaTuiApp(
+    monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)
+    app = SztuTuiApp(
         "127.0.0.1", 9999,
         project_path=str(tmp_path / "proj"), trust=True, wallpaper="ocean",
     )
@@ -473,7 +473,7 @@ async def test_wallpaper_regenerates_on_resize(
 # 设计：monkeypatch _build_slash_items 返回带技能的列表并直接 await _load_slash_items，
 #       断言 _slash_items 被替换，避免依赖真实技能扫描和定时等待的不确定性
 async def test_slash_items_load_async(monkeypatch) -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     monkeypatch.setattr(
         app,
         "_build_slash_items",
@@ -489,7 +489,7 @@ async def test_slash_items_load_async(monkeypatch) -> None:
 # 功能：验证第九章六个斜杠命令全部出现在 TUI 首帧自动补全中
 # 设计：直接读取不依赖异步 Skill 扫描的内建候选，确保每个运行时命令都可被发现
 def test_chapter_nine_slash_items_are_builtin() -> None:
-    names = {name for name, _description in KamaTuiApp("127.0.0.1", 9999)._builtin_slash_items()}
+    names = {name for name, _description in SztuTuiApp("127.0.0.1", 9999)._builtin_slash_items()}
 
     assert {
         "security-review",
@@ -505,7 +505,7 @@ def test_chapter_nine_slash_items_are_builtin() -> None:
 # 设计：直接调用 _cycle_theme 两次，断言主题名与 textual theme 依次切换，
 #       覆盖循环首尾衔接（light 之后回到 dark）；async 提供事件循环供 run_worker 调度
 async def test_theme_cycle_toggles_dark_and_light() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -522,7 +522,7 @@ async def test_theme_cycle_toggles_dark_and_light() -> None:
 # 设计：调用 _cycle_wallpaper 共 4 次（与 WALLPAPER_ORDER 等长），断言回到 none，
 #       且未挂载壁纸层时 _render_wallpaper 静默跳过不抛异常
 async def test_wallpaper_cycle_returns_to_none() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
 
@@ -542,7 +542,7 @@ async def test_bg_command_starts_background_run() -> None:
             assert params == {"goal": "summarize repo"}
             return {"run_id": "bg-42"}
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
     app._client = _FakeClient()  # type: ignore[assignment]
@@ -557,7 +557,7 @@ async def test_bg_command_starts_background_run() -> None:
 # 设计：预置后台 run_id，feed run.finished，断言状态与步数更新、
 #       主 _run_block 保持 None（未被 run 事件创建）
 def test_bg_events_route_to_bg_panel_not_main_log() -> None:
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     appended: list[Widget] = []
     app._append = lambda w: appended.append(w)  # type: ignore[method-assign]
     app._bg_run_ids = {"bg-1"}
@@ -584,7 +584,7 @@ def test_status_bar_renders_session_and_bg_info() -> None:
         def update(self, value: str) -> None:
             self.value = value
 
-    app = KamaTuiApp("127.0.0.1", 9999)
+    app = SztuTuiApp("127.0.0.1", 9999)
     status = _Status()
     app.query_one = lambda *_args, **_kwargs: status  # type: ignore[method-assign]
     app._session_tokens = {"in": 1200, "out": 340, "cache_read": 0, "cache_write": 0}
