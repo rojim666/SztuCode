@@ -6,6 +6,7 @@
 import path from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
+import { ToolRegistry } from "./tools.js";
 import type { CanvasNode } from "./task-canvas.js";
 
 // --- Working State ---
@@ -354,7 +355,7 @@ export async function runMemoryEvolution(
   try {
     const response = await provider.complete(
       [{ role: "user", content: prompt }],
-      { list: () => [] }, // empty tool registry
+      new ToolRegistry(),
       undefined,
       undefined,
       options?.runId ? { runId: options.runId, step: 0 } : undefined

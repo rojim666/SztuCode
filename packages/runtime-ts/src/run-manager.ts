@@ -91,8 +91,9 @@ export class RunManager {
   private async execute(run: RunState, history: ChatMessage[], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string): Promise<void> {
     let result: AgentRunResult;
     const tracker = workspaceRoot ? new WorkspaceChangeTracker(workspaceRoot, run.runId) : null;
+    const root = workspaceRoot ?? process.cwd();
     try {
-      const root = workspaceRoot ?? process.cwd(); const memory = await loadMemoryCatalog(root, this.sessions, sessionId);
+      const memory = await loadMemoryCatalog(root, this.sessions, sessionId);
       const subagents = new SubagentManager(this.provider, root, this.events, this.permissions, undefined, undefined, this.telemetry);
       const subagentSource = { spawn: (role: string, goal: string, context?: string) => subagents.spawn(role as "planner" | "coder" | "tester" | "reviewer", goal, context, { parentSessionId: sessionId, parentRunId: run.runId }), handleStatus: (handle: string) => subagents.handleStatus(handle), handleResult: (handle: string) => subagents.handleResult(handle), handleCancel: (handle: string) => subagents.handleCancel(handle), handleList: () => subagents.handleList() };
       const tools = createWorkspaceTools([...createPlanTools(this.events, run.runId, sessionId), createSkillTool(root), createSpawnAgentTool(subagentSource), createSubagentStatusTool(subagentSource), createSubagentResultTool(subagentSource), createSubagentCancelTool(subagentSource), createWorkflowTool(async (graph) => { const candidate = graph as import("@sztucode/protocol").WorkflowGraph; const errors = validateWorkflowGraph(candidate); if (errors.length) throw new Error(errors.join("; ")); return subagents.runWorkflow(candidate, { runId: run.runId, parentRunId: run.runId, parentSessionId: sessionId }); }), ...createMemoryTools(memory, this.sessions, sessionId, run.runId), ...this.extraTools()]);
@@ -112,7 +113,7 @@ export class RunManager {
       // Recuris: 如果需要进化，触发记忆进化
       if (result.taskCanvas && shouldEvolve("interrupted")) {
         const memoryRoot = path.join(root, ".sztu", "memory");
-        await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: this.events, runId: run.runId });
+        await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: { publish: (event) => this.events.publish(event as RuntimeEvent) }, runId: run.runId });
       }
     } catch (error) {
       if (tracker) await tracker.finalize();
@@ -142,7 +143,7 @@ export class RunManager {
     // Recuris: 如果需要进化，触发记忆进化
     if (result.taskCanvas && shouldEvolve("interrupted")) {
       const memoryRoot = path.join(root, ".sztu", "memory");
-      await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: this.events, runId: run.runId });
+      await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: { publish: (event) => this.events.publish(event as RuntimeEvent) }, runId: run.runId });
     }
     if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
     if (onComplete) await onComplete(result.messages, run.usage);

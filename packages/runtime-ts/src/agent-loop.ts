@@ -644,7 +644,7 @@ export class AgentLoop {
     }
   }
 
-  private async conclude(runId: string, step: number, messages: ChatMessage[], usage: ModelUsage, previousContextPct: number, signal?: AbortSignal, taskCanvas?: TaskCanvas): Promise<{ complete: boolean; text: string; contextPct: number }> {
+  private async conclude(runId: string, step: number, messages: ChatMessage[], usage: ModelUsage, previousContextPct: number, signal?: AbortSignal, taskCanvas?: TaskCanvas): Promise<{ complete: boolean; text: string; contextPct: number; taskCanvas?: TaskCanvas }> {
     messages.push({ role: "user", content: "The agent run has reached its step limit and must stop now. Give your final answer. If the goal is fully achieved, start with [COMPLETE]. If work remains, start with [INCOMPLETE] and list it. Do not call tools." });
     const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
     let response: ModelResponse;
