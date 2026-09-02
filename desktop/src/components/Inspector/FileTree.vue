@@ -21,7 +21,7 @@ import {
   openPathWithApp,
   type ExternalAppInfo,
 } from "../../services/sztu-runtime";
-import CodePreview from "./CodePreview.vue";
+import RichFilePreview from "./RichFilePreview.vue";
 import FileTreeNode from "./FileTreeNode.vue";
 
 const props = defineProps<{
@@ -531,7 +531,7 @@ onMounted(() => void loadDir(null));
           <b>无法预览文件</b>
           <p>{{ previewError }}</p>
         </div>
-        <CodePreview
+        <RichFilePreview
           v-else
           :content="preview"
           :path="selectedPath"
@@ -540,6 +540,7 @@ onMounted(() => void loadDir(null));
           :truncated="previewTruncated"
           :media-base64="previewMediaBase64"
           :mime-type="previewMimeType"
+          :workspace-id="workspaceId"
           :hide-chrome="true"
         />
       </template>

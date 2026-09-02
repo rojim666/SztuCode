@@ -430,6 +430,10 @@ let inspectorAutoCollapsed = false;
 // 「查看项目文件」请求：通知右侧功能栏切到文件标签页并浏览指定项目
 const filesRequest = ref<{ workspaceId: string; seq: number } | null>(null);
 let filesRequestSeq = 0;
+// 可视化产物自动预览：AI 生成报告 / HTML / 图片等文件后自动打开右侧功能栏查看
+const VISUAL_ARTIFACT_RE = /\.(?:html?|xhtml|png|jpe?g|gif|webp|svg|md|markdown)$/i;
+const autoPreviewedArtifacts = new Map<string, Set<string>>(); // sessionId → 已自动预览过的路径
+const pendingVisualWrites = new Map<string, string>(); // toolUseId → 写入中的可视化产物路径
 let inspectorCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let inspectorOpenFrame: number | undefined;
 let trayListeners: Array<() => void> = [];
@@ -1215,7 +1219,8 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     if (index >= 0) list[index] = doc; else list.push(doc);
     canvasDocsBySession.set(sessionId, list);
     if (!canvasSelectionBySession.get(sessionId)) canvasSelectionBySession.set(sessionId, doc.id);
-    if (String(event.action ?? "") === "create" && sessionId === activeId.value) {
+    // 新建文档（或当前激活会话收到文档）即展开面板：不依赖会话匹配，避免后台 run 产出文档时面板无反应
+    if (String(event.action ?? "") === "create" || sessionId === activeId.value) {
       canvasSelectionBySession.set(sessionId, doc.id);
       canvasPanelOpen.value = true;
     }
@@ -1351,6 +1356,10 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   if (type === "tool.call_started") {
     const step = stepFor(timelineEvent);
     const call: ToolCallEntry = { id: String(event.tool_use_id), name: String(event.tool_name), params: (event.params as Record<string, unknown>) ?? {}, status: "running", startedAt: String(event.started_at ?? "") };
+    // 写文件工具落盘可视化产物时登记，待写入完成后自动预览
+    if ((call.name === "write_file" || call.name === "edit_file") && typeof call.params.path === "string" && VISUAL_ARTIFACT_RE.test(call.params.path)) {
+      pendingVisualWrites.set(call.id, call.params.path);
+    }
     setStep(step, (current) => appendTimelineEvent({ ...current, status: "acting", toolCalls: [...current.toolCalls.filter((item) => item.id !== call.id), call] }, { id: `tool-${call.id}`, kind: "tool", toolCallId: call.id }));
     return;
   }
@@ -1358,6 +1367,9 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     const step = stepFor(timelineEvent);
     const callId = String(event.tool_use_id);
     setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? "工具调用失败") : undefined, elapsedMs: Number(event.elapsed_ms ?? 0) }) }));
+    const visualPath = pendingVisualWrites.get(callId);
+    pendingVisualWrites.delete(callId);
+    if (visualPath && type === "tool.call_finished") autoPreviewVisualArtifacts(sessionId, [visualPath]);
     return;
   }
   if (type === "plan.updated") {
@@ -1372,7 +1384,9 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   }
   if (type === "change.applied") {
     const step = stepFor(timelineEvent);
-    setStep(step, (current) => ({ ...current, changes: [...(current.changes ?? []), { paths: (event.paths as string[] | undefined) ?? [], workspacePath: String(event.workspace_path ?? "") }] }));
+    const changedPaths = (event.paths as string[] | undefined) ?? [];
+    setStep(step, (current) => ({ ...current, changes: [...(current.changes ?? []), { paths: changedPaths, workspacePath: String(event.workspace_path ?? "") }] }));
+    autoPreviewVisualArtifacts(sessionId, changedPaths);
     return;
   }
   if (type === "log.line") {
@@ -2708,6 +2722,21 @@ async function onOpenFileFromTimeline(rawPath: string) {
   inspectorRef.value?.openChangeDiff(rawPath);
 }
 
+// AI 生成可视化产物（报告 / HTML / 图片）后自动打开右侧功能栏预览最新一个
+function autoPreviewVisualArtifacts(sessionId: string, paths: string[]) {
+  if (!sessionId || sessionId !== activeId.value) return;
+  const target = [...paths].reverse().find((p) => VISUAL_ARTIFACT_RE.test(p));
+  if (!target) return;
+  const key = target.replace(/\\/g, "/").toLowerCase();
+  const seen = autoPreviewedArtifacts.get(sessionId) ?? new Set<string>();
+  autoPreviewedArtifacts.set(sessionId, seen);
+  // 同一文件已预览过且面板被用户关闭 → 不重复打扰
+  if (seen.has(key) && !inspectorOpen.value) return;
+  seen.add(key);
+  setInspectorOpen(true);
+  void nextTick(() => inspectorRef.value?.previewFile(target));
+}
+
 // 打开所有变更面板
 async function onOpenChangesFromTimeline(_runId: string) {
   setInspectorOpen(true);
@@ -3129,13 +3158,13 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                      <textarea ref="activePrompt" v-model="prompt" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '汝之所想，皆以言成' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <textarea ref="activePrompt" v-model="prompt" aria-label="任务输入框" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '汝之所想，皆以言成' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <div class="composer-toolbar"><button type="button" class="round" :class="{ 'canvas--active': canvasPanelOpen }" title="文档画布" aria-label="文档画布" @click="canvasPanelOpen = !canvasPanelOpen"><FileText :size="17" /></button><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
               <CanvasPanel
-                v-if="canvasPanelOpen && activeCanvasDocs.length"
+                v-if="canvasPanelOpen"
                 :docs="activeCanvasDocs"
                 :active-id="activeCanvasDocId"
                 :workspace-id="activeSessionWorkspace?.workspace_id"
@@ -3173,7 +3202,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
                 <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                <textarea ref="launcherPrompt" v-model="prompt" placeholder="汝之所想，皆以言成" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                <textarea ref="launcherPrompt" v-model="prompt" aria-label="任务输入框" placeholder="汝之所想，皆以言成" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" title="添加附件" aria-label="添加附件" @click="selectAttachments"><Plus :size="18" /></button>
                   <div class="launcher-permission-control">
