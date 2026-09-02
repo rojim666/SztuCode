@@ -115,6 +115,8 @@ export const timeline = {
       done: "Ran {target}",
     },
     outputTruncated: "[... {lines} lines / {chars} chars omitted ...]",
+    expandOutput: "Show full output",
+    collapseOutput: "Collapse output",
     params: "Params",
     input: "Input",
     output: "Output",

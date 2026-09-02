@@ -841,10 +841,61 @@ function isTaskProgressInjection(blocks: HistoryBlock[]): boolean {
   const text = blocks.filter((block) => String(block.type) === "text").map(blockText).join("\n").trim();
   return /^\[Task progress\]\s+step_\d+/i.test(text);
 }
+function extractTextFromContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (isRecord(item)) {
+          // 标准 content block 格式：{ type: "text", text: "..." }
+          if (typeof item.text === "string") return item.text;
+          // 图片块不提取文本
+          if (String(item.type) === "image") return "";
+          // 其他块尝试JSON序列化
+          return JSON.stringify(item);
+        }
+        return String(item ?? "");
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (isRecord(content)) {
+    if (typeof content.text === "string") return content.text;
+    return JSON.stringify(content);
+  }
+  return content != null ? String(content) : "";
+}
+
+function extractImagesFromContent(content: unknown): Array<{ data: string; mimeType: string }> {
+  const images: Array<{ data: string; mimeType: string }> = [];
+  if (!Array.isArray(content)) return images;
+  for (const item of content) {
+    if (!isRecord(item)) continue;
+    const type = String(item.type ?? "");
+    if (type !== "image" && !/image/i.test(type)) continue;
+    // 提取 base64 图片数据：支持 { source: { data, media_type } } 或直接 { data, mimeType } 格式
+    let data = "";
+    let mimeType = "image/png";
+    if (typeof item.data === "string") {
+      data = item.data;
+      if (typeof item.mimeType === "string") mimeType = item.mimeType;
+      else if (typeof item.media_type === "string") mimeType = item.media_type;
+    } else if (isRecord(item.source)) {
+      if (typeof item.source.data === "string") {
+        data = item.source.data;
+        if (typeof item.source.media_type === "string") mimeType = item.source.media_type;
+        else if (typeof item.source.mimeType === "string") mimeType = item.source.mimeType;
+      }
+    }
+    if (data) images.push({ data, mimeType });
+  }
+  return images;
+}
+
 function blockOutput(block: HistoryBlock): string {
-  if (typeof block.content === "string") return block.content;
-  if (Array.isArray(block.content)) return block.content.map((item) => typeof item === "string" ? item : JSON.stringify(item)).join("\n");
-  return block.content ? JSON.stringify(block.content) : "";
+  // 优先从标准 content 块递归提取文本，正确处理 Anthropic/AI SDK 格式
+  return extractTextFromContent(block.content);
 }
 function emptyStep(step: number): TimelineStep { return { step, status: "thinking", tokens: [], toolCalls: [] }; }
 function appendTimelineEvent(step: TimelineStep, event: TimelineEvent): TimelineStep {
@@ -938,13 +989,40 @@ function hydrateTimeline(
   let step = 0;
   for (const message of messages) {
     const role = entryRole(message);
-    if (role !== "user" && role !== "assistant") continue;
-    const messageRunId = String((message as { run_id?: unknown })?.run_id ?? "") || undefined;
-    const blocks = historyBlocks(message);
+    const messageRecord = isRecord(message) ? message : {};
+    const messageRunId = String((messageRecord as { run_id?: unknown }).run_id ?? "") || undefined;
+    const messageTime = String((messageRecord as { ts?: unknown; timestamp?: unknown }).ts ?? (messageRecord as { timestamp?: unknown }).timestamp ?? "");
+
     // System/developer prompts are runtime context, never conversation output.
     if (role === "system" || role === "developer") continue;
+
+    // --- 1. 处理 role: "tool" 消息（标准AI SDK格式：工具执行结果）---
+    if (role === "tool") {
+      if (!step) step = 1;
+      const current = next.get(step) ?? { ...emptyStep(step), status: "done" };
+      const toolCallId = String(messageRecord.tool_call_id ?? messageRecord.tool_use_id ?? "");
+      const isError = Boolean(messageRecord.is_error);
+      const outputText = extractTextFromContent(messageRecord.content);
+      const images = extractImagesFromContent(messageRecord.content);
+
+      const updatedCalls = current.toolCalls.map((call) => {
+        if (call.id !== toolCallId) return call;
+        return {
+          ...call,
+          status: isError ? "failed" as const : "done" as const,
+          output: outputText || call.output,
+          error: isError ? outputText : undefined,
+          images: images.length > 0 ? [...(call.images ?? []), ...images] : call.images,
+        };
+      });
+      next.set(step, { ...current, toolCalls: updatedCalls, status: "done" });
+      continue;
+    }
+
+    // --- 兼容旧格式块（content是数组，包含tool_result块在user消息里）---
+    const blocks = historyBlocks(message);
     const visibleBlocks = blocks.filter((block) => !isHiddenHistoryBlock(block));
-    if (!visibleBlocks.length) continue;
+
     // 任务进度是内部画布信息，不在会话区展示。
     if (isTaskProgressInjection(blocks)) continue;
     // 其余内部上下文注入折叠为上下文行挂到当前 turn，不占对话位。
@@ -955,30 +1033,49 @@ function hydrateTimeline(
       next.set(step, { ...current, contextInjections: [...(current.contextInjections ?? []), injected] });
       continue;
     }
+
+    if (role !== "user" && role !== "assistant") continue;
+    if (!visibleBlocks.length && role !== "assistant") continue;
+
     // 模型对压缩摘要的确认消息无信息量，整条丢弃，避免污染该轮总结文本。
     const plainText = blocks.filter((block) => String(block.type) === "text").map(blockText).filter(Boolean).join("\n").trim();
     if (role === "assistant" && /^Understood, I'll continue from this summary\.$/i.test(plainText)) continue;
-    const text = visibleBlocks.filter((block) => String(block.type) === "text").map(blockText).filter(Boolean).join("\n");
-    const toolResults = visibleBlocks.filter((block) => String(block.type) === "tool_result");
-    if (role === "user" && toolResults.length && !text) {
-      if (!step) step = 1;
-      const current = next.get(step) ?? { ...emptyStep(step), status: "done" };
-      const completed = current.toolCalls.map((call) => {
-        const result = toolResults.find((item) => String(item.tool_use_id) === call.id);
-        return result ? { ...call, status: result.is_error ? "failed" as const : "done" as const, output: blockOutput(result), error: result.is_error ? blockOutput(result) : undefined } : call;
-      });
-      const eventUpdates = completed.filter((call) => toolResults.some((item) => String(item.tool_use_id) === call.id)).reduce((events, call) => events.map((event) => event.toolCallId === call.id ? event : event), current.events ?? []);
-      next.set(step, { ...current, status: "done", runId: messageRunId ?? current.runId, toolCalls: completed, events: eventUpdates });
-      continue;
-    }
+
+    // --- 从块中提取文本/思考/工具结果（旧格式） ---
+    let text = visibleBlocks.filter((block) => String(block.type) === "text").map(blockText).filter(Boolean).join("\n");
+    let thinkingFromBlocks = visibleBlocks.filter((block) => String(block.type) === "thinking").map((block) => typeof block.thinking === "string" ? block.thinking : "").filter(Boolean).join("\n\n");
+    const toolResultsFromBlocks = visibleBlocks.filter((block) => String(block.type) === "tool_result");
+
+    // --- 2. 处理 user 消息 ---
     if (role === "user") {
+      // 特殊情况：旧格式中user消息只包含tool_result块（没有文本），属于上一轮assistant工具调用的结果
+      if (toolResultsFromBlocks.length && !text) {
+        if (!step) step = 1;
+        const current = next.get(step) ?? { ...emptyStep(step), status: "done" };
+        const completed = current.toolCalls.map((call) => {
+          const result = toolResultsFromBlocks.find((item) => String(item.tool_use_id) === call.id);
+          if (!result) return call;
+          const outputText = blockOutput(result);
+          const images = extractImagesFromContent(result.content);
+          return {
+            ...call,
+            status: result.is_error ? "failed" as const : "done" as const,
+            output: outputText,
+            error: result.is_error ? outputText : undefined,
+            images: images.length > 0 ? [...(call.images ?? []), ...images] : call.images,
+          };
+        });
+        next.set(step, { ...current, status: "done", runId: messageRunId ?? current.runId, toolCalls: completed });
+        continue;
+      }
+
+      // 正常用户消息：开始新一步
       step += 1;
       if (messageRunId) {
         stepByRunId.set(messageRunId, step);
         runToSession.set(messageRunId, sessionId);
         currentStepByRun.set(messageRunId, step);
       }
-      const messageTime = String((message as { ts?: unknown })?.ts ?? "");
       next.set(step, {
         ...emptyStep(step),
         status: "done",
@@ -996,6 +1093,8 @@ function hydrateTimeline(
       });
       continue;
     }
+
+    // --- 3. 处理 assistant 消息 ---
     if (!step) step = 1;
     if (messageRunId) {
       stepByRunId.set(messageRunId, step);
@@ -1003,19 +1102,51 @@ function hydrateTimeline(
       currentStepByRun.set(messageRunId, step);
     }
     const current = next.get(step) ?? { ...emptyStep(step), status: "done" };
-    const thinking = visibleBlocks.filter((block) => String(block.type) === "thinking").map((block) => typeof block.thinking === "string" ? block.thinking : "").filter(Boolean).join("\n\n");
-    const calls: ToolCallEntry[] = visibleBlocks.filter((block) => String(block.type) === "tool_use").map((block) => ({
+
+    // 支持标准AI SDK格式：从顶层字段提取
+    // - reasoning_content: 思考过程
+    const reasoningContent = typeof messageRecord.reasoning_content === "string" ? messageRecord.reasoning_content : "";
+    const thinking = [current.thinking, thinkingFromBlocks, reasoningContent].filter(Boolean).join("\n\n") || undefined;
+
+    // - tool_calls: 工具调用（标准格式 [{id, name, input: {}}]）
+    const toolCallsFromTop = Array.isArray(messageRecord.tool_calls) ? messageRecord.tool_calls as Record<string, unknown>[] : [];
+    const callsFromTop: ToolCallEntry[] = toolCallsFromTop.map((tc) => ({
+      id: String(tc.id ?? crypto.randomUUID()),
+      name: String(tc.name ?? t("app.toolCall")),
+      params: isRecord(tc.input) ? tc.input : isRecord(tc.arguments) ? tc.arguments : {},
+      status: "running", // 初始running，等后续role:tool消息匹配后改为done/failed
+    }));
+
+    // 旧格式块中的tool_use
+    const callsFromBlocks: ToolCallEntry[] = visibleBlocks.filter((block) => String(block.type) === "tool_use").map((block) => ({
       id: String(block.id ?? block.tool_use_id ?? crypto.randomUUID()),
       name: String(block.name ?? t("app.toolCall")),
       params: isRecord(block.input) ? block.input : isRecord(block.params) ? block.params : {},
       status: "done",
     }));
-    const events: TimelineEvent[] = visibleBlocks.flatMap((block, index) => {
-      if (String(block.type) === "text" && blockText(block)) return [{ id: `text-${step}-${index}`, kind: "text", text: blockText(block) }];
-      if (String(block.type) === "thinking" && typeof block.thinking === "string" && block.thinking) return [{ id: `thinking-${step}-${index}`, kind: "thinking", text: block.thinking }];
-      if (String(block.type) === "tool_use") return [{ id: `tool-${String(block.id ?? block.tool_use_id ?? index)}`, kind: "tool", toolCallId: String(block.id ?? block.tool_use_id ?? index) }];
-      return [];
-    });
+
+    const calls = [...callsFromTop, ...callsFromBlocks];
+
+    // 如果没有文本内容，尝试从顶层text字段提取（标准SDK格式）
+    if (!text && typeof messageRecord.content === "string") {
+      text = messageRecord.content;
+    }
+
+    const events: TimelineEvent[] = [
+      ...visibleBlocks.flatMap((block, index) => {
+        if (String(block.type) === "text" && blockText(block)) return [{ id: `text-${step}-${index}`, kind: "text" as const, text: blockText(block) }];
+        if (String(block.type) === "thinking" && typeof block.thinking === "string" && block.thinking) return [{ id: `thinking-${step}-${index}`, kind: "thinking" as const, text: block.thinking }];
+        if (String(block.type) === "tool_use") return [{ id: `tool-${String(block.id ?? block.tool_use_id ?? index)}`, kind: "tool" as const, toolCallId: String(block.id ?? block.tool_use_id ?? index) }];
+        return [];
+      }),
+      // 顶层文本作为text事件
+      ...(text && !visibleBlocks.some(b => String(b.type) === "text" && blockText(b)) ? [{ id: `text-${step}-top`, kind: "text" as const, text }] : []),
+      // 顶层reasoning_content作为thinking事件
+      ...(reasoningContent && !thinkingFromBlocks ? [{ id: `thinking-${step}-top`, kind: "thinking" as const, text: reasoningContent }] : []),
+      // 顶层tool_calls作为tool事件
+      ...callsFromTop.map((tc) => ({ id: `tool-${tc.id}`, kind: "tool" as const, toolCallId: tc.id })),
+    ];
+
     next.set(step, {
       ...current,
       status: "done",
@@ -1027,7 +1158,7 @@ function hydrateTimeline(
         elapsedSeconds: Number(runStats[messageRunId].elapsed_s ?? 0),
         contextPct: Number(runStats[messageRunId].context_pct ?? 0),
       } : current.runStats,
-      thinking: [current.thinking, thinking].filter(Boolean).join("\n\n") || undefined,
+      thinking,
       finalText: [current.finalText, text].filter(Boolean).join("\n\n") || undefined,
       toolCalls: [...current.toolCalls, ...calls],
       events: [...(current.events ?? []), ...events],
@@ -1053,6 +1184,21 @@ function hydrateTimeline(
       contextInjections: [...(current.contextInjections ?? []), entry],
     });
   }
+  // 历史会话中所有工具调用都应该是完成状态，把没匹配到结果的running工具调用标记为done
+  for (const [stepNum, stepData] of next) {
+    let needsUpdate = false;
+    const updatedCalls = stepData.toolCalls.map((call) => {
+      if (call.status === "running") {
+        needsUpdate = true;
+        return { ...call, status: "done" as const, output: call.output || "" };
+      }
+      return call;
+    });
+    if (needsUpdate) {
+      next.set(stepNum, { ...stepData, toolCalls: updatedCalls });
+    }
+  }
+
   if (view.runActive && view.activeRunId) {
     const runningStep = [...next.entries()].reverse().find(([, item]) => item.runId === view.activeRunId);
     if (runningStep) {

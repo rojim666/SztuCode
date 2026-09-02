@@ -234,8 +234,12 @@ class LegacySessionRuntimeImpl implements LegacySessionRuntime {
       const result = await this.loop.run(this.options.runId, text, this.options.maxSteps ?? 20, history, signal);
       this.tokens = result.usage.input_tokens + result.usage.output_tokens;
       this.text = result.text;
-      const assistant = result.messages.at(-1);
-      if (assistant?.role === "assistant") await this.options.backend.append(this.options.id, { type: "message", message: { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}) } });
+      // 保存本次运行新增的所有消息：assistant（带tool_calls/reasoning_content）、tool结果等，确保重启后过程完整
+      // history 是运行前的历史长度，result.messages 包含完整历史+新增消息
+      const newMessages = result.messages.slice(history.length);
+      for (const msg of newMessages) {
+        await this.options.backend.append(this.options.id, { type: "message", message: msg as never });
+      }
     })().finally(() => { this.active = undefined; this.controller = undefined; });
     await this.active;
   }

@@ -1,17 +1,27 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch, nextTick, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import DOMPurify from "dompurify";
 import { marked, Renderer } from "marked";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isTauri } from "@tauri-apps/api/core";
+import { render, h } from "vue";
 import { useThrottledVisualUpdate } from "../../composables/useThrottledVisualUpdate";
+import CodeBlockCard from "./CodeBlockCard.vue";
 
 const props = defineProps<{ tokens: string[]; finalText?: string }>();
 const { t } = useI18n({ useScope: "global" });
 const text = computed(() => props.finalText || props.tokens.join(""));
 const rendered = ref(text.value);
-const scheduleRender = useThrottledVisualUpdate(() => { rendered.value = text.value; });
+const containerRef = ref<HTMLElement | null>(null);
+const codeBlockInstances: { el: HTMLElement; cleanup: () => void }[] = [];
+
+const scheduleRender = useThrottledVisualUpdate(() => {
+  rendered.value = text.value;
+  nextTick(() => {
+    mountCodeBlocks();
+  });
+});
 watch(text, () => scheduleRender());
 
 // 常见代码/文本文件扩展名（用于识别文件路径）
@@ -22,27 +32,22 @@ function looksLikeFilePath(raw: string): string | null {
   let str = raw.trim();
   if (!str) return null;
   if (str.length > 200) return null;
-  // 剥离成对包裹的引号/括号（如 (foo.ts)、“foo.ts”）与尾部常见标点（。，、；：））
   str = str.replace(/^[(["'‘“]+/, "").replace(/[)\]"'’”。，、；：]+$/, "").trim();
   if (!str || /[\s<>{}[\]"']/.test(str)) return null;
-  // 排除 URL
   if (/^[a-z]+:\/\//i.test(str)) return null;
-  // 先剥离行号后缀（foo.ts:25、foo.ts:25-30），避免把 :25 当作路径的一部分
   const lineMatch = str.match(/^(.+?)(?::(\d+)(?:-\d+)?)?$/);
   if (!lineMatch) return null;
   const pathPart = lineMatch[1];
-  // 必须包含路径分隔符或以 ./ ../ 开头 或 包含文件扩展名
   const hasSep = /[\\/]/.test(pathPart) || pathPart.startsWith("./") || pathPart.startsWith("../");
   const hasExt = FILE_EXT_RE.test(pathPart);
   if (!hasSep && !hasExt) return null;
   return pathPart;
 }
 
-// 自定义 marked renderer：拦截 codespan（行内 `code`），把识别为文件路径的渲染为可点击链接。
-// title 文案通过注入的 translate 回调取值：codespan 在 html computed 内被调用，t 读取 locale
-// 会被收集为依赖，切换语言时 markdown 随之重渲染
-class FileLinkRenderer extends Renderer {
+// 自定义 marked renderer
+class CustomRenderer extends Renderer {
   constructor(private readonly translate: (key: string) => string) { super(); }
+
   override codespan({ text }: { text: string }): string {
     const path = looksLikeFilePath(text);
     if (path) {
@@ -51,16 +56,73 @@ class FileLinkRenderer extends Renderer {
     }
     return `<code>${text}</code>`;
   }
+
+  override code({ text, lang }: { text: string; lang?: string }): string {
+    const codeId = `code-${Math.random().toString(36).slice(2, 11)}`;
+    const langAttr = lang || "plaintext";
+    const escapedCode = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+    return `<div class="code-block-mount" data-code-id="${codeId}" data-lang="${langAttr}" data-code="${escapedCode}"></div>`;
+  }
 }
 
-const fileLinkRenderer = new FileLinkRenderer((key) => t(key));
+const customRenderer = new CustomRenderer((key) => t(key));
 
 const html = computed(() => {
   const rawMarkdown = rendered.value;
-  // 使用自定义 renderer 解析 markdown
-  const parsed = marked.parse(rawMarkdown, { async: false, renderer: fileLinkRenderer }) as string;
+  const parsed = marked.parse(rawMarkdown, { async: false, renderer: customRenderer }) as string;
   return DOMPurify.sanitize(parsed, {
-    ADD_ATTR: ["data-file", "tabindex", "role", "title"],
+    ADD_ATTR: ["data-file", "tabindex", "role", "title", "data-code-id", "data-lang", "data-code"],
+  });
+});
+
+function mountCodeBlocks() {
+  // 清理旧的实例
+  codeBlockInstances.forEach(({ cleanup }) => cleanup());
+  codeBlockInstances.length = 0;
+
+  if (!containerRef.value) return;
+
+  const mountPoints = containerRef.value.querySelectorAll<HTMLElement>(".code-block-mount");
+  mountPoints.forEach((el) => {
+    const code = el.dataset.code || "";
+    const lang = el.dataset.lang || "plaintext";
+
+    const decodedCode = code
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"');
+
+    const vnode = h(CodeBlockCard, {
+      code: decodedCode,
+      language: lang,
+    });
+
+    const parent = el.parentNode;
+    if (parent) {
+      const fragment = document.createDocumentFragment();
+      const div = document.createElement("div");
+      div.style.display = "contents";
+      fragment.appendChild(div);
+      parent.replaceChild(fragment, el);
+      render(vnode, div);
+      codeBlockInstances.push({
+        el: div,
+        cleanup: () => {
+          render(null, div);
+        },
+      });
+    }
+  });
+}
+
+onMounted(() => {
+  nextTick(() => {
+    mountCodeBlocks();
   });
 });
 
@@ -99,7 +161,6 @@ async function openDefaultBrowser(url: string) {
 }
 
 async function openFilePath(path: string) {
-  // 统一派发全局事件，由 App.vue 解析相对路径并打开（需要当前 workspace 路径）
   window.dispatchEvent(new CustomEvent("sztu:open-file", { detail: { path } }));
 }
 
@@ -115,7 +176,6 @@ function openInAppBrowserFromUrl(url: string) {
 
 function onLinkClick(event: MouseEvent) {
   if (event.type === "auxclick" && event.button !== 1) return;
-  // 优先处理文件链接
   const fileEl = fileLinkFrom(event);
   if (fileEl) {
     const path = fileEl.dataset.file;
@@ -130,7 +190,6 @@ function onLinkClick(event: MouseEvent) {
   const url = safeUrl(anchor.href);
   if (!url) return;
   event.preventDefault();
-  // 中键点击 → 系统默认浏览器；左键点击 → 内置浏览器（右侧栏）
   if (event.button === 1 || event.ctrlKey || event.metaKey) {
     void openDefaultBrowser(url);
   } else {
@@ -138,10 +197,8 @@ function onLinkClick(event: MouseEvent) {
   }
 }
 
-// 键盘可访问性：Enter/Space 触发文件链接或URL链接
 function onKeyDown(event: KeyboardEvent) {
   if (event.key !== "Enter" && event.key !== " ") return;
-  // 优先处理文件链接
   const fileEl = fileLinkFrom(event);
   if (fileEl) {
     const path = fileEl.dataset.file;
@@ -150,7 +207,6 @@ function onKeyDown(event: KeyboardEvent) {
     void openFilePath(path);
     return;
   }
-  // 普通 URL 链接：Enter 在内置浏览器打开
   const anchor = anchorFrom(event);
   if (!anchor) return;
   const url = safeUrl(anchor.href);
@@ -160,7 +216,6 @@ function onKeyDown(event: KeyboardEvent) {
 }
 
 function onLinkContextMenu(event: MouseEvent) {
-  // 文件链接暂不处理右键菜单
   if (fileLinkFrom(event)) return;
   const anchor = anchorFrom(event);
   if (!anchor) return;
@@ -215,6 +270,8 @@ function onWindowKeydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  codeBlockInstances.forEach(({ cleanup }) => cleanup());
+  codeBlockInstances.length = 0;
   window.removeEventListener("pointerdown", onWindowPointerDown, true);
   window.removeEventListener("scroll", onWindowScroll, true);
   window.removeEventListener("keydown", onWindowKeydown);
@@ -236,6 +293,7 @@ watch(menu, () => {
 <template>
   <div
     v-if="text"
+    ref="containerRef"
     class="token-stream markdown-body"
     :class="{ streaming: !finalText }"
     @click="onLinkClick"

@@ -67,21 +67,25 @@ const elapsed = computed(() => {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 });
 
-// 输出摘要
+// 输出展示：支持展开查看完整内容
 const OUTPUT_MAX_CHARS = props.compact ? 200 : 400;
 const OUTPUT_MAX_LINES = props.compact ? 6 : 12;
-const outputSummary = computed(() => {
-  const raw = props.call.error || props.call.output || "";
+const showFullOutput = ref(false);
+const rawOutput = computed(() => props.call.error || props.call.output || "");
+const isOutputTruncated = computed(() => {
+  const raw = rawOutput.value;
+  if (!raw) return false;
+  return raw.length > OUTPUT_MAX_CHARS;
+});
+const outputToShow = computed(() => {
+  const raw = rawOutput.value;
   if (!raw) return "";
-  if (raw.length <= OUTPUT_MAX_CHARS) return raw;
+  if (showFullOutput.value || raw.length <= OUTPUT_MAX_CHARS) return raw;
   const lines = raw.split("\n");
-  const head = lines.slice(0, OUTPUT_MAX_LINES).join("\n");
-  const omittedChars = raw.length - head.length;
-  const omittedLines = Math.max(0, lines.length - OUTPUT_MAX_LINES);
-  return `${head}\n\n${t("timeline.tool.outputTruncated", { lines: omittedLines, chars: omittedChars })}`;
+  return lines.slice(0, OUTPUT_MAX_LINES).join("\n");
 });
 
-const hasDetails = computed(() => request.value.length > 2 || outputSummary.value || (props.call.images?.length ?? 0) > 0);
+const hasDetails = computed(() => request.value.length > 2 || rawOutput.value || (props.call.images?.length ?? 0) > 0);
 
 // 工具返回的图片（浏览器截图等）：折叠态显示徽标，展开态内联缩略图，点击切换原图
 const imageUrls = computed(() => (props.call.images ?? []).map((image) => `data:${image.mimeType};base64,${image.data}`));
@@ -106,7 +110,13 @@ const zoomedImage = ref<number | null>(null);
     <transition name="tool-expand">
       <div v-if="isOpen && hasDetails" class="tool-call-event__details">
         <b>{{ call.status === 'running' ? t('timeline.tool.params') : t('timeline.tool.input') }}</b><pre>{{ request }}</pre>
-        <template v-if="outputSummary"><b>{{ t('timeline.tool.output') }}</b><pre>{{ outputSummary }}</pre></template>
+        <template v-if="rawOutput">
+          <b>{{ t('timeline.tool.output') }}</b>
+          <pre>{{ outputToShow }}</pre>
+          <button v-if="isOutputTruncated" class="toggle-output-btn" @click.stop="showFullOutput = !showFullOutput">
+            {{ showFullOutput ? t('timeline.tool.collapseOutput') : t('timeline.tool.expandOutput') }}
+          </button>
+        </template>
         <template v-if="imageUrls.length">
           <b>{{ t('timeline.tool.screenshots') }}</b>
           <div class="tool-call-event__images">
@@ -298,6 +308,25 @@ const zoomedImage = ref<number | null>(null);
   overflow-wrap: anywhere;
 }
 
+.toggle-output-btn {
+  display: inline-block;
+  margin: 4px 0 0;
+  padding: 2px 8px;
+  color: #6b7280;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.toggle-output-btn:hover {
+  color: #2563eb;
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.05);
+}
+
 /* Compact 模式（在分组内展开时） */
 .tool-call-event.compact > button {
   min-height: 22px;
@@ -377,6 +406,17 @@ const zoomedImage = ref<number | null>(null);
   color: #d1d5db;
   background: #1f2937;
   border-color: #374151;
+}
+
+:global([data-app-theme="dark"]) .toggle-output-btn {
+  color: #9ca3af;
+  border-color: #374151;
+}
+
+:global([data-app-theme="dark"]) .toggle-output-btn:hover {
+  color: #60a5fa;
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
 }
 
 /* 展开/折叠动画 */

@@ -115,6 +115,8 @@ export const timeline = {
       done: "已{target}",
     },
     outputTruncated: "[... 省略 {lines} 行 / {chars} 字符 ...]",
+    expandOutput: "展开查看完整输出",
+    collapseOutput: "收起完整输出",
     params: "参数",
     input: "输入",
     output: "返回",

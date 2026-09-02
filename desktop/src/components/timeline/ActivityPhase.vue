@@ -30,10 +30,10 @@ watch(() => [props.running, props.completed, hasFailedCalls.value], () => {
 }, { immediate: true });
 
 // 思考过程快速播放：大块文本到达时单帧最多加入若干字符，追赶输出
-const initialThinking = props.thinking ?? "";
-const displayedThinking = ref(props.completed ? initialThinking : "");
-let thinkingChars = Array.from(initialThinking);
-let displayedCount = Array.from(displayedThinking.value).length;
+// 修复：使用 ref 管理所有状态，避免闭包变量在重渲染/重挂载时不同步；
+//       已完成时直接显示完整内容，不会丢失
+const fullThinking = ref(props.thinking ?? "");
+const displayedThinking = ref(props.completed ? (props.thinking ?? "") : "");
 let playbackFrame: number | null = null;
 
 function revealCount(remaining: number): number {
@@ -42,34 +42,72 @@ function revealCount(remaining: number): number {
 
 function advancePlayback() {
   playbackFrame = null;
-  const remaining = thinkingChars.length - displayedCount;
+  const currentFull = fullThinking.value;
+  const currentDisplayed = displayedThinking.value;
+  // 如果已经是完成状态，直接显示全部内容
+  if (props.completed) {
+    displayedThinking.value = currentFull;
+    return;
+  }
+  const chars = Array.from(currentFull);
+  const displayedChars = Array.from(currentDisplayed);
+  const remaining = chars.length - displayedChars.length;
   if (remaining <= 0) return;
-  displayedCount += revealCount(remaining);
-  displayedThinking.value = thinkingChars.slice(0, displayedCount).join("");
-  if (displayedCount < thinkingChars.length) playbackFrame = requestAnimationFrame(advancePlayback);
+  const addCount = revealCount(remaining);
+  displayedThinking.value = chars.slice(0, displayedChars.length + addCount).join("");
+  if (displayedThinking.value.length < currentFull.length) {
+    playbackFrame = requestAnimationFrame(advancePlayback);
+  }
 }
 
 function schedulePlayback() {
-  if (playbackFrame !== null || displayedCount >= thinkingChars.length) return;
+  if (playbackFrame !== null) return;
+  // 已完成时不需要播放动画，直接显示全部
+  if (props.completed) {
+    displayedThinking.value = fullThinking.value;
+    return;
+  }
   playbackFrame = requestAnimationFrame(advancePlayback);
 }
 
 watch(() => props.thinking ?? "", (value) => {
-  thinkingChars = Array.from(value);
-  if (!value.startsWith(displayedThinking.value)) {
-    displayedCount = 0;
+  fullThinking.value = value;
+  // 如果当前已显示内容是新内容的前缀，继续播放追加；否则如果已完成直接显示全部，否则重置从头播放
+  if (props.completed) {
+    displayedThinking.value = value;
+  } else if (value.startsWith(displayedThinking.value)) {
+    // 正常追加，继续播放
+    schedulePlayback();
+  } else {
+    // 内容不连续，重置
     displayedThinking.value = "";
+    schedulePlayback();
   }
-  schedulePlayback();
 });
 
-watch(() => props.completed, () => schedulePlayback());
+watch(() => props.completed, (isCompleted) => {
+  if (isCompleted) {
+    // 完成时立即显示全部思考内容，不再播放动画，保证内容完整保留
+    displayedThinking.value = fullThinking.value;
+    if (playbackFrame !== null) {
+      cancelAnimationFrame(playbackFrame);
+      playbackFrame = null;
+    }
+  } else {
+    schedulePlayback();
+  }
+}, { immediate: true });
+
 onBeforeUnmount(() => {
   if (playbackFrame !== null) cancelAnimationFrame(playbackFrame);
 });
-if (!props.completed && thinkingChars.length) schedulePlayback();
 
-const catchingUp = computed(() => displayedThinking.value !== (props.thinking ?? ""));
+// 初始调度
+if (!props.completed && fullThinking.value.length > 0) {
+  schedulePlayback();
+}
+
+const catchingUp = computed(() => displayedThinking.value !== fullThinking.value);
 const thinkingRunning = computed(() => props.running || catchingUp.value);
 
 // 按类型分组统计工具调用；label 取自语言包，computed 内调用 t 保证切换语言时重建

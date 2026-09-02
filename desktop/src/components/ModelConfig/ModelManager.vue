@@ -365,7 +365,7 @@ onMounted(() => {
 
       <!-- 服务商选择 -->
       <div v-if="addStep === 'vendor'" class="mm-modal-backdrop" @mousedown.self="closeEditor">
-        <section ref="vendorDialog" class="mm-modal-dialog" role="dialog" aria-modal="true" :aria-label="t('model.selectVendor')" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, vendorDialog)">
+        <section ref="vendorDialog" class="mm-modal-dialog mm-modal-dialog--vendor" role="dialog" aria-modal="true" :aria-label="t('model.selectVendor')" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, vendorDialog)">
           <header class="mm-modal-header">
             <h3>{{ t("model.selectVendor") }}</h3>
           </header>
@@ -1399,6 +1399,10 @@ onMounted(() => {
   max-width: 460px;
 }
 
+.mm-modal-dialog--vendor {
+  max-width: 640px;
+}
+
 .mm-modal-dialog--sm {
   max-width: 320px;
   padding: 18px;
@@ -1511,7 +1515,7 @@ onMounted(() => {
 /* 服务商网格 */
 .mm-vendor-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   padding: 12px 16px 16px;
   overflow-y: auto;
