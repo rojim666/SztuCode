@@ -72,9 +72,9 @@ jobs:
         working-directory: desktop
         env:
           NO_STRIP: "true"
-        # --verbose：tauri-bundler 默认吞掉 linuxdeploy 的 stdout/stderr，
-        # 失败时只剩一句 "failed to run linuxdeploy"，无法定位根因
-        run: npm run tauri build -- --bundles appimage,deb -- --verbose
+        # --verbose 必须放在 -- 之前（-- 之后的参数会传给 cargo 而非 bundler），
+        # 否则 tauri-bundler 吞掉 linuxdeploy 输出，失败只剩一句 "failed to run linuxdeploy"
+        run: npm run tauri build -- --verbose --bundles appimage,deb
 
       - name: Verify bundled daemon
         run: |
