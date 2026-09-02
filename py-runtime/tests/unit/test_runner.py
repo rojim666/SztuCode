@@ -52,6 +52,9 @@ class _LoopingProvider:
         system: str | None = None,
         usage_estimator: object | None = None,
     ) -> LlmResponse:
+        # Recuris 记忆进化的 Meta-Agent 调用不计入主循环步数
+        if system and "[memory-evolution]" in system:
+            return LlmResponse(stop_reason="end_turn", text="")
         self._call += 1
         tc = ToolCallBlock(id=f"t{self._call}", name="unknown_tool", input={})
         return LlmResponse(stop_reason="tool_use", tool_calls=[tc])
@@ -945,3 +948,90 @@ async def test_session_registers_note_save_tool(tmp_path: Path) -> None:
     await runner.run_and_capture("remember", run_id="run-1", session=session, store=store)
 
     assert "Use Python 3.12" in store.read_notes("sess-1")
+
+
+# ============================================================
+# Recuris 循环二：失败/受困 run 触发记忆进化（挂载验证）
+# ============================================================
+
+
+class _EvolutionProvider:
+    """主循环返回未知工具耗尽步数；Meta-Agent 调用（system 含标记）返回合法 JSON patch。"""
+
+    def __init__(self) -> None:
+        self._call = 0
+        self.meta_agent_calls = 0
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+    ) -> LlmResponse:
+        if system and "[memory-evolution]" in system:
+            self.meta_agent_calls += 1
+            return LlmResponse(
+                stop_reason="end_turn",
+                text=json.dumps(
+                    [
+                        {
+                            "target_note": "test-evolution-note",
+                            "proposed_content": "经验：优先用 grep 搜索再阅读",
+                            "attribution": "invocation_timing",
+                            "evidence_refs": ["step_01"],
+                            "reason": "首步即盲读文件导致后续受困",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+            )
+        self._call += 1
+        tc = ToolCallBlock(id=f"t{self._call}", name="unknown_tool", input={})
+        return LlmResponse(stop_reason="tool_use", tool_calls=[tc])
+
+
+# 功能：验证受困 run（exceeded_max_steps）在终态后触发记忆进化并落盘
+# 设计：主循环耗尽步数 → should_evolve → Meta-Agent 分析 → patch 过门控 →
+#       workspace 的 .sztu/memory/ 下出现 ledger 与 notes 产物（AC-3/AC-4 挂载）
+async def test_stuck_run_triggers_memory_evolution(tmp_path: Path) -> None:
+    provider = _EvolutionProvider()
+    runner = AgentRunner(
+        _config(max_steps=2),
+        provider=provider,  # type: ignore[arg-type]
+        runs_dir=tmp_path,
+    )
+    outcome = await runner.run_and_capture(
+        "test goal", workspace_root=tmp_path
+    )
+
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "exceeded_max_steps"
+    # Meta-Agent 恰好被调用一次
+    assert provider.meta_agent_calls == 1
+    memory_root = tmp_path / ".sztu" / "memory"
+    ledger = memory_root / "ledger.jsonl"
+    assert ledger.exists()
+    entry = json.loads(ledger.read_text(encoding="utf-8").strip())
+    assert entry["gate_result"] == "accept"
+    assert entry["evidence_refs"] == ["step_01"]
+    note = memory_root / "notes" / "test-evolution-note.md"
+    assert "grep" in note.read_text(encoding="utf-8")
+
+
+# 功能：验证 success run 不触发记忆进化
+# 设计：无失败信号 → .sztu/memory/ 不创建（EndTurnProvider 直接成功收尾）
+async def test_success_run_skips_memory_evolution(tmp_path: Path) -> None:
+    runner = AgentRunner(
+        _config(),
+        provider=_EndTurnProvider(),  # type: ignore[arg-type]
+        runs_dir=tmp_path,
+    )
+    outcome = await runner.run_and_capture("test goal", workspace_root=tmp_path)
+
+    assert outcome.status == "success"
+    assert not (tmp_path / ".sztu" / "memory").exists()

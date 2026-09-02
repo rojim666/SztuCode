@@ -32,11 +32,11 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 # 设计：直接拼 build_static_base，断言常驻身份、安全和最小任务约束存在，详细规则不常驻
 def test_static_base_contains_indexed_main_and_existing_sections() -> None:
     base = build_static_base()
-    assert "interactive agent" in base
-    assert "do not propose changes to code you haven't read" in base
-    assert "# Executing actions with care" not in base
-    assert "user-selected permission mode" in base
-    assert "authorized security testing" in base
+    assert "交互式智能体" in base
+    assert "不要对你没有阅读过的代码提出更改建议" in base
+    assert "# 谨慎执行操作" not in base
+    assert "用户选择的权限模式下执行" in base
+    assert "授权的安全测试" in base
 
 
 # 功能：验证第一章主系统提示词完全由有序索引加载
@@ -45,9 +45,9 @@ def test_main_prompt_sections_are_loaded_in_index_order() -> None:
     sections = load_prompt_sections("main")
 
     assert len(sections) == 3
-    assert sections[0].startswith("You are SztuCode")
-    assert sections[1].startswith("Tools are executed")
-    assert sections[2].startswith("IMPORTANT: Assist with authorized security testing")
+    assert sections[0].startswith("你是 SztuCode")
+    assert sections[1].startswith("工具在用户选择的权限模式下执行")
+    assert sections[2].startswith("重要提示：可以协助进行授权的安全测试")
 
 
 # 功能：验证第二章任务执行指令按 2.1 至 2.13 的索引顺序完整加载
@@ -57,13 +57,13 @@ def test_doing_tasks_sections_are_loaded_once_in_index_order() -> None:
     base = build_static_base()
 
     assert len(sections) == 13
-    assert sections[0].startswith("The user will primarily request")
-    assert sections[1].startswith("In general, do not propose changes")
-    assert sections[2].startswith("Be careful not to introduce security vulnerabilities")
-    assert sections[9].startswith("Avoid giving time estimates")
-    assert "using SztuCode" in sections[10]
+    assert sections[0].startswith("用户主要会要求你执行软件工程任务")
+    assert sections[1].startswith("一般来说，不要对你没有阅读过的代码提出更改建议")
+    assert sections[2].startswith("注意不要引入安全漏洞")
+    assert sections[9].startswith("避免给出任务所需时间的估计")
+    assert "使用 SztuCode 的帮助" in sections[10]
     assert "github.com/rojim666/SztuCode/issues" in sections[10]
-    assert sections[-1].startswith("If your approach is blocked")
+    assert sections[-1].startswith("如果你的方法受阻")
     assert sum(section in base for section in sections) == 4
 
 
@@ -75,10 +75,10 @@ def test_executing_actions_with_care_section_is_loaded_once() -> None:
 
     assert len(sections) == 1
     section = sections[0]
-    assert section.startswith("# Executing actions with care")
-    assert "A user approving an action (like a\ngit push) once does NOT mean" in section
-    assert "Destructive operations: deleting files/branches" in section
-    assert "do not use destructive actions as a shortcut" in section
+    assert section.startswith("# 谨慎执行操作")
+    assert "用户一次批准某个操作（如 git push）并不意味着他们在所有上下文中都批准该操作" in section
+    assert "破坏性操作：删除文件/分支" in section
+    assert "不要使用破坏性操作作为让问题消失的捷径" in section
     assert base.count(section) == 0
 
 
@@ -90,10 +90,10 @@ def test_output_efficiency_section_is_loaded_once() -> None:
 
     assert len(sections) == 1
     section = sections[0]
-    assert section.startswith("# Output efficiency")
-    assert "Go straight to the point" in section
-    assert "High-level status updates at natural milestones" in section
-    assert "This does not apply to code or tool calls" in section
+    assert section.startswith("# 输出效率")
+    assert "直奔主题" in section
+    assert "在自然里程碑处的高层级状态更新" in section
+    assert "这不适用于代码或工具调用" in section
     assert base.count(section) == 1
 
 
@@ -104,11 +104,11 @@ def test_tone_and_style_sections_are_loaded_once_in_index_order() -> None:
     base = build_static_base()
 
     assert len(sections) == 3
-    assert sections[0].startswith("When referencing specific functions")
+    assert sections[0].startswith("在引用特定函数或代码片段时")
     assert "file_path:line_number" in sections[0]
-    assert sections[1].startswith("Only use emojis if the user explicitly requests it")
-    assert "Do not use a colon before tool calls" in sections[1]
-    assert sections[2] == "Your responses should be short and concise."
+    assert sections[1].startswith("仅当用户明确要求时才使用表情符号")
+    assert "在工具调用前不要使用冒号" in sections[1]
+    assert sections[2] == "你的回复应简短精炼。"
     assert base.count(sections[0]) == 0
     assert base.count(sections[1]) == 0
     assert sections[2] in base
@@ -121,24 +121,24 @@ def test_tool_usage_policy_sections_are_loaded_once_in_index_order() -> None:
     base = build_static_base()
 
     assert len(sections) == 10
-    assert sections[0].startswith("# Tool usage policy")
+    assert sections[0].startswith("# 工具使用策略")
     assert "`read_file`" in sections[0]
     assert "`edit_file`" in sections[1]
     assert "`write_file`" in sections[2]
     assert "`glob_search`" in sections[3] and "`list_dir`" in sections[3]
     assert "`grep_search`" in sections[4]
-    assert "Reserve `bash`" in sections[5]
+    assert "将 `bash` 保留用于" in sections[5]
     assert "`spawn_agent`" in sections[6]
     assert '`subagent_type="explore"`' in sections[6]
-    assert "does not inherit the parent\nconversation history" in sections[6]
-    assert "all independent tool calls\nin parallel" in sections[7]
-    assert "call them sequentially instead" in sections[7]
+    assert "不会继承父对话历史" in sections[6]
+    assert "并行执行所有独立的工具调用" in sections[7]
+    assert "按顺序调用它们" in sections[7]
     assert all(
         tool_name in sections[8]
         for tool_name in ("`task_create`", "`task_update`", "`task_list`", "`task_get`")
     )
-    assert "Git Bash rather than cmd" in sections[9]
-    assert "Do NOT install packages" in sections[9]
+    assert "使用 Git Bash 而不是 cmd" in sections[9]
+    assert "ensurepip 安装包" in sections[9]
     assert all(base.count(section) == 0 for section in sections)
 
 
@@ -147,12 +147,10 @@ def test_tool_usage_policy_sections_are_loaded_once_in_index_order() -> None:
 def test_static_prompt_group_order() -> None:
     base = build_static_base()
 
-    assert base.index("You are SztuCode") < base.index(
-        "The user will primarily request"
-    )
-    assert base.index("The user will primarily request") < base.index("# Output efficiency")
-    assert base.index("# Output efficiency") < base.index("Your responses should be short")
-    assert base.index("Your responses should be short") < base.index("# Work protocol")
+    assert base.index("你是 SztuCode") < base.index("用户主要会要求你执行软件工程任务")
+    assert base.index("用户主要会要求你执行软件工程任务") < base.index("# 输出效率")
+    assert base.index("# 输出效率") < base.index("你的回复应简短精炼")
+    assert base.index("你的回复应简短精炼") < base.index("# Work protocol")
 
 
 # 功能：验证索引中的非法路径不会越过提示词分组目录

@@ -51,8 +51,8 @@ def test_chapter_nine_prompts_are_active_slash_commands() -> None:
 # 功能：验证第九章工作流提示词可通过稳定 ID 独立读取
 # 设计：抽查安全审查和提交工作流的唯一标记，确认索引映射到正确原子文件
 def test_load_slash_command_prompt_by_id() -> None:
-    assert "HIGH-CONFIDENCE security" in load_slash_command_prompt("security-review")
-    assert "Committing changes with git" in load_slash_command_prompt("git-commit")
+    assert "高可信度安全漏洞" in load_slash_command_prompt("security-review")
+    assert "使用 git 提交更改" in load_slash_command_prompt("git-commit")
 
 
 # 功能：验证命令解析器返回稳定 ID 和对应原子提示词，未知命令交还 Skill 处理
@@ -67,7 +67,7 @@ def test_resolve_slash_command_prompt() -> None:
 # 功能：验证第九章 reference-only 提示词不会自动注入主系统提示词
 # 设计：使用安全审查提示词的唯一标记对比静态主提示词和单项加载结果
 def test_slash_command_prompts_are_not_injected_into_main_prompt() -> None:
-    marker = "FALSE POSITIVE FILTERING"
+    marker = "误报过滤"
 
     assert marker not in build_static_base()
     assert marker in load_slash_command_prompt("security-review")

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sztu_code.core.compact.canvas import TaskCanvas
+    from sztu_code.core.memory.working_state import WorkingState
     from sztu_code.core.pricing import CostEstimate, PricingCatalog, UnknownPricingPolicy
 
 
@@ -55,6 +56,10 @@ class ExecutionContext:
     compaction_failure_count: int = 0
     # Mermaid 任务画布（Phase 2）：由 AgentLoop 维护，作为增量状态追加到消息尾部
     canvas: TaskCanvas | None = None
+    # Recuris 工作记忆：证据门控的结构化任务状态，版本变化时注入消息尾部
+    working_state: WorkingState | None = None
+    # 已注入消息尾部的 working_state 版本；-1 表示尚未注入过
+    working_state_injected_version: int = -1
     # ---- agent run 预算 ----
     max_tokens: int = 0           # 仅保留给显式子任务预算；主 Agent 不设置累计 Token 上限
     max_wall_clock_s: int = 0     # 累计墙钟秒数上限；0=不限
@@ -114,6 +119,23 @@ class ExecutionContext:
         block = {"type": "text", "text": text}
         # 独立消息确保 OpenAI 转换后 tool_result 仍紧跟对应 assistant tool_call
         self.messages.append({"role": "user", "content": [block]})
+
+    # 将工作记忆以紧凑形式追加到消息尾部（仅状态版本变化时）
+    # 与画布更新同样走消息尾部，保持 system prompt 字节级稳定以命中前缀缓存
+    def add_working_state_update(self) -> bool:
+        ws = self.working_state
+        # version=0 表示尚无证据门控内容（仅静态 goals），不注入
+        if ws is None or ws.version == 0:
+            return False
+        if ws.version == self.working_state_injected_version:
+            return False
+        text = ws.render()
+        if not text:
+            return False
+        self.working_state_injected_version = ws.version
+        block = {"type": "text", "text": text}
+        self.messages.append({"role": "user", "content": [block]})
+        return True
 
     # 将 LLM 响应的 content blocks 追加为 assistant 消息
     def add_assistant_message(self, content: list[Any]) -> None:

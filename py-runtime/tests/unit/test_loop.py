@@ -1436,3 +1436,122 @@ async def test_max_steps_zero_runtime_unlimited() -> None:
     await loop.run(ctx)
     assert ctx.status == "success"
     assert ctx.step == 3  # 完整运行 3 步
+
+
+# ============================================================
+# Recuris 循环一接线：五元组轨迹 + 工作记忆吸收/注入
+# ============================================================
+
+
+# 功能：验证主循环为画布节点记录五元组结构化轨迹（AC-1）
+# 设计：工具成功执行 → skill=工具名、observation=结果首行、verified=verified、
+#       state=步前工作状态快照、action=模型意图文本
+async def test_loop_records_five_element_trajectory() -> None:
+    provider = _MockProvider([
+        LlmResponse(
+            stop_reason="tool_use",
+            tool_calls=[_tc("echo", {"msg": "hello world"})],
+            text="先回显消息",
+        ),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx()
+    await loop.run(ctx)
+
+    assert ctx.canvas is not None
+    node = ctx.canvas.nodes[0]
+    assert node.skill == "echo"
+    assert node.observation == "hello world"
+    assert node.verified == "verified"
+    assert "test goal" in node.state  # 步前状态快照应含 goal
+    assert "先回显消息" in node.action
+
+
+# 功能：验证工具失败轨迹记录 verified=failed 且吸收进 unresolved
+# 设计：错误工具结果是硬证据（退出码），五元组标 failed；工作记忆记 unresolved 不进 verified_facts
+async def test_loop_failed_tool_marks_trajectory_and_unresolved() -> None:
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[_tc("fail", {})]),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_FailTool())
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx()
+    await loop.run(ctx)
+
+    assert ctx.canvas is not None
+    node = ctx.canvas.nodes[0]
+    assert node.verified == "failed"
+    assert node.status == "failed"
+    assert ctx.working_state is not None
+    assert any("fail" in u for u in ctx.working_state.unresolved)
+    assert ctx.working_state.verified_facts == []
+
+
+# 功能：验证工具成功结果作为硬证据吸收进工作记忆 verified_facts
+# 设计：echo 成功（退出码级证据）→ verified_facts 增加一条，且不含模型自述
+async def test_loop_absorbs_successful_tool_evidence() -> None:
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[_tc("echo", {"msg": "hi"})]),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx()
+    await loop.run(ctx)
+
+    assert ctx.working_state is not None
+    assert len(ctx.working_state.verified_facts) == 1
+    assert "echo" in ctx.working_state.verified_facts[0]
+    assert "hi" in ctx.working_state.verified_facts[0]
+
+
+# 功能：验证工作记忆吸收后注入到消息尾部（AC-2 注入路径）
+# 设计：echo 成功被吸收 → version 变化 → [Working state] 出现在消息历史
+async def test_loop_injects_working_state_after_absorption() -> None:
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[_tc("echo", {"msg": "hi"})]),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx()
+    await loop.run(ctx)
+
+    texts: list[str] = []
+    for m in ctx.messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and "text" in b:
+                    texts.append(str(b["text"]))
+    assert any("[Working state]" in t for t in texts)
+
+
+# 功能：验证多步执行时步前状态快照随工作记忆演化
+# 设计：第二步的 state 快照应包含第一步吸收的验证事实（状态接地的证据）
+async def test_loop_state_snapshot_evolves_across_steps() -> None:
+    tc = _tc("echo", {"msg": "step evidence"})
+    provider = _MockProvider([
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc], text="第一步"),
+        LlmResponse(stop_reason="tool_use", tool_calls=[tc], text="第二步"),
+        LlmResponse(stop_reason="end_turn", text="done"),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx()
+    await loop.run(ctx)
+
+    assert ctx.canvas is not None
+    nodes = ctx.canvas.nodes
+    assert len(nodes) == 2
+    # 第二步的步前状态应含第一步的已验证事实
+    assert "step evidence" in nodes[1].state
+    assert "step evidence" not in nodes[0].state

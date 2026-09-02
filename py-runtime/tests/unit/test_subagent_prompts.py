@@ -63,7 +63,7 @@ def test_builtin_roles_load_indexed_markdown(role: str, prompt_id: str) -> None:
 def test_compactor_loads_conversation_summarization_prompt() -> None:
     # 第八章提示词仍保留为可复用的通用摘要参考，不再是当前压缩器消费者
     assert _compact_prompt() != load_subagent_prompt("conversation-summarization")
-    assert "All user messages" in load_subagent_prompt("conversation-summarization")
+    assert "所有用户消息" in load_subagent_prompt("conversation-summarization")
 
 
 # 功能：验证 reference-only 提示词不会注入主提示词或活跃消费者

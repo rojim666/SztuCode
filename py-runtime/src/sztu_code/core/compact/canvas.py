@@ -46,6 +46,13 @@ class CanvasNode:
     refs: list[str] = field(default_factory=list)  # 关联的卸载文件路径
     ts_start: str = ""
     ts_end: str = ""
+    # Recuris 五元组结构化轨迹（失败定位的证据基础）：
+    # (state, skill, action, observation, verified)
+    state: str = ""  # 步前任务状态快照（Working State 紧凑渲染）
+    skill: str = ""  # 调用的技能/工具；缺省从 tool_names 派生
+    action: str = ""  # 执行的动作描述（模型意图）
+    observation: str = ""  # 环境观察（工具结果摘要）
+    verified: str = "unverified"  # 验证结论："verified" | "failed" | "unverified"
 
     # 渲染为 Mermaid 节点行
     def to_mermaid_node(self) -> str:
@@ -66,7 +73,11 @@ class CanvasNode:
         )
         tools = ", ".join(self.tool_names) if self.tool_names else "—"
         detail = self.summary[:120] if self.summary else "进行中..."
-        return f"- {self.node_id}: {icon} {detail} (工具: {tools})"
+        # 验证结论仅在与完成状态不一致时额外标注，避免常规行冗余
+        verified_tag = (
+            f" [verified:{self.verified}]" if self.verified != "unverified" else ""
+        )
+        return f"- {self.node_id}: {icon} {detail} (工具: {tools}){verified_tag}"
 
 
 # 维护 Mermaid 格式的任务执行画布
@@ -102,17 +113,29 @@ class TaskCanvas:
         summary: str = "",
         refs: list[str] | None = None,
         status: str = "done",
+        state: str = "",
+        skill: str = "",
+        action: str = "",
+        observation: str = "",
+        verified: str = "unverified",
     ) -> CanvasNode:
         self._step_counter += 1
+        tools = list(tool_names or [])
         node = CanvasNode(
             node_id=f"step_{self._step_counter:02d}",
             label=label or f"Step {self._step_counter}",
             status=status,
-            tool_names=list(tool_names or []),
+            tool_names=tools,
             summary=summary,
             refs=list(refs or []),
             ts_start=_now(),
             ts_end=_now() if status in ("done", "failed") else "",
+            state=state[:300],
+            # skill 缺省从 tool_names 派生，保证五元组始终完整
+            skill=skill or "; ".join(tools[:4]),
+            action=action[:300],
+            observation=observation[:400],
+            verified=verified or "unverified",
         )
         self._nodes.append(node)
         return node
@@ -136,6 +159,7 @@ class TaskCanvas:
             summary=combined_summary[:200],
             refs=list(ref_paths),
             status=status,
+            observation=combined_summary[:400],
         )
 
     # 渲染为 Mermaid flowchart 文本
@@ -187,6 +211,7 @@ class TaskCanvas:
     def finalize_last(
         self, *, label: str = "", status: str = "done",
         summary: str = "", refs: list[str] | None = None,
+        observation: str = "", verified: str = "",
     ) -> None:
         if not self._nodes:
             return
@@ -198,6 +223,12 @@ class TaskCanvas:
             node.summary = summary[:200]
         if refs:
             node.refs = list(refs)
+        # 五元组事后补齐：observation/verified 在工具执行后才可知；
+        # state 是步前快照，不在事后覆盖。空值不覆盖已有内容。
+        if observation:
+            node.observation = observation[:400]
+        if verified:
+            node.verified = verified
         if status in ("done", "failed"):
             node.ts_end = _now()
 
@@ -213,6 +244,12 @@ class TaskCanvas:
                 "refs": n.refs,
                 "ts_start": n.ts_start,
                 "ts_end": n.ts_end,
+                # Recuris 五元组结构化轨迹（AC-1）
+                "state": n.state,
+                "skill": n.skill,
+                "action": n.action,
+                "observation": n.observation,
+                "verified": n.verified,
             }
             for n in self._nodes
         ]

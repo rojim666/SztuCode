@@ -488,3 +488,146 @@ def test_record_tool_calls_still_works() -> None:
     assert node.status == "done"
     assert node.node_id == "step_01"
     assert len(node.tool_names) == 2
+
+
+# ============================================================
+# Recuris 五元组结构化轨迹（AC-1）
+# ============================================================
+
+
+# 功能：验证 record_step 记录五元组字段（state/skill/action/observation/verified）
+# 设计：五元组是失败定位的证据基础，每个画布节点都应携带
+def test_record_step_with_five_element_fields() -> None:
+    canvas = TaskCanvas()
+    node = canvas.record_step(
+        label="运行认证测试",
+        tool_names=["bash"],
+        state="已修复 refresh_token，待验证",
+        action="pytest tests/unit/test_auth.py -q",
+        observation="42 passed, 1 failed",
+        verified="failed",
+    )
+    assert node.state == "已修复 refresh_token，待验证"
+    assert node.skill == "bash"
+    assert node.action == "pytest tests/unit/test_auth.py -q"
+    assert node.observation == "42 passed, 1 failed"
+    assert node.verified == "failed"
+
+
+# 功能：验证 skill 未显式传入时从 tool_names 派生
+# 设计：多工具步骤的 skill 为分号连接的工具名，保证五元组始终完整
+def test_skill_derived_from_tool_names() -> None:
+    canvas = TaskCanvas()
+    node = canvas.record_step(label="搜索并阅读", tool_names=["grep", "read_file"])
+    assert node.skill == "grep; read_file"
+
+
+# 功能：验证 verified 字段默认值为 unverified
+# 设计：无验证信号的步骤不能伪装成已验证，默认必须是 unverified
+def test_verified_defaults_to_unverified() -> None:
+    node = CanvasNode(node_id="step_01", label="普通步骤", status="done")
+    assert node.verified == "unverified"
+
+
+# 功能：验证 export 输出包含五元组全部字段（AC-1 字段存在性断言）
+# 设计：结构化轨迹的持久化载体是 export，五元组字段必须全部出现
+def test_export_contains_five_element_fields() -> None:
+    canvas = TaskCanvas()
+    canvas.record_step(
+        label="运行测试",
+        tool_names=["bash"],
+        state="待验证",
+        action="pytest",
+        observation="3 passed",
+        verified="verified",
+    )
+    data = canvas.export()
+    for key in ("state", "skill", "action", "observation", "verified"):
+        assert key in data[0]
+    assert data[0]["state"] == "待验证"
+    assert data[0]["skill"] == "bash"
+    assert data[0]["observation"] == "3 passed"
+    assert data[0]["verified"] == "verified"
+
+
+# 功能：验证 finalize_last 可补齐步后才可知的 observation/verified
+# 设计：state 在步前已知，observation/verified 在工具执行后才能确定
+def test_finalize_last_completes_five_elements() -> None:
+    canvas = TaskCanvas()
+    canvas.record_step(
+        label="运行测试",
+        tool_names=["bash"],
+        state="待验证",
+        status="running",
+    )
+    canvas.finalize_last(
+        status="failed",
+        observation="1 failed: test_refresh_token",
+        verified="failed",
+    )
+    node = canvas.nodes[0]
+    assert node.observation == "1 failed: test_refresh_token"
+    assert node.verified == "failed"
+    assert node.state == "待验证"  # 步前状态不被事后信息覆盖
+
+
+# 功能：验证 finalize_last 不传五元组参数时保留原值
+# 设计：与 label 的语义一致，空值不覆盖已有内容
+def test_finalize_last_preserves_five_elements_when_omitted() -> None:
+    canvas = TaskCanvas()
+    canvas.record_step(
+        label="运行测试",
+        tool_names=["bash"],
+        state="待验证",
+        action="pytest",
+        observation="首次观察",
+        verified="verified",
+    )
+    canvas.finalize_last(status="done", summary="完成了")
+    node = canvas.nodes[0]
+    assert node.state == "待验证"
+    assert node.observation == "首次观察"
+    assert node.verified == "verified"
+
+
+# 功能：验证 record_tool_calls 将组合摘要同步为 observation
+# 设计：便捷入口创建的节点也应携带完整五元组语义
+def test_record_tool_calls_sets_observation() -> None:
+    canvas = TaskCanvas()
+    node = canvas.record_tool_calls(
+        tool_names=["bash"],
+        summaries=["42 passed"],
+        ref_paths=["refs/bash_001.md"],
+    )
+    assert node.observation == "42 passed"
+    assert node.verified == "unverified"
+
+
+# 功能：验证五元组字段不影响既有 Mermaid 渲染
+# 设计：新增字段是纯增量，渲染路径必须保持向后兼容
+def test_five_elements_do_not_break_rendering() -> None:
+    canvas = TaskCanvas()
+    canvas.record_step(
+        label="运行测试",
+        tool_names=["bash"],
+        state="待验证",
+        action="pytest",
+        observation="3 passed",
+        verified="verified",
+    )
+    output = canvas.render_mermaid()
+    assert '["✅ 运行测试"]' in output
+
+
+# 功能：验证五元组 observation 缺省时可从 summary 推导展示
+# 设计：to_summary_line 应展示验证状态，让失败定位时一眼可见 verified 结论
+def test_summary_line_shows_verified_state() -> None:
+    node = CanvasNode(
+        node_id="step_02",
+        label="运行测试",
+        status="failed",
+        tool_names=["bash"],
+        verified="failed",
+    )
+    line = node.to_summary_line()
+    assert "failed" in line

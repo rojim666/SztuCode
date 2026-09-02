@@ -436,6 +436,6 @@ async def test_builtin_slash_command_loads_indexed_prompt(tmp_path: Path) -> Non
     assert runner.goal == "origin/main"
     assert runner.system_prompt_override is not None
     assert "## Active slash command: /security-review" in runner.system_prompt_override
-    assert "HIGH-CONFIDENCE security" in runner.system_prompt_override
+    assert "高可信度安全漏洞" in runner.system_prompt_override
     assert "# Environment" in runner.system_prompt_override
     assert runner.tool_whitelist is None

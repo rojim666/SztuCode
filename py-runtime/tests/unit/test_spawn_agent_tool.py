@@ -216,7 +216,7 @@ async def test_default_role_is_coder(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "干活"})
     assert not result.is_error
-    assert "You are an agent for SztuCode" in captured["system"]
+    assert "你是 SztuCode 的智能体" in captured["system"]
 
 
 # 功能：subagent_type 指定角色时 system prompt 使用第八章对应原子提示词
@@ -236,8 +236,8 @@ async def test_explicit_role_uses_profile(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "探索", "subagent_type": "explore"})
     assert not result.is_error
-    assert "file search specialist for SztuCode" in captured["system"]
-    assert "READ-ONLY MODE" in captured["system"]
+    assert "你是 SztuCode 的文件搜索专家" in captured["system"]
+    assert "禁止文件修改" in captured["system"]
 
 
 # 功能：spawn 时应用 skill，skill 系统提示合并进子 agent 的 system prompt
@@ -257,7 +257,7 @@ async def test_skill_merge(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "分析 X", "skill": "orchestrate"})
     assert not result.is_error
-    assert "You are an agent for SztuCode" in captured["system"]  # coder 基础提示
+    assert "你是 SztuCode 的智能体" in captured["system"]  # coder 基础提示
     assert "Multi-agent 协调者" in captured["system"]  # orchestrate 技能提示
 
 

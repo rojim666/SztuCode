@@ -92,7 +92,7 @@ def test_builtin_tool_schema_uses_indexed_markdown_description() -> None:
 
     assert schema["description"] == load_tool_descriptions()["read_file"]
     assert schema["description"] != tool.description
-    assert "Usage:" in str(schema["description"])
+    assert "使用方法" in str(schema["description"])
 
 
 # 功能：验证一个 Provider 修改公开 Schema 的任意可变层级都不会污染后续 Provider

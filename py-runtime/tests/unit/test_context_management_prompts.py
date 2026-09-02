@@ -50,7 +50,7 @@ def test_compactor_uses_context_compaction_prompt() -> None:
     compact_prompt = _compact_prompt()
 
     assert compact_prompt == prompt
-    assert "Task Overview" in compact_prompt
+    assert "任务概述" in compact_prompt
     assert "<summary></summary>" in compact_prompt
 
 
@@ -60,9 +60,9 @@ def test_reference_context_prompts_are_not_in_compactor_prompt() -> None:
     compact_prompt = _compact_prompt()
 
     assert "<analysis>" in load_context_management_prompt("full-compaction-analysis")
-    assert "Delegation flow" in load_context_management_prompt("subagent-delegation-examples")
+    assert "委托流程" in load_context_management_prompt("subagent-delegation-examples")
     assert "<analysis>" not in compact_prompt
-    assert "Delegation flow" not in compact_prompt
+    assert "委托流程" not in compact_prompt
 
 
 # 功能：验证不存在的第十一章提示词 ID 会返回明确索引错误

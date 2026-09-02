@@ -257,6 +257,12 @@ class AgentLoop:
         if context.canvas is None:
             context.canvas = TaskCanvas()
         canvas: TaskCanvas = context.canvas
+        # Recuris 循环一：初始化工作记忆（若未由外部注入）
+        from sztu_code.core.memory.working_state import WorkingState
+        from sztu_code.core.verification.models import EvidenceKind, VerificationOutcome
+        if context.working_state is None:
+            context.working_state = WorkingState(goals=[context.goal])
+        ws: WorkingState | None = context.working_state
 
         while not context.is_done():
             # Ensure a prepared summary replaces the oversized snapshot before
@@ -383,14 +389,18 @@ class AgentLoop:
             canvas_tool_names: list[str] = []
             canvas_summaries: list[str] = []
             canvas_refs: list[str] = []
+            canvas_errors: list[bool] = []
             has_errors = False
             if response.stop_reason == "tool_use":
                 # Phase 2: 先创建 running 状态节点
+                # Recuris 五元组：state=步前工作状态快照，action=模型意图文本
                 if response.tool_calls:
                     canvas.record_step(
                         label=response.text.strip()[:80] if response.text else "",
                         tool_names=[tc.name for tc in response.tool_calls],
                         status="running",
+                        state=ws.render()[:300] if ws else "",
+                        action=(response.text.strip()[:300] if response.text else ""),
                     )
                 batch_id = f"{context.run_id}:{context.step}"
                 queued_at = _now()
@@ -460,6 +470,7 @@ class AgentLoop:
                         else:
                             result = scheduled_result
                     canvas_tool_names.append(tc.name)
+                    canvas_errors.append(result.is_error)
                     if result.is_error:
                         has_errors = True
                         # Claude Code 风格错误累积：非权限类错误 ≥3 次触发熔断
@@ -502,14 +513,43 @@ class AgentLoop:
                             self._stuck_tracker.record_success(stuck_signature(tc))
 
                 # Phase 2: 更新画布节点 — running → done/failed，补齐摘要和 refs
+                # Recuris 五元组补齐：observation=工具结果摘要、verified=退出码级硬证据结论
                 if canvas_tool_names:
+                    combined_observation = "; ".join(
+                        s for s in canvas_summaries[:3] if s
+                    )
+                    # Recuris 循环一步骤 4：工具结果作为硬证据吸收进工作记忆
+                    # 成功（退出码级证据）→ verified_facts；失败 → unresolved
+                    if ws is not None:
+                        for i, tool_name in enumerate(canvas_tool_names):
+                            summary = (
+                                canvas_summaries[i] if i < len(canvas_summaries) else ""
+                            )
+                            is_error = (
+                                canvas_errors[i] if i < len(canvas_errors) else False
+                            )
+                            if summary:
+                                fact = f"{tool_name}: {summary}"
+                            else:
+                                fact = f"{tool_name} {'执行失败' if is_error else '执行成功'}"
+                            ws.absorb(
+                                fact,
+                                VerificationOutcome.FAILED
+                                if is_error
+                                else VerificationOutcome.VERIFIED,
+                                EvidenceKind.COMMAND_EXIT_CODE,
+                            )
                     canvas.finalize_last(
                         label=response.text.strip() if response.text else "",
                         status="failed" if has_errors else "done",
                         summary="; ".join(canvas_summaries[:3]),
                         refs=canvas_refs,
+                        observation=combined_observation[:400],
+                        verified="failed" if has_errors else "verified",
                     )
                     context.add_canvas_update()
+                    # Recuris 循环一步骤 1：工作记忆版本变化时注入消息尾部
+                    context.add_working_state_update()
 
             elif response.stop_reason == "max_tokens" and response.tool_calls:
                 # Output token limit hit mid-tool-call; input is incomplete.

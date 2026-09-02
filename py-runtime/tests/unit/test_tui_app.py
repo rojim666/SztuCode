@@ -10,11 +10,11 @@ from textual.widgets import Static
 
 from sztu_code.tui.app import (
     _MAX_LOG_CHILDREN,
-    SztuTuiApp,
     LLMStreamBlock,
     PermissionBlock,
     PermissionSelect,
     RunBlock,
+    SztuTuiApp,
     ToolCallBlock,
     _BgRun,
     _param_summary,

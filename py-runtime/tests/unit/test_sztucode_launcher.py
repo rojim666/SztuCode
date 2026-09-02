@@ -109,7 +109,7 @@ async def test_trust_screen_enter_records_trust(
 async def test_run_outputs_merged_into_single_block(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    from sztu_code.tui.app import SztuTuiApp, RunBlock
+    from sztu_code.tui.app import RunBlock, SztuTuiApp
 
     monkeypatch.setenv("SZTU_TRUSTED_PROJECTS", str(tmp_path / "trusted.json"))
     monkeypatch.setattr(SztuTuiApp, "_start_socket_loop", lambda self: None)

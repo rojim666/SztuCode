@@ -62,7 +62,7 @@ def test_auto_mode_prompt_is_conditionally_appended() -> None:
 # 功能：验证确定性防护的参考提示词不会进入静态系统上下文
 # 设计：使用命令注入检测的唯一标记，确认可按 ID 读取但不会污染普通模型提示词
 def test_reference_only_safety_prompts_are_not_in_static_base() -> None:
-    marker = "command_injection_detected"
+    marker = "检测到命令注入"
 
     assert marker not in build_static_base()
     assert marker in load_safety_prompt("command-injection-detection")

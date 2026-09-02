@@ -25,6 +25,7 @@ from sztu_code.core.llm import create_provider
 from sztu_code.core.llm.base import LLMProvider
 from sztu_code.core.loop import AgentLoop
 from sztu_code.core.mcp.server import McpServerManager
+from sztu_code.core.memory.evolution import run_memory_evolution, should_evolve
 from sztu_code.core.memory.loader import MemoryCatalog, MemoryDocument, load_context_file
 from sztu_code.core.permissions.denial_tracker import DenialTracker
 from sztu_code.core.permissions.manager import PermissionManager
@@ -342,6 +343,8 @@ class AgentRunner:
         )
         prefill_len = len(history)
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
+        # 同上：provider 在 try 内赋值；失败路径下进化循环需判空跳过
+        provider: LLMProvider | None = None
 
         async with EventWriter(run_path / "events.jsonl") as writer:
             writer.subscribe(bus)
@@ -349,7 +352,7 @@ class AgentRunner:
             cancelled = False
             try:
                 try:
-                    provider: LLMProvider = self._provider or create_provider(self._config)
+                    provider = self._provider or create_provider(self._config)
                 except SystemExit as error:
                     raise RuntimeError(str(error)) from error
                 if self._trace is not None:
@@ -536,6 +539,26 @@ class AgentRunner:
                     ts=_now(),
                 )
             )
+
+            # Recuris 循环二挂载点：失败/受困 run 在终态事件后触发记忆进化。
+            # 留在 EventWriter 作用域内——Meta-Agent 调用的 LLM 事件随之落盘，
+            # 形成完整审计轨迹；进化是尽力而为，任何异常不得影响 run 收尾。
+            if provider is not None and should_evolve(context.status, context.reason):
+                try:
+                    await run_memory_evolution(
+                        provider=provider,
+                        trajectory=(
+                            context.canvas.export() if context.canvas is not None else []
+                        ),
+                        memory_root=project_root / ".sztu" / "memory",
+                        bus=bus,
+                        run_id=run_id,
+                        goal=goal,
+                    )
+                except Exception:
+                    logging.getLogger(__name__).exception(
+                        "memory evolution failed after run run_id=%s", run_id
+                    )
 
         # run 结束注销本次订阅的额外处理器，防止共享 bus 的订阅者随 run 次数无限累积
         if self._extra_handlers:

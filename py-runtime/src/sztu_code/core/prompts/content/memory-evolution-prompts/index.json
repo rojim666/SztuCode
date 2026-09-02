@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "sections": [
+    {"id": "meta-agent-analysis", "file": "agent-prompt-memory-evolution-meta-agent.md", "source": "docs/Prompt.md#13.1", "status": "active", "consumer": "memory evolution meta-agent"}
+  ]
+}
