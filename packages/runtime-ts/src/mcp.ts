@@ -1,4 +1,6 @@
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Tool, ToolContext, ToolImage, ToolResult } from "./tools.js";
 import type { ToolPermission } from "./tools-types.js";
@@ -135,10 +137,12 @@ export type McpServerConfig = { command?: string; args?: string[]; env?: Record<
 type ManagedServer = { name: string; transport: "stdio" | "tcp"; client: McpClient; tools: Tool[]; error?: string };
 export class McpManager {
   private readonly servers = new Map<string, ManagedServer>();
-  constructor(private readonly configPath = process.env.SZTU_MCP_CONFIG ?? "", private readonly options: McpManagerOptions = {}) {}
+  // 默认读 ~/.sztu/mcp.json：desktop 拉起 daemon 时没有 SZTU_MCP_CONFIG，
+  // 没有兜底路径会导致 MCP 静默缺失（agent 报"没有可调用的浏览器 MCP 接口"）
+  constructor(private readonly configPath = process.env.SZTU_MCP_CONFIG ?? path.join(os.homedir(), ".sztu", "mcp.json"), private readonly options: McpManagerOptions = {}) {}
   async load(): Promise<void> {
     if (!this.configPath) return;
-    let servers: Record<string, McpServerConfig>; try { const { readFile } = await import("node:fs/promises"); const payload = JSON.parse(await readFile(this.configPath, "utf8")) as { mcpServers?: Record<string, McpServerConfig> }; servers = payload.mcpServers ?? {}; } catch { return; }
+    let servers: Record<string, McpServerConfig>; try { const { readFile } = await import("node:fs/promises"); const text = await readFile(this.configPath, "utf8"); const payload = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as { mcpServers?: Record<string, McpServerConfig> }; servers = payload.mcpServers ?? {}; } catch { return; }
     // 并行连接所有启用的服务器：单个失败不阻塞其他，失败者的工具集为空
     await Promise.allSettled(Object.entries(servers).filter(([, config]) => config.enabled !== false).map(([name, config]) => this.connectServer(name, config)));
   }
