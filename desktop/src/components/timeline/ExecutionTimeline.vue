@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
@@ -62,8 +62,17 @@ const copiedTurn = ref<string | number | null>(null);
 const retryingTurn = ref<string | number | null>(null);
 let copyTimer: number | undefined;
 let clockTimer: number | undefined;
-onMounted(() => { clockTimer = window.setInterval(() => { now.value = Date.now(); }, 1000); });
-onBeforeUnmount(() => { window.clearInterval(clockTimer); window.clearTimeout(copyTimer); window.clearTimeout(retryTimer); });
+// 秒表按需启停：仅在有运行/等待中的轮次时走 1s 定时器，空闲时停止以减少无意义重渲染
+function startClock() {
+  if (clockTimer !== undefined) return;
+  now.value = Date.now();
+  clockTimer = window.setInterval(() => { now.value = Date.now(); }, 1000);
+}
+function stopClock() {
+  window.clearInterval(clockTimer);
+  clockTimer = undefined;
+}
+onBeforeUnmount(() => { stopClock(); window.clearTimeout(copyTimer); window.clearTimeout(retryTimer); });
 
 function thinkingTextOf(steps: TimelineStep[]): string {
   return [...new Set(steps.map((step) => step.thinking?.trim()).filter(Boolean))].join("\n\n");
@@ -415,6 +424,13 @@ const turns = computed<TurnView[]>(() => {
     };
   });
 });
+
+// 存在运行/等待中的轮次时启动秒表，全部结束后停止
+watch(
+  () => turns.value.some((turn) => turn.state === "running" || turn.state === "waiting"),
+  (active) => { if (active) startClock(); else stopClock(); },
+  { immediate: true },
+);
 
 // 重试生效（该轮重新进入运行/等待态）后立即结束按钮 loading
 watch(

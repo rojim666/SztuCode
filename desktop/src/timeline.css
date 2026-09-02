@@ -2,6 +2,7 @@
 .turn-history-toggle { display: flex; width: 100%; min-height: 38px; align-items: center; gap: 7px; margin: 0 0 22px; padding: 0 2px 10px; color: #777c83; background: transparent; border-bottom: 1px solid #e9eaec; text-align: left; font-size: 13px; }
 /* 失败/中断轮次的状态标记：橙色 warning 语义，折叠态也保持可见 */
 .turn-state-chip { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 2px 8px; color: #b45309; background: #fdf3e7; border: 1px solid #f3ddb9; border-radius: 10px; font-size: 11px; font-style: normal; font-weight: 600; line-height: 1.4; }
+[data-app-theme="dark"] .turn-history-toggle { border-bottom-color: var(--border, #3a3f42); }
 .turn-history-toggle--failed { color: #8a6d3b; border-bottom-color: #f0dfC2; }
 [data-app-theme="dark"] .turn-state-chip { color: #fd9851; background: rgba(217,119,6,0.14); border-color: rgba(217,119,6,0.30); }
 [data-app-theme="dark"] .turn-history-toggle--failed { color: #c9a06a; border-bottom-color: rgba(217,119,6,0.28); }
@@ -128,6 +129,8 @@
 /* 失败使用橙色 warning 语义（项目约定：不用红色表达操作失败） */
 .tool-call-event.failed > button { color: #b45309; }
 .tool-call-event.failed > button > svg { color: #d97706; }
+[data-app-theme="dark"] .tool-call-event.failed > button { color: #fd9851; }
+[data-app-theme="dark"] .tool-call-event.failed > button > svg { color: #fd9851; }
 .tool-call-event__details { margin: 1px 0 12px 21px; padding-left: 16px; border-left: 1px solid rgb(118 126 136 / 20%); }
 .tool-call-event__details > b { display: block; margin: 9px 0 5px; color: #686f78; font-size: 11px; font-weight: 500; }
 .tool-call-event__details pre { box-sizing: border-box; max-height: 220px; width: 100%; margin: 0; padding: 10px 11px; overflow: auto; color: #343940; background: rgb(245 246 247 / 82%); border: 1px solid rgb(220 223 227 / 72%); border-radius: 7px; font: 12px/1.65 var(--font-code, Consolas), monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -354,8 +357,8 @@
 .permission-actions button { padding: 3px 6px; font-size: 11px; }
 
 /* Resume is a clear primary action without overpowering the task result. */
-.continue-button { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; margin: 8px 0 2px; padding: 0 11px; color: #fff; background: #292c31; border: 1px solid #292c31; border-radius: 8px; box-shadow: 0 1px 2px rgb(21 24 29 / 16%); font-size: 12px; font-weight: 600; line-height: 1; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
-.continue-button svg { width: 13px; height: 13px; fill: currentColor; stroke-width: 2.2; }.continue-button:hover { background: #15171a; border-color: #15171a; box-shadow: 0 4px 10px rgb(21 24 29 / 18%); transform: translateY(-1px); }.continue-button:active { transform: translateY(0); box-shadow: 0 1px 2px rgb(21 24 29 / 16%); }.continue-button:focus-visible { outline: 2px solid #5b9cf2; outline-offset: 2px; }
+.continue-button { display: inline-flex; min-height: 32px; align-items: center; gap: 6px; margin: 8px 0 2px; padding: 0 11px; color: var(--accent-contrast, #fff); background: var(--accent, #292c31); border: 1px solid var(--accent, #292c31); border-radius: 8px; box-shadow: 0 1px 2px rgb(21 24 29 / 16%); font-size: 12px; font-weight: 600; line-height: 1; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease; }
+.continue-button svg { width: 13px; height: 13px; fill: currentColor; stroke-width: 2.2; }.continue-button:hover { background: color-mix(in srgb, var(--accent, #15171a) 88%, var(--accent-contrast, #fff)); border-color: transparent; box-shadow: 0 4px 10px rgb(21 24 29 / 18%); transform: translateY(-1px); }.continue-button:active { transform: translateY(0); box-shadow: 0 1px 2px rgb(21 24 29 / 16%); }.continue-button:focus-visible { outline: 2px solid var(--accent, #5b9cf2); outline-offset: 2px; }
 
 /* 减弱动效（借鉴 dsh：prefers-reduced-motion 关闭全部状态动画） */
 @media (prefers-reduced-motion: reduce) {

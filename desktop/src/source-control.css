@@ -442,7 +442,7 @@
   border: 1px solid #fde68a;
 }
 
-.source-control-file-status.status-? {
+.source-control-file-status.status-\? {
   color: #4c1d95;
   background: #f5f3ff;
   border: 1px solid #ddd6fe;
@@ -1284,7 +1284,7 @@
   border-color: rgba(245, 158, 11, 0.2);
 }
 
-:root[data-app-theme="dark"] .source-control-file-status.status-? {
+:root[data-app-theme="dark"] .source-control-file-status.status-\? {
   background: rgba(168, 85, 247, 0.15);
   color: #c4b5fd;
   border-color: rgba(168, 85, 247, 0.2);

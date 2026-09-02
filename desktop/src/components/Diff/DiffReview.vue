@@ -142,7 +142,9 @@ async function rejectAll() {
   }
 }
 
-// 将统一 diff 文本拆成带样式的行
+// 将统一 diff 文本拆成带样式的行；computed 保证仅在 diff 变化时重算，避免每次重渲染都重新 split
+const parsedDiffLines = computed(() => diffLines(diff.value));
+
 function diffLines(text: string) {
   return text.split("\n").map((line) => {
     if (line.startsWith("+++") || line.startsWith("---")) return { text: line, cls: "meta" };
@@ -202,7 +204,7 @@ function diffLines(text: string) {
             <button type="button" class="diff-review__retry" @click="retryDiff"><RotateCw :size="12" />重试</button>
           </div>
           <template v-else>
-            <pre class="diff-review__pre"><code v-for="(line, index) in diffLines(diff)" :key="index" :class="line.cls">{{ line.text }}{{ '\n' }}</code></pre>
+            <pre class="diff-review__pre"><code v-for="(line, index) in parsedDiffLines" :key="index" :class="line.cls">{{ line.text }}{{ '\n' }}</code></pre>
           </template>
         </template>
       </div>

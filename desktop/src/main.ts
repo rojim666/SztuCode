@@ -2,7 +2,6 @@ import { createApp } from "vue";
 import { getCurrentWindow, IS_TAURI } from "./lib/tauri-shim";
 import App from "./App.vue";
 import TrayMenu from "./tray/TrayMenu.vue";
-import "./lilia.css";
 import "./kimi.css";
 import "./chat.css";
 import "./skill-center.css";
