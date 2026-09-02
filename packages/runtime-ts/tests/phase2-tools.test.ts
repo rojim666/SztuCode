@@ -168,17 +168,18 @@ test("workspace tools declare tool-level timeouts for filesystem-heavy operation
 
 test("invokeToolWithRetry fails fast with a timeout error when a tool exceeds timeoutMs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-tool-timeout-race-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
   try {
     let toolCalls = 0;
     const tools = createWorkspaceTools([{ name: "slow_tool", description: "slow", permission: "read_only", timeoutMs: 40, schema: { type: "object" }, async invoke() { toolCalls += 1; await new Promise((resolve) => setTimeout(resolve, 5_000)); return { ok: true, output: "late" }; } }]);
     let messages: Array<{ role: string; content?: unknown; is_error?: boolean }> = []; let calls = 0;
     const provider: ModelProvider = { complete: async (conversation) => { messages = [...conversation] as never; calls += 1; return calls === 1 ? { text: "", tool_calls: [{ id: "slow", name: "slow_tool", input: {} }], stop_reason: "tool_use" } : { text: "observed timeout", tool_calls: [], stop_reason: "end_turn" }; } };
-    const loop = new AgentLoop(provider, tools, { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { toolRetryBaseMs: 0, maxWallClockMs: 30_000 });
+    const loop = new AgentLoop(provider, tools, { workspace: new Workspace(root) }, events, { check: async () => true }, { toolRetryBaseMs: 0, maxWallClockMs: 30_000 });
     const result = await loop.run("timeout-race", "run slow tool", 3);
     assert.equal(result.text, "observed timeout");
     assert.equal(toolCalls, 1); // timeout 错误类型不可重试，只执行一次
     const toolMessage = messages.find((message) => message.role === "tool");
     assert.equal(toolMessage?.is_error, true);
     assert.match(String(toolMessage?.content), /Tool timed out after 40ms/);
-  } finally { await rm(root, { recursive: true, force: true }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); } // flush 后再 rm：避免 appendFile 与 rmdir 竞争（CI ENOTEMPTY）
 });
