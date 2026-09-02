@@ -521,11 +521,13 @@ function selectLocale(value: AppLocale) {
                 </div>
                 <Languages :size="16" />
               </div>
-              <div class="option-grid option-grid--2" role="radiogroup" :aria-label="t('settings.language.title')">
-                <button v-for="item in localeOptions" :key="item.id" type="button" class="option-btn option-btn--locale" role="radio" :aria-checked="locale === item.id" :class="{ selected: locale === item.id }" @click="selectLocale(item.id)">
-                  <span>{{ item.nativeLabel }}</span>
-                  <Check v-if="locale === item.id" :size="14" class="check-icon" />
-                </button>
+              <div class="form-row">
+                <label class="form-field">
+                  <span>{{ t('settings.language.select') }}</span>
+                  <select :value="locale" class="form-select" @change="selectLocale(($event.target as HTMLSelectElement).value as AppLocale)">
+                    <option v-for="item in localeOptions" :key="item.id" :value="item.id">{{ item.nativeLabel }}</option>
+                  </select>
+                </label>
               </div>
             </section>
             <section class="settings-card">

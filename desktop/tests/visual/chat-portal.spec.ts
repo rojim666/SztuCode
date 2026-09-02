@@ -1,5 +1,26 @@
 import { expect, test } from "@playwright/test";
 
+test("skills page keeps settings, model management, and window controls interactive", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("button", { name: "技能", exact: true }).click();
+  await expect(page.getByRole("region", { name: "插件与技能" })).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "Minimize window" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Maximize or restore window" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Close window" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "设置" });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "模型管理", exact: true }).click();
+  await expect(settings.getByRole("heading", { name: "模型管理", exact: true })).toBeVisible();
+  await settings.getByRole("button", { name: "关闭设置" }).click();
+  await expect(settings).toBeHidden();
+});
+
 // 正式入口暂时隐藏；开发态查询参数只为完整验证 ChatPortal 交互而开放。
 test("Chat portal exposes every tool page and its primary interactions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });

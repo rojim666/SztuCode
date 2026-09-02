@@ -134,6 +134,7 @@ export const settings = {
   language: {
     title: "Language",
     desc: "Choose the interface display language",
+    select: "Interface language",
   },
   errors: {
     openProjectLink: "Failed to open the project link",

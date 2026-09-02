@@ -134,6 +134,7 @@ export const settings = {
   language: {
     title: "语言",
     desc: "选择界面显示语言",
+    select: "界面语言",
   },
   errors: {
     openProjectLink: "无法打开项目链接",
