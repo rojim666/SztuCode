@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
 
 // 纯色终端主题：白 + 深底，无彩色渐变
 const INK = "#e9eef6";
 
-const stages = ["正在启动本地服务", "正在连接 Agent 运行时", "正在加载工作区", "准备就绪"];
+// 启动阶段文案随语言包变化，用 computed 保持响应式
+const stages = computed(() => [
+  t("splash.stageStartingService"),
+  t("splash.stageConnectingRuntime"),
+  t("splash.stageLoadingWorkspace"),
+  t("splash.stageAlmostReady"),
+]);
 const stage = ref(0);
 const progress = ref(0);
 const ready = ref(false);
@@ -21,9 +30,9 @@ let closed = false;
 
 // 平滑推进进度条（视觉节奏，与实际就绪无关）
 function advance(): void {
-  const target = ((stage.value + 1) / stages.length) * 100;
+  const target = ((stage.value + 1) / stages.value.length) * 100;
   progress.value = Math.min(target, progress.value + 1);
-  if (progress.value >= target && stage.value < stages.length - 1) {
+  if (progress.value >= target && stage.value < stages.value.length - 1) {
     stage.value += 1;
   }
 }
@@ -106,14 +115,14 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="brand">SztuCode</div>
-      <div class="tagline">本地优先 · Agent 工作台</div>
+      <div class="tagline">{{ t('splash.tagline') }}</div>
 
       <div class="track">
         <div class="fill" :class="{ full: ready }" :style="{ width: `${progress}%` }" />
       </div>
 
       <div class="stage" :class="{ ready }">
-        {{ ready ? "已就绪" : stages[stage] }}
+        {{ ready ? t('splash.ready') : stages[stage] }}
       </div>
     </div>
   </div>

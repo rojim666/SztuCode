@@ -67,9 +67,9 @@ const sourceOptions = computed<SourceOption[]>(() => {
   for (const skill of skills.value) {
     let label = skill.source;
     if (skill.plugin) label = skill.plugin;
-    else if (skill.source === "project") label = props.workspaceName || "当前项目";
-    else if (skill.source === "user") label = "个人";
-    else if (skill.source === "builtin") label = "系统";
+    else if (skill.source === "project") label = props.workspaceName || t("skills.currentProject");
+    else if (skill.source === "user") label = t("skills.personal");
+    else if (skill.source === "builtin") label = t("skills.systemSource");
     options.set(skill.source, { key: skill.source, label, scope: skill.scope });
   }
   const rank = { workspace: 0, personal: 1, system: 2 } as const;
@@ -113,13 +113,13 @@ function skillStyle(skill: SkillSummary): Record<string, string> {
 }
 
 function skillDescription(skill: SkillSummary): string {
-  return skill.short_description || skill.description || "可复用的任务工作流";
+  return skill.short_description || skill.description || t("skills.fallbackSkillDesc");
 }
 
 function pluginDescription(plugin: PluginSummary): string {
   if (plugin.description) return plugin.description;
-  if (plugin.skills.length) return `包含 ${plugin.skills.length} 个技能：${plugin.skills.slice(0, 3).join("、")}`;
-  return "本地安装的 SztuCode 插件";
+  if (plugin.skills.length) return t("skills.pluginSkillsDesc", { n: plugin.skills.length, skills: plugin.skills.slice(0, 3).join(localeTag.value === "zh-CN" ? "、" : ", ") });
+  return t("skills.localPluginDesc");
 }
 
 async function refreshCatalog(): Promise<void> {
@@ -154,7 +154,7 @@ async function refreshCatalog(): Promise<void> {
     ]);
     // 内建技能始终在目录中（与斜杠命令菜单一致）；同名技能以运行时版本为准
     const mergedSkills = new Map(nextSkills.map((skill) => [skill.name.toLocaleLowerCase(), skill]));
-    for (const skill of BUILT_IN_SKILLS) {
+    for (const skill of builtInSkillItems((key) => t(key))) {
       if (mergedSkills.has(skill.name.toLocaleLowerCase())) continue;
       mergedSkills.set(skill.name.toLocaleLowerCase(), {
         id: `builtin-${skill.name}`,
@@ -185,7 +185,7 @@ async function refreshCatalog(): Promise<void> {
       activeMarketplace.value = "all";
     }
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : "能力目录加载失败";
+    error.value = reason instanceof Error ? reason.message : t("skills.catalogLoadFailed");
   } finally {
     loading.value = false;
   }
@@ -226,7 +226,7 @@ async function installFromCatalog(plugin: MarketplacePluginSummary): Promise<voi
     await installCatalogPlugin(plugin.id, scope, props.workspaceId);
     await refreshCatalog();
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : "市场插件安装失败";
+    error.value = reason instanceof Error ? reason.message : t("skills.marketInstallFailed");
   } finally {
     installingCatalogPlugin.value = "";
   }
@@ -285,21 +285,21 @@ async function refreshMarketplaces(): Promise<void> {
     await refreshPluginMarketplaces(null, props.workspaceId);
     await refreshCatalog();
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : "插件市场刷新失败";
+    error.value = reason instanceof Error ? reason.message : t("skills.marketplaceRefreshFailed");
   } finally {
     refreshingMarketplaces.value = false;
   }
 }
 
 async function removeMarketplace(marketplace: MarketplaceSummary): Promise<void> {
-  const confirmed = await confirmDialog(`移除插件市场“${marketplace.display_name}”？已安装插件不会被卸载。`, { title: "移除插件市场", kind: "warning" });
+  const confirmed = await confirmDialog(t("skills.removeMarketConfirm", { name: marketplace.display_name }), { title: t("skills.removeMarketTitle"), kind: "warning" });
   if (!confirmed) return;
   try {
     await removePluginMarketplace(marketplace.id, props.workspaceId);
     activeMarketplace.value = "all";
     await refreshCatalog();
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : "插件市场移除失败";
+    error.value = reason instanceof Error ? reason.message : t("skills.marketplaceRemoveFailed");
   }
 }
 
@@ -333,7 +333,7 @@ async function submitInstall(): Promise<void> {
     await refreshCatalog();
     activeArea.value = installKind.value === "skill" ? "skills" : "plugins";
   } catch (reason) {
-    installError.value = reason instanceof Error ? reason.message : "安装失败";
+    installError.value = reason instanceof Error ? reason.message : t("skills.installFailed");
   } finally {
     installing.value = false;
   }
@@ -345,21 +345,21 @@ onMounted(() => void refreshCatalog());
 </script>
 
 <template>
-  <section class="skill-center" aria-label="插件与技能">
+  <section class="skill-center" :aria-label="t('skills.sectionAria')">
     <header class="skill-center__topbar">
-      <nav aria-label="能力目录">
-        <button :class="{ active: activeArea === 'plugins' }" @click="activeArea = 'plugins'">插件</button>
-        <button :class="{ active: activeArea === 'skills' }" @click="activeArea = 'skills'">技能</button>
+      <nav :aria-label="t('skills.navAria')">
+        <button :class="{ active: activeArea === 'plugins' }" @click="activeArea = 'plugins'">{{ t("skills.pluginsTab") }}</button>
+        <button :class="{ active: activeArea === 'skills' }" @click="activeArea = 'skills'">{{ t("skills.skillsTab") }}</button>
       </nav>
       <div class="skill-center__actions">
-        <button title="刷新目录" aria-label="刷新目录" :disabled="loading" @click="refreshCatalog"><RefreshCw :size="18" :class="{ spin: loading }" /></button>
-        <button :title="activeArea === 'plugins' ? '管理已安装插件' : '技能设置'" :aria-label="activeArea === 'plugins' ? '管理已安装插件' : '技能设置'" :disabled="activeArea !== 'plugins'" @click="pluginManageOpen = true"><Settings2 :size="18" /></button>
+        <button :title="t('skills.refresh')" :aria-label="t('skills.refresh')" :disabled="loading" @click="refreshCatalog"><RefreshCw :size="18" :class="{ spin: loading }" /></button>
+        <button :title="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :aria-label="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :disabled="activeArea !== 'plugins'" @click="pluginManageOpen = true"><Settings2 :size="18" /></button>
         <div class="skill-add">
-          <button class="skill-add__trigger" :aria-expanded="addMenuOpen" @click="addMenuOpen = !addMenuOpen"><span>添加</span><ChevronDown :size="15" /></button>
+          <button class="skill-add__trigger" :aria-expanded="addMenuOpen" @click="addMenuOpen = !addMenuOpen"><span>{{ t("skills.add") }}</span><ChevronDown :size="15" /></button>
           <div v-if="addMenuOpen" class="skill-add__menu">
-            <button @click="openMarketplaceDialog"><Package :size="15" /><span><b>添加插件市场</b><small>GitHub、Git URL 或本地目录</small></span></button>
-            <button @click="openInstall('plugin')"><Plug :size="15" /><span><b>从本地安装插件</b><small>选择 Codex 兼容插件目录</small></span></button>
-            <button @click="openInstall('skill')"><Sparkles :size="15" /><span><b>添加技能</b><small>从包含 SKILL.md 的目录安装</small></span></button>
+            <button @click="openMarketplaceDialog"><Package :size="15" /><span><b>{{ t("skills.addMarketplace") }}</b><small>{{ t("skills.addMarketplaceHint") }}</small></span></button>
+            <button @click="openInstall('plugin')"><Plug :size="15" /><span><b>{{ t("skills.installPluginLocal") }}</b><small>{{ t("skills.installPluginLocalHint") }}</small></span></button>
+            <button @click="openInstall('skill')"><Sparkles :size="15" /><span><b>{{ t("skills.addSkill") }}</b><small>{{ t("skills.addSkillHint") }}</small></span></button>
           </div>
         </div>
       </div>
@@ -373,14 +373,14 @@ onMounted(() => void refreshCatalog());
 
       <label class="skill-search">
         <Search :size="18" />
-        <input v-model="query" :placeholder="`搜索${title}`" />
+        <input v-model="query" :placeholder="activeArea === 'plugins' ? t('skills.searchPlugins') : t('skills.searchSkills')" />
       </label>
 
-      <p v-if="error" class="skill-runtime-error" role="alert">{{ error }}<button @click="refreshCatalog">重试</button></p>
+      <p v-if="error" class="skill-runtime-error" role="alert">{{ error }}<button @click="refreshCatalog">{{ t("skills.retry") }}</button></p>
 
       <template v-if="activeArea === 'skills'">
         <section class="installed-section" aria-labelledby="installed-skills-title">
-          <h2 id="installed-skills-title">已安装</h2>
+          <h2 id="installed-skills-title">{{ t("skills.installed") }}</h2>
           <div v-if="visibleInstalledSkills.length" class="capability-list capability-list--installed">
             <article v-for="skill in visibleInstalledSkills" :key="skill.id" class="capability-row">
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
@@ -388,63 +388,63 @@ onMounted(() => void refreshCatalog());
               <Check :size="18" class="installed-check" />
             </article>
           </div>
-          <p v-else-if="!loading" class="section-empty">没有启用的技能</p>
-          <p v-if="remainingInstalled" class="installed-more">另有 {{ remainingInstalled }} 项已安装技能</p>
+          <p v-else-if="!loading" class="section-empty">{{ t("skills.noEnabledSkills") }}</p>
+          <p v-if="remainingInstalled" class="installed-more">{{ t("skills.moreInstalled", { n: remainingInstalled }) }}</p>
         </section>
 
-        <nav v-if="sourceOptions.length" class="source-tabs" aria-label="技能来源">
+        <nav v-if="sourceOptions.length" class="source-tabs" :aria-label="t('skills.sourceAria')">
           <button v-for="source in sourceOptions" :key="source.key" :class="{ active: activeSkillSource === source.key }" @click="activeSkillSource = source.key">{{ source.label }}</button>
         </nav>
 
-        <section class="catalog-section" aria-label="技能目录">
+        <section class="catalog-section" :aria-label="t('skills.catalogAria')">
           <div v-if="catalogSkills.length" class="capability-list">
             <article v-for="skill in catalogSkills" :key="skill.id" class="capability-row" :class="{ disabled: !skill.enabled }">
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
               <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small><em v-if="skill.plugin">{{ skill.plugin }}</em></span>
-              <button class="skill-state" :class="{ enabled: skill.enabled }" :disabled="updatingSkill === skill.id" :title="skill.enabled ? '禁用技能' : '启用技能'" @click="toggleSkill(skill)">
+              <button class="skill-state" :class="{ enabled: skill.enabled }" :disabled="updatingSkill === skill.id" :title="skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')" @click="toggleSkill(skill)">
                 <RefreshCw v-if="updatingSkill === skill.id" :size="16" class="spin" />
                 <Check v-else-if="skill.enabled" :size="18" />
                 <Power v-else :size="16" />
               </button>
             </article>
           </div>
-          <p v-else-if="!loading" class="section-empty">没有匹配的技能</p>
+          <p v-else-if="!loading" class="section-empty">{{ t("skills.noMatchSkills") }}</p>
         </section>
       </template>
 
       <template v-else>
         <section class="plugin-installed-strip" aria-labelledby="installed-plugins-title">
-          <header><h2 id="installed-plugins-title">已安装</h2><button class="plugin-manage-trigger" @click="pluginManageOpen = true"><Settings2 :size="16" />管理</button></header>
+          <header><h2 id="installed-plugins-title">{{ t("skills.installed") }}</h2><button class="plugin-manage-trigger" @click="pluginManageOpen = true"><Settings2 :size="16" />{{ t("skills.manage") }}</button></header>
           <div v-if="plugins.length" class="plugin-icons">
-            <button v-for="plugin in plugins.slice(0, 9)" :key="plugin.id" :title="`${plugin.display_name} · ${plugin.enabled ? '已启用' : '已禁用'}`" :class="{ disabled: !plugin.enabled }" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }" @click="pluginManageOpen = true"><Plug :size="19" /></button>
+            <button v-for="plugin in plugins.slice(0, 9)" :key="plugin.id" :title="t('skills.pluginState', { name: plugin.display_name, state: plugin.enabled ? t('skills.enabledState') : t('skills.disabledState') })" :class="{ disabled: !plugin.enabled }" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }" @click="pluginManageOpen = true"><Plug :size="19" /></button>
           </div>
-          <p v-else-if="!loading" class="section-empty">尚未安装本地插件</p>
+          <p v-else-if="!loading" class="section-empty">{{ t("skills.noLocalPlugins") }}</p>
         </section>
 
         <div class="marketplace-toolbar">
-          <nav class="source-tabs plugin-source-tabs" aria-label="插件市场">
-            <button :class="{ active: activeMarketplace === 'all' }" @click="activeMarketplace = 'all'">全部</button>
+          <nav class="source-tabs plugin-source-tabs" :aria-label="t('skills.marketAria')">
+            <button :class="{ active: activeMarketplace === 'all' }" @click="activeMarketplace = 'all'">{{ t("skills.all") }}</button>
             <button v-for="marketplace in marketplaces" :key="marketplace.id" :class="{ active: activeMarketplace === marketplace.id }" :title="marketplace.source" @click="activeMarketplace = marketplace.id">{{ marketplace.display_name }}</button>
           </nav>
           <div class="marketplace-toolbar__actions">
-            <button title="刷新插件市场" :disabled="refreshingMarketplaces || !marketplaces.some((item) => item.updatable)" @click="refreshMarketplaces"><RefreshCw :size="15" :class="{ spin: refreshingMarketplaces }" /></button>
-            <button v-if="activeMarketplaceInfo?.removable" title="移除当前插件市场" @click="removeMarketplace(activeMarketplaceInfo)"><Trash2 :size="15" /></button>
-            <button title="添加插件市场" @click="openMarketplaceDialog"><Plus :size="16" /></button>
+            <button :title="t('skills.refreshMarketplace')" :disabled="refreshingMarketplaces || !marketplaces.some((item) => item.updatable)" @click="refreshMarketplaces"><RefreshCw :size="15" :class="{ spin: refreshingMarketplaces }" /></button>
+            <button v-if="activeMarketplaceInfo?.removable" :title="t('skills.removeMarketplace')" @click="removeMarketplace(activeMarketplaceInfo)"><Trash2 :size="15" /></button>
+            <button :title="t('skills.addMarketplace')" @click="openMarketplaceDialog"><Plus :size="16" /></button>
           </div>
         </div>
 
-        <section class="catalog-section plugin-catalog" aria-label="插件目录">
-          <header><h2>{{ activeMarketplaceName }}</h2><small v-if="activeMarketplaceInfo">{{ activeMarketplaceInfo.plugin_count }} 个插件</small></header>
+        <section class="catalog-section plugin-catalog" :aria-label="t('skills.catalogAria')">
+          <header><h2>{{ activeMarketplaceName }}</h2><small v-if="activeMarketplaceInfo">{{ t("skills.pluginCount", { n: activeMarketplaceInfo.plugin_count }) }}</small></header>
           <div v-if="visibleCatalogPlugins.length" class="capability-list">
             <article v-for="plugin in visibleCatalogPlugins" :key="plugin.id" class="capability-row plugin-row marketplace-plugin-row">
               <span class="capability-icon plugin-icon" :style="{ '--skill-color': fallbackColor(plugin.name) }"><Package :size="18" /></span>
-              <span class="capability-copy"><b>{{ plugin.display_name }}<em v-if="plugin.version">{{ plugin.version }}</em></b><small>{{ plugin.description || 'Codex 兼容插件' }}</small><em>{{ plugin.marketplace_name }}<template v-if="plugin.publisher"> · {{ plugin.publisher }}</template><template v-if="plugin.category"> · {{ plugin.category }}</template></em></span>
-              <span v-if="plugin.installed" class="catalog-installed"><Check :size="15" />已安装</span>
-              <button v-else class="catalog-install" :disabled="installingCatalogPlugin === plugin.id" @click="installFromCatalog(plugin)"><RefreshCw v-if="installingCatalogPlugin === plugin.id" :size="14" class="spin" /><Plus v-else :size="14" />{{ installingCatalogPlugin === plugin.id ? '安装中' : '安装' }}</button>
+              <span class="capability-copy"><b>{{ plugin.display_name }}<em v-if="plugin.version">{{ plugin.version }}</em></b><small>{{ plugin.description || t('skills.codexPlugin') }}</small><em>{{ plugin.marketplace_name }}<template v-if="plugin.publisher"> · {{ plugin.publisher }}</template><template v-if="plugin.category"> · {{ plugin.category }}</template></em></span>
+              <span v-if="plugin.installed" class="catalog-installed"><Check :size="15" />{{ t("skills.installed") }}</span>
+              <button v-else class="catalog-install" :disabled="installingCatalogPlugin === plugin.id" @click="installFromCatalog(plugin)"><RefreshCw v-if="installingCatalogPlugin === plugin.id" :size="14" class="spin" /><Plus v-else :size="14" />{{ installingCatalogPlugin === plugin.id ? t('skills.installing') : t('skills.install') }}</button>
             </article>
           </div>
           <div v-else-if="!loading" class="plugin-empty">
-            <Plug :size="22" /><b>{{ marketplaces.length ? '此市场还没有可用插件' : '还没有插件市场' }}</b><p>{{ marketplaces.length ? '切换其他市场，或刷新已添加的 Git 市场。' : '添加仓库或本地市场，发现并安装 Codex 兼容插件。' }}</p><button @click="openMarketplaceDialog"><Plus :size="14" />添加插件市场</button>
+            <Plug :size="22" /><b>{{ marketplaces.length ? t('skills.emptyMarketTitle') : t('skills.noMarketTitle') }}</b><p>{{ marketplaces.length ? t('skills.emptyMarketHint') : t('skills.noMarketHint') }}</p><button @click="openMarketplaceDialog"><Plus :size="14" />{{ t("skills.addMarketplace") }}</button>
           </div>
         </section>
       </template>
@@ -452,37 +452,37 @@ onMounted(() => void refreshCatalog());
 
     <div v-if="installDialogOpen" class="skill-dialog-backdrop" @mousedown.self="installDialogOpen = false">
       <form class="skill-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title" @submit.prevent="submitInstall">
-        <header><div><h2 id="install-title">添加{{ installKind === 'plugin' ? '插件' : '技能' }}</h2><p>{{ installKind === 'plugin' ? '选择包含 .codex-plugin/plugin.json 或 plugin.json 的目录。' : '选择包含 SKILL.md 的目录，也可粘贴 Markdown 文件路径。' }}</p></div><button type="button" aria-label="关闭" @click="installDialogOpen = false"><X :size="17" /></button></header>
-        <label>安装位置<select v-model="installScope"><option value="personal">个人</option><option value="workspace" :disabled="!workspaceId">当前工作区{{ workspaceName ? ` · ${workspaceName}` : '' }}</option></select></label>
-        <label>本地来源<div class="source-path-input"><input v-model="installSource" autofocus placeholder="选择或粘贴本地目录路径" /><button type="button" @click="browseInstallSource"><FolderOpen :size="15" />浏览</button></div></label>
+        <header><div><h2 id="install-title">{{ installKind === 'plugin' ? t('skills.addPlugin') : t('skills.addSkill') }}</h2><p>{{ installKind === 'plugin' ? t('skills.installPluginDesc') : t('skills.installSkillDesc') }}</p></div><button type="button" :aria-label="t('skills.close')" @click="installDialogOpen = false"><X :size="17" /></button></header>
+        <label>{{ t("skills.installLocation") }}<select v-model="installScope"><option value="personal">{{ t("skills.personal") }}</option><option value="workspace" :disabled="!workspaceId">{{ t("skills.currentWorkspace") }}{{ workspaceName ? ` · ${workspaceName}` : '' }}</option></select></label>
+        <label>{{ t("skills.localSource") }}<div class="source-path-input"><input v-model="installSource" autofocus :placeholder="t('skills.sourcePlaceholder')" /><button type="button" @click="browseInstallSource"><FolderOpen :size="15" />{{ t("skills.browse") }}</button></div></label>
         <p v-if="installError" class="install-error">{{ installError }}</p>
-        <footer><button type="button" @click="installDialogOpen = false">取消</button><button class="primary" :disabled="!installSource.trim() || installing">{{ installing ? '安装中…' : '安装' }}</button></footer>
+        <footer><button type="button" @click="installDialogOpen = false">{{ t("skills.cancel") }}</button><button class="primary" :disabled="!installSource.trim() || installing">{{ installing ? t('skills.installingDots') : t('skills.installNow') }}</button></footer>
       </form>
     </div>
 
     <div v-if="marketplaceDialogOpen" class="skill-dialog-backdrop marketplace-backdrop" @mousedown.self="marketplaceDialogOpen = false">
       <form class="skill-dialog marketplace-dialog" role="dialog" aria-modal="true" aria-labelledby="marketplace-title" @submit.prevent="submitMarketplace">
-        <header><div><h2 id="marketplace-title">添加插件市场</h2><p>从 GitHub 仓库、Git URL 或本地文件夹添加。 <a href="https://developers.openai.com/plugins/build/plugins" target="_blank" rel="noreferrer">了解更多</a></p></div><button type="button" aria-label="关闭" @click="marketplaceDialogOpen = false"><X :size="19" /></button></header>
-        <label>来源<input ref="marketplaceSourceInput" v-model="marketplaceSource" placeholder="openai/plugins 或 git@github.com:org/repo.git" /></label>
-        <label>Git 引用<input v-model="marketplaceGitRef" placeholder="主分支" /></label>
-        <label>稀疏路径<textarea v-model="marketplaceSparsePaths" rows="4" placeholder="plugins/codex" /></label>
+        <header><div><h2 id="marketplace-title">{{ t("skills.marketplaceTitle") }}</h2><p>{{ t("skills.marketplaceDesc") }} <a href="https://developers.openai.com/plugins/build/plugins" target="_blank" rel="noreferrer">{{ t("skills.learnMore") }}</a></p></div><button type="button" :aria-label="t('skills.close')" @click="marketplaceDialogOpen = false"><X :size="19" /></button></header>
+        <label>{{ t("skills.sourceLabel") }}<input ref="marketplaceSourceInput" v-model="marketplaceSource" :placeholder="t('skills.sourceInputPlaceholder')" /></label>
+        <label>{{ t("skills.gitRef") }}<input v-model="marketplaceGitRef" :placeholder="t('skills.gitRefPlaceholder')" /></label>
+        <label>{{ t("skills.sparsePaths") }}<textarea v-model="marketplaceSparsePaths" rows="4" placeholder="plugins/codex" /></label>
         <p v-if="marketplaceError" class="install-error">{{ marketplaceError }}</p>
-        <footer><button type="button" @click="marketplaceDialogOpen = false">取消</button><button class="primary" :disabled="!marketplaceSource.trim() || addingMarketplace">{{ addingMarketplace ? '添加中…' : '添加市场' }}</button></footer>
+        <footer><button type="button" @click="marketplaceDialogOpen = false">{{ t("skills.cancel") }}</button><button class="primary" :disabled="!marketplaceSource.trim() || addingMarketplace">{{ addingMarketplace ? t('skills.addingMarketplace') : t('skills.addMarketplaceBtn') }}</button></footer>
       </form>
     </div>
 
     <div v-if="pluginManageOpen" class="skill-dialog-backdrop" @mousedown.self="pluginManageOpen = false">
       <section class="skill-dialog plugin-manage-dialog" role="dialog" aria-modal="true" aria-labelledby="plugin-manage-title">
-        <header><div><h2 id="plugin-manage-title">管理已安装插件</h2><p>插件被禁用后，其捆绑技能不会进入任务上下文。</p></div><button type="button" aria-label="关闭" @click="pluginManageOpen = false"><X :size="17" /></button></header>
+        <header><div><h2 id="plugin-manage-title">{{ t("skills.managePluginsTitle") }}</h2><p>{{ t("skills.managePluginsDesc") }}</p></div><button type="button" :aria-label="t('skills.close')" @click="pluginManageOpen = false"><X :size="17" /></button></header>
         <div v-if="visibleInstalledPlugins.length" class="plugin-manage-list">
           <article v-for="plugin in visibleInstalledPlugins" :key="plugin.id" :class="{ disabled: !plugin.enabled }">
             <span class="plugin-manage-icon" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }"><Plug :size="17" /></span>
-            <span><b>{{ plugin.display_name }}</b><small>{{ pluginDescription(plugin) }}</small><em>{{ plugin.source === 'workspace' ? '当前工作区' : '个人' }}<template v-if="plugin.version"> · {{ plugin.version }}</template></em></span>
-            <button class="plugin-toggle" :class="{ enabled: plugin.enabled }" :disabled="updatingPlugin === plugin.id" :title="plugin.enabled ? '禁用插件' : '启用插件'" @click="togglePlugin(plugin)"><RefreshCw v-if="updatingPlugin === plugin.id" :size="14" class="spin" /><span v-else /></button>
-            <button class="plugin-remove" :disabled="updatingPlugin === plugin.id" title="卸载插件" @click="removeInstalledPlugin(plugin)"><Trash2 :size="15" /></button>
+            <span><b>{{ plugin.display_name }}</b><small>{{ pluginDescription(plugin) }}</small><em>{{ plugin.source === 'workspace' ? t('skills.workspaceScope') : t('skills.personal') }}<template v-if="plugin.version"> · {{ plugin.version }}</template></em></span>
+            <button class="plugin-toggle" :class="{ enabled: plugin.enabled }" :disabled="updatingPlugin === plugin.id" :title="plugin.enabled ? t('skills.disablePlugin') : t('skills.enablePlugin')" @click="togglePlugin(plugin)"><RefreshCw v-if="updatingPlugin === plugin.id" :size="14" class="spin" /><span v-else /></button>
+            <button class="plugin-remove" :disabled="updatingPlugin === plugin.id" :title="t('skills.uninstallPlugin')" @click="removeInstalledPlugin(plugin)"><Trash2 :size="15" /></button>
           </article>
         </div>
-        <p v-else class="section-empty">没有匹配的已安装插件。</p>
+        <p v-else class="section-empty">{{ t("skills.noMatchPlugins") }}</p>
       </section>
     </div>
   </section>

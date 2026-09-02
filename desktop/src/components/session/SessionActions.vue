@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
 import { friendlyError } from "../../utils/errorNotice";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{ session: Session; active?: boolean }>();
 const emit = defineEmits<{ changed: []; closed: [] }>();
@@ -85,7 +88,7 @@ async function togglePinned() {
     closeMenu();
     emit("changed");
   } catch (error) {
-    notice.value = `置顶失败：${friendlyError(error).message}`;
+    notice.value = t("session.pinFailed", { message: friendlyError(error).message });
   } finally {
     busy.value = false;
   }
@@ -152,7 +155,7 @@ async function assignProject(workspaceId: string | null) {
   await run(() => moveSession(props.session.session_id, workspaceId));
 }
 
-async function copyText(value: string, message = "已复制") {
+async function copyText(value: string, message = t("session.copied")) {
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
     else {
@@ -167,21 +170,22 @@ async function copyText(value: string, message = "已复制") {
     }
     notice.value = message;
   } catch (error) {
-    notice.value = `复制失败：${friendlyError(error).message}`;
+    notice.value = t("session.copyFailed", { message: friendlyError(error).message });
   }
 }
 
 async function share() {
   const url = new URL(window.location.href);
   url.hash = `session=${encodeURIComponent(props.session.session_id)}`;
-  const data = { title: props.session.title || "SztuCode 会话", text: props.session.title || "SztuCode 会话", url: url.toString() };
+  const defaultTitle = t("session.defaultShareTitle");
+  const data = { title: props.session.title || defaultTitle, text: props.session.title || defaultTitle, url: url.toString() };
   try {
     const shareApi = (navigator as Navigator & { share?: (payload: ShareData) => Promise<void> }).share;
     if (shareApi) await shareApi.call(navigator, data);
-    else await copyText(data.url, "会话链接已复制");
+    else await copyText(data.url, t("session.linkCopied"));
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    notice.value = `分享失败：${friendlyError(error).message}`;
+    notice.value = t("session.shareFailed", { message: friendlyError(error).message });
   }
 }
 
@@ -222,32 +226,32 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'">
-    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? '任务运行中，暂不能归档' : '归档会话'" aria-label="归档会话" :disabled="busy || session.status === 'active'" @click="archive"><Archive :size="17" /></button>
+    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? t('session.archiveBlockedTitle') : t('session.archiveTitle')" :aria-label="t('session.archiveTitle')" :disabled="busy || session.status === 'active'" @click="archive"><Archive :size="17" /></button>
     <Teleport to="body">
       <div v-if="open" ref="menu" class="session-menu session-menu--floating" :style="menuStyle" role="menu" @contextmenu.stop>
-        <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" aria-label="会话名称" maxlength="120" autofocus /><button :disabled="busy">保存</button></form>
+        <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" :aria-label="t('session.nameLabel')" maxlength="120" autofocus /><button :disabled="busy">{{ t('session.save') }}</button></form>
         <template v-else>
-          <button role="menuitem" :disabled="busy" @click="togglePinned"><PinOff v-if="pinned" :size="19" /><Pin v-else :size="19" />{{ pinned ? '取消置顶' : '置顶' }}</button>
-          <button role="menuitem" @click="renaming = true"><Pencil :size="19" />重命名</button>
-          <button role="menuitem" @click="markUnread"><Eye :size="19" />标记为未读</button>
+          <button role="menuitem" :disabled="busy" @click="togglePinned"><PinOff v-if="pinned" :size="19" /><Pin v-else :size="19" />{{ pinned ? t('session.unpin') : t('session.pin') }}</button>
+          <button role="menuitem" @click="renaming = true"><Pencil :size="19" />{{ t('session.rename') }}</button>
+          <button role="menuitem" @click="markUnread"><Eye :size="19" />{{ t('session.markUnread') }}</button>
           <div class="session-menu__separator" />
           <div class="session-menu__copy-wrap">
-            <button role="menuitem" :aria-expanded="projectOpen" @click="toggleProjectMenu"><Folder :size="19" /><span>项目</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <button role="menuitem" :aria-expanded="projectOpen" @click="toggleProjectMenu"><Folder :size="19" /><span>{{ t('session.project') }}</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
             <div v-if="projectOpen" class="session-menu__submenu" role="menu">
-              <button role="menuitem" :class="{ active: !session.workspace_id }" @click="assignProject(null)">无项目</button>
+              <button role="menuitem" :class="{ active: !session.workspace_id }" @click="assignProject(null)">{{ t('session.noProject') }}</button>
               <button v-for="project in projects" :key="project.workspace_id" role="menuitem" :class="{ active: project.workspace_id === session.workspace_id }" @click="assignProject(project.workspace_id)">{{ project.name }}</button>
             </div>
           </div>
           <div class="session-menu__separator" />
           <div class="session-menu__copy-wrap">
-            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen; projectOpen = false"><Copy :size="19" /><span>复制</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen; projectOpen = false"><Copy :size="19" /><span>{{ t('session.copy') }}</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
             <div v-if="copyOpen" class="session-menu__submenu" role="menu">
-              <button role="menuitem" @click="copyText(session.title || '未命名任务', '会话名称已复制')">复制会话名称</button>
-              <button role="menuitem" @click="copyText(session.session_id, '会话 ID 已复制')">复制会话 ID</button>
+              <button role="menuitem" @click="copyText(session.title || t('session.untitled'), t('session.nameCopied'))">{{ t('session.copyName') }}</button>
+              <button role="menuitem" @click="copyText(session.session_id, t('session.idCopied'))">{{ t('session.copyId') }}</button>
             </div>
           </div>
           <div class="session-menu__separator" />
-          <button role="menuitem" @click="openInNewWindow"><ExternalLink :size="19" />在新窗口中打开</button>
+          <button role="menuitem" @click="openInNewWindow"><ExternalLink :size="19" />{{ t('session.openInNewWindow') }}</button>
         </template>
         <p v-if="notice" role="alert">{{ notice }}</p>
       </div>

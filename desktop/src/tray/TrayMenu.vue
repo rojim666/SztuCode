@@ -2,6 +2,9 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit } from "@tauri-apps/api/event";
 import { onMounted, onBeforeUnmount } from "vue";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n({ useScope: "global" });
 
 const win = getCurrentWindow();
 onMounted(() => document.body.classList.add("tray-menu-host"));
@@ -28,14 +31,14 @@ async function action(name: string) {
 
 <template>
 <main class="tray-menu" tabindex="-1" @keydown.esc="win.hide()" @mousedown.stop>
-    <header><span class="mark">S</span><div><strong>SztuCode</strong><small>Agent 工作台</small></div></header>
-    <button class="primary" @click="action('new_chat')">＋ 新建会话</button>
-    <div class="section-label">快速访问</div>
-    <button @click="action('show')">⌂　显示主窗口</button>
-    <button @click="action('workspaces')">▦　工作区</button>
-    <button @click="action('settings')">⚙　设置</button>
+    <header><span class="mark">S</span><div><strong>SztuCode</strong><small>{{ t('tray.subtitle') }}</small></div></header>
+    <button class="primary" @click="action('new_chat')">{{ t('tray.newChat') }}</button>
+    <div class="section-label">{{ t('tray.quickAccess') }}</div>
+    <button @click="action('show')">{{ t('tray.showMainWindow') }}</button>
+    <button @click="action('workspaces')">{{ t('tray.workspaces') }}</button>
+    <button @click="action('settings')">{{ t('tray.settings') }}</button>
     <div class="divider" />
-    <button class="quit" @click="action('quit')">退出 SztuCode</button>
+    <button class="quit" @click="action('quit')">{{ t('tray.quit') }}</button>
   </main>
 </template>
 

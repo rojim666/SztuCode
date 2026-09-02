@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, Info, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
@@ -36,6 +37,8 @@ import {
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
+
+const { t } = useI18n({ useScope: "global" });
 
 type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "source-control";
 type WorkMode = "code" | "chat";
@@ -267,7 +270,8 @@ const turnDotRailEl = ref<HTMLElement | null>(null);
 const turnDotWrapEl = ref<HTMLElement | null>(null);
 const turnDotHoverIdx = ref(-1);
 const turnDotBubbleTop = ref(0);
-const turnLabels = ref<string[]>([]);
+// 轮次摘要标签依赖时间线数据与语言包，用 computed 保证切换语言后即时更新
+const turnLabels = computed<string[]>(() => extractTurnLabels(orderedTimeline.value));
 let turnObserver: IntersectionObserver | undefined;
 let turnElements: HTMLElement[] = [];
 let isScrollingToTurn = false;
@@ -281,7 +285,7 @@ function extractTurnLabels(steps: TimelineStep[]): string[] {
     if (!msg) continue;
     // 取第一行，去除markdown，截断为简短摘要
     const firstLine = msg.split(/\r?\n/)[0]?.replace(/[#*`_~\[\]]/g, "").trim() ?? "";
-    labels.push(firstLine.length > 60 ? firstLine.slice(0, 57) + "…" : firstLine || `第 ${labels.length + 1} 轮`);
+    labels.push(firstLine.length > 60 ? firstLine.slice(0, 57) + "…" : firstLine || t("app.turnFallback", { n: labels.length + 1 }));
   }
   return labels;
 }
@@ -307,7 +311,6 @@ function refreshTurnObserver() {
   const steps = el.querySelectorAll<HTMLElement>(".execution-timeline > .timeline-step");
   turnElements = Array.from(steps);
   turnDotCount.value = turnElements.length;
-  turnLabels.value = extractTurnLabels(orderedTimeline.value);
   if (!turnElements.length) { turnDotActive.value = -1; return; }
 
   turnObserver = new IntersectionObserver((entries) => {
@@ -413,8 +416,8 @@ const sidebarToolsExpanded = ref(false);
 const taskQuery = ref("");
 const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
-const inspectorOpen = ref(true);
-const inspectorRendered = ref(true);
+const inspectorOpen = ref(false);
+const inspectorRendered = ref(false);
 // 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
 const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
@@ -590,19 +593,19 @@ const sessionStats = computed(() => deriveSessionStats(orderedTimeline.value));
 //   return [...paths];
 // });
 const permissionModeLabel = computed(() => ({
-  normal: "标准审批",
-  plan: "计划模式",
-  accept_edits: "允许编辑",
-  auto: "全部允许",
+  normal: t("app.permissionMode.normal"),
+  plan: t("app.permissionMode.plan"),
+  accept_edits: t("app.permissionMode.acceptEdits"),
+  auto: t("app.permissionMode.auto"),
 }[runtimeSettings.value?.permission_mode ?? "normal"]));
 // 状态语义与后端一致：active=会话进行中（含新建未跑完一轮）、waiting_for_input=等待用户输入、closed=已完成
-const taskStatusLabel = (item: Session) => item.status === "active" ? "进行中" : item.status === "waiting_for_input" ? "等待输入" : "已完成";
+const taskStatusLabel = (item: Session) => item.status === "active" ? t("app.taskStatus.active") : item.status === "waiting_for_input" ? t("app.taskStatus.waitingInput") : t("app.taskStatus.done");
 function formatSessionUsage(item: Session): string {
   const tokens = Number(item.total_input_tokens ?? 0) + Number(item.total_output_tokens ?? 0);
   const seconds = Number(item.total_elapsed_s ?? 0);
   const tokenText = tokens >= 1000 ? `${(tokens / 1000).toFixed(tokens >= 10000 ? 0 : 1)}k tokens` : `${tokens} tokens`;
-  const durationText = seconds < 60 ? `${Math.round(seconds)}秒` : `${Math.floor(seconds / 60)}分${Math.round(seconds % 60)}秒`;
-  return item.status === "active" && !tokens ? "计时中" : `${durationText} · ${tokenText}`;
+  const durationText = seconds < 60 ? t("app.durationSeconds", { s: Math.round(seconds) }) : t("app.durationMinutes", { m: Math.floor(seconds / 60), s: Math.round(seconds % 60) });
+  return item.status === "active" && !tokens ? t("app.timing") : `${durationText} · ${tokenText}`;
 }
 
 // 对话条目悬停预览：展示计时、分支、项目目录与累计 token
@@ -687,14 +690,14 @@ function previewBranch(task: Session): string {
   return cached ?? "—";
 }
 function previewDirectory(task: Session): string {
-  if (!task.workspace_id) return "临时任务";
+  if (!task.workspace_id) return t("app.temporaryTask");
   const found = workspaces.value.find((item) => item.workspace_id === task.workspace_id);
   return found ? found.path : "—";
 }
 function previewElapsed(task: Session): string {
   const seconds = Number(task.total_elapsed_s ?? 0);
-  if (seconds < 60) return `${Math.round(seconds)} 秒`;
-  return `${Math.floor(seconds / 60)} 分 ${Math.round(seconds % 60)} 秒`;
+  if (seconds < 60) return t("app.elapsedSeconds", { s: Math.round(seconds) });
+  return t("app.elapsedMinutes", { m: Math.floor(seconds / 60), s: Math.round(seconds % 60) });
 }
 function previewTokens(task: Session): string {
   const tokens = Number(task.total_input_tokens ?? 0) + Number(task.total_output_tokens ?? 0);
@@ -825,7 +828,7 @@ function contextInjectionOf(blocks: HistoryBlock[]): ContextInjectionEntry | nul
     return {
       id: `ctx-compaction-${crypto.randomUUID()}`,
       source: "compaction",
-      label: "会话压缩",
+      label: t("app.contextCompaction"),
       chars: text.length,
       preview: summary.slice(0, 90),
       text: summary,
@@ -1003,7 +1006,7 @@ function hydrateTimeline(
     const thinking = visibleBlocks.filter((block) => String(block.type) === "thinking").map((block) => typeof block.thinking === "string" ? block.thinking : "").filter(Boolean).join("\n\n");
     const calls: ToolCallEntry[] = visibleBlocks.filter((block) => String(block.type) === "tool_use").map((block) => ({
       id: String(block.id ?? block.tool_use_id ?? crypto.randomUUID()),
-      name: String(block.name ?? "工具调用"),
+      name: String(block.name ?? t("app.toolCall")),
       params: isRecord(block.input) ? block.input : isRecord(block.params) ? block.params : {},
       status: "done",
     }));
@@ -1039,7 +1042,7 @@ function hydrateTimeline(
     const entry: ContextInjectionEntry = {
       id: `ctx-history-${runId}-${current.contextInjections?.length ?? 0}`,
       source: "system",
-      label: String(injection.label ?? "上下文注入"),
+      label: String(injection.label ?? t("app.contextInjection")),
       chars: Number(injection.chars ?? text.length),
       preview: String(injection.preview ?? ""),
       text,
@@ -1111,7 +1114,7 @@ function applyRuntimeEvent(event: RuntimeEvent) {
       pendingPermissions.value = [...pendingPermissions.value, {
         toolUseId,
         toolName: String(event.tool_name),
-        preview: String(event.param_preview ?? "等待确认"),
+        preview: String(event.param_preview ?? t("app.awaitingConfirmation")),
         runId: relatedRunId,
         sessionId,
       }];
@@ -1178,7 +1181,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   if (type === "permission.requested") {
     const toolUseId = String(event.tool_use_id);
     permissionContexts.set(toolUseId, { runId: relatedRunId, sessionId });
-    const perm: PermissionState = { toolUseId, toolName: String(event.tool_name), preview: String(event.param_preview ?? "等待确认"), status: "pending" };
+    const perm: PermissionState = { toolUseId, toolName: String(event.tool_name), preview: String(event.param_preview ?? t("app.awaitingConfirmation")), status: "pending" };
     const step = stepFor(timelineEvent);
     setStep(step, (current) => ({ ...current, status: "acting", permission: perm, toolCalls: current.toolCalls.map((call) => call.id === toolUseId ? { ...call, status: "awaiting_permission" } : call) }));
     return;
@@ -1206,7 +1209,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     const entry: ContextInjectionEntry = {
       id: `ctx-${runId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       source: String(event.source ?? "system") as ContextInjectionEntry["source"],
-      label: String(event.label ?? "上下文注入"),
+      label: String(event.label ?? t("app.contextInjection")),
       chars: Number(event.chars ?? 0),
       preview: String(event.preview ?? ""),
       text: String(event.text ?? event.preview ?? ""),
@@ -1221,7 +1224,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     const entry: ContextInjectionEntry = {
       id: `ctx-${type}-${runId}-${Date.now()}`,
       source: "intervention",
-      label: type === "denial.intervention" ? "权限熔断干预" : "卡死干预",
+      label: type === "denial.intervention" ? t("app.denialIntervention") : t("app.stuckIntervention"),
       chars: String(event.message ?? "").length,
       preview: String(event.message ?? "").slice(0, 90),
       text: String(event.message ?? ""),
@@ -1236,7 +1239,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     const entry: ContextInjectionEntry = {
       id: `ctx-steering-${runId}-${Date.now()}`,
       source: "steering",
-      label: "追加指令",
+      label: t("app.steeringDirective"),
       chars: content.length,
       preview: content.slice(0, 100),
       text: content,
@@ -1331,7 +1334,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   if (type === "tool.call_finished" || type === "tool.call_failed") {
     const step = stepFor(timelineEvent);
     const callId = String(event.tool_use_id);
-    setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? "工具调用失败") : undefined, elapsedMs: Number(event.elapsed_ms ?? 0), images: type === "tool.call_finished" && Array.isArray(event.images) ? (event.images as { mimeType: string; data: string }[]) : undefined }) }));
+    setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? t("app.toolCallFailed")) : undefined, elapsedMs: Number(event.elapsed_ms ?? 0), images: type === "tool.call_finished" && Array.isArray(event.images) ? (event.images as { mimeType: string; data: string }[]) : undefined }) }));
     const visualPath = pendingVisualWrites.get(callId);
     pendingVisualWrites.delete(callId);
     if (visualPath && type === "tool.call_finished") autoPreviewVisualArtifacts(sessionId, [visualPath]);
@@ -1748,7 +1751,7 @@ async function steerQueuedSubmission(id: string) {
     await steerPrompt(sessionId, item.text + item.contentSuffix, item.images);
     view.queue = view.queue.filter((entry) => entry.id !== id);
   } catch (error) {
-    void showProjectNotice("转入当前轮失败", friendlyError(error).message, "danger");
+    void showProjectNotice(t("app.steerFailed"), friendlyError(error).message, "danger");
   } finally {
     view.queueBusyId = null;
   }
@@ -1783,7 +1786,7 @@ async function stopActiveRun() {
     await cancelRun(runId);
   } catch (error) {
     // 保持运行态与停止入口，用户可以再次发起取消；最终状态只由 run.finished 收尾。
-    console.warn("停止任务请求未及时返回", error);
+    console.warn(t("app.stopRequestTimeout"), error);
   }
 }
 async function chooseTask(id: string) {
@@ -1860,13 +1863,13 @@ async function showProjectFiles(item: Workspace) {
 }
 async function deleteProject(item: Workspace) {
   projectActionsOpen.value = null;
-  const ok = await confirm(`删除项目「${item.name}」？将同时删除该项目的会话与上下文，磁盘文件保留。`, { title: "删除项目", kind: "warning" });
+  const ok = await confirm(t("app.deleteProjectConfirm", { name: item.name }), { title: t("app.deleteProjectTitle"), kind: "warning" });
   if (!ok) return;
   try {
     await deleteWorkspace(item.workspace_id);
   } catch (error) {
     // 删除失败（如命中安全护栏）时保留列表并提示
-    void showProjectNotice("删除项目失败", friendlyError(error).message, "danger");
+    void showProjectNotice(t("app.deleteProjectFailed"), friendlyError(error).message, "danger");
     return;
   }
   workspaces.value = workspaces.value.filter((entry) => entry.workspace_id !== item.workspace_id);
@@ -1930,7 +1933,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
           prompt.value = "";
           attachedFiles.value = [];
         } else {
-          void showProjectNotice("发送失败", friendlyError(error).message, "danger");
+          void showProjectNotice(t("app.sendFailed"), friendlyError(error).message, "danger");
         }
       } finally {
         steering.value = false;
@@ -2000,10 +2003,10 @@ function openProjectDialog(dialog: ProjectDialogState): Promise<boolean> {
   return new Promise((resolve) => { projectDialogResolve = resolve; });
 }
 async function showProjectNotice(title: string, dialogMessage: string, tone: ProjectDialogTone = "neutral") {
-  await openProjectDialog({ title, message: dialogMessage, tone, confirmLabel: "知道了" });
+  await openProjectDialog({ title, message: dialogMessage, tone, confirmLabel: t("app.gotIt") });
 }
 async function confirmProjectAction(title: string, dialogMessage: string, confirmLabel: string) {
-  return await openProjectDialog({ title, message: dialogMessage, tone: "danger", confirmLabel, cancelLabel: "取消" });
+  return await openProjectDialog({ title, message: dialogMessage, tone: "danger", confirmLabel, cancelLabel: t("app.cancel") });
 }
 async function saveProjectEdit() {
   const item = projectBeingEdited.value;
@@ -2026,7 +2029,7 @@ async function toggleProjectPinned(item: Workspace) {
     const updated = await pinWorkspace(item.workspace_id, !item.pinned);
     workspaces.value = workspaces.value.map((entry) => entry.workspace_id === updated.workspace_id ? updated : entry);
     projectActionsOpen.value = null;
-  } catch (error) { await showProjectNotice("操作失败", error instanceof Error ? error.message : String(error), "danger"); }
+  } catch (error) { await showProjectNotice(t("app.actionFailed"), error instanceof Error ? error.message : String(error), "danger"); }
   finally { projectActionBusy.value = false; }
 }
 async function openProjectExplorer(item: Workspace) {
@@ -2034,7 +2037,7 @@ async function openProjectExplorer(item: Workspace) {
   try {
     await invoke("open_path_with_app", { path: item.path, appId: "explorer" });
   } catch (error) {
-    await showProjectNotice("无法打开资源管理器", error instanceof Error ? error.message : String(error), "danger");
+    await showProjectNotice(t("app.openExplorerFailed"), error instanceof Error ? error.message : String(error), "danger");
   }
 }
 async function createProjectWorktree(item: Workspace) {
@@ -2044,13 +2047,13 @@ async function createProjectWorktree(item: Workspace) {
   try {
     const status = await workspaceStatus(item.workspace_id);
     if (!status.is_git_repository) {
-      await showProjectNotice("无法创建永久工作树", "当前项目不是 Git 仓库。请先初始化 Git 并至少提交一次。");
+      await showProjectNotice(t("app.worktreeCreateFailed"), t("app.worktreeNotGitRepo"));
       return;
     }
     const result = await invoke<{ path: string }>("create_persistent_worktree", { workspacePath: item.path, worktreeId: item.workspace_id, label: "project" });
-    await showProjectNotice("永久工作树已创建", result.path, "success");
+    await showProjectNotice(t("app.worktreeCreated"), result.path, "success");
   } catch (error) {
-    await showProjectNotice("无法创建永久工作树", error instanceof Error ? error.message : String(error), "danger");
+    await showProjectNotice(t("app.worktreeCreateFailed"), error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -2059,16 +2062,16 @@ async function archiveProjectChats(item: Workspace) {
   const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id && !session.archived);
   projectActionsOpen.value = null;
   if (!chats.length) {
-    await showProjectNotice("归档聊天", "该项目没有可归档的聊天。");
+    await showProjectNotice(t("app.archiveChats"), t("app.archiveNoChats"));
     return;
   }
   projectActionBusy.value = true;
   try {
     await Promise.all(chats.map((session) => archiveSession(session.session_id)));
     await refreshIndex(false);
-    await showProjectNotice("归档完成", `已归档 ${chats.length} 个聊天。`, "success");
+    await showProjectNotice(t("app.archiveDone"), t("app.archiveCount", { n: chats.length }), "success");
   } catch (error) {
-    await showProjectNotice("无法归档聊天", error instanceof Error ? error.message : String(error), "danger");
+    await showProjectNotice(t("app.archiveFailed"), error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -2077,9 +2080,9 @@ async function removeProject(item: Workspace) {
   const chats = sessions.value.filter((session) => session.workspace_id === item.workspace_id);
   projectActionsOpen.value = null;
   const chatSummary = chats.length
-    ? `其中 ${chats.length} 个聊天会保留，并显示在临时聊天区域。`
-    : "该项目没有关联聊天。";
-  const accepted = await confirmProjectAction("移除项目", `从侧栏移除「${item.name}」？\n\n${chatSummary}\n磁盘目录不会被删除。`, "移除");
+    ? t("app.removeProjectChatSummary", { n: chats.length })
+    : t("app.removeProjectNoChats");
+  const accepted = await confirmProjectAction(t("app.removeProject"), t("app.removeProjectConfirm", { name: item.name, chatSummary }), t("app.removeProjectConfirmLabel"));
   if (!accepted) return;
   projectActionBusy.value = true;
   try {
@@ -2089,10 +2092,10 @@ async function removeProject(item: Workspace) {
     const wasCurrentWorkspace = workspace.value?.workspace_id === item.workspace_id;
     await refreshIndex(false);
     if (wasCurrentWorkspace) workspace.value = null;
-    await showProjectNotice("移除完成", chats.length ? `${chats.length} 个聊天已转到临时聊天区域。` : "项目已从侧栏移除。", "success");
+    await showProjectNotice(t("app.removeDone"), chats.length ? t("app.removeChatsMoved", { n: chats.length }) : t("app.removeProjectDone"), "success");
   } catch (error) {
     await refreshIndex(false);
-    await showProjectNotice("无法移除项目", error instanceof Error ? error.message : String(error), "danger");
+    await showProjectNotice(t("app.removeFailed"), error instanceof Error ? error.message : String(error), "danger");
   }
   finally { projectActionBusy.value = false; }
 }
@@ -2150,7 +2153,7 @@ async function handleRetry(runId: string, userMessage: string) {
     });
     await submitTask(userMessage, null);
   } catch (error) {
-    void showProjectNotice("重试失败", friendlyError(error).message, "danger");
+    void showProjectNotice(t("app.retryFailed"), friendlyError(error).message, "danger");
   }
 }
 // 中断任务的"继续执行"：向当前会话补发一条续跑消息，复用交接摘要作为上下文
@@ -2163,7 +2166,7 @@ function handleReview() {
 }
 async function openLocalProject() {
   closeLauncherMenus();
-  const selected = await openDialog({ directory: true, multiple: false, title: "打开本地项目" });
+  const selected = await openDialog({ directory: true, multiple: false, title: t("app.openLocalProjectTitle") });
   if (typeof selected !== "string") return;
   workspace.value = await openWorkspace(selected);
   await refreshIndex(false);
@@ -2195,7 +2198,7 @@ function clearLauncherWorkspace() {
 }
 async function createLocalWorkspace() {
   closeLauncherMenus();
-  const selected = await openDialog({ directory: true, multiple: false, title: "新建工作空间：选择一个空文件夹" });
+  const selected = await openDialog({ directory: true, multiple: false, title: t("app.newWorkspaceDialogTitle") });
   if (typeof selected !== "string") return;
   workspace.value = await openWorkspace(selected);
   await refreshIndex(false);
@@ -2224,9 +2227,9 @@ function buildMessagePayload(baseText: string): { content: string; images: Image
 // 被跳过的附件统一汇总为一次提示，避免多文件时连续弹窗
 function notifySkippedAttachments(skipped: string[]) {
   if (!skipped.length) return;
-  const shown = skipped.slice(0, 4).join("；");
-  const more = skipped.length > 4 ? `；其余 ${skipped.length - 4} 个也已跳过` : "";
-  void showProjectNotice("部分附件已跳过", shown + more, "danger");
+  const shown = skipped.slice(0, 4).join(t("app.attachmentSkipSeparator"));
+  const more = skipped.length > 4 ? t("app.attachmentsMoreSkipped", { n: skipped.length - 4 }) : "";
+  void showProjectNotice(t("app.attachmentsPartiallySkipped"), shown + more, "danger");
 }
 // 处理「添加附件」读取结果：图片/文本归档，超限或二进制在 error 中提示并跳过
 function addReadAttachments(results: Attachment[]) {
@@ -2239,7 +2242,7 @@ function addReadAttachments(results: Attachment[]) {
     } else if (item.is_text && item.text_content != null) {
       added.push({ path: item.path, name: item.name, size: item.size, kind: "text", textContent: item.text_content });
     } else {
-      skipped.push(`${item.name}：暂不支持作为附件`);
+      skipped.push(t("app.attachmentUnsupported", { name: item.name }));
     }
   }
   if (added.length) attachedFiles.value = [...attachedFiles.value, ...added];
@@ -2247,7 +2250,7 @@ function addReadAttachments(results: Attachment[]) {
 }
 async function selectAttachments() {
   if ("__TAURI_INTERNALS__" in window) {
-    const selected = await openDialog({ directory: false, multiple: true, title: "添加附件" });
+    const selected = await openDialog({ directory: false, multiple: true, title: t("app.addAttachment") });
     const paths = typeof selected === "string" ? [selected] : selected ?? [];
     if (!paths.length) return;
     addReadAttachments(await readAttachments(paths));
@@ -2277,25 +2280,25 @@ async function selectAttachments() {
 async function addBrowserFile(file: File): Promise<string | null> {
   const isImage = file.type.startsWith("image/");
   const limit = isImage ? 5 * 1024 * 1024 : 1024 * 1024;
-  if (file.size > limit) return `${file.name} 超过 ${isImage ? "5MB" : "1MB"} 限制，已跳过`;
+  if (file.size > limit) return t("app.attachmentTooLarge", { name: file.name, limit: isImage ? "5MB" : "1MB" });
   if (isImage) {
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("读取图片失败"));
+      reader.onerror = () => reject(new Error(t("app.attachmentReadImageFailed")));
       reader.readAsDataURL(file);
     }).catch(() => "");
     const comma = dataUrl.indexOf(",");
     const dataBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
     if (dataBase64) attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
-    return dataBase64 ? null : `${file.name}：读取失败`;
+    return dataBase64 ? null : t("app.attachmentReadFailed", { name: file.name });
   }
   const textLike = !file.type || file.type.startsWith("text/") || ["application/json", "application/xml"].includes(file.type);
-  if (!textLike) return `${file.name}：暂不支持作为附件`;
+  if (!textLike) return t("app.attachmentUnsupported", { name: file.name });
   const text = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(new Error("读取文件失败"));
+    reader.onerror = () => reject(new Error(t("app.attachmentReadFileFailed")));
     reader.readAsText(file);
   }).catch(() => "");
   attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
@@ -2405,7 +2408,7 @@ async function openWorkspaceInIde() {
   const target = activeSessionWorkspace.value;
   if (!target) return;
   try { await invoke("open_workspace_in_ide", { workspaceId: target.workspace_id, workspacePath: target.path }); }
-  catch (error) { void showProjectNotice("无法打开 IDE", friendlyError(error).message, "danger"); }
+  catch (error) { void showProjectNotice(t("app.openIdeFailed"), friendlyError(error).message, "danger"); }
 }
 async function openProjectHomepage() {
   const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -2417,10 +2420,10 @@ async function openLicense() {
 }
 async function showKeyboardShortcuts() {
   const mod = isMacOS ? "⌘" : "Ctrl";
-  await message(`${mod} + N  新建任务\n${mod} + O  打开文件夹\n${mod} + K  命令面板\n${mod} + E  查看变更\n${mod} + J  打开终端\n${mod} + B  切换侧栏\nEsc  关闭菜单或弹窗`, { title: "键盘快捷键", kind: "info" });
+  await message(t("app.keyboardShortcutsBody", { mod }), { title: t("app.keyboardShortcuts"), kind: "info" });
 }
 async function showAbout() {
-  await message("SztuCode Desktop\n本地优先、事件驱动的 AI Coding Agent 工作台", { title: "关于 SztuCode", kind: "info" });
+  await message(t("app.aboutBody"), { title: t("app.about"), kind: "info" });
 }
 function closeSettings() {
   settingsOpen.value = false;
@@ -2798,75 +2801,75 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <!-- macOS: fixed toolbar — toggle never moves between titlebar / sidebar. -->
     <header v-if="isMacOS" class="sidebar-macos-toolbar" @pointerdown="onMacTitlebandPointerDown" @dblclick="onMacTitlebandDblClick">
       <div class="nav-toggle-wrap" @pointerdown.stop @dblclick.stop>
-        <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? '\u5c55\u5f00\u5bfc\u822a' : '\u6536\u8d77\u5bfc\u822a'" @click="toggleSidebar">
+        <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav')" @click="toggleSidebar">
           <PanelLeftOpen v-if="sidebarCollapsed" :size="16" :stroke-width="1.8" />
           <PanelLeftClose v-else :size="16" :stroke-width="1.8" />
         </button>
-        <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? '\u5c55\u5f00\u5bfc\u822a' : '\u6536\u8d77\u5bfc\u822a' }}</span><kbd>⌘</kbd><kbd>B</kbd></div>
+        <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav') }}</span><kbd>⌘</kbd><kbd>B</kbd></div>
       </div>
     </header>
     <header class="kimi-titlebar" :class="{ 'is-macos': isMacOS }">
       <div v-if="!isMacOS" class="nav-toggle-wrap">
-        <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? '\u5c55\u5f00\u5bfc\u822a' : '\u6536\u8d77\u5bfc\u822a'" @click="toggleSidebar">
+        <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav')" @click="toggleSidebar">
           <PanelLeftOpen v-if="sidebarCollapsed" :size="16" :stroke-width="1.8" />
           <PanelLeftClose v-else :size="16" :stroke-width="1.8" />
         </button>
-        <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? '\u5c55\u5f00\u5bfc\u822a' : '\u6536\u8d77\u5bfc\u822a' }}</span><kbd>Ctrl</kbd><kbd>B</kbd></div>
+        <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav') }}</span><kbd>Ctrl</kbd><kbd>B</kbd></div>
       </div>
-      <nav class="app-menu-bar" aria-label="应用菜单" @pointerdown.stop @dblclick.stop>
+      <nav class="app-menu-bar" :aria-label="t('app.appMenuAria')" @pointerdown.stop @dblclick.stop>
         <div class="app-menu-item">
-          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'file'" @click="toggleAppMenu('file')">文件</button>
-          <div v-if="activeAppMenu === 'file'" class="app-menu-popover" role="menu" aria-label="文件菜单">
-            <button type="button" role="menuitem" @click="runAppMenuAction(() => beginTask())"><span>新建任务</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} N</kbd></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(openLocalProject)"><span>打开文件夹</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} O</kbd></button>
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'file'" @click="toggleAppMenu('file')">{{ t('app.file') }}</button>
+          <div v-if="activeAppMenu === 'file'" class="app-menu-popover" role="menu" :aria-label="t('app.fileMenuAria')">
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => beginTask())"><span>{{ t('app.newTask') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} N</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openLocalProject)"><span>{{ t('app.openFolder') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} O</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>新建终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>新建浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>{{ t('app.newTerminal') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>{{ t('app.newBrowser') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" :disabled="!activeSessionWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>在 IDE 中打开</span></button>
+            <button type="button" role="menuitem" :disabled="!activeSessionWorkspace" @click="runAppMenuAction(openWorkspaceInIde)"><span>{{ t('app.openInIde') }}</span></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="runAppMenuAction(closeWindow)"><span>退出</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(closeWindow)"><span>{{ t('app.quit') }}</span></button>
           </div>
         </div>
         <div class="app-menu-item">
-          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'edit'" @click="toggleAppMenu('edit')">编辑</button>
-          <div v-if="activeAppMenu === 'edit'" class="app-menu-popover" role="menu" aria-label="编辑菜单">
-            <button type="button" role="menuitem" @click="editCurrentField('undo')"><span>撤销</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Z</kbd></button>
-            <button type="button" role="menuitem" @click="editCurrentField('redo')"><span>重做</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Y</kbd></button>
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'edit'" @click="toggleAppMenu('edit')">{{ t('app.edit') }}</button>
+          <div v-if="activeAppMenu === 'edit'" class="app-menu-popover" role="menu" :aria-label="t('app.editMenuAria')">
+            <button type="button" role="menuitem" @click="editCurrentField('undo')"><span>{{ t('app.undo') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Z</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('redo')"><span>{{ t('app.redo') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} Y</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="editCurrentField('cut')"><span>剪切</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} X</kbd></button>
-            <button type="button" role="menuitem" @click="editCurrentField('copy')"><span>复制</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} C</kbd></button>
-            <button type="button" role="menuitem" @click="editCurrentField('paste')"><span>粘贴</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} V</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('cut')"><span>{{ t('app.cut') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} X</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('copy')"><span>{{ t('app.copy') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} C</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('paste')"><span>{{ t('app.paste') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} V</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="editCurrentField('selectAll')"><span>全选</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} A</kbd></button>
+            <button type="button" role="menuitem" @click="editCurrentField('selectAll')"><span>{{ t('app.selectAll') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} A</kbd></button>
           </div>
         </div>
         <div class="app-menu-item">
-          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'view'" @click="toggleAppMenu('view')">视图</button>
-          <div v-if="activeAppMenu === 'view'" class="app-menu-popover" role="menu" aria-label="视图菜单">
-            <button type="button" role="menuitem" @click="runAppMenuAction(() => openPage('source-control'))"><span>变更</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} E</kbd></button>
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>浏览器</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('files'))"><span>文件</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} G</kbd></button>
-            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>终端</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'view'" @click="toggleAppMenu('view')">{{ t('app.view') }}</button>
+          <div v-if="activeAppMenu === 'view'" class="app-menu-popover" role="menu" :aria-label="t('app.viewMenuAria')">
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => openPage('source-control'))"><span>{{ t('app.changes') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} E</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('browser'))"><span>{{ t('app.browser') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ B</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('files'))"><span>{{ t('app.file') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} G</kbd></button>
+            <button type="button" role="menuitem" :disabled="!activeWorkspace" @click="runAppMenuAction(() => openInspectorTool('terminal'))"><span>{{ t('app.terminal') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} J</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitemcheckbox" :aria-checked="statusBarVisible" @click="runAppMenuAction(toggleStatusBar)"><span><i class="app-menu-check">{{ statusBarVisible ? '✓' : '' }}</i>状态栏</span></button>
+            <button type="button" role="menuitemcheckbox" :aria-checked="statusBarVisible" @click="runAppMenuAction(toggleStatusBar)"><span><i class="app-menu-check">{{ statusBarVisible ? '✓' : '' }}</i>{{ t('app.statusBar') }}</span></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom + .1))"><span>放大</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} =</kbd></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom - .1))"><span>缩小</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} -</kbd></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(1))"><span>重置缩放</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} 0</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom + .1))"><span>{{ t('app.zoomIn') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} =</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(webviewZoom - .1))"><span>{{ t('app.zoomOut') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} -</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(() => applyZoom(1))"><span>{{ t('app.resetZoom') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} 0</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="runAppMenuAction(openSettings)"><span>设置</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openSettings)"><span>{{ t('app.settings') }}</span></button>
           </div>
         </div>
         <div class="app-menu-item">
-          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'help'" @click="toggleAppMenu('help')">帮助</button>
-          <div v-if="activeAppMenu === 'help'" class="app-menu-popover app-menu-popover--help" role="menu" aria-label="帮助菜单">
-            <button type="button" role="menuitem" @click="runAppMenuAction(openCommandPalette)"><span>命令面板</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} K</kbd></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(showKeyboardShortcuts)"><span>键盘快捷键</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ /</kbd></button>
+          <button type="button" aria-haspopup="menu" :aria-expanded="activeAppMenu === 'help'" @click="toggleAppMenu('help')">{{ t('app.help') }}</button>
+          <div v-if="activeAppMenu === 'help'" class="app-menu-popover app-menu-popover--help" role="menu" :aria-label="t('app.helpMenuAria')">
+            <button type="button" role="menuitem" @click="runAppMenuAction(openCommandPalette)"><span>{{ t('app.commandPalette') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} K</kbd></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(showKeyboardShortcuts)"><span>{{ t('app.keyboardShortcuts') }}</span><kbd>{{ isMacOS ? '⌘' : 'Ctrl' }} ⇧ /</kbd></button>
             <div class="app-menu-separator" role="separator" />
-            <button type="button" role="menuitem" @click="runAppMenuAction(openLicense)"><span>查看许可证</span></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(openProjectHomepage)"><span>项目主页</span></button>
-            <button type="button" role="menuitem" @click="runAppMenuAction(showAbout)"><span>关于 SztuCode</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openLicense)"><span>{{ t('app.viewLicense') }}</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(openProjectHomepage)"><span>{{ t('app.projectHomepage') }}</span></button>
+            <button type="button" role="menuitem" @click="runAppMenuAction(showAbout)"><span>{{ t('app.about') }}</span></button>
           </div>
         </div>
       </nav>
@@ -2883,155 +2886,155 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
       <header class="sidebar-brand">
         <div class="mode-switch-wrap">
-          <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" aria-label="切换工作模式" @click="modeMenuOpen = !modeMenuOpen">
+          <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" :aria-label="t('app.switchWorkMode')" @click="modeMenuOpen = !modeMenuOpen">
             <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuChat' }}</h1>
             <ChevronDown :size="14" :stroke-width="1.8" />
           </button>
-          <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" aria-label="工作模式">
+          <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" :aria-label="t('app.workMode')">
             <button type="button" role="menuitemradio" :aria-checked="workMode === 'code'" @click="switchWorkMode('code')">
-              <span><b>SztuCode</b><small>编码模式</small></span>
+              <span><b>SztuCode</b><small>{{ t('app.codeMode') }}</small></span>
               <Check v-if="workMode === 'code'" :size="15" />
             </button>
             <button type="button" role="menuitemradio" :aria-checked="workMode === 'chat'" @click="switchWorkMode('chat')">
-              <span><b>SztuChat</b><small>聊天模式</small></span>
+              <span><b>SztuChat</b><small>{{ t('app.chatMode') }}</small></span>
               <Check v-if="workMode === 'chat'" :size="15" />
             </button>
           </div>
         </div>
-        <button class="task-search-toggle" type="button" title="搜索任务或项目" aria-label="搜索任务或项目" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
+        <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
         </button>
       </header>
 
       <Teleport to="body">
-        <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" aria-label="搜索任务或项目" @pointerdown.stop>
-          <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" placeholder="搜索任务或项目" aria-label="搜索任务或项目" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" title="清除搜索" aria-label="清除搜索" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
-          <p class="task-search-popover__hint">{{ taskQuery ? `搜索结果 · ${visibleSessions.length}` : '最近会话' }}</p>
+        <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" :aria-label="t('app.searchTasks')" @pointerdown.stop>
+          <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" :placeholder="t('app.searchTasks')" :aria-label="t('app.searchTasks')" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" :title="t('app.clearSearch')" :aria-label="t('app.clearSearch')" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
+          <p class="task-search-popover__hint">{{ taskQuery ? t('app.searchResultsCount', { n: visibleSessions.length }) : t('app.recentSessions') }}</p>
           <div class="task-search-popover__results">
-            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || '未命名任务' }}</span><small>{{ taskStatusLabel(task) }}</small></button>
-            <p v-if="taskQuery && !visibleSessions.length">没有匹配的会话</p>
+            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || t('app.unnamedTask') }}</span><small>{{ taskStatusLabel(task) }}</small></button>
+            <p v-if="taskQuery && !visibleSessions.length">{{ t('app.noMatchingSessions') }}</p>
           </div>
         </div>
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />新建任务</button>
+        <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />{{ t('app.newTask') }}</button>
       </div>
 
-      <nav class="sidebar-tools" aria-label="工作台工具">
-        <button :class="{ active: page === 'board' }" @click="openPage('board')"><LayoutDashboard :size="16" :stroke-width="1.8" /><span>全部任务</span></button>
-        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><CalendarClock :size="16" :stroke-width="1.8" /><span>自动化</span></button>
-        <button class="sidebar-more-trigger" :class="{ expanded: sidebarToolsExpanded }" :aria-expanded="sidebarToolsExpanded" aria-controls="sidebar-more-tools" @click="sidebarToolsExpanded = !sidebarToolsExpanded"><Ellipsis :size="16" :stroke-width="1.8" /><span>更多</span><ChevronDown :size="16" :stroke-width="1.8" /></button>
+      <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
+        <button :class="{ active: page === 'board' }" @click="openPage('board')"><LayoutDashboard :size="16" :stroke-width="1.8" /><span>{{ t('app.allTasks') }}</span></button>
+        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><CalendarClock :size="16" :stroke-width="1.8" /><span>{{ t('app.automations') }}</span></button>
+        <button class="sidebar-more-trigger" :class="{ expanded: sidebarToolsExpanded }" :aria-expanded="sidebarToolsExpanded" aria-controls="sidebar-more-tools" @click="sidebarToolsExpanded = !sidebarToolsExpanded"><Ellipsis :size="16" :stroke-width="1.8" /><span>{{ t('app.more') }}</span><ChevronDown :size="16" :stroke-width="1.8" /></button>
         <div v-if="sidebarToolsExpanded" id="sidebar-more-tools" class="sidebar-more-tools">
           <div>
-            <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><Puzzle :size="16" :stroke-width="1.8" /><span>技能</span></button>
-            <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><Globe2 :size="16" :stroke-width="1.8" /><span>浏览器连接</span></button>
-            <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><MessageCircle :size="16" :stroke-width="1.8" /><span>通用问答</span></button>
+            <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><Puzzle :size="16" :stroke-width="1.8" /><span>{{ t('app.skills') }}</span></button>
+            <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><Globe2 :size="16" :stroke-width="1.8" /><span>{{ t('app.webbridge') }}</span></button>
+            <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><MessageCircle :size="16" :stroke-width="1.8" /><span>{{ t('app.generalChat') }}</span></button>
           </div>
         </div>
       </nav>
 
       <div class="sidebar-workspace">
         <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
-          <span class="side-label">搜索结果 <small>{{ visibleSessions.length }}</small></span>
+          <span class="side-label">{{ t('app.searchResults') }} <small>{{ visibleSessions.length }}</small></span>
           <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
-              <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || '未命名任务' }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
+              <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
             </button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
-          <p v-if="!visibleSessions.length" class="side-empty">没有匹配的任务</p>
+          <p v-if="!visibleSessions.length" class="side-empty">{{ t('app.noMatchingTasks') }}</p>
         </section>
 
         <section class="side-section project-tree" :class="{ 'has-pinned-section': !normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length) }">
-          <span v-if="!normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length)" class="side-label pinned-tree-label">置顶</span>
+          <span v-if="!normalizedTaskQuery && (pinnedProjects.length || pinnedTemporaryTasks.length)" class="side-label pinned-tree-label">{{ t('app.pinned') }}</span>
           <div v-if="pinnedTemporaryTasks.length && !normalizedTaskQuery" class="pinned-temporary-list">
-            <div v-for="task in pinnedTemporaryTasks" :key="`pinned-temporary-${task.session_id}`" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><span>{{ task.title || '未命名任务' }}</span></button><SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" /></div>
+            <div v-for="task in pinnedTemporaryTasks" :key="`pinned-temporary-${task.session_id}`" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><span>{{ task.title || t('app.unnamedTask') }}</span></button><SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" /></div>
           </div>
-          <span class="side-label side-label--action project-tree-label"><span>项目</span><button title="打开本地目录" aria-label="打开本地目录" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
+          <span class="side-label side-label--action project-tree-label"><span>{{ t('app.projects') }}</span><button :title="t('app.openLocalDir')" :aria-label="t('app.openLocalDir')" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
             <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
-              <button class="project-row-toggle" title="在项目中新建临时会话" @click.stop.prevent>
+              <button class="project-row-toggle" :title="t('app.newTempSessionInProject')" @click.stop.prevent>
                 <FolderOpen :size="16" :stroke-width="1.8" />
                 <span>{{ item.name }}</span>
               </button>
-              <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="`${item.name} 项目操作`">
-                <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? '取消置顶' : '置顶' }}</button>
-                <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />编辑</button>
+              <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="t('app.projectActionsAria', { name: item.name })">
+                <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? t('app.unpin') : t('app.pin') }}</button>
+                <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />{{ t('app.edit') }}</button>
                 <div class="project-action-menu__separator" />
-                <button role="menuitem" @click="openProjectExplorer(item)"><FolderOpen :size="16" :stroke-width="1.8" />在资源管理器中打开</button>
-                <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />创建永久工作树</button>
+                <button role="menuitem" @click="openProjectExplorer(item)"><FolderOpen :size="16" :stroke-width="1.8" />{{ t('app.openInExplorer') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />{{ t('app.createWorktree') }}</button>
                 <div class="project-action-menu__separator" />
-                <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />归档聊天</button>
-                <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><Unlink :size="16" :stroke-width="1.8" />移除项目</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />{{ t('app.archiveChats') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><Unlink :size="16" :stroke-width="1.8" />{{ t('app.removeProject') }}</button>
               </div>
             </div>
             <div class="project-task-list">
               <div class="project-task-list__inner">
                 <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
-                    <span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span>
+                    <span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span>
                   </button>
                   <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
                 </div>
-                <p v-if="!item.tasks.length" class="project-empty">没有聊天</p>
+                <p v-if="!item.tasks.length" class="project-empty">{{ t('app.noChats') }}</p>
               </div>
             </div>
           </div>
-          <p v-if="!allProjects.length && !normalizedTaskQuery" class="side-empty">打开本地目录以建立项目上下文</p>
+          <p v-if="!allProjects.length && !normalizedTaskQuery" class="side-empty">{{ t('app.openLocalDirHint') }}</p>
         </section>
 
         <section v-if="ordinaryTemporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
-          <span class="side-label">临时任务</span>
+          <span class="side-label">{{ t('app.temporaryTasks') }}</span>
           <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
-            <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || '未命名任务' }}</span></button>
+            <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span></button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
         </section>
 
         <details v-if="archivedProjects.length && !normalizedTaskQuery" class="archived-projects">
-          <summary><Archive :size="16" :stroke-width="1.8" />已归档项目 <small>{{ archivedProjects.length }}</small></summary>
+          <summary><Archive :size="16" :stroke-width="1.8" />{{ t('app.archivedProjects') }} <small>{{ archivedProjects.length }}</small></summary>
           <div v-for="item in archivedProjects" :key="item.workspace_id" class="project-row-shell">
-            <button class="project-row archived-project-row" title="恢复项目" @click="resumeProject(item)"><RotateCcw :size="16" :stroke-width="1.8" /><span>{{ item.name }}</span></button>
+            <button class="project-row archived-project-row" :title="t('app.restoreProject')" @click="resumeProject(item)"><RotateCcw :size="16" :stroke-width="1.8" /><span>{{ item.name }}</span></button>
           </div>
         </details>
       </div>
 
       <footer v-if="statusBarVisible" class="sidebar-footer">
-        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>本地服务</b><small>{{ connected ? '已连接' : runtimeConnectionError ? '连接中断，正在重连…' : '未连接' }}</small></span></div>
-        <button ref="settingsButton" class="settings-link" title="设置" aria-label="设置" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
+        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>{{ t('app.localService') }}</b><small>{{ connected ? t('app.connected') : runtimeConnectionError ? t('app.reconnecting') : t('app.disconnected') }}</small></span></div>
+        <button ref="settingsButton" class="settings-link" :title="t('app.settings')" :aria-label="t('app.settings')" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
       </footer>
       </aside>
       <Teleport to="body">
         <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @pointerenter="keepProjectPreviewOpen" @pointerdown="keepProjectPreviewOpen" @focusin="keepProjectPreviewOpen" @focusout="handleProjectPreviewFocusOut" @mouseleave="scheduleProjectPreviewClose">
-          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? '取消置顶' : '置顶项目'" :aria-label="previewProject.pinned ? '取消置顶' : '置顶项目'" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><PinOff v-if="previewProject.pinned" :size="16" :stroke-width="1.7" /><Pin v-else :size="16" :stroke-width="1.7" /></button></header>
-          <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ previewProject.tasks.length }} 个任务</span></div>
+          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :aria-label="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><PinOff v-if="previewProject.pinned" :size="16" :stroke-width="1.7" /><Pin v-else :size="16" :stroke-width="1.7" /></button></header>
+          <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ t('app.tasksCount', { n: previewProject.tasks.length }) }}</span></div>
           <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ previewProject.path }}</span></div>
-          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />编辑项目</button>
+          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />{{ t('app.editProject') }}</button>
         </div>
       </Teleport>
     </div>
     <div
       class="sidebar-resizer"
       role="separator"
-      aria-label="调整导航宽度"
+      :aria-label="t('app.resizeNavWidth')"
       aria-controls="primary-navigation"
       aria-orientation="vertical"
       :aria-valuemin="SIDEBAR_MIN_WIDTH"
       :aria-valuemax="SIDEBAR_MAX_WIDTH"
       :aria-valuenow="Math.round(sidebarWidth)"
       tabindex="0"
-      title="拖动调整导航宽度"
+      :title="t('app.dragResizeNavWidth')"
       @pointerdown="startSidebarDrag"
       @keydown="resizeSidebarWithKeyboard"
     ></div>
 
     <div v-if="sessionPreview" class="session-preview" :style="{ top: `${sessionPreview.top}px`, left: `${sessionPreview.left}px` }" role="tooltip">
-      <b class="session-preview__title">{{ sessionPreview.task.title || '未命名任务' }}</b>
-      <div class="session-preview__row"><Clock :size="16" :stroke-width="1.8" /><span>计时</span><em>{{ previewElapsed(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><GitBranch :size="16" :stroke-width="1.8" /><span>分支</span><em>{{ previewBranch(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><Folder :size="16" :stroke-width="1.8" /><span>项目目录</span><em>{{ previewDirectory(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><Coins :size="16" :stroke-width="1.8" /><span>总 tokens</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
+      <b class="session-preview__title">{{ sessionPreview.task.title || t('app.unnamedTask') }}</b>
+      <div class="session-preview__row"><Clock :size="16" :stroke-width="1.8" /><span>{{ t('app.timingLabel') }}</span><em>{{ previewElapsed(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><GitBranch :size="16" :stroke-width="1.8" /><span>{{ t('app.branch') }}</span><em>{{ previewBranch(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><Folder :size="16" :stroke-width="1.8" /><span>{{ t('app.projectDirectory') }}</span><em>{{ previewDirectory(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><Coins :size="16" :stroke-width="1.8" /><span>{{ t('app.totalTokens') }}</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
     </div>
 
     <main class="kimi-main" :class="{ 'chat-main': page === 'chat', 'work-active': page === 'work' }">
@@ -3039,41 +3042,41 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <section v-if="active" class="work-page">
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
             <section class="task-canvas">
-              <div v-if="sessionLoading" class="session-loading" role="status" aria-label="正在加载会话">
+              <div v-if="sessionLoading" class="session-loading" role="status" :aria-label="t('app.loadingSession')">
                 <Terminal :size="40" :stroke-width="1.5" />
-                <span>正在加载会话…</span>
+                <span>{{ t('app.loadingSessionDots') }}</span>
               </div>
               <header class="work-header">
-                <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || '未选择项目' }}</span><ChevronDown :size="14" /></button>
+                <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || t('app.noProjectSelected') }}</span><ChevronDown :size="14" /></button>
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
-                  <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
-                  <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
+                  <button class="source-control-toggle" :title="t('app.sourceControl')" :aria-label="t('app.sourceControl')" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
+                  <button class="workspace-panel-toggle" :title="t('app.workspace')" :aria-label="t('app.workspace')" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
               </header>
               <div v-if="pendingPermissions.length" class="global-permission-banner" aria-live="polite">
                 <div v-for="perm in pendingPermissions" :key="perm.toolUseId" class="global-permission-item">
-                  <ShieldCheck :size="15" /><b>后台任务请求权限</b><span>{{ perm.toolName }} · {{ perm.preview }}</span>
-                  <button type="button" @click="decidePermission(perm.toolUseId, 'deny_once')">拒绝</button>
-                  <button type="button" class="allow" @click="decidePermission(perm.toolUseId, 'allow_once')">允许一次</button>
+                  <ShieldCheck :size="15" /><b>{{ t('app.bgTaskPermission') }}</b><span>{{ perm.toolName }} · {{ perm.preview }}</span>
+                  <button type="button" @click="decidePermission(perm.toolUseId, 'deny_once')">{{ t('app.deny') }}</button>
+                  <button type="button" class="allow" @click="decidePermission(perm.toolUseId, 'allow_once')">{{ t('app.allowOnce') }}</button>
                 </div>
               </div>
               <div v-if="backgroundUserQuestions.length" class="global-permission-banner global-question-banner" aria-live="polite">
                 <div v-for="pending in backgroundUserQuestions" :key="pending.rpc_id" class="global-permission-item global-question-item">
-                  <MessageCircle :size="15" /><b>后台任务等待回答</b><span>{{ pending.questions[0]?.question || 'Agent 需要你的选择' }}</span>
-                  <button type="button" class="open" @click="chooseTask(pending.session_id)">打开任务</button>
+                  <MessageCircle :size="15" /><b>{{ t('app.bgTaskQuestion') }}</b><span>{{ pending.questions[0]?.question || t('app.agentNeedsChoice') }}</span>
+                  <button type="button" class="open" @click="chooseTask(pending.session_id)">{{ t('app.openTask') }}</button>
                 </div>
               </div>
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
-                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>开启「{{ activeWorkspace?.name || '当前项目' }}」的构筑之路。</b></div>
+                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
                   <KeepAlive>
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->
-                <div v-if="turnDotCount > 1" ref="turnDotWrapEl" class="turn-dot-wrap" aria-label="对话轮次导航">
+                <div v-if="turnDotCount > 1" ref="turnDotWrapEl" class="turn-dot-wrap" :aria-label="t('app.turnNavAria')">
                   <nav class="turn-dot-rail" role="tablist" @mouseleave="turnDotHoverIdx = -1">
                     <div ref="turnDotRailEl" class="turn-dot-scroll">
                       <button
@@ -3085,7 +3088,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                         class="turn-dot"
                         :class="{ active: turnDotActive === idx }"
                         :aria-selected="turnDotActive === idx"
-                        :aria-label="`第 ${idx + 1} 轮：${label}`"
+                        :aria-label="t('app.turnAria', { n: idx + 1, label })"
                         @click="scrollToTurn(idx)"
                         @mouseenter="handleDotHover(idx, $event)"
                         @focus="handleDotHover(idx, $event)"
@@ -3105,7 +3108,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <span class="turn-dot-bubble-inner">{{ turnLabels[turnDotHoverIdx] }}</span>
                   </span>
                 </div>
-                <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" title="回到底部" aria-label="回到底部" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
+                <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" :title="t('app.backToBottom')" :aria-label="t('app.backToBottom')" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
                 <!-- 暂时隐藏“修改了 N 个文件”提示。
@@ -3131,15 +3134,15 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   />
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                      <textarea ref="activePrompt" v-model="prompt" aria-label="任务输入框" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '汝之所想，皆以言成' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                      <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder')))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
-              <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" style="touch-action: none;" @pointerdown="startDividerDrag" />
+              <div class="layout-divider" role="separator" aria-orientation="vertical" :title="t('app.dragResizePanel')" style="touch-action: none;" @pointerdown="startDividerDrag" />
               <ProjectInspector
                 ref="inspectorRef"
                 :workspace-id="activeWorkspace.workspace_id"
@@ -3167,34 +3170,34 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <form class="kimi-composer landing-composer" @submit.prevent="submit()">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
-                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
-                <textarea ref="launcherPrompt" v-model="prompt" aria-label="任务输入框" placeholder="汝之所想，皆以言成" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :placeholder="t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div class="composer-toolbar launcher-toolbar">
-                  <button type="button" class="round launcher-attachment-trigger" title="添加附件" aria-label="添加附件" @click="selectAttachments"><Plus :size="18" /></button>
+                  <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><Plus :size="18" /></button>
                   <div class="launcher-permission-control">
                     <button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><ShieldCheck :size="15" />{{ permissionModeLabel }}<ChevronDown :size="13" /></button>
-                    <div v-if="launcherPermissionMenuOpen" class="launcher-popover permission-popover" role="menu" aria-label="权限模式">
-                      <button type="button" class="full-access-row" role="menuitemcheckbox" :aria-checked="runtimeSettings?.permission_mode === 'auto'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><span><b>允许全部权限</b><small>跳过所有操作确认</small></span><i :class="{ active: runtimeSettings?.permission_mode === 'auto' }"><em /></i></button>
+                    <div v-if="launcherPermissionMenuOpen" class="launcher-popover permission-popover" role="menu" :aria-label="t('app.permissionModeAria')">
+                      <button type="button" class="full-access-row" role="menuitemcheckbox" :aria-checked="runtimeSettings?.permission_mode === 'auto'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><span><b>{{ t('app.allowAllPermissions') }}</b><small>{{ t('app.skipConfirmations') }}</small></span><i :class="{ active: runtimeSettings?.permission_mode === 'auto' }"><em /></i></button>
                       <p v-if="permissionSettingsError" class="launcher-menu-error">{{ permissionSettingsError }}</p>
                     </div>
                   </div>
                   <span />
                   <ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" />
-                  <button v-if="isRunActive" class="send stop" type="button" title="停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" aria-label="发送任务" :disabled="!connected || !prompt.trim()"><ArrowUp :size="15" /></button>
+                  <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim()"><ArrowUp :size="15" /></button>
                 </div>
               </div>
               <div class="launcher-project-control">
-                <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><FolderOpen :size="15" /><span>{{ workspace?.name || '选择本地项目' }}</span><ChevronDown :size="13" /></button>
-                <div v-if="launcherProjectMenuOpen" class="launcher-popover project-picker-popover" role="menu" aria-label="选择项目">
-                  <label class="project-picker-search"><Search :size="15" /><input v-model="launcherProjectQuery" type="search" placeholder="搜索工作空间" aria-label="搜索工作空间" /></label>
+                <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><FolderOpen :size="15" /><span>{{ workspace?.name || t('app.selectLocalProject') }}</span><ChevronDown :size="13" /></button>
+                <div v-if="launcherProjectMenuOpen" class="launcher-popover project-picker-popover" role="menu" :aria-label="t('app.selectProject')">
+                  <label class="project-picker-search"><Search :size="15" /><input v-model="launcherProjectQuery" type="search" :placeholder="t('app.searchWorkspace')" :aria-label="t('app.searchWorkspace')" /></label>
                   <div v-if="filteredLauncherWorkspaces.length" class="project-picker-list">
                     <button v-for="item in filteredLauncherWorkspaces" :key="item.workspace_id" type="button" role="menuitemradio" :aria-checked="workspace?.workspace_id === item.workspace_id" @click="chooseLauncherWorkspace(item)"><Folder :size="16" /><span><b>{{ item.name }}</b><small>{{ item.path }}</small></span><Check v-if="workspace?.workspace_id === item.workspace_id" :size="15" /></button>
                   </div>
-                  <p v-else class="project-picker-empty">没有匹配的工作空间</p>
+                  <p v-else class="project-picker-empty">{{ t('app.noMatchingWorkspaces') }}</p>
                   <div class="project-picker-actions">
-                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>临时任务</span></button>
-                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>新建工作空间</span></button>
-                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>打开本地文件夹</span></button>
+                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>{{ t('app.temporaryTasks') }}</span></button>
+                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>{{ t('app.newWorkspace') }}</span></button>
+                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>{{ t('app.openLocalFolder') }}</span></button>
                   </div>
                 </div>
               </div>
@@ -3206,22 +3209,22 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <section v-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
 
-      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><GitBranch :size="30" /><h1>暂无可用工作区</h1><p>打开或选择一个项目后即可查看源代码管理。</p><button type="button" @click="openPage('work')">返回工作区</button></div></section>
+      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><GitBranch :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
-        <header><div><h1>全部任务</h1><p>管理项目任务、临时任务与归档记录</p></div><button class="outline-button" @click="refreshIndex(false)">刷新</button></header>
+        <header><div><h1>{{ t('app.allTasks') }}</h1><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
         <div class="session-board">
           <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.status }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
-          <h2 v-if="archivedSessions.length">已归档</h2>
+          <h2 v-if="archivedSessions.length">{{ t('app.archived') }}</h2>
           <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
-          <div v-if="!sessions.length" class="empty-state"><LayoutDashboard :size="58" /><h2>暂无会话</h2></div>
+          <div v-if="!sessions.length" class="empty-state"><LayoutDashboard :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
         </div>
       </section>
       <section v-else-if="page === 'automations'" class="chat-main"><ChatPortal view="automations" :connected="connected" @submit="submitChat" @navigate="(view) => { page = 'chat'; chatView = view }" @open-project="openLocalProject" /></section>
 
       <section v-else-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 
-      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>浏览器连接</h1><p>连接浏览器，让 Agent 在授权范围内协助网页操作</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>连接状态</h2><p>当前未连接。此功能需要浏览器扩展与本地服务支持。</p></div><span class="status-pill">未连接</span></div></section>
+      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ t('app.webbridgeHint') }}</p></div><span class="status-pill">{{ t('app.disconnected') }}</span></div></section>
     </main>
 
     <Teleport to="body">
@@ -3241,15 +3244,15 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
         <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
           <header>
-            <div><h2 id="project-edit-title">编辑项目</h2><p>修改项目在侧边栏中显示的名称。</p></div>
-            <button type="button" aria-label="关闭编辑窗口" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
+            <div><h2 id="project-edit-title">{{ t('app.editProject') }}</h2><p>{{ t('app.editProjectDesc') }}</p></div>
+            <button type="button" :aria-label="t('app.closeEditWindow')" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
           </header>
           <div class="project-edit-dialog__body">
-            <label><span>项目名称</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus placeholder="输入项目名称" /></label>
-            <label><span>项目位置</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
+            <label><span>{{ t('app.projectName') }}</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus :placeholder="t('app.projectNamePlaceholder')" /></label>
+            <label><span>{{ t('app.projectLocation') }}</span><input :value="projectBeingEdited.path" readonly tabindex="-1" /></label>
             <p v-if="projectEditError" class="project-edit-dialog__error" role="alert">{{ projectEditError }}</p>
           </div>
-          <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">取消</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? '正在保存…' : '保存' }}</button></footer>
+          <footer><button type="button" :disabled="projectActionBusy" @click="closeProjectEdit">{{ t('app.cancel') }}</button><button type="submit" class="primary" :disabled="projectActionBusy || !projectEditName.trim()">{{ projectActionBusy ? t('app.saving') : t('app.save') }}</button></footer>
         </form>
       </div>
 
@@ -3273,13 +3276,13 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <div v-if="permissionConfirmOpen" class="permission-confirm-backdrop" role="presentation" @mousedown.self="permissionConfirmOpen = false">
         <section class="permission-confirm" role="alertdialog" aria-modal="true" aria-labelledby="permission-confirm-title" aria-describedby="permission-confirm-description">
-          <header><span><AlertTriangle :size="19" /></span><div><h2 id="permission-confirm-title">高风险权限提示</h2><p id="permission-confirm-description">允许全部权限后，Agent 将直接执行操作，不再逐次请求你的确认。</p></div></header>
+          <header><span><AlertTriangle :size="19" /></span><div><h2 id="permission-confirm-title">{{ t('app.highRiskPermission') }}</h2><p id="permission-confirm-description">{{ t('app.fullAccessWarning') }}</p></div></header>
           <div class="permission-confirm__body">
-            <b>可能产生的后果</b>
-            <ul><li>文件被覆盖、误删或损坏</li><li>系统配置被更改，导致软件异常</li><li>执行无法撤销的命令或外部操作</li></ul>
-            <p><AlertTriangle :size="16" />部分操作不可逆，重要数据可能永久丢失。建议操作前备份重要内容。</p>
+            <b>{{ t('app.possibleConsequences') }}</b>
+            <ul><li>{{ t('app.consequenceFiles') }}</li><li>{{ t('app.consequenceConfig') }}</li><li>{{ t('app.consequenceIrreversible') }}</li></ul>
+            <p><AlertTriangle :size="16" />{{ t('app.fullAccessCaution') }}</p>
           </div>
-          <footer><button type="button" @click="permissionConfirmOpen = false">取消</button><button type="button" class="danger" :disabled="permissionSaving" @click="confirmFullAccess">{{ permissionSaving ? '正在启用…' : '允许全部权限' }}</button></footer>
+          <footer><button type="button" @click="permissionConfirmOpen = false">{{ t('app.cancel') }}</button><button type="button" class="danger" :disabled="permissionSaving" @click="confirmFullAccess">{{ permissionSaving ? t('app.enabling') : t('app.allowAllPermissions') }}</button></footer>
         </section>
       </div>
     </Teleport>

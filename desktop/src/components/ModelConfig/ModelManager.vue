@@ -3,13 +3,16 @@ import { ArrowLeft, Bot, Brain, Check, ChevronDown, Code2, Cpu, ExternalLink, Ey
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Teleport, computed, nextTick, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import {
   deleteModelProfile, getProviderStatus, listModelProfiles, saveModelProfile, selectModelProfile, testModelProfile,
   type ModelProfile, type ProviderStatus, type RuntimeSettings,
 } from "../../services/sztu-runtime";
-import { logoForVendor, modelVendors, type ModelVendor } from "./model-vendors";
+import { CUSTOM_VENDOR_ID, logoForVendor, modelVendors, vendorIdByName, type ModelVendor } from "./model-vendors";
 import type { ApiFormat } from "../../services/sztu-runtime";
+
+const { t } = useI18n({ useScope: "global" });
 
 const emit = defineEmits<{
   close: [];
@@ -25,14 +28,14 @@ const editingModel = ref<ModelProfile | null>(null);
 const selectedVendor = ref<ModelVendor | null>(null);
 const name = ref(""); const icon = ref("sparkles"); const modelId = ref(""); const baseUrl = ref(""); const apiKey = ref("");
 const customModelIcons = [
-  { id: "sparkles", label: "闪光", component: Sparkles },
-  { id: "bot", label: "机器人", component: Bot },
-  { id: "brain", label: "大脑", component: Brain },
-  { id: "code", label: "代码", component: Code2 },
-  { id: "cpu", label: "芯片", component: Cpu },
-  { id: "chat", label: "对话", component: MessageSquare },
+  { id: "sparkles", component: Sparkles },
+  { id: "bot", component: Bot },
+  { id: "brain", component: Brain },
+  { id: "code", component: Code2 },
+  { id: "cpu", component: Cpu },
+  { id: "chat", component: MessageSquare },
 ] as const;
-const vendorIconOptions = modelVendors.filter((v) => v.name !== "自定义模型" && v.logo);
+const vendorIconOptions = modelVendors.filter((v) => v.id !== CUSTOM_VENDOR_ID && v.logo);
 const provider = ref<"anthropic" | "openai">("openai");
 const apiFormat = ref<ApiFormat>("openai_chat_completions");
 const advancedOpen = ref(false);
@@ -124,7 +127,7 @@ async function getApiKey() {
     if (isTauri()) await openUrl(url);
     else window.open(url, "_blank", "noopener,noreferrer");
   } catch (reason) {
-    error.value = `无法打开 API 密钥页面：${reason instanceof Error ? reason.message : String(reason)}`;
+    error.value = t("model.openKeyPageFailed", { reason: reason instanceof Error ? reason.message : String(reason) });
   }
 }
 function closeEditor() {
@@ -218,7 +221,7 @@ async function selectModel(item: ModelProfile) {
 }
 function resetFormDefaults() {
   if (!selectedVendor.value) return;
-  name.value = selectedVendor.value.name;
+  name.value = vendorLabel(selectedVendor.value);
   icon.value = "sparkles";
   modelId.value = "";
   baseUrl.value = selectedVendor.value.baseUrl;
@@ -270,16 +273,16 @@ onMounted(() => {
       <!-- 模型列表 -->
       <div class="model-list">
         <div class="model-list-header">
-          <span class="model-list-title">所有模型</span>
-          <span class="model-list-count">{{ models.length }} 个</span>
+          <span class="model-list-title">{{ t("model.all") }}</span>
+          <span class="model-list-count">{{ t("model.count", { n: models.length }) }}</span>
         </div>
-        
+
         <div v-for="item in models" :key="item.id" class="model-card" :class="{ 'model-card--current': item.is_current }">
-          <button class="model-card-select" :class="{ active: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? '当前模型' : '设为当前模型'" @click="selectModel(item)">
+          <button class="model-card-select" :class="{ active: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? t('model.current') : t('model.setCurrent')" @click="selectModel(item)">
             <Check v-if="item.is_current" :size="16" />
           </button>
           <i class="model-provider-logo">
-            <template v-if="item.vendor === '自定义模型'">
+            <template v-if="isCustomVendor(item.vendor)">
               <img v-if="customModelLogo(item.icon)" :src="customModelLogo(item.icon) || undefined" alt="" />
               <component v-else :is="customModelIcon(item.icon)" :size="16" />
             </template>
@@ -293,13 +296,13 @@ onMounted(() => {
             <small :title="item.model">{{ item.model }}</small>
           </div>
           <div class="model-card-actions">
-            <span v-if="item.is_current" class="model-badge model-badge--active">使用中</span>
-            <span v-else-if="item.builtin" class="model-badge">内置</span>
+            <span v-if="item.is_current" class="model-badge model-badge--active">{{ t("model.inUse") }}</span>
+            <span v-else-if="item.builtin" class="model-badge">{{ t("model.builtin") }}</span>
             <template v-if="!item.builtin">
-              <button type="button" class="model-action-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`编辑 ${item.name}`" @click="beginEdit(item, $event)">
+              <button type="button" class="model-action-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="t('model.editAria', { name: item.name })" @click="beginEdit(item, $event)">
                 <Pencil :size="14" />
               </button>
-              <button v-if="!item.is_current" type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="`删除 ${item.name}`" @click="remove(item, $event)">
+              <button v-if="!item.is_current" type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="t('model.deleteAria', { name: item.name })" @click="remove(item, $event)">
                 <Trash2 :size="14" />
               </button>
             </template>
@@ -308,14 +311,14 @@ onMounted(() => {
 
         <button v-if="!models.length" class="model-empty-btn" ref="editorTrigger" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
           <Plus :size="18" />
-          <span>添加第一个模型</span>
+          <span>{{ t("model.addFirst") }}</span>
         </button>
       </div>
 
       <!-- 添加模型按钮 -->
       <button v-if="models.length > 0" ref="editorTrigger" type="button" class="add-model-btn" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
         <Plus :size="16" />
-        <span>添加模型</span>
+        <span>{{ t("model.add") }}</span>
       </button>
 
       <p v-if="error && addStep === 'idle'" class="model-error" role="alert" aria-live="assertive">{{ error }}</p>
@@ -328,13 +331,13 @@ onMounted(() => {
           <div class="mm-modal-icon mm-modal-icon--danger">
             <Trash2 :size="18" />
           </div>
-          <h3 id="model-delete-title" class="mm-modal-title">删除模型</h3>
-          <p id="model-delete-description" class="mm-modal-desc">确定要删除 "{{ deleteTarget.name }}" 吗？此操作无法撤销。</p>
+          <h3 id="model-delete-title" class="mm-modal-title">{{ t("model.deleteTitle") }}</h3>
+          <p id="model-delete-description" class="mm-modal-desc">{{ t("model.deleteConfirm", { name: deleteTarget.name }) }}</p>
           <div class="mm-modal-actions">
-            <button ref="deleteCancelButton" type="button" class="mm-btn mm-btn--ghost" :disabled="Boolean(deletingId)" @click="cancelRemove">取消</button>
+            <button ref="deleteCancelButton" type="button" class="mm-btn mm-btn--ghost" :disabled="Boolean(deletingId)" @click="cancelRemove">{{ t("model.cancel") }}</button>
             <button type="button" class="mm-btn mm-btn--danger" :disabled="Boolean(deletingId)" @click="confirmRemove">
               <LoaderCircle v-if="deletingId" class="mm-spin" :size="11" />
-              {{ deletingId ? "删除中" : "确认删除" }}
+              {{ deletingId ? t("model.deleting") : t("model.confirmDelete") }}
             </button>
           </div>
         </section>
@@ -342,9 +345,9 @@ onMounted(() => {
 
       <!-- 服务商选择 -->
       <div v-if="addStep === 'vendor'" class="mm-modal-backdrop" @mousedown.self="closeEditor">
-        <section ref="vendorDialog" class="mm-modal-dialog" role="dialog" aria-modal="true" aria-label="选择服务商" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, vendorDialog)">
+        <section ref="vendorDialog" class="mm-modal-dialog" role="dialog" aria-modal="true" :aria-label="t('model.selectVendor')" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, vendorDialog)">
           <header class="mm-modal-header">
-            <h3>选择服务商</h3>
+            <h3>{{ t("model.selectVendor") }}</h3>
           </header>
           <div class="mm-vendor-grid">
             <button v-for="item in vendors" :key="item.name" type="button" class="mm-vendor-card" @click="chooseVendor(item)">
@@ -352,8 +355,8 @@ onMounted(() => {
                 <img v-if="item.logo" :src="item.logo" alt="" />
                 <span v-else>{{ item.mark }}</span>
               </i>
-              <span class="mm-vendor-name">{{ item.name }}</span>
-              <span v-if="item.freeTier" class="mm-vendor-free-badge">免费</span>
+              <span class="mm-vendor-name">{{ vendorLabel(item) }}</span>
+              <span v-if="item.freeTier" class="mm-vendor-free-badge">{{ t("model.freeBadge") }}</span>
               <ChevronDown class="mm-vendor-arrow" :size="14" />
             </button>
           </div>
@@ -362,39 +365,39 @@ onMounted(() => {
 
       <!-- 配置表单 -->
       <div v-if="addStep === 'form' && selectedVendor" class="mm-modal-backdrop" @mousedown.self="closeEditor">
-        <section ref="formDialog" class="mm-modal-dialog mm-modal-dialog--lg" role="dialog" aria-modal="true" :aria-label="editingModel ? '编辑模型' : '添加模型'" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, formDialog)">
+        <section ref="formDialog" class="mm-modal-dialog mm-modal-dialog--lg" role="dialog" aria-modal="true" :aria-label="editingModel ? t('model.editTitle') : t('model.addTitle')" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, formDialog)">
           <header class="mm-modal-header">
-            <button v-if="!editingModel" type="button" class="mm-modal-back-btn" aria-label="返回" @click="backToVendor">
+            <button v-if="!editingModel" type="button" class="mm-modal-back-btn" :aria-label="t('model.back')" @click="backToVendor">
               <ArrowLeft :size="16" />
             </button>
-            <h3>{{ editingModel ? "编辑模型" : "添加模型" }}</h3>
+            <h3>{{ editingModel ? t("model.editTitle") : t("model.addTitle") }}</h3>
           </header>
 
           <div class="mm-modal-body">
             <div class="mm-form-field">
-              <label class="mm-form-label"><span class="mm-required">*</span>服务商</label>
+              <label class="mm-form-label"><span class="mm-required">*</span>{{ t("model.vendorLabel") }}</label>
               <select v-model="selectedVendor" class="mm-form-select" @change="chooseVendor(selectedVendor)">
-                <option v-for="v in vendors" :key="v.name" :value="v">{{ v.name }}</option>
+                <option v-for="v in vendors" :key="v.name" :value="v">{{ vendorLabel(v) }}</option>
               </select>
               <p v-if="selectedVendor.freeTier" class="mm-free-tier-note">
                 <Sparkles :size="13" />
-                免费额度：{{ selectedVendor.freeTier }}。注册后点击下方"获取 API 密钥"前往官网领取，粘贴到密钥输入框即可接入。
+                {{ t("model.freeTierNote", { tier: freeTierText(selectedVendor.id) }) }}
               </p>
             </div>
 
-            <template v-if="selectedVendor.name === '自定义模型'">
+            <template v-if="selectedVendor.id === CUSTOM_VENDOR_ID">
               <div class="mm-form-field">
-                <label class="mm-form-label"><span class="mm-required">*</span>显示名称</label>
-                <input v-model="name" class="mm-form-input" maxlength="100" placeholder="例如：我的编程助手" />
+                <label class="mm-form-label"><span class="mm-required">*</span>{{ t("model.displayName") }}</label>
+                <input v-model="name" class="mm-form-input" maxlength="100" :placeholder="t('model.displayNamePlaceholder')" />
               </div>
 
               <div class="mm-form-field">
-                <label class="mm-form-label">模型图标</label>
-                <div class="mm-icon-picker" role="radiogroup" aria-label="模型图标">
-                  <button v-for="v in vendorIconOptions" :key="`v-${v.name}`" type="button" class="mm-icon-option mm-icon-option--logo" :class="{ active: icon === v.name }" role="radio" :aria-checked="icon === v.name" :aria-label="v.name" :title="v.name" @click="icon = v.name">
+                <label class="mm-form-label">{{ t("model.iconLabel") }}</label>
+                <div class="mm-icon-picker" role="radiogroup" :aria-label="t('model.iconLabel')">
+                  <button v-for="v in vendorIconOptions" :key="`v-${v.name}`" type="button" class="mm-icon-option mm-icon-option--logo" :class="{ active: icon === v.name }" role="radio" :aria-checked="icon === v.name" :aria-label="vendorLabel(v)" :title="vendorLabel(v)" @click="icon = v.name">
                     <img v-if="v.logo" :src="v.logo" alt="" />
                   </button>
-                  <button v-for="item in customModelIcons" :key="item.id" type="button" class="mm-icon-option" :class="{ active: icon === item.id }" role="radio" :aria-checked="icon === item.id" :aria-label="item.label" :title="item.label" @click="icon = item.id">
+                  <button v-for="item in customModelIcons" :key="item.id" type="button" class="mm-icon-option" :class="{ active: icon === item.id }" role="radio" :aria-checked="icon === item.id" :aria-label="iconLabel(item.id)" :title="iconLabel(item.id)" @click="icon = item.id">
                     <component :is="item.component" :size="18" />
                   </button>
                 </div>
@@ -402,66 +405,66 @@ onMounted(() => {
             </template>
 
             <div class="mm-form-field">
-              <label class="mm-form-label"><span class="mm-required">*</span>模型</label>
-              <input v-model="modelId" class="mm-form-input" placeholder="选择或输入模型 ID" list="model-suggestions" />
+              <label class="mm-form-label"><span class="mm-required">*</span>{{ t("model.modelLabel") }}</label>
+              <input v-model="modelId" class="mm-form-input" :placeholder="t('model.modelIdPlaceholder')" list="model-suggestions" />
               <datalist id="model-suggestions">
-                <option v-if="selectedVendor.name === 'DeepSeek'" value="deepseek-chat">DeepSeek V3</option>
-                <option v-if="selectedVendor.name === 'DeepSeek'" value="deepseek-reasoner">DeepSeek R1</option>
-                <option v-if="selectedVendor.name === 'Anthropic'" value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                <option v-if="selectedVendor.name === 'Anthropic'" value="claude-opus-4-20250514">Claude Opus 4</option>
-                <option v-if="selectedVendor.name === 'Anthropic'" value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
-                <option v-if="selectedVendor.name === 'OpenAI'" value="gpt-4o">GPT-4o</option>
-                <option v-if="selectedVendor.name === 'OpenAI'" value="gpt-4o-mini">GPT-4o mini</option>
-                <option v-if="selectedVendor.name === 'OpenAI'" value="o3-mini">o3-mini</option>
-                <option v-if="selectedVendor.name === '硅基流动'" value="deepseek-ai/DeepSeek-V3">DeepSeek V3</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="openai/gpt-4o">GPT-4o</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="deepseek/deepseek-chat">DeepSeek V3</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="deepseek/deepseek-r1:free">DeepSeek R1（免费）</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B（免费）</option>
-                <option v-if="selectedVendor.name === 'OpenRouter'" value="qwen/qwen3-coder:free">Qwen3 Coder（免费）</option>
-                <option v-if="selectedVendor.name === 'Google AI Studio'" value="gemini-2.5-flash">Gemini 2.5 Flash（免费层）</option>
-                <option v-if="selectedVendor.name === 'Google AI Studio'" value="gemini-2.0-flash">Gemini 2.0 Flash（免费层）</option>
-                <option v-if="selectedVendor.name === 'Groq'" value="llama-3.3-70b-versatile">Llama 3.3 70B（免费层）</option>
-                <option v-if="selectedVendor.name === 'Groq'" value="deepseek-r1-distill-llama-70b">DeepSeek R1 Distill 70B（免费层）</option>
-                <option v-if="selectedVendor.name === 'Cerebras'" value="llama-3.3-70b">Llama 3.3 70B（免费层）</option>
-                <option v-if="selectedVendor.name === 'Cerebras'" value="qwen-3-32b">Qwen3 32B（免费层）</option>
-                <option v-if="selectedVendor.name === 'Mistral'" value="mistral-small-latest">Mistral Small（免费层）</option>
-                <option v-if="selectedVendor.name === 'Mistral'" value="open-mistral-nemo">Mistral Nemo（免费层）</option>
-                <option v-if="selectedVendor.name === 'GitHub Models'" value="openai/gpt-4o-mini">GPT-4o mini（免费额度）</option>
-                <option v-if="selectedVendor.name === 'GitHub Models'" value="meta/Llama-3.3-70B-Instruct">Llama 3.3 70B（免费额度）</option>
-                <option v-if="selectedVendor.name === 'NVIDIA NIM'" value="deepseek-ai/deepseek-r1">DeepSeek R1（免费）</option>
-                <option v-if="selectedVendor.name === 'NVIDIA NIM'" value="meta/llama-3.3-70b-instruct">Llama 3.3 70B（免费）</option>
-                <option v-if="selectedVendor.name === 'Bigmodel'" value="glm-4-flash">GLM-4-Flash（永久免费）</option>
+                <option v-if="selectedVendor.id === 'deepseek'" value="deepseek-chat">DeepSeek V3</option>
+                <option v-if="selectedVendor.id === 'deepseek'" value="deepseek-reasoner">DeepSeek R1</option>
+                <option v-if="selectedVendor.id === 'anthropic'" value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                <option v-if="selectedVendor.id === 'anthropic'" value="claude-opus-4-20250514">Claude Opus 4</option>
+                <option v-if="selectedVendor.id === 'anthropic'" value="claude-3-5-sonnet-latest">Claude 3.5 Sonnet</option>
+                <option v-if="selectedVendor.id === 'openai'" value="gpt-4o">GPT-4o</option>
+                <option v-if="selectedVendor.id === 'openai'" value="gpt-4o-mini">GPT-4o mini</option>
+                <option v-if="selectedVendor.id === 'openai'" value="o3-mini">o3-mini</option>
+                <option v-if="selectedVendor.id === 'siliconflow'" value="deepseek-ai/DeepSeek-V3">DeepSeek V3</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="openai/gpt-4o">GPT-4o</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="deepseek/deepseek-chat">DeepSeek V3</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="deepseek/deepseek-r1:free">DeepSeek R1{{ t("model.tagFree") }}</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B{{ t("model.tagFree") }}</option>
+                <option v-if="selectedVendor.id === 'openrouter'" value="qwen/qwen3-coder:free">Qwen3 Coder{{ t("model.tagFree") }}</option>
+                <option v-if="selectedVendor.id === 'google'" value="gemini-2.5-flash">Gemini 2.5 Flash{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'google'" value="gemini-2.0-flash">Gemini 2.0 Flash{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'groq'" value="llama-3.3-70b-versatile">Llama 3.3 70B{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'groq'" value="deepseek-r1-distill-llama-70b">DeepSeek R1 Distill 70B{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'cerebras'" value="llama-3.3-70b">Llama 3.3 70B{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'cerebras'" value="qwen-3-32b">Qwen3 32B{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'mistral'" value="mistral-small-latest">Mistral Small{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'mistral'" value="open-mistral-nemo">Mistral Nemo{{ t("model.tagFreeTier") }}</option>
+                <option v-if="selectedVendor.id === 'github'" value="openai/gpt-4o-mini">GPT-4o mini{{ t("model.tagFreeQuota") }}</option>
+                <option v-if="selectedVendor.id === 'github'" value="meta/Llama-3.3-70B-Instruct">Llama 3.3 70B{{ t("model.tagFreeQuota") }}</option>
+                <option v-if="selectedVendor.id === 'nvidia'" value="deepseek-ai/deepseek-r1">DeepSeek R1{{ t("model.tagFree") }}</option>
+                <option v-if="selectedVendor.id === 'nvidia'" value="meta/llama-3.3-70b-instruct">Llama 3.3 70B{{ t("model.tagFree") }}</option>
+                <option v-if="selectedVendor.id === 'bigmodel'" value="glm-4-flash">GLM-4-Flash{{ t("model.tagPermanentFree") }}</option>
               </datalist>
             </div>
 
             <div class="mm-form-field">
-              <label class="mm-form-label"><span class="mm-required">*</span>API 密钥</label>
+              <label class="mm-form-label"><span class="mm-required">*</span>{{ t("model.apiKeyLabel") }}</label>
               <div class="mm-input-with-action">
-                <input v-model="apiKey" class="mm-form-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? '留空保持不变' : '请输入 API Key'" />
-                <button type="button" class="mm-input-action-btn" :aria-label="showKey ? '隐藏 API Key' : '显示 API Key'" @click="showKey = !showKey">
+                <input v-model="apiKey" class="mm-form-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? t('model.apiKeyKeep') : t('model.apiKeyPlaceholder')" />
+                <button type="button" class="mm-input-action-btn" :aria-label="showKey ? t('model.hideKey') : t('model.showKey')" @click="showKey = !showKey">
                   <EyeOff v-if="showKey" :size="15" />
                   <Eye v-else :size="15" />
                 </button>
               </div>
               <button v-if="selectedVendor.apiKeyUrl" type="button" class="mm-link-btn" @click="getApiKey">
-                获取 API 密钥
+                {{ t("model.getApiKey") }}
                 <ExternalLink :size="12" />
               </button>
             </div>
 
             <div class="mm-form-advanced">
               <button type="button" class="mm-advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
-                <span>高级配置</span>
+                <span>{{ t("model.advanced") }}</span>
                 <ChevronDown :size="14" :class="{ 'mm-rotated': advancedOpen }" />
               </button>
 
               <div v-if="advancedOpen" class="mm-advanced-body">
                 <div class="mm-form-field">
-                  <label class="mm-form-label">上下文窗口</label>
+                  <label class="mm-form-label">{{ t("model.contextWindow") }}</label>
                   <div class="mm-input-with-chips">
-                    <input v-model.number="contextWindow" class="mm-form-input" type="number" min="1000" placeholder="Token 数量" />
+                    <input v-model.number="contextWindow" class="mm-form-input" type="number" min="1000" :placeholder="t('model.tokenPlaceholder')" />
                     <div class="mm-chip-group">
                       <button type="button" class="mm-chip" :class="{ active: contextWindow === 131072 }" @click="setContextWindow(131072)">128k</button>
                       <button type="button" class="mm-chip" :class="{ active: contextWindow === 262144 }" @click="setContextWindow(262144)">256k</button>
@@ -472,9 +475,9 @@ onMounted(() => {
                 </div>
 
                 <div class="mm-form-field">
-                  <label class="mm-form-label">最大输出</label>
+                  <label class="mm-form-label">{{ t("model.maxOutput") }}</label>
                   <div class="mm-input-with-chips">
-                    <input v-model.number="maxOutputTokens" class="mm-form-input" type="number" min="1" placeholder="Token 数量" />
+                    <input v-model.number="maxOutputTokens" class="mm-form-input" type="number" min="1" :placeholder="t('model.tokenPlaceholder')" />
                     <div class="mm-chip-group">
                       <button type="button" class="mm-chip" :class="{ active: maxOutputTokens === 4096 }" @click="setMaxOutput(4096)">4k</button>
                       <button type="button" class="mm-chip" :class="{ active: maxOutputTokens === 16384 }" @click="setMaxOutput(16384)">16k</button>
@@ -485,12 +488,12 @@ onMounted(() => {
                 </div>
 
                 <div class="mm-form-field">
-                  <label class="mm-form-label">工具调用轮数</label>
+                  <label class="mm-form-label">{{ t("model.maxRetries") }}</label>
                   <input v-model.number="maxRetries" class="mm-form-input" type="number" min="0" max="100" />
                 </div>
 
-                <div v-if="selectedVendor.name === '自定义模型'" class="mm-form-field">
-                  <label class="mm-form-label">API 地址</label>
+                <div v-if="selectedVendor.id === CUSTOM_VENDOR_ID" class="mm-form-field">
+                  <label class="mm-form-label">{{ t("model.baseUrl") }}</label>
                   <input v-model="baseUrl" class="mm-form-input" placeholder="https://api.example.com/v1" />
                 </div>
               </div>
@@ -503,13 +506,13 @@ onMounted(() => {
           <footer class="mm-modal-footer">
             <button type="button" class="mm-btn mm-btn--ghost" @click="testConnection" :disabled="!canSave || saving || testing">
               <LoaderCircle v-if="testing" class="mm-spin" :size="13" />
-              {{ testing ? '测试中' : '测试连接' }}
+              {{ testing ? t("model.testing") : t("model.test") }}
             </button>
             <div class="mm-modal-footer-right">
-              <button type="button" class="mm-btn mm-btn--ghost" @click="resetFormDefaults">重置</button>
+              <button type="button" class="mm-btn mm-btn--ghost" @click="resetFormDefaults">{{ t("model.reset") }}</button>
               <button type="button" class="mm-btn mm-btn--primary" :disabled="!canSave || saving || testing" @click="save">
                 <LoaderCircle v-if="saving" class="mm-spin" :size="13" />
-                {{ saving ? '保存中' : (editingModel ? '保存' : '添加') }}
+                {{ saving ? t("model.saving") : (editingModel ? t("model.save") : t("model.create")) }}
               </button>
             </div>
           </footer>

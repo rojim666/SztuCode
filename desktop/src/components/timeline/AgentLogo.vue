@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 
 const props = defineProps<{ active?: boolean; size?: "small" | "large" }>();
+const { t } = useI18n({ useScope: "global" });
 const root = ref<HTMLElement | null>(null);
 // 主题适配：浅色模式黑底白瞳，深色模式白底黑瞳；跟随 data-app-theme 属性实时同步
 const themeDark = ref(false);
@@ -83,7 +85,7 @@ onBeforeUnmount(() => {
       `expr-${expression}`,
     ]"
   >
-    <div class="logo" role="img" aria-label="SztuCode Agent">
+    <div class="logo" role="img" :aria-label="t('timeline.agentLogo')">
       <div class="dots"><i /><i /><i /></div>
       <div class="eyes">
         <div class="eye left">

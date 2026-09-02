@@ -8,12 +8,17 @@ export type PipelinePhase = "understanding" | "executing" | "verifying" | "deliv
 
 export const PHASE_ORDER: readonly PipelinePhase[] = ["understanding", "executing", "verifying", "delivering"];
 
-export const PHASE_META: Record<PipelinePhase, { label: string; hint: string }> = {
-  understanding: { label: "理解", hint: "读取上下文、定位改动点" },
-  executing: { label: "执行", hint: "写入与修改文件" },
-  verifying: { label: "验证", hint: "跑测试、构建与静态检查" },
-  delivering: { label: "交付", hint: "汇总本轮结果" },
-};
+/** 阶段文案取值器：由调用方传入 t（组件内以 computed 包裹），保证切换语言时响应式重建。 */
+export type PhaseTranslator = (key: string) => string;
+
+export function buildPhaseMeta(t: PhaseTranslator): Record<PipelinePhase, { label: string; hint: string }> {
+  return {
+    understanding: { label: t("timeline.phase.understanding"), hint: t("timeline.phase.understandingHint") },
+    executing: { label: t("timeline.phase.executing"), hint: t("timeline.phase.executingHint") },
+    verifying: { label: t("timeline.phase.verifying"), hint: t("timeline.phase.verifyingHint") },
+    delivering: { label: t("timeline.phase.delivering"), hint: t("timeline.phase.deliveringHint") },
+  };
+}
 
 export type ToolCategory = "read" | "write" | "verify" | "other";
 

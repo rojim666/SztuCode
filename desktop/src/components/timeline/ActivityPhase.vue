@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, nextTick } from "vue";
+import { useI18n } from "vue-i18n";
 import { Brain, Check, ChevronDown, Code2, Edit3, FolderOpen, LoaderCircle, Search, Terminal, XCircle } from "@lucide/vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
@@ -13,6 +14,7 @@ const props = defineProps<{
   stepIndex?: number;
   stepTitle?: string;
 }>();
+const { t } = useI18n({ useScope: "global" });
 
 const open = ref(false);
 const hasContent = computed(() => (props.thinking && props.thinking.trim().length > 0) || props.calls.length > 0);
@@ -70,7 +72,7 @@ if (!props.completed && thinkingChars.length) schedulePlayback();
 const catchingUp = computed(() => displayedThinking.value !== (props.thinking ?? ""));
 const thinkingRunning = computed(() => props.running || catchingUp.value);
 
-// 按类型分组统计工具调用
+// 按类型分组统计工具调用；label 取自语言包，computed 内调用 t 保证切换语言时重建
 const groups = computed(() => {
   const buckets: Record<string, { label: string; icon: typeof Terminal; count: number }> = {};
   for (const call of props.calls) {
@@ -79,15 +81,15 @@ const groups = computed(() => {
     let label: string;
     let icon: typeof Terminal;
     if (/read|file|dir|ls/i.test(name)) {
-      key = "file"; label = "读取"; icon = FolderOpen;
+      key = "file"; label = t("timeline.activity.toolKind.read"); icon = FolderOpen;
     } else if (/glob|search|grep|find/i.test(name)) {
-      key = "search"; label = "搜索"; icon = Search;
+      key = "search"; label = t("timeline.activity.toolKind.search"); icon = Search;
     } else if (/edit|write|patch|create/i.test(name)) {
-      key = "edit"; label = "编辑"; icon = Edit3;
+      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = Edit3;
     } else if (/bash|shell|terminal|command|powershell|pwsh|exec|run/i.test(name)) {
-      key = "exec"; label = "执行"; icon = Terminal;
+      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = Terminal;
     } else {
-      key = "other"; label = "调用"; icon = Code2;
+      key = "other"; label = t("timeline.activity.toolKind.call"); icon = Code2;
     }
     if (!buckets[key]) buckets[key] = { label, icon, count: 0 };
     buckets[key].count++;
@@ -122,25 +124,25 @@ const purposeSummary = computed(() => {
     const path = first.params.path as string | undefined;
     if (path) {
       const parts = path.split(/[\\/]/);
-      return `查看 ${parts[parts.length - 1]}`;
+      return t("timeline.purpose.view", { name: parts[parts.length - 1] });
     }
-    return "读取文件";
+    return t("timeline.purpose.readFile");
   }
   if (/glob|search|grep|find/i.test(name)) {
     const q = first.params.query ?? first.params.pattern ?? "";
-    if (typeof q === "string" && q) return `搜索 "${q.slice(0, 20)}"`;
-    return "搜索相关代码";
+    if (typeof q === "string" && q) return t("timeline.purpose.search", { query: q.slice(0, 20) });
+    return t("timeline.purpose.searchCode");
   }
   if (/edit|write|patch|create/i.test(name)) {
     const path = first.params.path as string | undefined;
     if (path) {
       const parts = path.split(/[\\/]/);
-      return `修改 ${parts[parts.length - 1]}`;
+      return t("timeline.purpose.modify", { name: parts[parts.length - 1] });
     }
-    return "编辑文件";
+    return t("timeline.purpose.editFile");
   }
   if (/bash|shell|terminal|command/i.test(name)) {
-    return "执行命令";
+    return t("timeline.purpose.execCommand");
   }
   return "";
 });
@@ -216,7 +218,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 
       <!-- 失败显示提示 -->
       <span v-if="hasFailedCalls" class="activity-phase__fail-hint">
-        有操作失效，点击查看
+        {{ t('timeline.activity.failHint') }}
       </span>
 
       <ChevronDown v-if="hasContent" class="activity-phase__chevron" :size="11" />
@@ -231,7 +233,7 @@ watch([thinkingPreview, thinkingRunning], () => {
         <!-- 工具调用列表 -->
         <div v-if="calls.length" class="activity-phase__tools">
           <div v-if="thinking" class="activity-phase__section-label">
-            <Terminal :size="11" /> 工具调用
+            <Terminal :size="11" /> {{ t('timeline.activity.toolCalls') }}
           </div>
           <ToolCallCard v-for="call in calls" :key="call.id" :call="call" :compact="true" />
         </div>

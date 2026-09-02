@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { ChevronDown, FilePenLine, FileText, Image as ImageIcon, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
 import type { ToolCallEntry } from "./types";
 
@@ -7,6 +8,7 @@ const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean
   expanded: false,
   compact: false,
 });
+const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 const isOpen = computed(() => props.expanded || open.value);
 const request = computed(() => JSON.stringify(props.call.params, null, 2));
@@ -35,11 +37,11 @@ const actionLabel = computed(() => {
   return props.call.name;
 });
 const title = computed(() => {
-  const prefix = props.call.status === "running" ? "正在" : "已";
-  if (kind.value === "edit") return `${props.call.status === "running" ? "正在编辑" : "已编辑"} ${detail.value}`;
-  if (kind.value === "search" || kind.value === "glob") return `${props.call.status === "running" ? "正在搜索" : "已搜索"} ${detail.value}`;
-  if (kind.value === "file") return `${props.call.status === "running" ? "正在读取" : "已读取"} ${detail.value}`;
-  return `${prefix}${detail.value}`;
+  const running = props.call.status === "running";
+  if (kind.value === "edit") return t(running ? "timeline.tool.title.editing" : "timeline.tool.title.edited", { target: detail.value });
+  if (kind.value === "search" || kind.value === "glob") return t(running ? "timeline.tool.title.searching" : "timeline.tool.title.searched", { target: detail.value });
+  if (kind.value === "file") return t(running ? "timeline.tool.title.reading" : "timeline.tool.title.read", { target: detail.value });
+  return t(running ? "timeline.tool.title.running" : "timeline.tool.title.done", { target: detail.value });
 });
 const isFileTool = computed(() => /read|file|dir/i.test(props.call.name));
 const isPathLike = computed(() => /read|file|dir|edit|write/i.test(props.call.name));
@@ -76,7 +78,7 @@ const outputSummary = computed(() => {
   const head = lines.slice(0, OUTPUT_MAX_LINES).join("\n");
   const omittedChars = raw.length - head.length;
   const omittedLines = Math.max(0, lines.length - OUTPUT_MAX_LINES);
-  return `${head}\n\n[... 省略 ${omittedLines} 行 / ${omittedChars} 字符 ...]`;
+  return `${head}\n\n${t("timeline.tool.outputTruncated", { lines: omittedLines, chars: omittedChars })}`;
 });
 
 const hasDetails = computed(() => request.value.length > 2 || outputSummary.value || (props.call.images?.length ?? 0) > 0);
@@ -96,24 +98,24 @@ const zoomedImage = ref<number | null>(null);
       <span v-if="!compact" class="tool-call-event__action">{{ actionLabel }}</span>
       <span v-if="!compact" class="timeline-row__separator">·</span>
       <span class="tool-call-event__detail" :class="{ 'is-path': isPathLike }">{{ detail }}</span>
-      <span v-if="imageUrls.length" class="tool-call-event__image-badge" :title="`${imageUrls.length} 张截图`"><ImageIcon :size="compact ? 11 : 12" />{{ imageUrls.length }}</span>
+      <span v-if="imageUrls.length" class="tool-call-event__image-badge" :title="t('timeline.tool.screenshotCount', { count: imageUrls.length })"><ImageIcon :size="compact ? 11 : 12" />{{ imageUrls.length }}</span>
       <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="10" />{{ elapsed }}</span>
       <LoaderCircle v-if="call.status === 'running'" class="spin" :size="compact ? 12 : 13" />
       <ChevronDown v-if="hasDetails" class="timeline-row__chevron" :size="11" />
     </button>
     <transition name="tool-expand">
       <div v-if="isOpen && hasDetails" class="tool-call-event__details">
-        <b>{{ call.status === 'running' ? '参数' : '输入' }}</b><pre>{{ request }}</pre>
-        <template v-if="outputSummary"><b>返回</b><pre>{{ outputSummary }}</pre></template>
+        <b>{{ call.status === 'running' ? t('timeline.tool.params') : t('timeline.tool.input') }}</b><pre>{{ request }}</pre>
+        <template v-if="outputSummary"><b>{{ t('timeline.tool.output') }}</b><pre>{{ outputSummary }}</pre></template>
         <template v-if="imageUrls.length">
-          <b>截图</b>
+          <b>{{ t('timeline.tool.screenshots') }}</b>
           <div class="tool-call-event__images">
             <img
               v-for="(url, index) in imageUrls"
               :key="index"
               :src="url"
               :class="{ zoomed: zoomedImage === index }"
-              :alt="`页面截图 ${index + 1}`"
+              :alt="t('timeline.tool.screenshotAlt', { index: index + 1 })"
               @click="zoomedImage = zoomedImage === index ? null : index"
             />
           </div>

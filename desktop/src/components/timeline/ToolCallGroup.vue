@@ -1,16 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Check, ChevronDown, Code2, Edit3, FileSearch, FolderOpen, LoaderCircle, Search, Terminal } from "@lucide/vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
 
 const props = defineProps<{ calls: ToolCallEntry[] }>();
+const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 
 const running = computed(() => props.calls.some((call) => call.status === "running"));
 const allDone = computed(() => props.calls.every((call) => call.status === "done" || call.status === "failed"));
 
-// Codex 风格：按工具类型分组统计
+// Codex 风格：按工具类型分组统计；label 取自语言包，computed 内调用 t 保证切换语言时重建
 const groups = computed(() => {
   const buckets: Record<string, { label: string; icon: typeof Terminal; count: number; calls: ToolCallEntry[] }> = {};
 
@@ -21,15 +23,15 @@ const groups = computed(() => {
     let icon: typeof Terminal;
 
     if (/read|file|dir|ls/i.test(name)) {
-      key = "file"; label = "读取"; icon = FolderOpen;
+      key = "file"; label = t("timeline.activity.toolKind.read"); icon = FolderOpen;
     } else if (/glob|search|grep|find/i.test(name)) {
-      key = "search"; label = "搜索"; icon = Search;
+      key = "search"; label = t("timeline.activity.toolKind.search"); icon = Search;
     } else if (/edit|write|patch|create/i.test(name)) {
-      key = "edit"; label = "编辑"; icon = Edit3;
+      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = Edit3;
     } else if (/bash|shell|terminal|command|powershell|pwsh|exec|run/i.test(name)) {
-      key = "exec"; label = "执行"; icon = Terminal;
+      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = Terminal;
     } else {
-      key = "other"; label = "操作"; icon = Code2;
+      key = "other"; label = t("timeline.activity.toolKind.operate"); icon = Code2;
     }
 
     if (!buckets[key]) {

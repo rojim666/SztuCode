@@ -1,6 +1,7 @@
 import { createApp, defineComponent, h, ref } from "vue";
 import ModelManager from "../../../src/components/ModelConfig/ModelManager.vue";
 import { connectRuntime, type ModelProfile } from "../../../src/services/sztu-runtime";
+import { i18n } from "../../../src/i18n";
 import "../../../src/kimi.css";
 import "../../../src/workbench.css";
 
@@ -109,4 +110,4 @@ const Host = defineComponent({
   },
 });
 
-createApp(Host).mount("#app");
+createApp(Host).use(i18n).mount("#app");

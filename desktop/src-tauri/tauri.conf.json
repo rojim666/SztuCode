@@ -20,7 +20,8 @@
                 "resizable": true,
                 "decorations": false,
                 "shadow": true,
-                "transparent": true
+                "transparent": true,
+                "center": true
             },
             {
                 "label": "tray-menu",

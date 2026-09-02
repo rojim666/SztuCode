@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { BrainCircuit, ChevronDown } from "@lucide/vue";
 import { reasoningSummary } from "../../utils/reasoningSummary";
 
 const props = defineProps<{ text?: string; completed?: boolean }>();
+const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 const initialText = props.text ?? "";
 const displayedText = ref(props.completed ? initialText : "");
@@ -49,7 +51,7 @@ if (!props.completed && targetCharacters.length) schedulePlayback();
 
 const catchingUp = computed(() => displayedText.value !== (props.text ?? ""));
 const running = computed(() => !props.completed || catchingUp.value);
-const label = computed(() => running.value ? "当前判断" : "过程说明");
+const label = computed(() => running.value ? t("timeline.thinking.current") : t("timeline.thinking.notes"));
 
 // 折叠摘要（借鉴 dsh ReasoningRow）：流式中显示最后一行非空文本跟随输出，
 // 结算后显示首行作为稳定标题 —— 折叠态渲染代价恒定，与文本总长度无关
@@ -69,7 +71,7 @@ watch([summary, running], () => {
   <section v-if="text" class="thinking-panel" :data-state="running ? 'running' : 'ok'" :class="{ open }">
     <button type="button" :aria-label="label" :aria-expanded="open" @click="open = !open">
       <BrainCircuit class="thinking-panel__icon" :size="14" />
-      <span class="thinking-panel__label">Think</span>
+      <span class="thinking-panel__label">{{ t('timeline.thinking.think') }}</span>
       <span class="timeline-row__separator">·</span>
       <span ref="summaryRef" class="thinking-panel__preview" :data-follow-end="running || undefined">{{ summary }}</span>
       <ChevronDown class="timeline-row__chevron" :size="13" />

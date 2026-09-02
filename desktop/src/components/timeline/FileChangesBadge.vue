@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ChevronDown, ExternalLink, FileDiff } from "@lucide/vue";
 import type { ChangeFile } from "./types";
 
@@ -7,6 +8,7 @@ const props = defineProps<{
   files: ChangeFile[];
   workspacePath: string;
 }>();
+const { t } = useI18n({ useScope: "global" });
 
 const emit = defineEmits<{
   openFile: [path: string];
@@ -44,7 +46,7 @@ function relativePath(path: string): string {
           <FileDiff :size="16" />
         </span>
         <span class="file-changes-badge__label">
-          <b>{{ files.length }}</b> 个文件已更改
+          <b>{{ files.length }}</b> {{ t('timeline.changes.filesSuffix') }}
         </span>
         <ChevronDown class="file-changes-badge__chevron" :size="16" />
         <span v-if="hasStats" class="file-changes-badge__stats">
@@ -53,7 +55,7 @@ function relativePath(path: string): string {
         </span>
       </button>
       <span class="file-changes-badge__divider" />
-      <button type="button" class="file-changes-badge__open-all" title="在右侧查看所有变更" aria-label="在右侧查看所有变更" @click.stop="emit('openAll')">
+      <button type="button" class="file-changes-badge__open-all" :title="t('timeline.changes.openAll')" :aria-label="t('timeline.changes.openAll')" @click.stop="emit('openAll')">
         <ExternalLink :size="16" />
       </button>
     </div>

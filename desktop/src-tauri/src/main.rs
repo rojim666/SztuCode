@@ -1346,6 +1346,10 @@ fn main() {
                 window.set_icon(icon.clone())?;
             }
 
+            // 每次启动时重置窗口大小为默认值并居中，避免记住上次调整的尺寸
+            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize::new(1440.0, 920.0)));
+            let _ = window.center();
+
             let tray_window = window.clone();
             let app_handle = app.handle().clone();
             app.listen("tray://quit", move |_| app_handle.exit(0));

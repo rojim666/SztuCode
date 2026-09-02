@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   Braces,
   ChevronDown,
@@ -15,20 +16,22 @@ import type { ContextInjectionEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
 const props = defineProps<{ entry: ContextInjectionEntry }>();
+const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 
+// 来源标签取自语言包：computed 内调用 t，切换语言时自动重建
 const sourceConfig = computed(() => {
   switch (props.entry.source) {
     case "intervention":
-      return { icon: ShieldAlert, label: "干预", color: "#b45309", bg: "#fef3c7" };
+      return { icon: ShieldAlert, label: t("timeline.context.source.intervention"), color: "#b45309", bg: "#fef3c7" };
     case "steering":
-      return { icon: CornerUpLeft, label: "追加", color: "#1d4ed8", bg: "#dbeafe" };
+      return { icon: CornerUpLeft, label: t("timeline.context.source.steering"), color: "#1d4ed8", bg: "#dbeafe" };
     case "compaction":
-      return { icon: FileClock, label: "压缩", color: "#6b7280", bg: "#f3f4f6" };
+      return { icon: FileClock, label: t("timeline.context.source.compaction"), color: "#6b7280", bg: "#f3f4f6" };
     case "canvas":
-      return { icon: Braces, label: "进度", color: "#7c3aed", bg: "#ede9fe" };
+      return { icon: Braces, label: t("timeline.context.source.canvas"), color: "#7c3aed", bg: "#ede9fe" };
     default:
-      return { icon: Info, label: "注入", color: "#4b5563", bg: "#f3f4f6" };
+      return { icon: Info, label: t("timeline.context.source.system"), color: "#4b5563", bg: "#f3f4f6" };
   }
 });
 
@@ -92,7 +95,7 @@ const fileItems = computed(() => {
   });
 });
 
-const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.label}）`);
+const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.entry.label, source: sourceConfig.value.label }));
 </script>
 
 <template>
@@ -108,8 +111,8 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
         <component :is="sourceConfig.icon" :size="13" />
       </span>
       <span class="ctx-row__title">{{ entry.label }}</span>
-      <span class="ctx-row__badge">{{ charLabel }}字符</span>
-      <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ files.length }}个文件</span>
+      <span class="ctx-row__badge">{{ t('timeline.context.chars', { count: charLabel }) }}</span>
+      <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
       <ChevronDown class="ctx-row__chevron" :size="13" />
     </button>
 
@@ -118,8 +121,8 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
         <div v-if="files.length" class="ctx-row__section">
           <div class="ctx-row__section-header">
             <Folder :size="14" />
-            <span>上下文文件</span>
-            <span class="ctx-row__section-count">{{ files.length }} 个</span>
+            <span>{{ t('timeline.context.filesSection') }}</span>
+            <span class="ctx-row__section-count">{{ t('timeline.context.fileCount', { count: files.length }) }}</span>
           </div>
           <div class="ctx-row__file-grid">
             <div
@@ -147,7 +150,7 @@ const ariaLabel = computed(() => `${props.entry.label}（${sourceConfig.value.la
         <div v-if="body" class="ctx-row__section ctx-row__section--content">
           <div class="ctx-row__section-header">
             <component :is="sourceConfig.icon" :size="14" />
-            <span>注入内容</span>
+            <span>{{ t('timeline.context.injectedContent') }}</span>
           </div>
           <pre class="ctx-row__content">{{ body }}</pre>
         </div>

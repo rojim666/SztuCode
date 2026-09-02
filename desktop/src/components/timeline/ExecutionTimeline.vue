@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, RotateCw } from "@lucide/vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
@@ -10,8 +11,10 @@ import AgentLogo from "./AgentLogo.vue";
 import FileChangesBadge from "./FileChangesBadge.vue";
 import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
+import { localeTag } from "../../i18n";
 
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string; workspacePath?: string }>();
+const { t } = useI18n({ useScope: "global" });
 const emit = defineEmits<{
   retry: [runId: string, userMessage: string];
   continue: [runId?: string];
@@ -122,15 +125,15 @@ function formatTime(iso?: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString(localeTag.value, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDuration(seconds: number): string {
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms`;
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} 秒`;
+  if (seconds < 60) return t("timeline.duration.seconds", { n: seconds.toFixed(seconds < 10 ? 1 : 0) });
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.round(seconds % 60);
-  return remainder ? `${minutes} 分 ${remainder} 秒` : `${minutes} 分钟`;
+  return remainder ? t("timeline.duration.minutesSeconds", { m: minutes, s: remainder }) : t("timeline.duration.minutes", { m: minutes });
 }
 
 function formatTokensPerSecond(tokensPerSecond: number): string {
@@ -156,7 +159,7 @@ function elapsedLabel(turn: TurnView): string {
   const elapsed = turn.state === "running" || turn.state === "waiting"
     ? (Number.isNaN(startedAt) ? turn.runStats?.elapsedSeconds ?? 0 : Math.max(0, (now.value - startedAt) / 1000))
     : turn.runStats?.elapsedSeconds ?? 0;
-  return `耗时 ${formatDuration(elapsed)}`;
+  return t("timeline.elapsed", { duration: formatDuration(elapsed) });
 }
 
 function isTurnExpanded(turn: TurnView): boolean {
@@ -450,12 +453,12 @@ watch(
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null, localeTag]"
       class="timeline-step"
     >
       <div v-if="turn.userMessage" class="timeline-user-message">
         {{ turn.userMessage }}
-        <span v-if="turn.model || turn.userMessageTime" class="timeline-user-message__meta">{{ turn.model || "未记录模型" }} · {{ formatTime(turn.userMessageTime) }}</span>
+        <span v-if="turn.model || turn.userMessageTime" class="timeline-user-message__meta">{{ turn.model || t('timeline.turn.modelUnrecorded') }} · {{ formatTime(turn.userMessageTime) }}</span>
       </div>
       <div v-if="turn.hasContent" class="timeline-assistant">
         <AgentLogo :active="turn.state === 'running' || turn.state === 'waiting'" />
@@ -471,9 +474,9 @@ watch(
             @click="toggleTurn(turn)"
           >
             <!-- 失败/中断的轮次在折叠态给出可见标记，避免用户不展开就发现不了异常 -->
-            <em v-if="turn.state === 'failed'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />失败</em>
-            <em v-else-if="turn.state === 'interrupted'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />已中断</em>
-            <span>{{ isTurnExpanded(turn) ? '收起过程' : `查看过程 · ${elapsedLabel(turn)}` }}</span>
+            <em v-if="turn.state === 'failed'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />{{ t('timeline.turn.failed') }}</em>
+            <em v-else-if="turn.state === 'interrupted'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />{{ t('timeline.turn.interrupted') }}</em>
+            <span>{{ isTurnExpanded(turn) ? t('timeline.turn.collapse') : t('timeline.turn.view', { duration: elapsedLabel(turn) }) }}</span>
             <ChevronDown :size="15" />
           </button>
 
@@ -498,11 +501,11 @@ watch(
               <span class="task-progress-bar__label">
                 <template v-if="turn.state === 'running' || turn.state === 'waiting'">
                   <LoaderCircle class="spin" :size="11" />
-                  步骤 {{ Math.min((getPlanProgress(turn)?.completed ?? 0) + 1, getPlanProgress(turn)?.total ?? 1) }} / {{ getPlanProgress(turn)?.total }}
+                  {{ t('timeline.progress.step', { current: Math.min((getPlanProgress(turn)?.completed ?? 0) + 1, getPlanProgress(turn)?.total ?? 1), total: getPlanProgress(turn)?.total }) }}
                 </template>
                 <template v-else>
                   <Check :size="11" />
-                  完成 {{ getPlanProgress(turn)?.completed }} / {{ getPlanProgress(turn)?.total }} 个步骤
+                  {{ t('timeline.progress.done', { completed: getPlanProgress(turn)?.completed, total: getPlanProgress(turn)?.total }) }}
                 </template>
               </span>
             </div>
@@ -526,7 +529,7 @@ watch(
             <!-- 进行中提示："正在规划下一步" -->
             <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">
               <LoaderCircle class="spin" :size="14" />
-              <span>正在规划下一步</span>
+              <span>{{ t('timeline.planningNext') }}</span>
             </div>
           </div>
 
@@ -536,8 +539,8 @@ watch(
               v-if="turn.text || turn.summaryText"
               type="button"
               class="turn-action-btn"
-              :title="copiedTurn === turn.key ? '已复制' : '复制整段总结'"
-              :aria-label="copiedTurn === turn.key ? '已复制总结' : '复制整段总结'"
+              :title="copiedTurn === turn.key ? t('timeline.action.copied') : t('timeline.action.copySummary')"
+              :aria-label="copiedTurn === turn.key ? t('timeline.action.copiedSummary') : t('timeline.action.copySummary')"
               @click="copyTurnSummary(turn)"
             >
               <Check v-if="copiedTurn === turn.key" :size="14" :stroke-width="1.8" />
@@ -547,8 +550,8 @@ watch(
               v-if="turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting'"
               type="button"
               class="turn-action-btn"
-              title="回退本次修改并重新执行"
-              aria-label="回退本次修改并重新执行"
+              :title="t('timeline.action.retry')"
+              :aria-label="t('timeline.action.retry')"
               :disabled="retryingTurn === turn.key"
               @click="retryTurn(turn)"
             >
@@ -560,18 +563,18 @@ watch(
           <PermissionBadge v-if="turn.pending" :permission="turn.pending" @decide="$emit('decide', turn.pending?.toolUseId ?? '', $event)" />
 
           <!-- 每轮 Token 消耗与缓存命中：展开历史时展示，运行中轮次不渲染 -->
-          <div v-if="turn.runStats && isTurnExpanded(turn)" class="turn-usage" aria-label="本轮 Token 消耗与缓存命中">
-            <span><small>缓存</small>{{ formatTokens(turn.runStats.cacheReadInputTokens) }}</span>
+          <div v-if="turn.runStats && isTurnExpanded(turn)" class="turn-usage" :aria-label="t('timeline.usage.aria')">
+            <span><small>{{ t('timeline.usage.cache') }}</small>{{ formatTokens(turn.runStats.cacheReadInputTokens) }}</span>
             <i />
-            <span><small>输入</small>{{ formatTokens(turn.runStats.inputTokens) }}</span>
+            <span><small>{{ t('timeline.usage.input') }}</small>{{ formatTokens(turn.runStats.inputTokens) }}</span>
             <i />
-            <span><small>输出</small>{{ formatTokens(turn.runStats.outputTokens) }}</span>
+            <span><small>{{ t('timeline.usage.output') }}</small>{{ formatTokens(turn.runStats.outputTokens) }}</span>
             <strong>{{ formatTokens(turn.runStats.inputTokens + turn.runStats.outputTokens) }} tokens</strong>
           </div>
 
-          <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" aria-label="验证与变更">
-            <div v-if="turn.passedTests" class="evidence-item passed"><CheckCircle2 :size="14" /><span><b>{{ turn.passedTests }}</b> 项验证通过</span></div>
-            <div v-if="turn.failedTests" class="evidence-item failed"><CircleAlert :size="14" /><span><b>{{ turn.failedTests }}</b> 项验证失败</span></div>
+          <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" :aria-label="t('timeline.evidence.aria')">
+            <div v-if="turn.passedTests" class="evidence-item passed"><CheckCircle2 :size="14" /><span><b>{{ turn.passedTests }}</b> {{ t('timeline.evidence.passedSuffix') }}</span></div>
+            <div v-if="turn.failedTests" class="evidence-item failed"><CircleAlert :size="14" /><span><b>{{ turn.failedTests }}</b> {{ t('timeline.evidence.failedSuffix') }}</span></div>
             <FileChangesBadge
               v-if="turn.changeFiles.length"
               :files="turn.changeFiles"
@@ -582,14 +585,14 @@ watch(
             <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><CircleAlert :size="14" /><span>{{ turn.failureReason }}</span></div>
           </section>
 
-          <button v-if="isTurnExpanded(turn) && turn.state === 'interrupted'" class="continue-button" type="button" title="从中断处继续执行" @click="$emit('continue', turn.runId)">
-            <Play :size="14" />继续执行
+          <button v-if="isTurnExpanded(turn) && turn.state === 'interrupted'" class="continue-button" type="button" :title="t('timeline.action.continueTitle')" @click="$emit('continue', turn.runId)">
+            <Play :size="14" />{{ t('timeline.action.continue') }}
           </button>
 
           <!-- turn 页脚时序指标（借鉴 dsh 8.6 turn-tail）：每轮首字延迟与吞吐，无读数不渲染 -->
-          <div v-if="isTurnExpanded(turn) && turnTailMetrics(turn)" class="turn-tail-metrics" aria-label="本轮时序指标">
-            <span v-if="turnTailMetrics(turn)?.ttft"><b>首字</b> {{ turnTailMetrics(turn)?.ttft }}</span>
-            <span v-if="turnTailMetrics(turn)?.throughput"><b>吞吐</b> {{ turnTailMetrics(turn)?.throughput }}</span>
+          <div v-if="isTurnExpanded(turn) && turnTailMetrics(turn)" class="turn-tail-metrics" :aria-label="t('timeline.tail.aria')">
+            <span v-if="turnTailMetrics(turn)?.ttft"><b>{{ t('timeline.tail.ttft') }}</b> {{ turnTailMetrics(turn)?.ttft }}</span>
+            <span v-if="turnTailMetrics(turn)?.throughput"><b>{{ t('timeline.tail.throughput') }}</b> {{ turnTailMetrics(turn)?.throughput }}</span>
           </div>
         </div>
       </div>

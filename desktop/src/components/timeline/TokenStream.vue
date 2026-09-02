@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import DOMPurify from "dompurify";
 import { marked, Renderer } from "marked";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -7,6 +8,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useThrottledVisualUpdate } from "../../composables/useThrottledVisualUpdate";
 
 const props = defineProps<{ tokens: string[]; finalText?: string }>();
+const { t } = useI18n({ useScope: "global" });
 const text = computed(() => props.finalText || props.tokens.join(""));
 const rendered = ref(text.value);
 const scheduleRender = useThrottledVisualUpdate(() => { rendered.value = text.value; });
@@ -36,19 +38,22 @@ function looksLikeFilePath(raw: string): string | null {
   return pathPart;
 }
 
-// 自定义 marked renderer：拦截 codespan（行内 `code`），把识别为文件路径的渲染为可点击链接
+// 自定义 marked renderer：拦截 codespan（行内 `code`），把识别为文件路径的渲染为可点击链接。
+// title 文案通过注入的 translate 回调取值：codespan 在 html computed 内被调用，t 读取 locale
+// 会被收集为依赖，切换语言时 markdown 随之重渲染
 class FileLinkRenderer extends Renderer {
+  constructor(private readonly translate: (key: string) => string) { super(); }
   override codespan({ text }: { text: string }): string {
     const path = looksLikeFilePath(text);
     if (path) {
       const escaped = path.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-      return `<code class="file-link" data-file="${escaped}" tabindex="0" role="link" title="点击打开文件">${text}</code>`;
+      return `<code class="file-link" data-file="${escaped}" tabindex="0" role="link" title="${this.translate("timeline.fileLink.open")}">${text}</code>`;
     }
     return `<code>${text}</code>`;
   }
 }
 
-const fileLinkRenderer = new FileLinkRenderer();
+const fileLinkRenderer = new FileLinkRenderer((key) => t(key));
 
 const html = computed(() => {
   const rawMarkdown = rendered.value;
@@ -250,15 +255,15 @@ watch(menu, () => {
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
     >
       <button type="button" role="menuitem" @click="openInAppBrowser">
-        <span class="link-context-menu__main">在右侧浏览器栏打开</span>
-        <span class="link-context-menu__hint">内置预览</span>
+        <span class="link-context-menu__main">{{ t('timeline.linkMenu.openInApp') }}</span>
+        <span class="link-context-menu__hint">{{ t('timeline.linkMenu.openInAppHint') }}</span>
       </button>
       <button type="button" role="menuitem" @click="openDefaultBrowserFromMenu">
-        <span class="link-context-menu__main">在默认浏览器中打开</span>
-        <span class="link-context-menu__hint">系统浏览器</span>
+        <span class="link-context-menu__main">{{ t('timeline.linkMenu.openExternal') }}</span>
+        <span class="link-context-menu__hint">{{ t('timeline.linkMenu.openExternalHint') }}</span>
       </button>
       <button type="button" role="menuitem" @click="copyLink">
-        <span class="link-context-menu__main">复制链接地址</span>
+        <span class="link-context-menu__main">{{ t('timeline.linkMenu.copy') }}</span>
         <span class="link-context-menu__hint">{{ menu.url }}</span>
       </button>
     </div>

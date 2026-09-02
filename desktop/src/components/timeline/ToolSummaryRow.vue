@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   ChevronRight,
   AlertCircle,
@@ -18,6 +19,7 @@ const props = defineProps<{
   running?: boolean;
   defaultOpen?: boolean;
 }>();
+const { t } = useI18n({ useScope: "global" });
 
 const open = ref(!!props.defaultOpen);
 
@@ -49,26 +51,12 @@ type GroupInfo = {
 
 const groups = computed<GroupInfo[]>(() => {
   const order: CallKind[] = ["read", "search", "edit", "exec", "other"];
-  const labelMap: Record<CallKind, string> = {
-    read: "读取文件",
-    search: "搜索文件",
-    edit: "编辑文件",
-    exec: "执行命令",
-    other: "调用工具",
-  };
   const iconMap: Record<CallKind, typeof FolderOpen> = {
     read: FolderOpen,
     search: FileSearch,
     edit: Edit3,
     exec: Terminal,
     other: Code2,
-  };
-  const unitMap: Record<CallKind, string> = {
-    read: "个文件",
-    search: "次",
-    edit: "个文件",
-    exec: "条命令",
-    other: "个工具",
   };
 
   const counts: Record<CallKind, { count: number; failed: number; running: boolean }> = {
@@ -90,13 +78,10 @@ const groups = computed<GroupInfo[]>(() => {
     .filter((k) => counts[k].count > 0)
     .map((k) => {
       const c = counts[k];
-      let text: string;
-      if (props.running && c.running) {
-        text = `正在${labelMap[k]}...`;
-      } else {
-        const verb = props.running ? `正在${labelMap[k]}` : `已${labelMap[k]}`;
-        text = `${verb} ${c.count} ${unitMap[k]}`;
-      }
+      // chip 文案取自语言包（timeline.toolSummary.<kind>.<running|counting|done>），computed 内调用 t 保证切换语言时重建
+      const text = props.running && c.running
+        ? t(`timeline.toolSummary.${k}.running`)
+        : t(`timeline.toolSummary.${k}.${props.running ? "counting" : "done"}`, { count: c.count });
       return {
         kind: k,
         icon: iconMap[k],

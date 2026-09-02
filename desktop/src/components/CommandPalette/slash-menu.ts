@@ -1,3 +1,5 @@
+import { t as globalTranslate } from "../../i18n";
+
 export type SlashMenuItem = {
   id: string;
   name: string;
@@ -5,35 +7,56 @@ export type SlashMenuItem = {
   group: "command" | "skill";
 };
 
-export const BUILT_IN_SLASH_COMMANDS: SlashMenuItem[] = [
-  { id: "command-plan", name: "plan", description: "先分析并制定执行计划，不修改项目文件", group: "command" },
-  { id: "command-edits", name: "edits", description: "允许编辑项目文件，其他敏感操作仍需确认", group: "command" },
-  { id: "command-auto", name: "auto", description: "允许直接执行所有操作，提交前仍可调整权限", group: "command" },
+/** 翻译函数：组件内传入 useI18n 的 t 以保持响应式；缺省回退到全局 t */
+export type TranslateFn = (key: string) => string;
+
+/** 内建斜杠命令：name 为数据标识（发送给后端），描述文案见 palette.command.* */
+export const BUILT_IN_SLASH_COMMANDS: Array<{ id: string; name: string }> = [
+  { id: "command-plan", name: "plan" },
+  { id: "command-edits", name: "edits" },
+  { id: "command-auto", name: "auto" },
 ];
 
-export const BUILT_IN_SKILLS: Array<{ name: string; description: string }> = [
-  { name: "frontend-design", description: "设计并实现高质量、可交付的前端界面与交互" },
-  { name: "find-skills", description: "发现适合当前任务的技能并提供安装路径" },
-  { name: "review-agent", description: "以缺陷和回归风险为优先进行代码审查" },
-  { name: "documents", description: "创建、编辑并检查 Word 文档" },
-  { name: "presentations", description: "创建或编辑演示文稿与幻灯片" },
-  { name: "spreadsheets", description: "创建、编辑和分析电子表格文件" },
-  { name: "pdf", description: "读取、创建、渲染并检查 PDF 文件" },
-  { name: "imagegen", description: "生成或编辑图片、纹理与视觉素材" },
-  { name: "visualize", description: "创建图表、可视化和交互式探索工具" },
-  { name: "openai-docs", description: "查询 OpenAI 产品与 API 的官方资料" },
-  { name: "skill-creator", description: "创建或更新可复用的 Agent 技能" },
-  { name: "plugin-creator", description: "创建和维护 SztuCode 插件结构" },
+/** 内建技能目录：name 为数据标识，描述文案见 palette.skill.* */
+export const BUILT_IN_SKILLS: Array<{ name: string }> = [
+  { name: "frontend-design" },
+  { name: "find-skills" },
+  { name: "review-agent" },
+  { name: "documents" },
+  { name: "presentations" },
+  { name: "spreadsheets" },
+  { name: "pdf" },
+  { name: "imagegen" },
+  { name: "visualize" },
+  { name: "openai-docs" },
+  { name: "skill-creator" },
+  { name: "plugin-creator" },
 ];
+
+/** 内建斜杠命令项（描述按当前语言解析） */
+export function builtInSlashCommandItems(t: TranslateFn = globalTranslate): SlashMenuItem[] {
+  return BUILT_IN_SLASH_COMMANDS.map((command) => ({
+    id: command.id,
+    name: command.name,
+    description: t(`palette.command.${command.id}`),
+    group: "command" as const,
+  }));
+}
+
+/** 内建技能目录（描述按当前语言解析） */
+export function builtInSkillItems(t: TranslateFn = globalTranslate): Array<{ name: string; description: string }> {
+  return BUILT_IN_SKILLS.map((skill) => ({ name: skill.name, description: t(`palette.skill.${skill.name}`) }));
+}
 
 export function slashMenuItems(
   query: string,
   skills: Array<{ name: string; description: string }>,
+  t: TranslateFn = globalTranslate,
 ): SlashMenuItem[] {
   const normalized = query.trim().toLocaleLowerCase();
   const matches = (item: SlashMenuItem) => !normalized || `${item.name} ${item.description}`.toLocaleLowerCase().includes(normalized);
-  const commands = BUILT_IN_SLASH_COMMANDS.filter(matches);
-  const mergedSkills = new Map(BUILT_IN_SKILLS.map((skill) => [skill.name.toLocaleLowerCase(), skill]));
+  const commands = builtInSlashCommandItems(t).filter(matches);
+  const mergedSkills = new Map(builtInSkillItems(t).map((skill) => [skill.name.toLocaleLowerCase(), skill]));
   for (const skill of skills) mergedSkills.set(skill.name.toLocaleLowerCase(), skill);
   const runtimeSkills = [...mergedSkills.values()]
     .map((skill) => ({ id: `skill-${skill.name}`, name: skill.name, description: skill.description, group: "skill" as const }))

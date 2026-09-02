@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Check, ChevronLeft, ChevronRight, Square } from "@lucide/vue";
 import type { PendingUserQuestion, UserQuestionAnswer } from "../../services/sztu-runtime";
+
+const { t } = useI18n({ useScope: "global" });
 
 type DraftAnswer = { selected: string[]; custom: string; skipped: boolean };
 
@@ -104,7 +107,7 @@ function submitAll() {
 function continueFlow() {
   const current = draft.value;
   if (!current || !completed(current)) {
-    validationError.value = "请选择一个选项或填写回答";
+    validationError.value = t("questions.chooseRequired");
     return;
   }
   if (index.value < props.pending.questions.length - 1) {
@@ -146,7 +149,7 @@ watch(() => props.pending.rpc_id, resetDrafts, { immediate: true });
         </i>
         <span>
           <b>{{ displayOption(option.label).label }}</b>
-          <em v-if="displayOption(option.label).recommended">推荐</em>
+          <em v-if="displayOption(option.label).recommended">{{ t("questions.recommended") }}</em>
           <small v-if="option.description">{{ option.description }}</small>
         </span>
       </button>
@@ -156,7 +159,7 @@ watch(() => props.pending.rpc_id, resetDrafts, { immediate: true });
       class="user-question-custom"
       :value="draft.custom"
       :disabled="busy"
-      :placeholder="question.options.length ? '其他回答…' : '输入你的回答…'"
+      :placeholder="question.options.length ? t('questions.customWithOptions') : t('questions.customOnly')"
       rows="2"
       @input="onCustomInput"
       @keydown.enter.exact.prevent="continueFlow"
@@ -164,15 +167,15 @@ watch(() => props.pending.rpc_id, resetDrafts, { immediate: true });
 
     <footer class="user-question-footer">
       <div class="user-question-pager">
-        <button type="button" title="上一题" aria-label="上一题" :disabled="index === 0 || busy" @click="index -= 1"><ChevronLeft :size="15" /></button>
+        <button type="button" :title="t('questions.prev')" :aria-label="t('questions.prev')" :disabled="index === 0 || busy" @click="index -= 1"><ChevronLeft :size="15" /></button>
         <span>{{ index + 1 }} / {{ pending.questions.length }}</span>
-        <button type="button" title="下一题" aria-label="下一题" :disabled="index === pending.questions.length - 1 || busy" @click="index += 1"><ChevronRight :size="15" /></button>
+        <button type="button" :title="t('questions.next')" :aria-label="t('questions.next')" :disabled="index === pending.questions.length - 1 || busy" @click="index += 1"><ChevronRight :size="15" /></button>
       </div>
       <p role="status">{{ displayError }}</p>
-      <button type="button" class="user-question-stop" title="停止任务" aria-label="停止任务" :disabled="busy" @click="emit('stop')"><Square :size="13" /></button>
-      <button type="button" class="user-question-skip" :disabled="busy" @click="skip">跳过</button>
+      <button type="button" class="user-question-stop" :title="t('questions.stop')" :aria-label="t('questions.stop')" :disabled="busy" @click="emit('stop')"><Square :size="13" /></button>
+      <button type="button" class="user-question-skip" :disabled="busy" @click="skip">{{ t("questions.skip") }}</button>
       <button type="button" class="user-question-submit" :disabled="busy" @click="continueFlow">
-        {{ busy ? '提交中…' : index === pending.questions.length - 1 ? '提交回答' : '下一题' }}
+        {{ busy ? t('questions.submitting') : index === pending.questions.length - 1 ? t('questions.submit') : t('questions.next') }}
       </button>
     </footer>
   </section>

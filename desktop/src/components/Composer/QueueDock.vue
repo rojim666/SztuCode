@@ -35,7 +35,7 @@ watch(() => props.items.length, (length) => {
         @click="expanded = !expanded"
       >
         <ListOrdered :size="14" />
-        <span>{{ items.length }} 条待处理</span>
+        <span>{{ t("composer.queueSummary", { n: items.length }) }}</span>
         <ChevronDown :size="13" />
       </button>
 
@@ -45,13 +45,13 @@ watch(() => props.items.length, (length) => {
           <span class="queue-dock__text" :title="item.text">{{ item.text }}</span>
           <small v-if="item.attachmentCount">{{ item.attachmentCount }} 个附件</small>
           <div class="queue-dock__actions">
-            <button type="button" class="queue-dock__action" title="退回输入框编辑" aria-label="退回输入框编辑" :disabled="busyId === item.id" @click="emit('edit', item.id)"><Pencil :size="13" /></button>
-            <button type="button" class="queue-dock__action queue-dock__action--danger" title="删除" aria-label="删除待处理任务" :disabled="busyId === item.id" @click="emit('remove', item.id)"><Trash2 :size="13" /></button>
+            <button type="button" class="queue-dock__action" :title="t('composer.edit')" :aria-label="t('composer.edit')" :disabled="busyId === item.id" @click="emit('edit', item.id)"><Pencil :size="13" /></button>
+            <button type="button" class="queue-dock__action queue-dock__action--danger" :title="t('composer.remove')" :aria-label="t('composer.removeAria')" :disabled="busyId === item.id" @click="emit('remove', item.id)"><Trash2 :size="13" /></button>
             <button
               type="button"
               class="queue-dock__action queue-dock__action--accent"
-              :title="running ? '转入当前轮' : '任务运行时可转入当前轮'"
-              aria-label="转入当前轮"
+              :title="running ? t('composer.steer') : t('composer.steerHint')"
+              :aria-label="t('composer.steer')"
               :disabled="!running || busyId === item.id"
               @click="emit('steer', item.id)"
             ><CornerUpLeft :size="13" /></button>

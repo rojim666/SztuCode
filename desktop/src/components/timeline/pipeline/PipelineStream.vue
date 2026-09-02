@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { ChevronDown, Play } from "@lucide/vue";
 import type { PermissionDecision, TimelineStep } from "../types";
 import { buildPipelineSegments, phaseStates, type PipelineSegment } from "./phase";
@@ -12,6 +13,7 @@ import AgentLogo from "../AgentLogo.vue";
 import { formatTokens } from "../../../utils/sessionStats";
 
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string }>();
+const { t } = useI18n({ useScope: "global" });
 defineEmits<{
   decide: [toolUseId: string, decision: PermissionDecision];
   reverted: [runId: string];
@@ -88,10 +90,10 @@ const turns = computed<Turn[]>(() => {
 
 function groupTitle(segment: PipelineSegment): string {
   const count = segment.calls.length;
-  if (segment.category === "write") return `修改了 ${count} 个文件`;
-  if (segment.category === "verify") return `运行了 ${count} 项检查`;
-  if (segment.category === "read") return `读取了 ${count} 处上下文`;
-  return `执行了 ${count} 条命令`;
+  if (segment.category === "write") return t("timeline.pipeline.groupWrite", { count });
+  if (segment.category === "verify") return t("timeline.pipeline.groupVerify", { count });
+  if (segment.category === "read") return t("timeline.pipeline.groupRead", { count });
+  return t("timeline.pipeline.groupExec", { count });
 }
 
 function groupProgress(segment: PipelineSegment): number {
@@ -154,7 +156,7 @@ function formatTime(value?: string): string {
           </section>
         </template>
 
-        <p v-if="turn.running && !turn.segments.length" class="pipeline-pending">正在思考…</p>
+        <p v-if="turn.running && !turn.segments.length" class="pipeline-pending">{{ t('timeline.pipeline.thinking') }}</p>
 
         <PermissionBadge
           v-if="turn.pending"
@@ -167,11 +169,11 @@ function formatTime(value?: string): string {
         <footer v-if="!turn.running && (turn.runStats || turn.model)" class="pipeline-turn__foot">
           <span v-if="turn.model">{{ turn.model }}</span>
           <span v-if="turn.runStats">· {{ formatTokens(turn.runStats.inputTokens + turn.runStats.outputTokens) }} tokens</span>
-          <span v-if="turn.changePaths.length">· 改动 {{ turn.changePaths.length }} 个文件</span>
+          <span v-if="turn.changePaths.length">{{ t('timeline.pipeline.changedFiles', { count: turn.changePaths.length }) }}</span>
         </footer>
 
         <button v-if="turn.interrupted" type="button" class="pipeline-continue" @click="$emit('continue', turn.runId)">
-          <Play :size="13" />继续
+          <Play :size="13" />{{ t('timeline.pipeline.continue') }}
         </button>
       </div>
     </article>
