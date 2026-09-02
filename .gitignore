@@ -55,3 +55,7 @@ desktop/tests/visual/__*
 # GitHub 单文件上限 100MB：超限的发布产物不纳入版本库（本地保留）
 release-artifacts/**/*.AppImage
 release-artifacts/v0.1.1/appimage-final.zip
+
+# 临时目录与中间产物
+.claude/
+.trae-html-share-packages/
