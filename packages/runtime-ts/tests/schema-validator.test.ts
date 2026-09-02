@@ -29,3 +29,31 @@ test("agent loop rejects invalid tool JSON before permission or invocation", asy
     assert.equal(permissions, 0); assert.equal(failures[0]?.error_class, "schema_error"); assert.match(failures[0]?.error_message ?? "", /command must be string/);
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
+
+test("concurrent read-only batches validate every call before permission checks", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-schema-concurrent-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let permissions = 0;
+    let calls = 0;
+    const provider: ModelProvider = { complete: async () => {
+      calls += 1;
+      return calls === 1
+        ? { text: "", tool_calls: [
+          { id: "bad", name: "read_file", input: { path: 42 } },
+          { id: "good", name: "read_file", input: { path: "missing.txt" } },
+        ], stop_reason: "tool_use" }
+        : { text: "fixed", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const loop = new AgentLoop(
+      provider,
+      createWorkspaceTools(),
+      { workspace: new Workspace(root) },
+      events,
+      { check: async () => { permissions += 1; return true; } },
+      { toolMaxConcurrency: 2, toolRetryBaseMs: 0 },
+    );
+    assert.equal((await loop.run("schema-concurrent", "run", 3)).text, "fixed");
+    assert.equal(permissions, 1);
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
