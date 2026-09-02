@@ -956,6 +956,14 @@ function selectLocale(value: AppLocale) {
   justify-items: center;
 }
 
+.option-btn--locale > span {
+  justify-self: stretch;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .option-grid--4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

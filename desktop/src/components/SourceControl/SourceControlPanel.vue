@@ -37,6 +37,7 @@ const changeGroups = computed(() => [
 const additions = computed(() => changes.value.reduce((sum, item) => sum + Number(item.additions ?? 0), 0));
 const deletions = computed(() => changes.value.reduce((sum, item) => sum + Number(item.deletions ?? 0), 0));
 const selected = computed(() => changes.value.find((item) => item.path === selectedPath.value) ?? null);
+const diffLines = computed(() => diff.value ? diff.value.split(/\r?\n/) : []);
 function messageOf(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function fileStatus(item: ChangeSummary) { return item.index_status !== " " && item.index_status !== "?" ? item.index_status : item.worktree_status !== " " ? item.worktree_status : item.index_status || item.worktree_status || "M"; }
 function statusLabel(item: ChangeSummary) { const value = fileStatus(item); return value === "A" ? "新增" : value === "D" ? "删除" : value === "R" ? "重命名" : value === "?" ? "未跟踪" : "修改"; }

@@ -59,6 +59,26 @@ const currentModel = computed(() => models.value.find((item) => item.is_current)
 const customModelIcon = (value: string) => customModelIcons.find((item) => item.id === value)?.component ?? Sparkles;
 const customModelLogo = (value: string) => logoForVendor(value) ?? null;
 
+const CUSTOM_VENDOR_NAME = t("model.vendor.custom");
+function isCustomVendor(vendorName: string) {
+  return vendorName === CUSTOM_VENDOR_NAME || vendorName === "自定义模型";
+}
+function vendorLabel(vendor: ModelVendor) {
+  const key = `model.vendor.${vendor.id}` as const;
+  const translated = t(key);
+  return translated !== key ? translated : vendor.name;
+}
+function freeTierText(vendorId: string) {
+  const key = `model.freeTier.${vendorId}` as const;
+  const translated = t(key);
+  return translated !== key ? translated : "";
+}
+function iconLabel(iconId: string) {
+  const key = `model.icon.${iconId}` as const;
+  const translated = t(key);
+  return translated !== key ? translated : iconId;
+}
+
 async function refresh() {
   error.value = "";
   try { models.value = await listModelProfiles(); }
@@ -79,7 +99,7 @@ function beginEdit(item: ModelProfile, event?: MouseEvent) {
   editorTrigger.value = event?.currentTarget instanceof HTMLButtonElement ? event.currentTarget : editorTrigger.value;
   const latest = models.value.find((m) => m.id === item.id) ?? item;
   editingModel.value = latest;
-  const vendor = modelVendors.find((v) => v.name === latest.vendor) ?? { name: latest.vendor, logo: null, mark: latest.vendor.slice(0, 1).toUpperCase() || "M", provider: latest.provider, baseUrl: latest.base_url, apiKeyUrl: null };
+  const vendor = modelVendors.find((v) => v.name === latest.vendor) ?? { id: CUSTOM_VENDOR_ID, name: latest.vendor, logo: null, mark: latest.vendor.slice(0, 1).toUpperCase() || "M", provider: latest.provider, baseUrl: latest.base_url, apiKeyUrl: null };
   selectedVendor.value = vendor;
   name.value = latest.name;
   icon.value = latest.icon || "sparkles";

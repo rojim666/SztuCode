@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { ChevronDown, CornerUpLeft, ListOrdered, Pencil, Trash2 } from "@lucide/vue";
 import type { QueueDockItem } from "../../utils/composerSubmission";
+
+const { t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   items: QueueDockItem[];

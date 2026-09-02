@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { confirm as confirmDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
   Check, ChevronDown, FolderOpen, Package, Plug, Plus, Power,
@@ -12,7 +13,9 @@ import {
   type MarketplacePluginSummary, type MarketplaceSummary, type PluginSummary,
   type SkillSummary,
 } from "../../services/sztu-runtime";
-import { BUILT_IN_SKILLS } from "../CommandPalette/slash-menu";
+import { builtInSkillItems } from "../CommandPalette/slash-menu";
+
+const { locale, t } = useI18n({ useScope: "global" });
 
 const props = defineProps<{
   connected: boolean;
@@ -118,14 +121,14 @@ function skillDescription(skill: SkillSummary): string {
 
 function pluginDescription(plugin: PluginSummary): string {
   if (plugin.description) return plugin.description;
-  if (plugin.skills.length) return t("skills.pluginSkillsDesc", { n: plugin.skills.length, skills: plugin.skills.slice(0, 3).join(localeTag.value === "zh-CN" ? "、" : ", ") });
+  if (plugin.skills.length) return t("skills.pluginSkillsDesc", { n: plugin.skills.length, skills: plugin.skills.slice(0, 3).join(locale.value === "zh-CN" ? "、" : ", ") });
   return t("skills.localPluginDesc");
 }
 
 async function refreshCatalog(): Promise<void> {
   if (!props.connected) {
     // 离线时展示内建技能目录（与斜杠命令菜单的内建目录一致），连接本地服务后由运行时技能列表替换。
-    skills.value = BUILT_IN_SKILLS.map((skill, index) => ({
+    skills.value = builtInSkillItems((key) => t(key)).map((skill, index) => ({
       id: `builtin-${index}`,
       name: skill.name,
       display_name: skill.name,
