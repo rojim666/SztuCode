@@ -8,7 +8,15 @@ export type ModelProfile = ProfileSettings & { id: string; name: string; vendor:
 type StoredProfile = ProfileSettings & { id: string; name: string; vendor: string; builtin: boolean; api_key?: string; keyless?: boolean };
 type ProfileFile = { profiles: StoredProfile[]; active_model_id: string };
 
-const BUILTIN_PROFILES: StoredProfile[] = [];
+// opencode Zen 免费模型（免 key，OpenAI 兼容端点）内置 profile，名单与 py-runtime app.py 保持一致
+const OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
+const OPENCODE_ZEN_FREE_MODELS = ["big-pickle", "ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free"];
+// Pollinations 免费端点（免 key，匿名 tier），匿名可用模型见 https://text.pollinations.ai/models
+const POLLINATIONS_BASE_URL = "https://text.pollinations.ai/openai";
+const BUILTIN_PROFILES: StoredProfile[] = [
+  ...OPENCODE_ZEN_FREE_MODELS.map((model) => ({ id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai" as const, api_format: "openai_chat_completions" as const, model, base_url: OPENCODE_ZEN_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true })),
+  { id: "builtin-pollinations-openai-fast", name: "openai-fast", vendor: "pollinations", provider: "openai" as const, api_format: "openai_chat_completions" as const, model: "openai-fast", base_url: POLLINATIONS_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true },
+];
 
 export class ModelProfileStore {
   private profiles: StoredProfile[] = []; private activeId = ""; private loaded = false;

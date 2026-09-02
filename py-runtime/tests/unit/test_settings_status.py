@@ -149,9 +149,9 @@ async def test_zen_builtin_profile_keyless(
     listed = await app._model_profile_list_handler({})
     zen = next(
         item for item in listed.models
-        if item.id == "builtin-opencode-zen-deepseek-v4-flash-free"
+        if item.id == "builtin-opencode-zen-mimo-v2.5-free"
     )
-    assert zen.model == "deepseek-v4-flash-free"
+    assert zen.model == "mimo-v2.5-free"
     assert zen.base_url == "https://opencode.ai/zen/v1"
     assert zen.has_api_key is True  # 免 key 端点视为可用
     assert zen.builtin is True
@@ -159,7 +159,7 @@ async def test_zen_builtin_profile_keyless(
     selected = await app._model_profile_select_handler({"model_id": zen.id})
     status = await app._provider_status_handler({})
     assert selected.settings.provider == "openai"
-    assert selected.settings.model == "deepseek-v4-flash-free"
+    assert selected.settings.model == "mimo-v2.5-free"
     assert selected.settings.base_url == "https://opencode.ai/zen/v1"
     assert status.ready_for_next_run is True
 

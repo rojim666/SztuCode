@@ -390,12 +390,12 @@ def get_builtin_catalog() -> PricingCatalog:
             source=f"{_DEEPSEEK_PRICING_SOURCE}#time-based",
         ),
         # opencode Zen 内置免 key free 模型
-        _free_openai_compatible_pricing("deepseek-v4-flash-free"),
-        _free_openai_compatible_pricing("ling-3.0-flash-free"),
-        _free_openai_compatible_pricing("nemotron-3-ultra-free"),
-        _free_openai_compatible_pricing("north-mini-code-free"),
-        _free_openai_compatible_pricing("longcat-2.0-free"),
+        _free_openai_compatible_pricing("big-pickle"),
+        _free_openai_compatible_pricing("ling-3.0-flash-fin-free"),
         _free_openai_compatible_pricing("mimo-v2.5-free"),
-        _free_openai_compatible_pricing("laguna-s-2.1-free"),
+        _free_openai_compatible_pricing("nemotron-3-ultra-free"),
+        _free_openai_compatible_pricing("nemotron-3.5-lightning-free"),
+        # Pollinations 免 key 免费模型
+        _free_openai_compatible_pricing("openai-fast"),
     ]
     return PricingCatalog(entries)

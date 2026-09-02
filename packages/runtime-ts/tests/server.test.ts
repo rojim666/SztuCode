@@ -188,8 +188,10 @@ test("session lifecycle and model profiles preserve desktop invariants", async (
     const linked = await rpc(socket, "settings.update", { provider: "anthropic", unknown_field: "ignored" }); assert.equal(linked.settings.provider, "anthropic"); assert.equal(linked.settings.api_format, "anthropic_messages"); assert.deepEqual(linked.updated, ["provider"]);
     const formatWins = await rpc(socket, "settings.update", { provider: "anthropic", api_format: "openai_responses" }); assert.equal(formatWins.settings.provider, "openai"); assert.equal(formatWins.settings.api_format, "openai_responses"); assert.deepEqual(formatWins.updated, ["api_format"]);
     await assert.rejects(() => rpc(socket, "settings.update", { max_retries: 11 }), (error: any) => error.code === -32602);
-    // 内置模型 profile 已移除（load 阶段过滤 builtin- 前缀）：列表不应再出现 builtin 条目
-    const initialModels = await rpc(socket, "provider.model_list"); assert.ok(Array.isArray(initialModels.models)); assert.ok(!initialModels.models.some((item: any) => item.builtin));
+    // 内置 opencode Zen 免 key profile：列表包含 builtin 条目且视为已就绪，不允许删除
+    const initialModels = await rpc(socket, "provider.model_list"); assert.ok(Array.isArray(initialModels.models));
+    const zen = initialModels.models.find((item: any) => item.id === "builtin-opencode-zen-mimo-v2.5-free"); assert.ok(zen); assert.equal(zen.base_url, "https://opencode.ai/zen/v1"); assert.equal(zen.has_api_key, true); assert.equal(zen.builtin, true);
+    await assert.rejects(() => rpc(socket, "provider.model_delete", { model_id: zen.id }), /builtin profiles cannot be deleted/);
 
     const shared = { vendor: "Test", provider: "openai", api_format: "openai_chat_completions", model: "same-model", base_url: "https://example.test/v1", api_key: "secret", context_window: 16_000, max_output_tokens: 1024, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 30, max_retries: 1, cache_control: true };
     const first = await rpc(socket, "provider.model_save", { ...shared, name: "First" }); const firstId = first.models.find((item: any) => item.name === "First").id;

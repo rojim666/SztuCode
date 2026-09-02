@@ -206,15 +206,15 @@ from sztu_code.core.workspace.manager import Workspace
 logger = logging.getLogger(__name__)
 
 # opencode Zen 免费模型（免 key，OpenAI 兼容端点）内置 profile
+# 名单来自 https://opencode.ai/docs/zen/ 的免费模型；仅收录 chat/completions 端点模型
+# （muse-spark-1.2-contributor-free 为 Responses 端点，Python runtime 暂不支持，未收录）
 _OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1"
 _OPENCODE_ZEN_FREE_MODELS: list[str] = [
-    "deepseek-v4-flash-free",
-    "ling-3.0-flash-free",
-    "nemotron-3-ultra-free",
-    "north-mini-code-free",
-    "longcat-2.0-free",
+    "big-pickle",
+    "ling-3.0-flash-fin-free",
     "mimo-v2.5-free",
-    "laguna-s-2.1-free",
+    "nemotron-3-ultra-free",
+    "nemotron-3.5-lightning-free",
 ]
 _OPENCODE_ZEN_PROFILES: list[dict[str, Any]] = [
     {
@@ -230,6 +230,24 @@ _OPENCODE_ZEN_PROFILES: list[dict[str, Any]] = [
     }
     for model in _OPENCODE_ZEN_FREE_MODELS
 ]
+
+# Pollinations 免费 OpenAI 兼容端点（免 key，匿名 tier 限流较严）；
+# 匿名可用模型列表见 https://text.pollinations.ai/models，当前仅 openai-fast
+_POLLINATIONS_BASE_URL = "https://text.pollinations.ai/openai"
+_POLLINATIONS_PROFILES: list[dict[str, Any]] = [
+    {
+        "id": "builtin-pollinations-openai-fast",
+        "name": "openai-fast",
+        "vendor": "pollinations",
+        "provider": "openai",
+        "model": "openai-fast",
+        "base_url": _POLLINATIONS_BASE_URL,
+        "api_key": "",
+        "keyless": True,
+        "builtin": True,
+    }
+]
+_BUILTIN_FREE_PROFILES = [*(_OPENCODE_ZEN_PROFILES + _POLLINATIONS_PROFILES)]
 
 
 def _now() -> str:
@@ -962,9 +980,9 @@ class CoreApp:
                 }
             ]
         # 过滤掉所有内置 profile，再统一追加，保证定义唯一
-        builtin_ids = {p["id"] for p in _OPENCODE_ZEN_PROFILES}
+        builtin_ids = {p["id"] for p in _BUILTIN_FREE_PROFILES}
         profiles = [item for item in profiles if item.get("id") not in builtin_ids]
-        profiles.extend(dict(p) for p in _OPENCODE_ZEN_PROFILES)
+        profiles.extend(dict(p) for p in _BUILTIN_FREE_PROFILES)
         return profiles, active_id
 
     def _activate_model_profile(self, profile: dict[str, Any]) -> None:
