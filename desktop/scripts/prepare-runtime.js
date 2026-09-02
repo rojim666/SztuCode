@@ -72,6 +72,17 @@ for (const vipsVersion of await readdir(sharpVendor).catch(() => [])) {
     if (/\.(so(\.\d+)*|dll)$/.test(file)) await cp(path.join(libDir, file), path.join(runtimeRoot, file));
   }
 }
+// sharp 的预编译 .node 写死了指向原 vendor 相对路径的 RPATH，被 esbuild 拷到产物目录后失效
+//（linuxdeploy 与 dlopen 都按 RPATH 找依赖，库就在同目录也会报 Could not find dependency）；
+// 统一改成 $ORIGIN，让同目录的原生库可解析
+if (process.platform === "linux") {
+  for (const file of await readdir(runtimeRoot)) {
+    if (file.endsWith(".node")) {
+      const patched = spawnSync("patchelf", ["--set-rpath", "$ORIGIN", path.join(runtimeRoot, file)], { stdio: "inherit" });
+      if (patched.status !== 0) throw new Error(`patchelf failed for ${file}`);
+    }
+  }
+}
 // esbuild 以 --format=esm 输出 .js，而 Node 对 .js 默认按 CommonJS 解析；
 // 必须在 runtime 目录声明 "type": "module"，否则安装版 daemon 启动即报
 // "Cannot use import statement outside a module"（issue #152）
