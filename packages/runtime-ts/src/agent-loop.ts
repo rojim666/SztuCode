@@ -434,9 +434,16 @@ export class AgentLoop {
 
           // 预检查所有并发工具的权限（只读工具权限检查可批量进行）
           const permissionResults = new Map<string, boolean>();
+          const validationResults = new Map<string, { valid: true } | { valid: false; error: string }>();
           for (const prepared of batch) {
             const { call, input, tool, toolName } = prepared;
             if (!tool) { permissionResults.set(call.id, false); continue; }
+            // Schema validation must precede permission checks, matching the serial
+            // scheduler and preventing malformed model output from causing approval
+            // prompts or permission side effects.
+            const validation = validateSchema(input, tool.schema);
+            validationResults.set(call.id, validation);
+            if (!validation.valid) { permissionResults.set(call.id, false); continue; }
             const permission = tool.classifyPermission?.(input) ?? tool.permission;
             const allowed = await this.permissions.check(runId, call.id, toolName, input, permission, signal, this.context.workspace.root);
             permissionResults.set(call.id, allowed);
@@ -461,7 +468,7 @@ export class AgentLoop {
               return;
             }
 
-            const validation = validateSchema(input, tool.schema);
+            const validation = validationResults.get(call.id) ?? validateSchema(input, tool.schema);
             if (!validation.valid) {
               stuck.recordFailure(stuckSignature(canonicalCall));
               this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: "schema_error", error_message: validation.error, elapsed_ms: 0, ts: now() });
@@ -528,7 +535,7 @@ export class AgentLoop {
         if (result.ok) {
           denials.recordSuccess(toolName);
           stuck.recordSuccess(stuckSignature(canonicalCall));
-          this.publish({ type: "tool.call_finished", run_id: runId, tool_use_id: call.id, tool_name: toolName, elapsed_ms: elapsedMs, output: contextOutput, ts: now() });
+          this.publish({ type: "tool.call_finished", run_id: runId, tool_use_id: call.id, tool_name: toolName, elapsed_ms: elapsedMs, output: contextOutput, ...(result.images?.length ? { images: result.images } : {}), ts: now() });
           if (tool && isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "passed", summary: testSummary(String(input.command ?? ""), result.output), ts: now() });
         }
         else {

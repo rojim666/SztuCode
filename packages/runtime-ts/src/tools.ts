@@ -19,7 +19,9 @@ import { MemoryVectorStore } from "./vector-store/index.js";
 import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
 
 export type { ToolPermission } from "./tools-types.js";
-export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied" };
+/** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */
+export type ToolImage = { mimeType: string; data: string };
+export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied"; images?: ToolImage[] };
 export type ToolOutputStream = "stdout" | "stderr" | "combined";
 export type ToolOutputChunk = { tool_use_id?: string; stream: ToolOutputStream; data: string; ts: string };
 export type ToolContext = {

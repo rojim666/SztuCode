@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "tsx src/main.ts",
     "build": "npm run build --prefix ../ai && npm run build --prefix ../session && npm run build --prefix ../session-fs && npm run build --prefix ../telemetry && npm run build --prefix ../agent-core && npm run build --prefix ../protocol && npm run build --prefix ../server && tsc -p tsconfig.json",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "verify:browser-mcp": "tsx scripts/verify-chrome-devtools-mcp.ts",
+    "verify:browser-mcp:attached": "tsx scripts/verify-chrome-devtools-mcp.ts mcp.chrome-devtools.attached.json",
+    "browser:launch": "tsx scripts/launch-chrome-debug.ts",
+    "browser:launch:system": "tsx scripts/launch-chrome-debug.ts --system"
   },
   "dependencies": {
     "@sztucode/agent-core": "file:../agent-core",

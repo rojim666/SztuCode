@@ -1,9 +1,10 @@
 import net from "node:net";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { Tool, ToolContext, ToolResult } from "./tools.js";
+import type { Tool, ToolContext, ToolImage, ToolResult } from "./tools.js";
+import type { ToolPermission } from "./tools-types.js";
 
 type Pending = { resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout>; cleanup: () => void };
-export type McpToolDefinition = { name: string; description: string; inputSchema: Record<string, unknown> };
+export type McpToolDefinition = { name: string; description: string; inputSchema: Record<string, unknown>; annotations?: { readOnlyHint?: boolean; [key: string]: unknown } };
 export type McpContent = { type: string; text?: string; [key: string]: unknown };
 export type McpClientOptions = { timeoutMs?: number; reconnectDelaysMs?: readonly number[]; onToolsChanged?: (tools: McpToolDefinition[]) => void };
 export type McpServerStatus = { name: string; transport: "stdio" | "tcp"; connected: boolean; error?: string; toolCount: number };
@@ -14,6 +15,10 @@ class McpDisconnectedError extends Error { constructor(message: string) { super(
 
 const STDERR_TAIL_BYTES = 4096; // 错误诊断只保留 stderr 尾部 4KB
 const DEFAULT_RECONNECT_DELAYS_MS: readonly number[] = [500, 1000, 2000]; // 指数退避：最多重连 3 次
+// Windows 上 npx/npm 这类 .cmd shim 不能直接 spawn（Node >= 18.20.2 的安全限制），需经 shell 启动
+const stdioNeedsShell = (command: string): boolean => process.platform === "win32" && !/\.exe$/i.test(command);
+// shell 模式下自行拼接并转义命令行，避免 Node DEP0190（shell:true + args 数组不转义直接拼接）
+const quoteShellArg = (value: string): string => /^[A-Za-z0-9_./:@=-]+$/.test(value) ? value : `"${value.replace(/(["\\])/g, "\\$1")}"`;
 const abortReason = (signal?: AbortSignal): Error => signal?.reason instanceof Error ? signal.reason : new Error("MCP operation aborted");
 const sleep = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => { if (signal?.aborted) { reject(abortReason(signal)); return; } const timer = setTimeout(() => { signal?.removeEventListener("abort", abort); resolve(); }, ms); const abort = () => { clearTimeout(timer); reject(abortReason(signal)); }; signal?.addEventListener("abort", abort, { once: true }); });
 // 让等待方可被 AbortSignal 提前打断（不取消被等待的 Promise 本身）
@@ -38,12 +43,15 @@ export class McpClient {
   async listTools(signal?: AbortSignal): Promise<McpToolDefinition[]> { const result = await this.request("tools/list", {}, signal); const tools = (result.tools as McpToolDefinition[] | undefined) ?? []; this.cachedTools = tools; return tools; }
   async listResources(signal?: AbortSignal): Promise<Record<string, unknown>[]> { const result = await this.request("resources/list", {}, signal); return (result.resources as Record<string, unknown>[] | undefined) ?? []; }
   async listPrompts(signal?: AbortSignal): Promise<Record<string, unknown>[]> { const result = await this.request("prompts/list", {}, signal); return (result.prompts as Record<string, unknown>[] | undefined) ?? []; }
-  async callTool(name: string, arguments_: Record<string, unknown>, signal?: AbortSignal): Promise<string> { const result = await this.request("tools/call", { name, arguments: arguments_ }, signal); const content = Array.isArray(result.content) ? result.content.filter((item): item is McpContent => !!item && typeof item === "object") : []; return content.map((item) => item.type === "text" ? item.text ?? "" : JSON.stringify(item)).filter(Boolean).join("\n"); }
+  async callTool(name: string, arguments_: Record<string, unknown>, signal?: AbortSignal): Promise<string> { const content = await this.callToolContent(name, arguments_, signal); return content.map((item) => item.type === "text" ? item.text ?? "" : JSON.stringify(item)).filter(Boolean).join("\n"); }
+  async callToolContent(name: string, arguments_: Record<string, unknown>, signal?: AbortSignal): Promise<McpContent[]> { const result = await this.request("tools/call", { name, arguments: arguments_ }, signal); return Array.isArray(result.content) ? result.content.filter((item): item is McpContent => !!item && typeof item === "object") : []; }
   async close(): Promise<void> { this.closed = true; this.alive = false; this.buffer = ""; this.rejectPending(new Error("MCP client closed")); this.cleanupTransport(); }
   private async spawnStdio(): Promise<void> {
     const config = this.stdioConfig; if (!config) throw new Error("MCP stdio transport is not configured");
     this.cleanupTransport(); this.buffer = ""; this.stderrTail = "";
-    this.process = spawn(config.command, config.args, { stdio: "pipe", env: { ...process.env, ...config.env }, windowsHide: true });
+    const shell = stdioNeedsShell(config.command);
+    const command = shell ? [config.command, ...config.args].map(quoteShellArg).join(" ") : config.command;
+    this.process = spawn(command, shell ? [] : config.args, { stdio: "pipe", env: { ...process.env, ...config.env }, windowsHide: true, shell });
     this.process.stdout.setEncoding("utf8"); this.process.stdout.on("data", (chunk: string) => this.receive(chunk));
     // 持续排空 stderr 并只保留尾部 4KB 供诊断，避免服务器日志写满管道缓冲导致死锁
     this.process.stderr.setEncoding("utf8"); this.process.stderr.on("data", (chunk: string) => { this.stderrTail = `${this.stderrTail}${chunk}`.slice(-STDERR_TAIL_BYTES); });
@@ -93,8 +101,34 @@ export class McpClient {
   private rejectPending(error: Error): void { for (const pending of [...this.pending.values()]) pending.reject(error); }
 }
 
+// 只读工具命名启发式：MCP 未提供 annotations 时按常见读操作命名判断（快照/截图/列表/查询类）
+const READONLY_TOOL_NAME = /^(?:list_|get_|read_|search_|query_|fetch_|describe_|take_snapshot$|take_screenshot$|take_heapsnapshot$|lighthouse_audit$|performance_analyze_insight$|wait_for$)/;
+// 权限细分：annotations.readOnlyHint=true 或命中只读命名启发式即免确认，其余写操作保持询问。
+// 注意：readOnlyHint=false 不具否决力——chrome-devtools-mcp 把 take_snapshot/take_screenshot 等观测工具也标为 false（因会改变焦点），
+// 从授权语义看它们不修改用户数据，命名列表优先
+export function mcpToolPermission(definition: McpToolDefinition): ToolPermission {
+  if (definition.annotations?.readOnlyHint === true) return "read_only";
+  return READONLY_TOOL_NAME.test(definition.name) ? "read_only" : "workspace_write";
+}
+
 export function mcpTool(client: McpClient, definition: McpToolDefinition, prefix = "mcp"): Tool {
-  return { name: `${prefix}__${definition.name}`, description: definition.description, permission: "workspace_write", retryable: false, schema: definition.inputSchema, async invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> { try { return { ok: true, output: await client.callTool(definition.name, params, context.signal) }; } catch (error) { const message = error instanceof Error ? error.message : String(error); return { ok: false, output: "", error: message, errorType: /timed out/i.test(message) ? "timeout" : "runtime_error" }; } } };
+  return { name: `${prefix}__${definition.name}`, description: definition.description, permission: mcpToolPermission(definition), retryable: false, schema: definition.inputSchema, async invoke(params: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    try {
+      const content = await client.callToolContent(definition.name, params, context.signal);
+      const images: ToolImage[] = [];
+      const lines: string[] = [];
+      for (const item of content) {
+        if (item.type === "text") { if (item.text) lines.push(item.text); }
+        // 图片内容（如浏览器截图）结构化传递，LLM 上下文只留占位符，避免 base64 撑爆 token
+        else if (item.type === "image" && typeof item.data === "string") {
+          images.push({ mimeType: typeof item.mimeType === "string" ? item.mimeType : "image/png", data: item.data });
+          lines.push(`[图片 ${typeof item.mimeType === "string" ? item.mimeType : "image/png"} · ${Math.round(item.data.length * 3 / 4 / 1024)} KB，已在桌面端展示]`);
+        }
+        else lines.push(JSON.stringify(item));
+      }
+      return { ok: true, output: lines.filter(Boolean).join("\n"), ...(images.length ? { images } : {}) };
+    } catch (error) { const message = error instanceof Error ? error.message : String(error); return { ok: false, output: "", error: message, errorType: /timed out/i.test(message) ? "timeout" : "runtime_error" }; }
+  } };
 }
 
 export type McpServerConfig = { command?: string; args?: string[]; env?: Record<string, string>; host?: string; port?: number; enabled?: boolean; timeout_ms?: number };

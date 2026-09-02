@@ -4,7 +4,7 @@ import test from "node:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { McpClient, McpManager, mcpTool, type McpToolDefinition } from "../src/mcp.js";
+import { McpClient, McpManager, mcpTool, mcpToolPermission, type McpToolDefinition } from "../src/mcp.js";
 
 test("MCP negotiates the current protocol, preserves non-text content, and defaults to askable permission", async () => {
   let protocolVersion = "";
@@ -132,6 +132,39 @@ test("MCP stores negotiated server capabilities and records listChanged=false", 
     await client.connectTcp("127.0.0.1", address.port);
     assert.deepEqual(client.serverCapabilities, { tools: { listChanged: false } }); // 能力被保存并只读暴露
     assert.equal(client.toolsListChangedSupported, false); // listChanged=false 事实被记录
+  } finally { await client.close(); await new Promise<void>((resolve) => server.close(() => resolve())); }
+});
+
+test("mcpTool splits permissions between read-only and write tools", () => {
+  // annotations.readOnlyHint=true 提升为只读；false 不否决命名列表中的观测工具（chrome-devtools-mcp 会把快照/截图误标为 false）
+  assert.equal(mcpToolPermission({ name: "click", description: "", inputSchema: {}, annotations: { readOnlyHint: true } }), "read_only");
+  assert.equal(mcpToolPermission({ name: "take_snapshot", description: "", inputSchema: {}, annotations: { readOnlyHint: false } }), "read_only");
+  // 命名启发式：快照/截图/列表/查询类只读免确认，交互写操作保持询问
+  assert.equal(mcpToolPermission({ name: "take_snapshot", description: "", inputSchema: {} }), "read_only");
+  assert.equal(mcpToolPermission({ name: "take_screenshot", description: "", inputSchema: {} }), "read_only");
+  assert.equal(mcpToolPermission({ name: "list_pages", description: "", inputSchema: {} }), "read_only");
+  assert.equal(mcpToolPermission({ name: "get_console_message", description: "", inputSchema: {} }), "read_only");
+  assert.equal(mcpToolPermission({ name: "click", description: "", inputSchema: {} }), "workspace_write");
+  assert.equal(mcpToolPermission({ name: "fill", description: "", inputSchema: {} }), "workspace_write");
+  assert.equal(mcpToolPermission({ name: "navigate_page", description: "", inputSchema: {} }), "workspace_write");
+});
+
+test("mcpTool routes image content to structured images and keeps base64 out of text output", async () => {
+  const imageData = Buffer.from("fake-png-bytes").toString("base64");
+  const server = net.createServer((socket) => { let buffer = ""; socket.setEncoding("utf8"); socket.on("data", (chunk) => { buffer += chunk; let newline = buffer.indexOf("\n"); while (newline >= 0) { const request = JSON.parse(buffer.slice(0, newline)); buffer = buffer.slice(newline + 1); newline = buffer.indexOf("\n"); if (request.id !== undefined) socket.write(`${JSON.stringify({ jsonrpc: "2.0", id: request.id, result: request.method === "tools/call" ? { content: [{ type: "text", text: "page captured" }, { type: "image", data: imageData, mimeType: "image/png" }] } : {} })}\n`); } }); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address(); if (!address || typeof address === "string") throw new Error("missing server address");
+  const client = new McpClient(2000);
+  try {
+    await client.connectTcp("127.0.0.1", address.port);
+    const tool = mcpTool(client, { name: "take_screenshot", description: "", inputSchema: { type: "object" } });
+    assert.equal(tool.permission, "read_only"); // 只读截图免确认
+    const result = await tool.invoke({}, {} as never);
+    assert.ok(result.ok);
+    assert.deepEqual(result.images, [{ mimeType: "image/png", data: imageData }]); // 图片结构化传递
+    assert.match(result.output, /page captured/);
+    assert.match(result.output, /\[图片 image\/png/); // LLM 上下文只留占位符
+    assert.ok(!result.output.includes(imageData), "base64 不应进入文本输出");
   } finally { await client.close(); await new Promise<void>((resolve) => server.close(() => resolve())); }
 });
 
