@@ -62,8 +62,10 @@ export class TcpNdjsonTransport implements Transport {
     if (connection.disconnected || connection.socket.destroyed) return false;
     const line = `${JSON.stringify(message)}\n`;
     if (Buffer.byteLength(line, "utf8") > this.maxFrameBytes) throw new Error("Response too large");
-    return new Promise((resolve, reject) => {
-      connection.socket.write(line, "utf8", (error) => error ? reject(error) : resolve(true));
+    // 写入失败（如对端是 HTTP 探测等无效客户端，收到非 HTTP 响应后立即断开）时返回 false 而不是 reject，
+    // 避免未处理的 Promise 拒绝拖垮整个 daemon 进程
+    return new Promise((resolve) => {
+      connection.socket.write(line, "utf8", (error) => resolve(!error));
     });
   }
 
