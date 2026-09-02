@@ -104,6 +104,31 @@ TCP 示例：
 }
 ```
 
+浏览器自动化（chrome-devtools-mcp）示例，见 `packages/runtime-ts/mcp.chrome-devtools.json`：
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--headless", "--isolated"],
+      "timeout_ms": 120000
+    }
+  }
+}
+```
+
+接入后 Agent 可获得 29 个浏览器工具（导航、点击、填表、快照、截图、console/network 抓取等），工具名前缀为 `mcp__chrome-devtools__`。Windows 下 `npx` 这类 `.cmd` shim 会由运行时自动经 shell 启动。可用 `npm run verify:browser-mcp`（在 `packages/runtime-ts` 下）验证连接、工具列表和真实页面导航链路。
+
+### 浏览器两种模式
+
+- **隔离模式（默认）**：`mcp.chrome-devtools.json` 使用 `--headless --isolated`，每次启动干净的临时浏览器，适合 headless/CI 和不需要登录态的任务。
+- **附着模式（复用登录态）**：`mcp.chrome-devtools.attached.json` 通过 `--browserUrl` 连接已运行的真实 Chrome。先运行 `npm run browser:launch` 启动带 CDP 调试端口（默认 9222，可用 `SZTU_CHROME_DEBUG_PORT` 覆盖）的 Chrome，默认使用持久 agent profile（`SZTU_DATA_DIR/chrome-agent-profile`，登录一次后登录态跨会话保留，与日常 Chrome 互不干扰）；`npm run browser:launch:system` 改用系统真实 profile（需先完全退出日常 Chrome）。然后用 `npm run verify:browser-mcp:attached` 验证链路，或将 `SZTU_MCP_CONFIG` 指向 attached 配置启动 runtime。
+
+浏览器集成测试默认跳过，PowerShell 下用 `$env:SZTU_TEST_BROWSER_MCP="1"; npx tsx --test tests/browser-mcp.test.ts` 启用（覆盖连接、建页、快照、填表、点击、DOM 断言、截图完整链路）；设 `SZTU_BROWSER_MCP_CONFIG` 可切换测试目标为 attached 配置。
+
+MCP 工具按只读/写操作细分授权：快照、截图、列表、查询类工具为 `read_only` 免确认，点击、填表、导航等写操作保持 `workspace_write` 询问（`annotations.readOnlyHint=true` 或命名启发式判定）。截图等图片内容以结构化 `images` 随 `tool.call_finished` 事件下发，desktop 时间线的工具卡片中可展开查看，不占用模型上下文 token。
+
 不要运行来源不明的 MCP Server。stdio 服务会继承 daemon 环境，并可能获得本机访问能力。
 
 ## 权限模式
