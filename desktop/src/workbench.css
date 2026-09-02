@@ -1448,3 +1448,314 @@
 @media (max-width: 720px) {
   .model-manager { height: min(720px, calc(100vh - 14px)); }
 }
+
+/* ── 暗色主题补充适配 ───────────────────────────────── */
+:root[data-app-theme="dark"] {
+  /* 会话详情预览卡片 */
+  .session-preview {
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 16px 38px rgb(0 0 0 / 40%), 0 3px 10px rgb(0 0 0 / 20%) !important;
+  }
+  .session-preview__title { color: var(--text) !important; }
+  .session-preview__row { color: var(--text-muted) !important; }
+  .session-preview__row svg { color: var(--text-muted) !important; }
+  .session-preview__row em { color: var(--text) !important; }
+  .session-preview__row:nth-of-type(3) em { color: var(--text) !important; }
+
+  /* 底部项目选择栏（输入框下方） */
+  .task-launcher button.composer-project {
+    color: var(--text-muted) !important;
+    background: var(--surface-soft) !important;
+  }
+  .task-launcher button.composer-project:hover {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+  }
+
+  /* 弹出框基础样式 */
+  .launcher-popover,
+  .model-picker-popover,
+  .model-config-popover {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 14px 38px rgb(0 0 0 / 40%), 0 2px 8px rgb(0 0 0 / 20%) !important;
+  }
+
+  /* 项目选择弹出框 */
+  .project-picker-popover {
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+  }
+  .project-picker-search {
+    color: var(--text-muted) !important;
+    background: var(--surface-soft) !important;
+  }
+  .project-picker-search input {
+    color: var(--text) !important;
+    background: transparent !important;
+  }
+  .project-picker-search input::placeholder {
+    color: var(--text-faint) !important;
+  }
+  .project-picker-list {
+    border-bottom-color: var(--border) !important;
+  }
+  .project-picker-list button,
+  .project-picker-actions button {
+    color: var(--text) !important;
+  }
+  .project-picker-list button:hover,
+  .project-picker-actions button:hover {
+    background: var(--surface-soft) !important;
+  }
+  .project-picker-list button > svg:first-child,
+  .project-picker-actions button > svg {
+    color: var(--text-muted) !important;
+  }
+  .project-picker-list b,
+  .project-picker-actions span {
+    color: var(--text) !important;
+  }
+  .project-picker-list small {
+    color: var(--text-muted) !important;
+  }
+  .project-picker-list button > svg:last-child {
+    color: var(--accent) !important;
+  }
+  .project-picker-empty {
+    color: var(--text-muted) !important;
+  }
+
+  /* 模型选择弹出框 */
+  .model-picker-popover > header {
+    color: var(--text-muted) !important;
+    border-bottom-color: var(--border) !important;
+  }
+  .model-picker-popover > header small {
+    color: var(--text-faint) !important;
+  }
+  .model-picker-list > button {
+    color: var(--text) !important;
+  }
+  .model-picker-list > button:hover {
+    background: var(--surface-soft) !important;
+  }
+  .model-picker-logo {
+    color: var(--text-muted) !important;
+  }
+  .model-picker-list b {
+    color: var(--text) !important;
+  }
+  .model-picker-list small {
+    color: var(--text-muted) !important;
+  }
+  .model-picker-list > p {
+    color: var(--text-muted) !important;
+  }
+  .model-picker-error {
+    color: var(--danger) !important;
+  }
+  .model-picker-popover > footer {
+    border-top-color: var(--border) !important;
+  }
+  .model-picker-popover > footer button {
+    color: var(--text) !important;
+  }
+  .model-picker-popover > footer button:hover {
+    background: var(--surface-soft) !important;
+  }
+
+  /* 模型配置弹出框 */
+  .model-config-popover > header {
+    border-bottom-color: var(--border) !important;
+  }
+  .model-config-popover header b {
+    color: var(--text) !important;
+  }
+  .model-config-popover header small {
+    color: var(--text-muted) !important;
+  }
+  .model-config-popover header > span {
+    color: var(--text-muted) !important;
+    background: var(--surface-soft) !important;
+  }
+  .model-config-popover header > span.ready {
+    color: #4ade80 !important;
+    background: rgba(22, 163, 74, 0.15) !important;
+  }
+  .model-config-fields label > span {
+    color: var(--text-muted) !important;
+  }
+  .model-config-fields input,
+  .model-config-fields select {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+    border-color: var(--border) !important;
+  }
+  .model-config-fields input:focus,
+  .model-config-fields select:focus {
+    background: var(--surface) !important;
+    border-color: var(--border-strong) !important;
+    box-shadow: 0 0 0 3px rgb(255 255 255 / 5%) !important;
+  }
+  .model-config-fields input::placeholder {
+    color: var(--text-faint) !important;
+  }
+  .model-key-field button {
+    color: var(--text-muted) !important;
+  }
+  .model-key-field button:hover {
+    color: var(--text) !important;
+    background: var(--surface) !important;
+  }
+  .model-config-error {
+    color: var(--danger) !important;
+  }
+  .model-config-popover > footer {
+    background: var(--surface-soft) !important;
+    border-top-color: var(--border) !important;
+  }
+  .model-config-popover > footer button {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+  }
+  .model-config-popover > footer button:hover {
+    background: var(--border) !important;
+  }
+  .model-config-popover > footer button.primary {
+    color: var(--accent-contrast) !important;
+    background: var(--accent) !important;
+  }
+
+  /* 权限弹出框 */
+  .permission-popover {
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+  }
+  .full-access-row {
+    color: var(--text) !important;
+  }
+  .full-access-row:hover {
+    background: var(--surface-soft) !important;
+  }
+  .full-access-row b {
+    color: var(--text) !important;
+  }
+  .full-access-row small {
+    color: var(--text-muted) !important;
+  }
+  .full-access-row > i {
+    background: var(--border-strong) !important;
+  }
+  .full-access-row > i.active {
+    background: var(--accent) !important;
+  }
+  .full-access-row > i em {
+    background: var(--surface-raised) !important;
+  }
+  .launcher-menu-error {
+    color: var(--danger) !important;
+  }
+
+  /* 模型选择器触发按钮 */
+  .task-launcher .model-label {
+    color: var(--text-muted) !important;
+  }
+  .model-config-trigger {
+    color: var(--text-muted) !important;
+  }
+  .model-config-trigger:hover,
+  .model-config-trigger[aria-expanded="true"] {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+  }
+  .model-config-trigger > i {
+    background: var(--text-faint) !important;
+  }
+  .model-config-trigger > i.online {
+    background: #4ade80 !important;
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15) !important;
+  }
+  .model-config-trigger > svg {
+    color: var(--text-muted) !important;
+  }
+
+  /* 新建任务输入框区域 */
+  .task-launcher .landing-composer {
+    background: var(--surface-soft) !important;
+  }
+  .task-launcher .composer-input-shell {
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 20%) !important;
+  }
+  .task-launcher .composer-input-shell:focus-within {
+    border-color: var(--border-strong) !important;
+    box-shadow: 0 5px 18px rgb(0 0 0 / 25%) !important;
+  }
+  .task-launcher .round,
+  .task-launcher .launcher-attachment-trigger {
+    color: var(--text-muted) !important;
+  }
+  .task-launcher .round:hover,
+  .task-launcher .permission:hover {
+    background: var(--surface-soft) !important;
+  }
+  .task-launcher .permission {
+    color: var(--text-muted) !important;
+  }
+
+  /* 侧边栏会话列表 */
+  .sidebar-session {
+    color: var(--text-muted) !important;
+  }
+  .sidebar-session:hover,
+  .sidebar-session:focus-within {
+    background: var(--surface-soft) !important;
+  }
+  .sidebar-session:has(.session-actions[data-pinned="true"]) {
+    box-shadow: inset 2px 0 var(--accent) !important;
+  }
+  .sidebar-session:has(.session-actions[data-unread="true"]) :is(.status-task-row b, .project-task, .conversation-row) {
+    color: var(--text) !important;
+  }
+  .sidebar-session:has(.session-actions[data-unread="true"]):not(:has(.session-actions[data-running="true"]))::after {
+    background: var(--accent) !important;
+  }
+  .sidebar-session .session-actions .icon-button {
+    color: var(--text-muted) !important;
+  }
+  .sidebar-session .session-actions .icon-button:hover {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+  }
+  .sidebar-session .conversation-row,
+  .sidebar-session .project-task,
+  .sidebar-session .status-task-row {
+    color: var(--text-muted) !important;
+  }
+  .sidebar-session .conversation-row b,
+  .sidebar-session .status-task-row b {
+    color: var(--text) !important;
+  }
+  .sidebar-session .conversation-row small,
+  .sidebar-session .status-task-row small {
+    color: var(--text-faint) !important;
+  }
+
+  /* 侧边栏容器背景 */
+  .kimi-sidebar,
+  .chat-sidebar,
+  .sidebar-viewport,
+  .agent-sidebar {
+    background: var(--surface) !important;
+  }
+  .kimi-shell {
+    background: var(--app-bg) !important;
+  }
+  .sidebar-workspace {
+    background: var(--surface) !important;
+  }
+}

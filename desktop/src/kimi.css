@@ -368,4 +368,130 @@ button.composer-project:hover { color: #1a70cf; }
   /* 导航切换提示框 */
   .nav-toggle-tooltip { background: var(--surface-raised); box-shadow: 0 5px 14px rgb(0 0 0 / 40%); }
   .nav-toggle-tooltip::before { background: var(--surface-raised); }
+
+  /* 斜杠命令菜单 */
+  .slash-menu {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 15px 40px rgb(0 0 0 / 40%), 0 2px 7px rgb(0 0 0 / 20%) !important;
+  }
+  .slash-menu__scroll {
+    scrollbar-color: var(--border-strong) transparent !important;
+  }
+  .slash-menu__group + .slash-menu__group {
+    border-top-color: var(--border) !important;
+  }
+  .slash-menu__group h3 {
+    color: var(--text-muted) !important;
+  }
+  .slash-menu__group h3 small {
+    color: var(--text-faint) !important;
+  }
+  .slash-menu__group button {
+    color: var(--text) !important;
+  }
+  .slash-menu__group button:hover,
+  .slash-menu__group button.active,
+  .slash-menu__group button[aria-selected="true"] {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+  }
+  .slash-menu__icon {
+    color: var(--text-muted) !important;
+    background: var(--surface-soft) !important;
+  }
+  .slash-menu__icon.command {
+    color: var(--accent-contrast) !important;
+    background: var(--accent) !important;
+  }
+
+  /* 用户提问接管组件 */
+  .user-question-composer {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+    border-color: var(--border) !important;
+    box-shadow: 0 5px 18px rgb(0 0 0 / 25%) !important;
+  }
+  .user-question-header {
+    border-bottom-color: var(--border) !important;
+  }
+  .user-question-header span {
+    color: var(--text-muted) !important;
+  }
+  .user-question-header h2 {
+    color: var(--text) !important;
+  }
+  .user-question-header > small {
+    color: var(--text-muted) !important;
+  }
+  .user-question-option {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+    border-color: var(--border) !important;
+  }
+  .user-question-option:hover:not(:disabled) {
+    background: var(--surface-raised) !important;
+    border-color: var(--border-strong) !important;
+  }
+  .user-question-option.selected {
+    background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface-soft)) !important;
+    border-color: var(--accent) !important;
+  }
+  .user-question-option > i {
+    color: var(--text-muted) !important;
+    background: var(--surface-raised) !important;
+    border-color: var(--border-strong) !important;
+  }
+  .user-question-option > i.checked {
+    color: var(--accent-contrast) !important;
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+  }
+  .user-question-option b {
+    color: var(--text) !important;
+  }
+  .user-question-option em {
+    color: var(--accent) !important;
+    background: color-mix(in srgb, var(--accent) 15%, transparent) !important;
+  }
+  .user-question-option small {
+    color: var(--text-muted) !important;
+  }
+
+  /* Markdown 内容暗色适配 */
+  .markdown-body {
+    color: var(--text) !important;
+  }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+    color: var(--text) !important;
+  }
+  .markdown-body code {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+  }
+  .markdown-body pre {
+    color: var(--text) !important;
+    background: var(--surface-soft) !important;
+    border-color: var(--border) !important;
+  }
+  .markdown-body table {
+    border-color: var(--border) !important;
+  }
+  .timeline-user-message {
+    background: var(--surface-soft) !important;
+  }
+  .project-task {
+    color: var(--text) !important;
+  }
+  .project-task:hover {
+    background: var(--surface-soft) !important;
+  }
+  .project-task.active {
+    color: var(--text) !important;
+    background: var(--surface-raised) !important;
+  }
+  .inspector-panel--blank {
+    background: var(--surface) !important;
+  }
 }

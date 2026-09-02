@@ -49,6 +49,12 @@
 :root[data-app-theme="dark"][data-accent="jade"] { --accent: #72c5a8; --accent-soft: #253f37; }
 :root[data-app-theme="dark"][data-accent="coral"] { --accent: #ee9a90; --accent-soft: #4c302e; }
 
+/* 全局兜底焦点环：跟随 accent 色，组件未自定义 focus-visible 样式时生效（低特异性，可被覆盖） */
+:where(button, [role="button"], a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 :root[data-app-theme="dark"] .kimi-shell::before {
   opacity: var(--wallpaper-opacity-dark) !important;
 }
@@ -145,7 +151,14 @@
   .session-board article,
   .permission-confirm,
   .model-manager-dialog,
-  .model-manager-backdrop > section
+  .model-manager-backdrop > section,
+  .settings-backdrop,
+  .settings-dialog,
+  .settings-dialog__header,
+  .settings-dialog__content,
+  .model-manager,
+  .model-manager-body,
+  .model-list
 ) {
   color: var(--text) !important;
   background: var(--surface) !important;
@@ -476,14 +489,11 @@
   border-color: var(--border) !important;
 }
 
-/* 主框架容器暗色适配 */
-:root[data-app-theme="dark"] :is(.kimi-shell, .kimi-titlebar, .kimi-sidebar, .kimi-main, .sidebar-viewport, .agent-sidebar) {
+/* 主框架容器暗色适配（.kimi-shell 底色保持 --app-bg，由本文件 56 行与 workbench.css 统一控制） */
+:root[data-app-theme="dark"] :is(.kimi-titlebar, .kimi-sidebar, .kimi-main, .sidebar-viewport, .agent-sidebar) {
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
-}
-:root[data-app-theme="dark"] .kimi-shell {
-  background: var(--surface) !important;
 }
 :root[data-app-theme="dark"] .window-action:hover {
   color: var(--text) !important;
@@ -596,310 +606,7 @@
   border-color: #a33e43;
 }
 
-/* The files inspector ships with a light palette; keep its dark treatment scoped
-   so standalone previews and the rest of the workbench retain their own themes. */
-:root[data-app-theme="dark"] .project-inspector.file-rail {
-  color: var(--text);
-  border-color: var(--border);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tab-strip,
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-home-header,
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-preview--files > header,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta,
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
-  color: var(--text);
-  background: transparent;
-  border-color: var(--border);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(
-  .workspace-tool-menu-trigger,
-  .workspace-browser-add,
-  .workspace-expand,
-  .workspace-panel-close,
-  .workspace-open-tab > button:first-child,
-  .workspace-tab-close
-) { color: var(--text-muted); }
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(
-  .workspace-tool-menu-trigger:hover,
-  .workspace-tool-menu-trigger.active,
-  .workspace-browser-add:hover,
-  .workspace-expand:hover,
-  .workspace-panel-close:hover,
-  .workspace-tab-close:hover
-) {
-  color: var(--text);
-  background: var(--surface-raised);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-open-tab.active,
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-open-tab.active:hover {
-  background: var(--accent-soft);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-open-tab.active > button:first-child {
-  color: var(--text);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tab-close {
-  background: var(--accent-soft);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-header-divider,
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tree-divider::after {
-  background: var(--border);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tree-divider:hover::after,
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tree-divider:active::after {
-  background: var(--border-strong);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tool-menu {
-  color: var(--text);
-  background: var(--surface-raised);
-  border-color: var(--border);
-  box-shadow: 0 10px 28px rgb(0 0 0 / 32%);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tool-menu button,
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tool-menu button svg {
-  color: var(--text);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .workspace-tool-menu button:hover {
-  background: var(--accent-soft);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(
-  .file-preview--files > header b,
-  .file-row,
-  .files-preview-placeholder b,
-  .code-preview-empty b,
-  .home-launcher__button
-) { color: var(--text); }
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(
-  .file-preview--files > header small,
-  .files-loading,
-  .files-empty,
-  .files-preview-placeholder p,
-  .code-preview-empty,
-  .code-preview-empty svg,
-  .home-launcher__prompt,
-  .home-launcher__button svg
-) { color: var(--text-muted); }
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error svg { color: #e07858; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error b { color: var(--text); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-error p { color: var(--text-muted); }
-
-/* 文件标签栏 + Open 按钮 暗色主题 */
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-bar {
-  background: var(--surface);
-  border-bottom-color: var(--border);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tabs-actions {
-  background: var(--surface);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab { color: var(--text-muted); cursor: pointer; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab:hover { background: rgba(255,255,255,.06); color: var(--text); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.active {
-  color: var(--text);
-  background: rgba(255,255,255,.08);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab.has-error { color: #e07858; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close { color: var(--text-muted); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-tab-close:hover { color: var(--text); background: rgba(255,255,255,.1); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn {
-  color: var(--text);
-  background: transparent;
-  border: 0;
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn:hover { background: rgba(255,255,255,.06); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:first-child { color: #6ea1ff; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-btn svg:last-child { color: var(--text-muted); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-menu {
-  background: var(--surface-raised);
-  border-color: var(--border);
-  box-shadow: 0 12px 36px rgb(0 0 0 / 45%), 0 3px 10px rgb(0 0 0 / 25%);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item { color: var(--text); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) { background: rgba(255,255,255,.06); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item.disabled { color: var(--text-disabled); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-icon {
-  background: rgba(255,255,255,.06);
-  color: var(--text-muted);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-open-item:hover:not(.disabled) .file-open-icon {
-  background: rgba(255,255,255,.1);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn {
-  color: var(--text-muted);
-  background: transparent;
-  border-color: transparent;
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn:hover {
-  color: var(--text);
-  background: rgba(255,255,255,.06);
-  border-color: var(--border);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo {
-  background: transparent;
-  border: 0;
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .tree-toggle-btn--solo:hover {
-  background: rgba(255,255,255,.06);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-scroll { background: var(--surface); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta { border-bottom-color: var(--border); }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta > span {
-  color: var(--text-muted);
-  background: rgba(255,255,255,.04);
-  border-color: var(--border);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
-  color: var(--text-muted);
-  border-bottom-color: var(--border);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb i { color: var(--text-disabled); }
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button {
-  background: transparent;
-  border-color: transparent;
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:hover {
-  background: var(--surface-soft);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .home-launcher__button:focus-visible {
-  background: var(--surface-raised);
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail .home-workspace {
-  background: transparent;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-row:hover {
-  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-row.active {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-row .row-chevron,
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-row .row-icon {
-  color: var(--text-faint);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .file-row.dir .row-icon {
-  color: #82b6f4;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview {
-  color: var(--text);
-  background: var(--surface);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta > span {
-  color: var(--text-muted);
-  background: var(--surface-soft);
-  border-color: var(--border-strong);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta .format-badge {
-  color: #9bc9ff;
-  background: #24384b;
-  border-color: #3d5972;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-meta .truncated-badge {
-  color: #efc27d;
-  background: #413522;
-  border-color: #665230;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb {
-  color: var(--text-muted);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .preview-breadcrumb i {
-  color: var(--text-faint);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview-scroll {
-  color: var(--text);
-  background: var(--surface);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-line:hover {
-  background: color-mix(in srgb, var(--surface-raised) 72%, transparent);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-line:has(.hljs-addition) {
-  background: rgb(53 104 72 / 24%);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-line:has(.hljs-deletion) {
-  background: rgb(135 61 61 / 24%);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .line-number {
-  color: var(--text-faint);
-  border-color: var(--border);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-comment,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-quote { color: #9aa7af; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-keyword,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-selector-tag,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-literal { color: #d7a6ec; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-string,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-regexp,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-addition { color: #91d5aa; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-number,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-built_in,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-type { color: #efb477; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-title,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-title.function_,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-section { color: #8fc1ff; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-variable,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-template-variable,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-attr,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-attribute { color: #efa98f; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-meta,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-symbol,
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-bullet { color: #83cbd7; }
-:root[data-app-theme="dark"] .project-inspector.file-rail .code-preview .hljs-deletion { color: #ff938d; }
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view) {
-  scrollbar-color: transparent transparent;
-}
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover {
-  scrollbar-color: rgb(140 150 165 / 28%) transparent;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb {
-  background: transparent;
-  border: 0;
-  border-radius: 3px;
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view):hover::-webkit-scrollbar-thumb {
-  background: rgb(140 150 165 / 28%);
-}
-
-:root[data-app-theme="dark"] .project-inspector.file-rail :is(.files-body, .code-preview-scroll, .task-summary-view)::-webkit-scrollbar-thumb:hover {
-  background: rgb(140 150 165 / 50%);
-}
+/* 文件检查器（file-rail）暗色规则统一由 file-rail.css 的 :root[data-app-theme="dark"] 块（696-939 行）维护，此处不再重复定义，避免双份规则取值漂移。 */
 
 /* Capability pages use the shared theme tokens so wallpaper glass stays legible. */
 :root[data-app-theme="dark"] :is(.skill-center, .chat-automations) {
