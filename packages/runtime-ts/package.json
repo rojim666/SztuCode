@@ -10,7 +10,8 @@
     "verify:browser-mcp": "tsx scripts/verify-chrome-devtools-mcp.ts",
     "verify:browser-mcp:attached": "tsx scripts/verify-chrome-devtools-mcp.ts mcp.chrome-devtools.attached.json",
     "browser:launch": "tsx scripts/launch-chrome-debug.ts",
-    "browser:launch:system": "tsx scripts/launch-chrome-debug.ts --system"
+    "browser:launch:system": "tsx scripts/launch-chrome-debug.ts --system",
+    "e2e:browser-click": "node scripts/e2e-browser-click.mjs"
   },
   "dependencies": {
     "@sztucode/agent-core": "file:../agent-core",

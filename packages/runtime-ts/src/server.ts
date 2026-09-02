@@ -93,6 +93,8 @@ export class RuntimeServer {
     // represents an interrupted run after a restart, not work still in progress.
     await this.sessions.recoverInterruptedSessions();
     await this.mcp.load();
+    const mcpStatus = this.mcp.status();
+    if (mcpStatus.length) console.log(`MCP servers: ${mcpStatus.map((server) => `${server.name}=${server.connected ? `connected(${server.toolCount} tools)` : `failed(${server.error ?? "unknown"})`}`).join(", ")}`);
     const configuredExtensions = (process.env.SZTU_EXTENSIONS ?? "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
     if (configuredExtensions.length) await loadExtensionModules(this.extensions, configuredExtensions, "global", process.cwd());
     const workspaceExtensions = (process.env.SZTU_WORKSPACE_EXTENSIONS ?? "").split(path.delimiter).map((item) => item.trim()).filter(Boolean);
