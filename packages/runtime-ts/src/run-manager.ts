@@ -18,6 +18,7 @@ import { ExtensionRegistry } from "./extensions/registry.js";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
 import { SubagentManager } from "./subagent.js";
 import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
+import { runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 
 type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
@@ -107,6 +108,12 @@ export class RunManager {
       const checkpointInterval = positiveEnv("SZTU_CHECKPOINT_INTERVAL", 5);
       const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { if (checkpoint.phase === "tool_batch" && checkpoint.step % checkpointInterval !== 0) return; await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
       result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal);
+
+      // Recuris: 如果需要进化，触发记忆进化
+      if (result.taskCanvas && shouldEvolve("interrupted")) {
+        const memoryRoot = path.join(root, ".sztu", "memory");
+        await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: this.events, runId: run.runId });
+      }
     } catch (error) {
       if (tracker) await tracker.finalize();
       // 失败路径也持久化已积累的对话状态（AgentLoop 会把 partialMessages 挂到错误上），避免多步工作成果蒸发
@@ -131,6 +138,12 @@ export class RunManager {
     run.contextPct = result.contextPct;
     const changes = tracker ? await tracker.finalize() : [];
     if (changes.length) this.emit({ type: "change.applied", run_id: run.runId, workspace_path: path.resolve(workspaceRoot!), paths: changes.map((item) => item.path), ts: now() });
+
+    // Recuris: 如果需要进化，触发记忆进化
+    if (result.taskCanvas && shouldEvolve("interrupted")) {
+      const memoryRoot = path.join(root, ".sztu", "memory");
+      await runMemoryEvolution(this.provider, result.taskCanvas.nodes, memoryRoot, { goal: run.goal, bus: this.events, runId: run.runId });
+    }
     if (run.status !== "running") { await this.extensions.dispatch("agent_end", { goal: run.goal, error: new Error("Run cancelled") }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); await this.extensions.dispatch("session_shutdown", { goal: run.goal }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId }); this.runRoots.delete(run.runId); this.scheduleRunCleanup(run.runId); return; }
     if (onComplete) await onComplete(result.messages, run.usage);
     if (sessionId && this.sessions) {

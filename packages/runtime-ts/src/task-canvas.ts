@@ -3,6 +3,7 @@
 // 不额外调用 LLM — 由 AgentLoop 在每步结束时自动维护。
 
 export type CanvasNodeStatus = "pending" | "running" | "done" | "failed";
+export type VerifiedStatus = "verified" | "failed" | "unverified";
 
 export interface CanvasNode {
   nodeId: string;
@@ -13,6 +14,12 @@ export interface CanvasNode {
   refs: string[];
   tsStart: string;
   tsEnd: string;
+  // Recuris 五元组结构化轨迹（失败定位的证据基础）：
+  state: string;
+  skill: string;
+  action: string;
+  observation: string;
+  verified: VerifiedStatus;
 }
 
 function _now(): string {
@@ -70,6 +77,11 @@ export class TaskCanvas {
     summary?: string;
     refs?: string[];
     status?: CanvasNodeStatus;
+    state?: string;
+    skill?: string;
+    action?: string;
+    observation?: string;
+    verified?: VerifiedStatus;
   }): CanvasNode {
     this._stepCounter++;
     const nodeId = `step_${String(this._stepCounter).padStart(2, "0")}`;
@@ -84,6 +96,11 @@ export class TaskCanvas {
       refs: [...(params.refs ?? [])],
       tsStart: now,
       tsEnd: status === "done" || status === "failed" ? now : "",
+      state: params.state ?? "",
+      skill: params.skill ?? "",
+      action: params.action ?? "",
+      observation: params.observation ?? "",
+      verified: params.verified ?? "unverified",
     };
     this._nodes.push(node);
     return node;
@@ -179,6 +196,11 @@ export class TaskCanvas {
     status?: CanvasNodeStatus;
     summary?: string;
     refs?: string[];
+    state?: string;
+    skill?: string;
+    action?: string;
+    observation?: string;
+    verified?: VerifiedStatus;
   }): void {
     if (this._nodes.length === 0) return;
     const node = this._nodes[this._nodes.length - 1]!;
@@ -193,6 +215,21 @@ export class TaskCanvas {
     }
     if (params.refs) {
       node.refs = [...params.refs];
+    }
+    if (params.state !== undefined) {
+      node.state = params.state;
+    }
+    if (params.skill !== undefined) {
+      node.skill = params.skill;
+    }
+    if (params.action !== undefined) {
+      node.action = params.action;
+    }
+    if (params.observation !== undefined) {
+      node.observation = params.observation;
+    }
+    if (params.verified !== undefined) {
+      node.verified = params.verified;
     }
     if (node.status === "done" || node.status === "failed") {
       node.tsEnd = _now();
@@ -219,6 +256,11 @@ export class TaskCanvas {
       refs: n.refs,
       ts_start: n.tsStart,
       ts_end: n.tsEnd,
+      state: n.state,
+      skill: n.skill,
+      action: n.action,
+      observation: n.observation,
+      verified: n.verified,
     }));
   }
 

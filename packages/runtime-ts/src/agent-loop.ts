@@ -11,7 +11,8 @@ import { createReadRefTool, OffloadManager } from "./offload.js";
 import { validateSchema } from "./schema-validator.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
-import { TaskCanvas } from "./task-canvas.js";
+import { TaskCanvas, type VerifiedStatus } from "./task-canvas.js";
+import { WorkingState, runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 import { ProviderError } from "./providers/errors.js";
 
 export type ChatMessage = ContextMessage;
@@ -21,7 +22,7 @@ export type ModelResponse = { text: string; tool_calls: ModelToolCall[]; stop_re
 export type ModelInvocation = { runId: string; step: number; purpose?: "agent" | "compaction" };
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
-export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[] };
+export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[]; taskCanvas?: TaskCanvas };
 export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
@@ -75,7 +76,8 @@ export class AgentLoop {
     let checkpointSequence = 0;
     let currentStep = 0;
     const wallClockExceeded = (): boolean => maxWallClockMs > 0 && (Date.now() - runStartTime) >= maxWallClockMs;
-    // TaskCanvas 任务画布
+    // Recuris: WorkingState 和任务画布
+    const workingState = new WorkingState(goal);
     const taskCanvas = new TaskCanvas();
     taskCanvas.recordStep({ label: "开始执行任务", summary: goal.slice(0, 100), toolNames: [], status: "done" });
     this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
@@ -188,7 +190,7 @@ export class AgentLoop {
         const finalText = "Task stopped due to wall clock time limit exceeded.";
         taskCanvas.recordStep({ label: "超时终止", summary: `墙钟时间 ${maxWallClockMs}ms 已到`, status: "failed" });
         messages.push({ role: "assistant", content: finalText });
-        return { text: finalText, steps: step - 1, messages, usage, contextPct: lastContextPct, compacted, summaries };
+        return { text: finalText, steps: step - 1, messages, usage, contextPct: lastContextPct, compacted, summaries, taskCanvas };
       }
 
       // 非阻塞检查后台压缩是否完成，仅在完成时应用
@@ -221,6 +223,26 @@ export class AgentLoop {
         context.notifyMutated();
       }
       await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
+
+      // Recuris: 注入 WorkingState（如果有内容且版本 > 0）
+      let injectedWorkingState = false;
+      if (workingState.version > 0 && workingState.hasContent) {
+        const wsRendered = workingState.render();
+        if (wsRendered) {
+          messages.push({ role: "user", content: wsRendered });
+          injectedWorkingState = true;
+          this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "working_state", message: "Injected working state", ts: now() });
+        }
+      }
+
+      // Recuris: 记录当前步骤的 state 到画布（后面我们会在工具调用后补充其他字段）
+      taskCanvas.recordStep({
+        label: `Step ${step}`,
+        toolNames: [],
+        status: "running",
+        state: `Step ${step} starting`,
+      });
+
       const requestTokens = context.tokenEstimate();
       let response: ModelResponse;
       let streamedText = "";
@@ -230,7 +252,19 @@ export class AgentLoop {
         response = await this.provider.complete(messages, this.tools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
         tokenBuffer.flush();
         llmFailures = 0;
+
+        // Recuris: 移除临时注入的 WorkingState（如果存在）
+        if (injectedWorkingState && messages.length > 0) {
+          messages.pop();
+          context.notifyMutated();
+        }
       } catch (error) {
+        // Recuris: 移除临时注入的 WorkingState（如果存在）
+        if (injectedWorkingState && messages.length > 0) {
+          messages.pop();
+          context.notifyMutated();
+        }
+
         // 用户主动取消不是故障，照常上抛
         if (signal?.aborted) throw error;
         const interruptedSteering = takeSteering?.() ?? [];
@@ -291,7 +325,7 @@ export class AgentLoop {
         // TaskCanvas 记录任务完成
         taskCanvas.recordStep({ label: "任务完成", summary: response.text.slice(0, 100), status: "done" });
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
-        return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries };
+        return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries, taskCanvas };
       }
       messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
 
@@ -546,11 +580,35 @@ export class AgentLoop {
         messages.push({ role: "tool", tool_call_id: call.id, content: contextOutput, is_error: !result.ok });
       }
 
+      // Recuris: 从工具结果吸收硬证据并更新 TaskCanvas 五元组
+      const lastNodeId = taskCanvas.nodes[taskCanvas.nodes.length - 1]?.nodeId ?? "";
+      for (const call of response.tool_calls) {
+        const entry = toolResults.get(call.id);
+        if (!entry) continue;
+        const { result, toolName, canonicalCall } = entry;
+        const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "";
+        
+        // 吸收硬证据（工具成功结果被视为硬证据）
+        if (result.ok) {
+          const evidenceText = `${toolName}: ${rawOutput.slice(0, 200)}`;
+          workingState.absorb(evidenceText, "hard", lastNodeId);
+        }
+      }
+
       // 更新 TaskCanvas 本轮工具执行结果
+      const skillText = response.tool_calls.map(c => c.name).join(", ");
+      const actionText = response.text?.slice(0, 100) || "";
+      const observationText = toolSummaries.join("\n");
+      const verifiedStatus: VerifiedStatus = hasFailures ? "failed" : "verified";
+
       taskCanvas.finalizeLast({
         status: hasFailures ? "failed" : "done",
         summary: toolSummaries.join("; ").slice(0, 200),
         refs: refPaths,
+        skill: skillText,
+        action: actionText,
+        observation: observationText,
+        verified: verifiedStatus,
       });
       // 定期发布画布更新
       if (step % 3 === 0 || taskCanvas.nodeCount <= 3) {
@@ -611,8 +669,8 @@ export class AgentLoop {
     if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
     messages.push({ role: "assistant", content: responseContent(response) });
     const text = response.text.trim();
-    if (response.stop_reason !== "end_turn" || response.tool_calls.length > 0 || /^\[INCOMPLETE\]/i.test(text)) return { complete: false, text, contextPct };
-    return { complete: true, text: text.replace(/^\[COMPLETE\]\s*/i, "") || text, contextPct };
+    if (response.stop_reason !== "end_turn" || response.tool_calls.length > 0 || /^\[INCOMPLETE\]/i.test(text)) return { complete: false, text, contextPct, taskCanvas };
+    return { complete: true, text: text.replace(/^\[COMPLETE\]\s*/i, "") || text, contextPct, taskCanvas };
   }
 
   private publish(event: RuntimeEvent): void { this.events.publish(event); }
