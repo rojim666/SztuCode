@@ -15,13 +15,17 @@ const promptRoot = path.join(runtimeRoot, "prompts", "content");
 const agentRoot = path.join(runtimeRoot, "agents", "builtin");
 const instructionNames = ["AGENT.md", "AGENTS.md", "CLAUDE.md", "SZTUCODE.md", "CLAW.md"];
 
+function stripHtmlComments(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, "").replace(/^\s*\n/gm, "").trim();
+}
+
 export type AgentProfile = { name: string; description: string; systemPrompt: string; allowedTools: string[] | null; permissionMode: PermissionMode | null; maxSteps: number };
 
 async function markdownGroup(group: string): Promise<string[]> {
   const root = path.join(promptRoot, group);
   try {
     const entries = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isFile() && entry.name.endsWith(".md")).sort((a, b) => a.name.localeCompare(b.name));
-    return Promise.all(entries.map((entry) => readFile(path.join(root, entry.name), "utf8")));
+    return Promise.all(entries.map(async (entry) => stripHtmlComments(await readFile(path.join(root, entry.name), "utf8"))));
   } catch { return []; }
 }
 
@@ -29,7 +33,7 @@ async function firstPrompt(group: string, fragment: string): Promise<string> {
   const root = path.join(promptRoot, group);
   try {
     const name = (await readdir(root)).find((entry) => entry.endsWith(".md") && entry.includes(fragment));
-    return name ? await readFile(path.join(root, name), "utf8") : "";
+    return name ? stripHtmlComments(await readFile(path.join(root, name), "utf8")) : "";
   } catch { return ""; }
 }
 
@@ -106,7 +110,7 @@ export async function loadAgentProfile(workspaceRoot: string, name: string): Pro
       const profile = parseTomlProfile(await readFile(file, "utf8"), name);
       if (profile.systemPrompt) {
         const promptFile = path.join(promptRoot, "subagent-prompts", `agent-prompt-${profile.systemPrompt}.md`);
-        try { profile.systemPrompt = await readFile(promptFile, "utf8"); } catch { /* inline/system prompt fallback */ }
+        try { profile.systemPrompt = stripHtmlComments(await readFile(promptFile, "utf8")); } catch { /* inline/system prompt fallback */ }
       }
       return profile;
     } catch { /* try lower-priority profile */ }

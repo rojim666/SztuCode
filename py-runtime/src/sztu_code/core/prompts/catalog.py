@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
@@ -9,6 +10,14 @@ from typing import Any
 
 PROMPT_CONTENT_ROOT = Path(__file__).with_name("content")
 _VALID_STATUSES = frozenset({"active", "reference-only"})
+_HTML_COMMENT_PATTERN = re.compile(r"<!--[\s\S]*?-->")
+
+
+def strip_html_comments(text: str) -> str:
+    """移除 HTML 注释并清理多余空行，减少 token 消耗。"""
+    text = _HTML_COMMENT_PATTERN.sub("", text)
+    text = re.sub(r"^\s*\n", "", text, flags=re.MULTILINE)
+    return text.strip()
 
 
 class PromptIndexError(RuntimeError):
@@ -96,7 +105,7 @@ def _load_group(group: str, prompt_root: Path) -> tuple[PromptEntry, ...]:
 
         prompt_path = group_root / file_name
         try:
-            content = prompt_path.read_text(encoding="utf-8").strip()
+            content = strip_html_comments(prompt_path.read_text(encoding="utf-8"))
         except OSError as exc:
             raise PromptIndexError(f"cannot read prompt section: {prompt_path}") from exc
         if not content:
