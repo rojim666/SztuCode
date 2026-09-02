@@ -37,12 +37,17 @@ OPENAI_BASE_URL=https://api.example.com/v1
 
 ```dotenv
 SZTU_LLM_PROVIDER=openai
-SZTU_LLM_DEFAULT_MODEL=deepseek-v4-flash-free
+SZTU_LLM_DEFAULT_MODEL=mimo-v2.5-free
 OPENAI_BASE_URL=https://opencode.ai/zen/v1
 SZTU_LLM_KEYLESS=true
 ```
 
-桌面模型管理页也提供 opencode Zen 内置 profile。选择内置项会自动设置 keyless，无需手工编辑 `.env`。
+桌面模型管理页也提供 opencode Zen 与 Pollinations 的内置免费 profile。选择内置项会自动设置 keyless，无需手工编辑 `.env`：
+
+- opencode Zen（`https://opencode.ai/zen/v1`）：`big-pickle`、`ling-3.0-flash-fin-free`、`mimo-v2.5-free`、`nemotron-3-ultra-free`、`nemotron-3.5-lightning-free`
+- Pollinations（`https://text.pollinations.ai/openai`）：`openai-fast`（匿名 tier 限流较严）
+
+模型管理页的服务商目录也标注了各平台的免费额度（OpenRouter、Google AI Studio、Groq、Cerebras、Mistral、GitHub Models、NVIDIA NIM、智谱、硅基流动等），点击"获取 API 密钥"可跳转官网注册领取，再粘贴密钥即可接入。
 
 ## 环境变量
 
