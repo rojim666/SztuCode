@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { chmod, cp, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareSkillAssets } from "../../scripts/prepare-skill-assets.js";
@@ -55,6 +55,23 @@ const esbuildCommand = await import("node:fs").then(({ existsSync }) => existsSy
 const esbuildIsScript = esbuildCommand === esbuild && readFileSync(esbuild).subarray(0, 2).toString() === "#!/";
 const result = spawnSync(esbuildIsScript ? process.execPath : esbuildCommand, esbuildIsScript ? [esbuildCommand, ...esbuildArgs] : esbuildArgs, { cwd: repositoryRoot, stdio: "inherit", windowsHide: true });
 if (result.status !== 0) throw new Error(`Failed to bundle the TypeScript runtime (exit code ${result.status ?? 1})`);
+// esbuild 的 file loader 只把 .node 拷进产物目录，不会带它们的运行时动态库；
+// 缺失时 linuxdeploy 直接报 "Could not find dependency: libonnxruntime.so.x / libvips-cpp.so.42"，
+// 安装版 daemon 也无法加载（Linux 走 $ORIGIN rpath，Windows 走 node.exe 同目录搜索）。
+const onnxBin = path.join(repositoryRoot, "node_modules", "onnxruntime-node", "bin");
+for (const napiVersion of await readdir(onnxBin).catch(() => [])) {
+  const nativeDir = path.join(onnxBin, napiVersion, process.platform, process.arch);
+  for (const file of await readdir(nativeDir).catch(() => [])) {
+    if (!file.endsWith(".node")) await cp(path.join(nativeDir, file), path.join(runtimeRoot, file));
+  }
+}
+const sharpVendor = path.join(repositoryRoot, "node_modules", "sharp", "vendor");
+for (const vipsVersion of await readdir(sharpVendor).catch(() => [])) {
+  const libDir = path.join(sharpVendor, vipsVersion, `${process.platform}-${process.arch}`, "lib");
+  for (const file of await readdir(libDir).catch(() => [])) {
+    if (/\.(so(\.\d+)*|dll)$/.test(file)) await cp(path.join(libDir, file), path.join(runtimeRoot, file));
+  }
+}
 // esbuild 以 --format=esm 输出 .js，而 Node 对 .js 默认按 CommonJS 解析；
 // 必须在 runtime 目录声明 "type": "module"，否则安装版 daemon 启动即报
 // "Cannot use import statement outside a module"（issue #152）
