@@ -192,6 +192,7 @@ class AgentLoop:
         compact_cooldown_steps: int = 3,
         circuit_breaker_max_failures: int = 3,
         tool_max_concurrency: int = 4,
+        repeated_error_threshold: int = 3,
         pricing_provider: str = "",
         pricing_model: str = "",
         pricing_catalog: PricingCatalog | None = None,
@@ -222,6 +223,7 @@ class AgentLoop:
         self._compact_cooldown_steps = compact_cooldown_steps
         self._circuit_breaker_max_failures = circuit_breaker_max_failures
         self._tool_max_concurrency = tool_max_concurrency
+        self._repeated_error_threshold = repeated_error_threshold
         self._pricing_provider = pricing_provider or _infer_pricing_provider(provider)
         self._pricing_model = pricing_model or _infer_pricing_model(provider)
         self._pricing_catalog = pricing_catalog
@@ -576,8 +578,8 @@ class AgentLoop:
                 context.mark_interrupted(TerminationReason.MAX_BUDGET_USD)
 
             # repeated_error: 同一工具同类错误连续 N 次
-            elif context.error_accumulator and any(
-                count >= 3
+            elif self._repeated_error_threshold > 0 and context.error_accumulator and any(
+                count >= self._repeated_error_threshold
                 for tool_errors in context.error_accumulator.values()
                 for count in tool_errors.values()
             ):
@@ -640,11 +642,18 @@ class AgentLoop:
                 should_compact = False
                 if self._compact_threshold > 0:
                     trigger_pct = response.usage.context_pct
-                    if response.usage.input_tokens > 0 and added_estimate:
+                    # context_pct 按全量 prompt（净输入+缓存读+缓存写）计算，
+                    # 放大估算必须同口径，否则高缓存命中时会过度放大、过早压缩
+                    full_input_tokens = (
+                        response.usage.input_tokens
+                        + response.usage.cache_read_input_tokens
+                        + response.usage.cache_creation_input_tokens
+                    )
+                    if full_input_tokens > 0 and added_estimate:
                         trigger_pct = (
                             response.usage.context_pct
-                            * (response.usage.input_tokens + added_estimate)
-                            / response.usage.input_tokens
+                            * (full_input_tokens + added_estimate)
+                            / full_input_tokens
                         )
                     if trigger_pct >= self._compact_threshold:
                         should_compact = True

@@ -489,6 +489,10 @@ class OpenAIProvider:
 
         input_tokens, output_tokens, cache_read = _usage_from_final(acc.usage)
         context_window = _context_window(self._model, self._context_window_override)
+        # OpenAI 兼容 API 的 prompt_tokens 含缓存命中部分；协议口径 input_tokens 为
+        # 未缓存净输入（与 Anthropic、pricing 计费、前端命中率公式一致）。
+        # context_pct 仍按全量 prompt 计算——缓存命中部分同样占用上下文窗口
+        net_input_tokens = max(input_tokens - cache_read, 0)
         context_pct = input_tokens / context_window if input_tokens > 0 else 0.0
 
         from sztu_code.core.compact.context_usage import estimate_context_usage
@@ -503,7 +507,7 @@ class OpenAIProvider:
         await bus.publish(
             LlmUsageEvent(
                 run_id=run_id,
-                input_tokens=input_tokens,
+                input_tokens=net_input_tokens,
                 output_tokens=output_tokens,
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=0,
@@ -520,7 +524,7 @@ class OpenAIProvider:
             text="".join(acc.text_parts),
             thinking_blocks=_thinking_blocks(acc.thinking_parts),
             usage=UsageStats(
-                input_tokens=input_tokens,
+                input_tokens=net_input_tokens,
                 output_tokens=output_tokens,
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=0,

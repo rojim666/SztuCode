@@ -268,12 +268,17 @@ export class AgentLoop {
       const contextWindow = resolveContextWindow(this.options.contextWindow);
       const reservedOutputTokens = this.options.maxOutputTokens ?? 8_192;
       const responseInputTokens = Number(response.usage?.input_tokens ?? 0);
+      // 上下文占用按全量 prompt（净输入+缓存读+缓存写）计算——
+      // provider 上报的 input_tokens 为未缓存净输入，缓存命中部分同样占用上下文窗口
+      const responseTotalInputTokens = responseInputTokens
+        + Number(response.usage?.cache_read_input_tokens ?? 0)
+        + Number(response.usage?.cache_creation_input_tokens ?? 0);
       // provider usage 校准：服务端真实输入 token 修正本地估算（只影响本地预判，contextPct 仍优先用服务端值）
-      if (responseInputTokens > 0) context.calibrate(responseInputTokens);
-      lastContextPct = context.contextPct(responseInputTokens > 0 ? responseInputTokens : requestTokens);
+      if (responseTotalInputTokens > 0) context.calibrate(responseTotalInputTokens);
+      lastContextPct = context.contextPct(responseTotalInputTokens > 0 ? responseTotalInputTokens : requestTokens);
       this.options.onProgress?.({ steps: step, usage: { ...usage }, contextPct: lastContextPct });
       const usageSnapshot = context.usageSnapshot();
-      this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: usageSnapshot.system, summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: usageSnapshot.conversation, tool_tokens: usageSnapshot.tool, ts: now() });
+      this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseTotalInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: usageSnapshot.system, summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: usageSnapshot.conversation, tool_tokens: usageSnapshot.tool, ts: now() });
       if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
       if (response.stop_reason === "end_turn") {
         const finalPhase = phases.finish();
@@ -594,7 +599,7 @@ export class AgentLoop {
     usage.output_tokens += Number(response.usage?.output_tokens ?? 0);
     usage.cache_read_input_tokens += Number(response.usage?.cache_read_input_tokens ?? 0);
     usage.cache_creation_input_tokens += Number(response.usage?.cache_creation_input_tokens ?? 0);
-    const inputTokens = Number(response.usage?.input_tokens ?? 0); const contextPct = inputTokens > 0 ? inputTokens / resolveContextWindow(this.options.contextWindow) : previousContextPct;
+    const inputTokens = Number(response.usage?.input_tokens ?? 0) + Number(response.usage?.cache_read_input_tokens ?? 0) + Number(response.usage?.cache_creation_input_tokens ?? 0); const contextPct = inputTokens > 0 ? inputTokens / resolveContextWindow(this.options.contextWindow) : previousContextPct;
     this.options.onProgress?.({ steps: step, usage: { ...usage }, contextPct });
     if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
     messages.push({ role: "assistant", content: responseContent(response) });

@@ -166,7 +166,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         return [{ id: call.id, name: call.function.name, input }];
       });
       if (choice.reasoning_content) onThinking?.(choice.reasoning_content);
-      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
+      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? payload.usage?.input_tokens_details?.cached_tokens ?? 0)), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
     } catch (error) { if (timedOut) throw new ProviderTimeoutError("OpenAI-compatible", timeoutMs); throw error; } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
   }
 
@@ -192,7 +192,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     };
     while (true) { const { value, done } = await reader.read(); if (done) break; onProgress?.(); buffer += decoder.decode(value, { stream: true }); const rows = buffer.split(/\r?\n\r?\n/); buffer = rows.pop() ?? ""; for (const row of rows) { const data = row.split(/\r?\n/).find((line) => line.startsWith("data:")); if (data) consume(data.slice(5).trim()); } }
     const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.args) }));
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: netInputTokens(Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0)), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
   }
 
   private parseResponses(payload: ResponsesResponse, onThinking?: (thinking: string) => void): ModelResponse {
@@ -204,11 +204,17 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       const input = parseToolArguments(item.arguments);
       return { id: item.call_id || item.id || `call_${index}`, name: item.name!, input };
     });
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: Number(payload.usage?.input_tokens ?? 0), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? 0), Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0)), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
   }
 }
 
 function responsesStopReason(status?: string, details?: { reason?: string | null }): string | undefined {
   if (details?.reason) return details.reason;
   return status === "incomplete" ? "max_output_tokens" : undefined;
+}
+
+// OpenAI 兼容 API 的 prompt_tokens/input_tokens 含缓存命中部分；协议口径 input_tokens
+// 为未缓存净输入（与 Anthropic、计费与前端缓存命中率公式一致），故此处减去缓存读
+function netInputTokens(totalInputTokens: number, cacheReadTokens: number): number {
+  return Math.max(totalInputTokens - cacheReadTokens, 0);
 }

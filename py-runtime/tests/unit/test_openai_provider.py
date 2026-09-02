@@ -390,7 +390,8 @@ async def test_token_events_published() -> None:
 
 
 # 功能：验证最终 chunk 携带 usage 时 llm.usage 事件正确填充
-# 设计：检查 input/output/cache_read 三字段精确匹配
+# 设计：prompt_tokens 含缓存命中部分，协议口径 input_tokens 为净输入（200-150=50），
+#       cache_read 单独上报，与 Anthropic/计费/前端命中率公式一致
 async def test_usage_event_published() -> None:
     usage = _make_usage(prompt_tokens=200, completion_tokens=75, cached_tokens=150)
     chunks = [
@@ -402,7 +403,7 @@ async def test_usage_event_published() -> None:
     usage_events = [e for e in events if e.type == "llm.usage"]  # type: ignore[attr-defined]
     assert len(usage_events) == 1
     ue = usage_events[0]
-    assert ue.input_tokens == 200  # type: ignore[attr-defined]
+    assert ue.input_tokens == 50  # type: ignore[attr-defined]
     assert ue.output_tokens == 75  # type: ignore[attr-defined]
     assert ue.cache_read_input_tokens == 150  # type: ignore[attr-defined]
 

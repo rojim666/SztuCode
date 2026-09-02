@@ -217,8 +217,9 @@ def print_instance_summary(r: dict, idx: int, total: int) -> None:
     cache_read = r["total_cache_read_tokens"]
     cache_create = r["total_cache_creation_tokens"]
 
-    # 缓存命中率
-    cache_hit_pct = (cache_read / total_in * 100) if total_in > 0 else 0.0
+    # 缓存命中率（total_input_tokens 为未缓存净输入，分母需加回缓存读，与前端公式同口径）
+    billed_in = total_in + cache_read
+    cache_hit_pct = (cache_read / billed_in * 100) if billed_in > 0 else 0.0
     # 每次步骤平均 token
     avg_in_per_step = total_in / max(r["steps"], 1)
     avg_out_per_step = total_out / max(r["steps"], 1)

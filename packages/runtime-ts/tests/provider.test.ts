@@ -28,7 +28,7 @@ test("OpenAI Responses provider uses /responses and parses text and function cal
     assert.equal((requestBody?.model), "gpt-test");
     assert.deepEqual(result.tool_calls, [{ id: "call-1", name: "read_file", input: { path: "a.txt" } }]);
     assert.equal(result.text, "done");
-    assert.deepEqual(result.usage, { input_tokens: 12, output_tokens: 4, cache_read_input_tokens: 2 });
+    assert.deepEqual(result.usage, { input_tokens: 10, output_tokens: 4, cache_read_input_tokens: 2 });
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -188,6 +188,8 @@ test("OpenAI-compatible provider marks stable system and tool prefixes for cachi
     assert.deepEqual(requestBody.messages[0].cache_control, { type: "ephemeral" });
     assert.deepEqual(requestBody.tools[0].cache_control, { type: "ephemeral" });
     assert.equal(result.usage?.cache_read_input_tokens, 6);
+    // prompt_tokens=10 含缓存命中 6，协议口径 input_tokens 为净输入 10-6=4
+    assert.equal(result.usage?.input_tokens, 4);
   } finally { globalThis.fetch = originalFetch; }
 });
 

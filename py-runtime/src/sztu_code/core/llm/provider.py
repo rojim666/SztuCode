@@ -232,12 +232,15 @@ class AnthropicProvider:
         cache_read: int = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_create: int = getattr(usage, "cache_creation_input_tokens", 0) or 0
         context_window = _context_window(self._model, self._context_window_override)
-        context_pct = usage.input_tokens / context_window
+        # Anthropic 的 input_tokens 不含缓存部分（净输入）；上下文占用按全量 prompt
+        # （净输入+缓存读+缓存写）计算——缓存命中部分同样占用上下文窗口
+        total_prompt_tokens = usage.input_tokens + cache_read + cache_create
+        context_pct = total_prompt_tokens / context_window
         from sztu_code.core.compact.context_usage import estimate_context_usage
         # 用原始（未加 cache_control 注解）tool_schemas 作增量键，跨调用内容稳定
         breakdown = estimate_context_usage(
             messages=messages, tool_schemas=tool_schemas, system=system or _SYSTEM_PROMPT,
-            actual_input_tokens=usage.input_tokens, context_window=context_window,
+            actual_input_tokens=total_prompt_tokens, context_window=context_window,
             reserved_output_tokens=self._max_output_tokens,
             incremental=usage_estimator,
         )
