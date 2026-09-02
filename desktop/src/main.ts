@@ -9,7 +9,6 @@ import "./timeline.css";
 import "./pipeline.css";
 import "./link-menu.css";
 import "./workbench.css";
-import "./canvas-panel.css";
 import "./file-rail.css";
 import "./typography.css";
 import "./appearance.css";

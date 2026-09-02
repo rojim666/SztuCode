@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
-  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, FileText, Folder, FolderOpen, FolderPlus,
+  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
   GitBranch, Globe2, Info, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
   Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
 } from "@lucide/vue";
@@ -21,7 +21,6 @@ import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
 import UserQuestionComposer from "./components/UserQuestions/UserQuestionComposer.vue";
 import SourceControlPanel from "./components/SourceControl/SourceControlPanel.vue";
-import CanvasPanel, { type CanvasDoc } from "./components/Canvas/CanvasPanel.vue";
 import { slashMenuItems } from "./components/CommandPalette/slash-menu";
 import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, TimelineEvent, TimelineStep, ToolCallEntry, WorkflowTaskEntry } from "./components/timeline/types";
 import { isMacOSPlatform } from "./lib/platform";
@@ -416,10 +415,6 @@ const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
 const inspectorOpen = ref(true);
 const inspectorRendered = ref(true);
-// 文档画布：AI 通过 canvas_* 工具产出的 Markdown 交付文档，按会话分组，右侧面板渲染
-const canvasPanelOpen = ref(false);
-const canvasDocsBySession = reactive(new Map<string, CanvasDoc[]>());
-const canvasSelectionBySession = reactive(new Map<string, string>());
 // 输出链接「在右侧浏览器栏打开」的组件句柄（TokenStream 派发全局事件后由 App 转发）
 const inspectorRef = ref<InstanceType<typeof ProjectInspector> | null>(null);
 const inspectorWidth = ref(Math.min(720, Math.max(340, Number(localStorage.getItem("sztu.inspectorWidth")) || 390)));
@@ -492,12 +487,6 @@ const activeSessionWorkspace = computed(() => {
   return workspaceId ? workspaces.value.find((item) => item.workspace_id === workspaceId) ?? null : null;
 });
 const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.archived));
-// 当前会话的画布文档与选中文档
-const activeCanvasDocs = computed(() => (activeId.value ? canvasDocsBySession.get(activeId.value) : undefined) ?? []);
-const activeCanvasDocId = computed(() => (activeId.value ? canvasSelectionBySession.get(activeId.value) : undefined) ?? null);
-function selectCanvasDoc(id: string) {
-  if (activeId.value) canvasSelectionBySession.set(activeId.value, id);
-}
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
@@ -1202,30 +1191,6 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     return;
   }
   if (!relatedRunId) return;
-  // 文档画布：AI 通过 canvas_* 工具产出/更新 Markdown 交付文档 → 按会话归档，新建时自动展开面板
-  if (type === "canvas.document") {
-    const payload = event.document as Record<string, unknown> | undefined;
-    if (!payload || typeof payload.id !== "string") return;
-    const doc: CanvasDoc = {
-      id: payload.id,
-      title: String(payload.title ?? "未命名文档"),
-      content: String(payload.content ?? ""),
-      version: Number(payload.version ?? 1),
-      updatedAt: String(payload.updated_at ?? event.ts ?? ""),
-    };
-    // 注意：必须生成新数组再 set——同引用 set 不会触发 Vue 响应式更新
-    const list = [...(canvasDocsBySession.get(sessionId) ?? [])];
-    const index = list.findIndex((item) => item.id === doc.id);
-    if (index >= 0) list[index] = doc; else list.push(doc);
-    canvasDocsBySession.set(sessionId, list);
-    if (!canvasSelectionBySession.get(sessionId)) canvasSelectionBySession.set(sessionId, doc.id);
-    // 新建文档（或当前激活会话收到文档）即展开面板：不依赖会话匹配，避免后台 run 产出文档时面板无反应
-    if (String(event.action ?? "") === "create" || sessionId === activeId.value) {
-      canvasSelectionBySession.set(sessionId, doc.id);
-      canvasPanelOpen.value = true;
-    }
-    return;
-  }
   if (type === "run.started") {
     const messageStep = maxTimelineStep(sessionId);
     setStep(messageStep || 1, (current) => ({ ...current, status: "thinking", runId, runStartedAt: String(event.ts ?? new Date().toISOString()) }));
@@ -3063,18 +3028,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
                   <button class="source-control-toggle" title="源代码管理" aria-label="源代码管理" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
-                  <button
-                    class="workspace-panel-toggle canvas-toggle"
-                    title="文档画布"
-                    aria-label="文档画布"
-                    :aria-expanded="canvasPanelOpen"
-                    :class="{ active: canvasPanelOpen }"
-                    :disabled="!activeCanvasDocs.length"
-                    @click="canvasPanelOpen = !canvasPanelOpen"
-                  >
-                    <FileText :size="18" />
-                    <span v-if="activeCanvasDocs.length && !canvasPanelOpen" class="canvas-toggle__badge">{{ activeCanvasDocs.length }}</span>
-                  </button>
                   <button class="workspace-panel-toggle" title="工作区" aria-label="工作区" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
                 </div>
               </header>
@@ -3159,18 +3112,10 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" aria-label="移除附件" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
                       <textarea ref="activePrompt" v-model="prompt" aria-label="任务输入框" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? '恢复任务后继续' : (isAppending ? '汝之所想，皆以言成' : (sending ? '正在发送…' : '汝之所想，皆以言成'))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" :class="{ 'canvas--active': canvasPanelOpen }" title="文档画布" aria-label="文档画布" @click="canvasPanelOpen = !canvasPanelOpen"><FileText :size="17" /></button><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <div class="composer-toolbar"><button type="button" class="round" title="添加上下文" aria-label="添加上下文" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? '全部允许' : '逐项审批' }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" title="立即停止任务" aria-label="停止任务" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? '发送追加任务' : '发送任务'" :aria-label="isRunActive ? '发送追加任务' : '发送任务'" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
-              <CanvasPanel
-                v-if="canvasPanelOpen"
-                :docs="activeCanvasDocs"
-                :active-id="activeCanvasDocId"
-                :workspace-id="activeSessionWorkspace?.workspace_id"
-                @close="canvasPanelOpen = false"
-                @select="selectCanvasDoc($event)"
-              />
             </section>
             <template v-if="inspectorRendered && activeWorkspace">
               <div class="layout-divider" role="separator" aria-orientation="vertical" title="拖拽调整面板宽度" style="touch-action: none;" @pointerdown="startDividerDrag" />
