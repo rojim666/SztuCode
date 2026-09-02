@@ -1,4 +1,4 @@
-import { invoke, IS_TAURI } from "../lib/tauri-shim";
+import { invoke } from "../lib/tauri-shim";
 import { IpcClient, IpcRequestError } from "../lib/ipc";
 
 export type Workspace = { workspace_id: string; name: string; path: string; archived: boolean; pinned?: boolean };
@@ -139,22 +139,12 @@ const EVENT_TOPICS = [
 ];
 
 async function waitForDaemon(): Promise<void> {
-  if (!IS_TAURI) return; // 浏览器模式下由 Vite 插件负责启动 daemon
   await invoke("daemon_start");
 }
 
 export function getRuntimeConnectionError(): string { return runtimeConnectionError; }
 
-const DEFAULT_NATIVE_SETTINGS: NativeSettings = {
-  autostart: false,
-  stay_awake: true,
-  supported: false,
-  theme: "system",
-  wallpaper: "mist",
-};
-
 export async function getNativeSettings(): Promise<NativeSettings> {
-  if (!IS_TAURI) return DEFAULT_NATIVE_SETTINGS;
   return await invoke<NativeSettings>("native_settings_get");
 }
 
@@ -164,27 +154,22 @@ export async function setNativeSettings(update: {
   theme?: NativeSettings["theme"];
   wallpaper?: NativeSettings["wallpaper"];
 }): Promise<NativeSettings> {
-  if (!IS_TAURI) return { ...DEFAULT_NATIVE_SETTINGS, ...update };
   return await invoke<NativeSettings>("native_settings_update", update);
 }
 
 export async function sandboxPtyStart(sessionId: string, workspacePath: string, cols: number, rows: number): Promise<void> {
-  if (!IS_TAURI) return; // 浏览器模式下终端功能不可用
   await invoke("sandbox_pty_start", { sessionId, workspacePath, cols, rows });
 }
 
 export async function sandboxPtyWrite(sessionId: string, data: string): Promise<void> {
-  if (!IS_TAURI) return;
   await invoke("sandbox_pty_write", { sessionId, data });
 }
 
 export async function sandboxPtyResize(sessionId: string, cols: number, rows: number): Promise<void> {
-  if (!IS_TAURI) return;
   await invoke("sandbox_pty_resize", { sessionId, cols, rows });
 }
 
 export async function sandboxPtyClose(sessionId: string): Promise<void> {
-  if (!IS_TAURI) return;
   await invoke("sandbox_pty_close", { sessionId });
 }
 
@@ -195,8 +180,8 @@ export async function connectRuntime(): Promise<boolean> {
     runtimeConnectionError = error instanceof Error ? error.message : String(error);
     return false;
   }
-  // Tauri 模式：Rust 侧已等待 daemon 就绪，重试次数少；浏览器模式：需等待 Vite 插件启动 daemon，重试多一些
-  const attempts = IS_TAURI ? 12 : 30;
+  // Rust sidecar 已等待 daemon 就绪后再通知前端，此处仅做轻量重试
+  const attempts = 12;
   for (const port of [7438]) {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
@@ -209,7 +194,7 @@ export async function connectRuntime(): Promise<boolean> {
         return true;
       } catch (error) {
         runtimeConnectionError = error instanceof Error ? error.message : String(error);
-        if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, IS_TAURI ? 250 : 500));
+        if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 250));
       }
     }
   }
