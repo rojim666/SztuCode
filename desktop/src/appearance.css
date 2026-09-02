@@ -42,6 +42,8 @@
   --accent-soft: #3a4144;
   --accent-contrast: #171a1b;
   --danger: #e37a70;
+  --success: #66d496;
+  --success-soft: rgb(55 150 91 / 16%);
   --shadow-modal: 0 26px 80px rgb(0 0 0 / 48%), 0 5px 20px rgb(0 0 0 / 32%);
 }
 

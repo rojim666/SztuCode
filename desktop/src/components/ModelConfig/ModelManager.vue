@@ -353,6 +353,7 @@ onMounted(() => {
                 <span v-else>{{ item.mark }}</span>
               </i>
               <span class="mm-vendor-name">{{ item.name }}</span>
+              <span v-if="item.freeTier" class="mm-vendor-free-badge">免费</span>
               <ChevronDown class="mm-vendor-arrow" :size="14" />
             </button>
           </div>
@@ -375,6 +376,10 @@ onMounted(() => {
               <select v-model="selectedVendor" class="mm-form-select" @change="chooseVendor(selectedVendor)">
                 <option v-for="v in vendors" :key="v.name" :value="v">{{ v.name }}</option>
               </select>
+              <p v-if="selectedVendor.freeTier" class="mm-free-tier-note">
+                <Sparkles :size="13" />
+                免费额度：{{ selectedVendor.freeTier }}。注册后点击下方"获取 API 密钥"前往官网领取，粘贴到密钥输入框即可接入。
+              </p>
             </div>
 
             <template v-if="selectedVendor.name === '自定义模型'">
@@ -412,6 +417,22 @@ onMounted(() => {
                 <option v-if="selectedVendor.name === 'OpenRouter'" value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
                 <option v-if="selectedVendor.name === 'OpenRouter'" value="openai/gpt-4o">GPT-4o</option>
                 <option v-if="selectedVendor.name === 'OpenRouter'" value="deepseek/deepseek-chat">DeepSeek V3</option>
+                <option v-if="selectedVendor.name === 'OpenRouter'" value="deepseek/deepseek-r1:free">DeepSeek R1（免费）</option>
+                <option v-if="selectedVendor.name === 'OpenRouter'" value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B（免费）</option>
+                <option v-if="selectedVendor.name === 'OpenRouter'" value="qwen/qwen3-coder:free">Qwen3 Coder（免费）</option>
+                <option v-if="selectedVendor.name === 'Google AI Studio'" value="gemini-2.5-flash">Gemini 2.5 Flash（免费层）</option>
+                <option v-if="selectedVendor.name === 'Google AI Studio'" value="gemini-2.0-flash">Gemini 2.0 Flash（免费层）</option>
+                <option v-if="selectedVendor.name === 'Groq'" value="llama-3.3-70b-versatile">Llama 3.3 70B（免费层）</option>
+                <option v-if="selectedVendor.name === 'Groq'" value="deepseek-r1-distill-llama-70b">DeepSeek R1 Distill 70B（免费层）</option>
+                <option v-if="selectedVendor.name === 'Cerebras'" value="llama-3.3-70b">Llama 3.3 70B（免费层）</option>
+                <option v-if="selectedVendor.name === 'Cerebras'" value="qwen-3-32b">Qwen3 32B（免费层）</option>
+                <option v-if="selectedVendor.name === 'Mistral'" value="mistral-small-latest">Mistral Small（免费层）</option>
+                <option v-if="selectedVendor.name === 'Mistral'" value="open-mistral-nemo">Mistral Nemo（免费层）</option>
+                <option v-if="selectedVendor.name === 'GitHub Models'" value="openai/gpt-4o-mini">GPT-4o mini（免费额度）</option>
+                <option v-if="selectedVendor.name === 'GitHub Models'" value="meta/Llama-3.3-70B-Instruct">Llama 3.3 70B（免费额度）</option>
+                <option v-if="selectedVendor.name === 'NVIDIA NIM'" value="deepseek-ai/deepseek-r1">DeepSeek R1（免费）</option>
+                <option v-if="selectedVendor.name === 'NVIDIA NIM'" value="meta/llama-3.3-70b-instruct">Llama 3.3 70B（免费）</option>
+                <option v-if="selectedVendor.name === 'Bigmodel'" value="glm-4-flash">GLM-4-Flash（永久免费）</option>
               </datalist>
             </div>
 
@@ -1518,6 +1539,39 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 500;
   color: var(--text, #111);
+}
+
+/* 有免费额度的服务商徽标 */
+.mm-vendor-free-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--success, #1f7a46);
+  background: var(--success-soft, #eaf5ee);
+  border: 1px solid color-mix(in srgb, var(--success, #1f7a46) 25%, transparent);
+}
+
+/* 表单中的免费额度提示 */
+.mm-free-tier-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--success, #1f7a46);
+  background: var(--success-soft, #eaf5ee);
+  border: 1px solid color-mix(in srgb, var(--success, #1f7a46) 20%, transparent);
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+.mm-free-tier-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .mm-vendor-arrow {
