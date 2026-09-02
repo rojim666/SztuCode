@@ -11,6 +11,7 @@ export type ToolCallEntry = {
   error?: string;
   elapsedMs?: number;
   startedAt?: string;  // 工具开始执行的 UTC 时间戳，用于 running 计时
+  images?: { mimeType: string; data: string }[];  // 工具返回的图片（如浏览器截图），展开时内联展示
 };
 
 // 上下文注入行：展示模型实际收到的完整 system 上下文及内部干预。

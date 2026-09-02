@@ -1331,7 +1331,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   if (type === "tool.call_finished" || type === "tool.call_failed") {
     const step = stepFor(timelineEvent);
     const callId = String(event.tool_use_id);
-    setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? "工具调用失败") : undefined, elapsedMs: Number(event.elapsed_ms ?? 0) }) }));
+    setStep(step, (current) => ({ ...current, status: "observing", toolCalls: current.toolCalls.map((call) => call.id !== callId ? call : { ...call, status: type === "tool.call_finished" ? "done" : "failed", output: type === "tool.call_finished" ? String(event.output ?? "") : undefined, error: type === "tool.call_failed" ? String(event.error_message ?? "工具调用失败") : undefined, elapsedMs: Number(event.elapsed_ms ?? 0), images: type === "tool.call_finished" && Array.isArray(event.images) ? (event.images as { mimeType: string; data: string }[]) : undefined }) }));
     const visualPath = pendingVisualWrites.get(callId);
     pendingVisualWrites.delete(callId);
     if (visualPath && type === "tool.call_finished") autoPreviewVisualArtifacts(sessionId, [visualPath]);
@@ -1513,6 +1513,27 @@ async function loadSessionHistory(sessionId: string) {
       historyLoadPromises.delete(sessionId);
     }
     if (!hydrated) return;
+    // 恢复每个run的文件变更列表（changes不存储在消息历史中，需要单独拉取）
+    const runIds = new Set<string>();
+    for (const step of view.timeline.values()) {
+      if (step.runId) runIds.add(step.runId);
+    }
+    for (const rid of runIds) {
+      try {
+        const changes = await listChanges(wsId.value, rid);
+        if (historyLoadVersionBySession.get(sessionId) !== version) return;
+        const stepEntry = [...view.timeline.entries()].find(([, s]) => s.runId === rid);
+        if (!stepEntry || !changes.length) continue;
+        const [stepNum, step] = stepEntry;
+        const existing = step.changes ?? [];
+        const existingPaths = new Set(existing.map((c) => c.path.toLowerCase()));
+        const merged: ChangeEntry[] = [...existing];
+        for (const ch of changes) {
+          if (!existingPaths.has(ch.path.toLowerCase())) merged.push(ch);
+        }
+        view.timeline.set(stepNum, { ...step, changes: merged });
+      } catch { /* ignore list changes errors for historical runs */ }
+    }
     const deferred = deferredRuntimeEvents.get(sessionId) ?? [];
     deferredRuntimeEvents.delete(sessionId);
     for (const event of deferred) applyRuntimeEvent(event);

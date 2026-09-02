@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { ChevronDown, FilePenLine, FileText, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
+import { ChevronDown, FilePenLine, FileText, Image as ImageIcon, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
 import type { ToolCallEntry } from "./types";
 
 const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean; compact?: boolean }>(), {
@@ -79,7 +79,11 @@ const outputSummary = computed(() => {
   return `${head}\n\n[... 省略 ${omittedLines} 行 / ${omittedChars} 字符 ...]`;
 });
 
-const hasDetails = computed(() => request.value.length > 2 || outputSummary.value);
+const hasDetails = computed(() => request.value.length > 2 || outputSummary.value || (props.call.images?.length ?? 0) > 0);
+
+// 工具返回的图片（浏览器截图等）：折叠态显示徽标，展开态内联缩略图，点击切换原图
+const imageUrls = computed(() => (props.call.images ?? []).map((image) => `data:${image.mimeType};base64,${image.data}`));
+const zoomedImage = ref<number | null>(null);
 </script>
 
 <template>
@@ -92,6 +96,7 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
       <span v-if="!compact" class="tool-call-event__action">{{ actionLabel }}</span>
       <span v-if="!compact" class="timeline-row__separator">·</span>
       <span class="tool-call-event__detail" :class="{ 'is-path': isPathLike }">{{ detail }}</span>
+      <span v-if="imageUrls.length" class="tool-call-event__image-badge" :title="`${imageUrls.length} 张截图`"><ImageIcon :size="compact ? 11 : 12" />{{ imageUrls.length }}</span>
       <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="10" />{{ elapsed }}</span>
       <LoaderCircle v-if="call.status === 'running'" class="spin" :size="compact ? 12 : 13" />
       <ChevronDown v-if="hasDetails" class="timeline-row__chevron" :size="11" />
@@ -100,6 +105,19 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
       <div v-if="isOpen && hasDetails" class="tool-call-event__details">
         <b>{{ call.status === 'running' ? '参数' : '输入' }}</b><pre>{{ request }}</pre>
         <template v-if="outputSummary"><b>返回</b><pre>{{ outputSummary }}</pre></template>
+        <template v-if="imageUrls.length">
+          <b>截图</b>
+          <div class="tool-call-event__images">
+            <img
+              v-for="(url, index) in imageUrls"
+              :key="index"
+              :src="url"
+              :class="{ zoomed: zoomedImage === index }"
+              :alt="`页面截图 ${index + 1}`"
+              @click="zoomedImage = zoomedImage === index ? null : index"
+            />
+          </div>
+        </template>
       </div>
     </transition>
   </section>
@@ -191,6 +209,40 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
   flex: 0 0 auto;
   color: #9ca3af;
   font: 10px Consolas, monospace;
+}
+
+.tool-call-event__image-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 3px;
+  font: 10px Consolas, monospace;
+}
+
+.tool-call-event__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-call-event__images img {
+  max-width: 240px;
+  max-height: 160px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  cursor: zoom-in;
+  object-fit: contain;
+}
+
+.tool-call-event__images img.zoomed {
+  max-width: 100%;
+  max-height: none;
+  cursor: zoom-out;
 }
 
 .timeline-row__chevron {
@@ -295,6 +347,16 @@ const hasDetails = computed(() => request.value.length > 2 || outputSummary.valu
 
 :global([data-app-theme="dark"]) .tool-call-event__elapsed {
   color: #6b7280;
+}
+
+:global([data-app-theme="dark"]) .tool-call-event__image-badge {
+  color: #9ca3af;
+  background: #1f2937;
+}
+
+:global([data-app-theme="dark"]) .tool-call-event__images img {
+  background: #111827;
+  border-color: #374151;
 }
 
 :global([data-app-theme="dark"]) .timeline-row__chevron {
