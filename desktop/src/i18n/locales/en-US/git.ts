@@ -1,0 +1,71 @@
+export const git = {
+  summaryRail: {
+    ariaLabel: "Change summary rail"
+  },
+  diffReview: {
+    title: "Change review",
+    accept: "Accept this change",
+    reject: "Reject this change",
+    rejectConfirm: "Reject and roll back changes to this file?\n{path}",
+    rejectAll: "Reject all",
+    rejectAllConfirm: "Reject all pending file changes and roll back?",
+    noChanges: "No pending changes to review",
+    fileCount: "{count} files changed"
+  },
+  sourceControlPanel: {
+    title: "Source control",
+    stagedChanges: "Staged changes",
+    unstagedChanges: "Unstaged changes",
+    untrackedFiles: "Untracked files",
+    discardChanges: "Discard tracked changes to {path}?",
+    stage: "Stage",
+    unstage: "Unstage",
+    viewDiff: "View diff",
+    stageAll: "Stage all",
+    unstageAll: "Unstage all",
+    discardAll: "Discard all",
+    commit: "Commit",
+    commitMessage: "Commit message",
+    commitButton: "Commit {count} changes",
+    noChangesToCommit: "No changes to commit",
+    push: "Push",
+    pull: "Pull",
+    fetch: "Fetch",
+    refresh: "Refresh",
+    workingTree: "Working tree",
+    index: "Index",
+    modified: "Modified",
+    added: "Added",
+    deleted: "Deleted",
+    renamed: "Renamed",
+    copied: "Copied",
+    unmerged: "Unmerged"
+  },
+  gitGraph: {
+    title: "Git history",
+    head: "HEAD",
+    tag: "Tag",
+    remote: "Remote",
+    upstream: "Upstream",
+    noCommits: "No commits yet",
+    commit: "Commit",
+    author: "Author",
+    date: "Date",
+    changes: "Changes",
+    files: "Files",
+    fileCount: "{count} files",
+    showMore: "Show more",
+    showLess: "Show less",
+    goToHead: "Go to HEAD",
+    commitHash: "Hash: {hash}"
+  },
+  common: {
+    changes: "Changes",
+    additions: "Additions",
+    deletions: "Deletions",
+    noChanges: "No changes",
+    file: "File",
+    line: "Line",
+    lines: "Lines"
+  }
+};

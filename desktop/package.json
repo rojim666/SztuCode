@@ -22,7 +22,8 @@
     "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
     "marked": "^18.0.7",
-    "vscode-icons-js": "^11.6.1"
+    "vscode-icons-js": "^11.6.1",
+    "vue-i18n": "^11.4.10"
   },
   "devDependencies": {
     "@lucide/vue": "^1.27.0",

@@ -3,12 +3,14 @@ import { getVersion } from "@tauri-apps/api/app";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
-  Bot, Check, Clock3, Cpu, Download, ExternalLink, GitFork, Globe2, Image, Info, Link2, Server,
+  Bot, Check, Clock3, Cpu, Download, ExternalLink, GitFork, Globe2, Image, Info, Languages, Link2, Server,
   LoaderCircle, Monitor, Moon, Palette, Plus, Settings2, SlidersHorizontal, Sun, Trash2,
   Type, Upload, X,
 } from "@lucide/vue";
 import appPackage from "../../../package.json";
+import { localeOptions, setLocale, type AppLocale } from "../../i18n";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import {
   applyCcswitchProvider, getNativeSettings, listCcswitchProviders, setNativeSettings,
@@ -43,6 +45,7 @@ const emit = defineEmits<{
 
 const activeSection = ref<SettingsSection>(props.initialSection ?? "appearance");
 const dialog = ref<HTMLElement | null>(null);
+const { t, locale } = useI18n({ useScope: "global" });
 const wallpaperInput = ref<HTMLInputElement | null>(null);
 const localAppearance = ref<AppearanceSettings>({ ...props.appearance });
 const wallpaperProcessing = ref(false);
@@ -123,7 +126,7 @@ async function openProjectLink() {
     if (isTauri()) await openUrl(PROJECT_URL);
     else window.open(PROJECT_URL, "_blank", "noopener,noreferrer");
   } catch (error) {
-    aboutError.value = error instanceof Error ? error.message : "无法打开项目链接";
+    aboutError.value = error instanceof Error ? error.message : t("settings.errors.openProjectLink");
   }
 }
 
@@ -171,14 +174,14 @@ function chooseWallpaperFile() {
 }
 
 async function compressWallpaper(file: File): Promise<string> {
-  if (!file.type.match(/^image\/(png|jpeg|webp)$/)) throw new Error("请选择 PNG、JPG 或 WebP 图片");
-  if (file.size > 25 * 1024 * 1024) throw new Error("图片不能超过 25 MB");
+  if (!file.type.match(/^image\/(png|jpeg|webp)$/)) throw new Error(t("settings.errors.wallpaperType"));
+  if (file.size > 25 * 1024 * 1024) throw new Error(t("settings.errors.wallpaperSize"));
 
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    throw new Error("图片无法读取，请换一张图片");
+    throw new Error(t("settings.errors.wallpaperRead"));
   }
   try {
     const scale = Math.min(1, 2400 / bitmap.width, 1600 / bitmap.height);
@@ -186,11 +189,11 @@ async function compressWallpaper(file: File): Promise<string> {
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext("2d");
-    if (!context) throw new Error("当前环境无法处理图片");
+    if (!context) throw new Error(t("settings.errors.wallpaperCanvas"));
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     let dataUrl = canvas.toDataURL("image/webp", 0.84);
     if (dataUrl.length > 3_000_000) dataUrl = canvas.toDataURL("image/webp", 0.68);
-    if (dataUrl.length > 3_000_000) throw new Error("图片内容过于复杂，请选择尺寸更小的图片");
+    if (dataUrl.length > 3_000_000) throw new Error(t("settings.errors.wallpaperComplex"));
     return dataUrl;
   } finally {
     bitmap.close();
@@ -208,7 +211,7 @@ async function uploadWallpaper(event: Event) {
     updateAppearance({ wallpaper: "custom", customWallpaper, customWallpaperName: file.name });
   } catch (error) {
     wallpaperError.value = error instanceof DOMException && error.name === "QuotaExceededError"
-      ? "图片保存空间不足，请选择尺寸更小的图片"
+      ? t("settings.errors.wallpaperQuota")
       : (error instanceof Error ? error.message : String(error));
   } finally {
     wallpaperProcessing.value = false;
@@ -252,33 +255,37 @@ async function useCcswitchProvider(providerId: string) {
   }
 }
 
-const sections: Array<{ id: SettingsSection; label: string; icon: typeof Palette }> = [
-  { id: "appearance", label: "外观", icon: Palette },
-  { id: "general", label: "通用", icon: SlidersHorizontal },
-  { id: "agent", label: "模型管理", icon: Cpu },
-  { id: "integrations", label: "连接", icon: Globe2 },
-  { id: "about", label: "关于", icon: Info },
-];
+const sections = computed<Array<{ id: SettingsSection; label: string; icon: typeof Palette }>>(() => [
+  { id: "appearance", label: t("settings.sections.appearance"), icon: Palette },
+  { id: "general", label: t("settings.sections.general"), icon: SlidersHorizontal },
+  { id: "agent", label: t("settings.sections.agent"), icon: Cpu },
+  { id: "integrations", label: t("settings.sections.integrations"), icon: Globe2 },
+  { id: "about", label: t("settings.sections.about"), icon: Info },
+]);
 
-const themes: Array<{ id: ThemePreference; label: string; icon: typeof Sun }> = [
-  { id: "system", label: "跟随系统", icon: Monitor },
-  { id: "light", label: "浅色", icon: Sun },
-  { id: "dark", label: "深色", icon: Moon },
-];
+const themes = computed<Array<{ id: ThemePreference; label: string; icon: typeof Sun }>>(() => [
+  { id: "system", label: t("settings.appearance.theme.system"), icon: Monitor },
+  { id: "light", label: t("settings.appearance.theme.light"), icon: Sun },
+  { id: "dark", label: t("settings.appearance.theme.dark"), icon: Moon },
+]);
 
-const wallpapers: Array<{ id: WallpaperStyle; label: string }> = [
-  { id: "none", label: "纯色" },
-  { id: "mist", label: "薄雾" },
-  { id: "grid", label: "网格" },
-  { id: "paper", label: "纸纹" },
-];
+const wallpapers = computed<Array<{ id: WallpaperStyle; label: string }>>(() => [
+  { id: "none", label: t("settings.appearance.wallpaper.none") },
+  { id: "mist", label: t("settings.appearance.wallpaper.mist") },
+  { id: "grid", label: t("settings.appearance.wallpaper.grid") },
+  { id: "paper", label: t("settings.appearance.wallpaper.paper") },
+]);
 
-const accents: Array<{ id: AccentColor; label: string }> = [
-  { id: "graphite", label: "石墨" },
-  { id: "blue", label: "钴蓝" },
-  { id: "jade", label: "松绿" },
-  { id: "coral", label: "朱砂" },
-];
+const accents = computed<Array<{ id: AccentColor; label: string }>>(() => [
+  { id: "graphite", label: t("settings.appearance.accent.graphite") },
+  { id: "blue", label: t("settings.appearance.accent.blue") },
+  { id: "jade", label: t("settings.appearance.accent.jade") },
+  { id: "coral", label: t("settings.appearance.accent.coral") },
+]);
+
+function selectLocale(value: AppLocale) {
+  setLocale(value);
+}
 </script>
 
 <template>
@@ -286,20 +293,20 @@ const accents: Array<{ id: AccentColor; label: string }> = [
     <section ref="dialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1" @keydown="onKeydown">
       <header class="settings-dialog__header">
         <div>
-          <h1 id="settings-title">设置</h1>
+          <h1 id="settings-title">{{ t('settings.title') }}</h1>
         </div>
-        <button type="button" class="icon-btn" title="关闭设置" aria-label="关闭设置" @click="close"><X :size="16" /></button>
+        <button type="button" class="icon-btn" :title="t('settings.close')" :aria-label="t('settings.close')" @click="close"><X :size="16" /></button>
       </header>
 
       <div class="settings-dialog__body">
-        <nav class="settings-dialog__nav" aria-label="设置分类">
+        <nav class="settings-dialog__nav" :aria-label="t('settings.navAria')">
           <button v-for="item in sections" :key="item.id" type="button" class="nav-item" :class="{ active: activeSection === item.id }" @click="activeSection = item.id">
             <component :is="item.icon" :size="16" :stroke-width="1.8" />
             <span>{{ item.label }}</span>
           </button>
           <div class="settings-dialog__nav-foot">
             <span>SztuCode Desktop</span>
-            <small>本地优先工作台</small>
+            <small>{{ t('settings.brandTagline') }}</small>
           </div>
         </nav>
 
@@ -307,8 +314,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           <template v-if="activeSection === 'appearance'">
             <header class="settings-pane-title">
               <div>
-                <h2>外观</h2>
-                <p>所有调整即时生效</p>
+                <h2>{{ t('settings.appearance.title') }}</h2>
+                <p>{{ t('settings.appearance.subtitle') }}</p>
               </div>
               <Palette :size="18" />
             </header>
@@ -316,11 +323,11 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>主题</h3>
-                  <p>选择界面的明暗模式</p>
+                  <h3>{{ t('settings.appearance.theme.title') }}</h3>
+                  <p>{{ t('settings.appearance.theme.desc') }}</p>
                 </div>
               </div>
-              <div class="option-grid option-grid--3" role="radiogroup" aria-label="主题模式">
+              <div class="option-grid option-grid--3" role="radiogroup" :aria-label="t('settings.appearance.theme.groupAria')">
                 <button v-for="item in themes" :key="item.id" type="button" class="option-btn" role="radio" :aria-checked="localAppearance.theme === item.id" :class="{ selected: localAppearance.theme === item.id }" @click="updateAppearance({ theme: item.id })">
                   <component :is="item.icon" :size="16" />
                   <span>{{ item.label }}</span>
@@ -332,12 +339,12 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>工作台背景</h3>
-                  <p>纹理只作用于窗口底层，不影响内容可读性</p>
+                  <h3>{{ t('settings.appearance.wallpaper.title') }}</h3>
+                  <p>{{ t('settings.appearance.wallpaper.desc') }}</p>
                 </div>
                 <Image :size="16" />
               </div>
-              <div class="option-grid option-grid--4" role="radiogroup" aria-label="背景样式">
+              <div class="option-grid option-grid--4" role="radiogroup" :aria-label="t('settings.appearance.wallpaper.groupAria')">
                 <button v-for="item in wallpapers" :key="item.id" type="button" class="wallpaper-btn" role="radio" :aria-checked="localAppearance.wallpaper === item.id" :class="['wallpaper-btn--' + item.id, { selected: localAppearance.wallpaper === item.id }]" @click="updateAppearance({ wallpaper: item.id })">
                   <span class="wallpaper-preview"><i /><b /></span>
                   <span class="wallpaper-label">{{ item.label }}</span>
@@ -346,25 +353,25 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               </div>
               <input ref="wallpaperInput" class="wallpaper-file-input" type="file" accept="image/png,image/jpeg,image/webp" @change="uploadWallpaper" />
               <div :class="['custom-wallpaper', { selected: localAppearance.wallpaper === 'custom' }]">
-                <button type="button" class="custom-wallpaper__preview" role="radio" :aria-checked="localAppearance.wallpaper === 'custom'" aria-label="自定义背景图" @click="selectCustomWallpaper">
+                <button type="button" class="custom-wallpaper__preview" role="radio" :aria-checked="localAppearance.wallpaper === 'custom'" :aria-label="t('settings.appearance.wallpaper.customAria')" @click="selectCustomWallpaper">
                   <span v-if="localAppearance.customWallpaper" :style="{ backgroundImage: `url(${JSON.stringify(localAppearance.customWallpaper)})` }" />
                   <Upload v-else :size="18" />
                 </button>
                 <div class="custom-wallpaper__meta">
-                  <b>{{ localAppearance.customWallpaperName || '自定义图片' }}</b>
-                  <p>{{ localAppearance.customWallpaper ? '图片已保存在本机' : 'PNG、JPG 或 WebP，最大 25 MB' }}</p>
+                  <b>{{ localAppearance.customWallpaperName || t('settings.appearance.wallpaper.customDefault') }}</b>
+                  <p>{{ localAppearance.customWallpaper ? t('settings.appearance.wallpaper.saved') : t('settings.appearance.wallpaper.hint') }}</p>
                 </div>
                 <div class="custom-wallpaper__actions">
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="wallpaperProcessing" @click="chooseWallpaperFile">
-                    <Upload :size="13" />{{ wallpaperProcessing ? '处理中' : (localAppearance.customWallpaper ? '替换' : '上传') }}
+                    <Upload :size="13" />{{ wallpaperProcessing ? t('settings.appearance.wallpaper.processing') : (localAppearance.customWallpaper ? t('settings.appearance.wallpaper.replace') : t('settings.appearance.wallpaper.upload')) }}
                   </button>
-                  <button v-if="localAppearance.customWallpaper" type="button" class="icon-btn icon-btn--sm icon-btn--danger" title="移除背景图" aria-label="移除背景图" @click="removeCustomWallpaper"><Trash2 :size="13" /></button>
+                  <button v-if="localAppearance.customWallpaper" type="button" class="icon-btn icon-btn--sm icon-btn--danger" :title="t('settings.appearance.wallpaper.remove')" :aria-label="t('settings.appearance.wallpaper.remove')" @click="removeCustomWallpaper"><Trash2 :size="13" /></button>
                 </div>
               </div>
               <p v-if="wallpaperError" class="form-error" role="alert">{{ wallpaperError }}</p>
               <label class="slider-row">
                 <span class="slider-label">
-                  <b>背景强度</b>
+                  <b>{{ t('settings.appearance.wallpaper.intensity') }}</b>
                   <small>{{ localAppearance.wallpaperIntensity }}%</small>
                 </span>
                 <input :value="localAppearance.wallpaperIntensity" type="range" min="0" max="70" step="5" class="slider" @input="updateAppearance({ wallpaperIntensity: Number(($event.target as HTMLInputElement).value) })" />
@@ -374,39 +381,39 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>区域透明度</h3>
-                  <p>分别控制工作台各层与底层背景的融合程度</p>
+                  <h3>{{ t('settings.appearance.transparency.title') }}</h3>
+                  <p>{{ t('settings.appearance.transparency.desc') }}</p>
                 </div>
                 <SlidersHorizontal :size="16" />
               </div>
               <div :class="['slider-group', { disabled: localAppearance.wallpaper === 'none' }]" :aria-disabled="localAppearance.wallpaper === 'none'">
                 <label class="slider-row slider-row--bordered">
                   <span class="slider-label">
-                    <b>侧栏与顶部栏</b>
+                    <b>{{ t('settings.appearance.transparency.chrome') }}</b>
                     <small>{{ localAppearance.chromeTransparency }}%</small>
                   </span>
-                  <input aria-label="侧栏与顶部栏透明度" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.chromeTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ chromeTransparency: Number(($event.target as HTMLInputElement).value) })" />
+                  <input :aria-label="t('settings.appearance.transparency.chromeAria')" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.chromeTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ chromeTransparency: Number(($event.target as HTMLInputElement).value) })" />
                 </label>
                 <label class="slider-row slider-row--bordered">
                   <span class="slider-label">
-                    <b>会话区</b>
+                    <b>{{ t('settings.appearance.transparency.conversation') }}</b>
                     <small>{{ localAppearance.conversationTransparency }}%</small>
                   </span>
-                  <input aria-label="会话区透明度" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.conversationTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ conversationTransparency: Number(($event.target as HTMLInputElement).value) })" />
+                  <input :aria-label="t('settings.appearance.transparency.conversationAria')" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.conversationTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ conversationTransparency: Number(($event.target as HTMLInputElement).value) })" />
                 </label>
                 <label class="slider-row slider-row--bordered">
                   <span class="slider-label">
-                    <b>输入框</b>
+                    <b>{{ t('settings.appearance.transparency.composer') }}</b>
                     <small>{{ localAppearance.composerTransparency }}%</small>
                   </span>
-                  <input aria-label="输入框透明度" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.composerTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ composerTransparency: Number(($event.target as HTMLInputElement).value) })" />
+                  <input :aria-label="t('settings.appearance.transparency.composerAria')" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.composerTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ composerTransparency: Number(($event.target as HTMLInputElement).value) })" />
                 </label>
                 <label class="slider-row slider-row--bordered">
                   <span class="slider-label">
-                    <b>右侧功能栏</b>
+                    <b>{{ t('settings.appearance.transparency.inspector') }}</b>
                     <small>{{ localAppearance.inspectorTransparency }}%</small>
                   </span>
-                  <input aria-label="右侧功能栏透明度" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.inspectorTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ inspectorTransparency: Number(($event.target as HTMLInputElement).value) })" />
+                  <input :aria-label="t('settings.appearance.transparency.inspectorAria')" :disabled="localAppearance.wallpaper === 'none'" :value="localAppearance.inspectorTransparency" type="range" min="0" max="80" step="5" class="slider" @input="updateAppearance({ inspectorTransparency: Number(($event.target as HTMLInputElement).value) })" />
                 </label>
               </div>
             </section>
@@ -415,17 +422,17 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               <div>
                 <div class="settings-card__heading">
                   <div>
-                    <h3>强调色</h3>
-                    <p>用于选中、按钮与状态反馈</p>
+                    <h3>{{ t('settings.appearance.accent.title') }}</h3>
+                    <p>{{ t('settings.appearance.accent.desc') }}</p>
                   </div>
                 </div>
-                <div class="accent-picker" role="radiogroup" aria-label="强调色">
+                <div class="accent-picker" role="radiogroup" :aria-label="t('settings.appearance.accent.groupAria')">
                   <button v-for="item in accents" :key="item.id" type="button" class="accent-dot" role="radio" :aria-label="item.label" :title="item.label" :aria-checked="localAppearance.accent === item.id" :class="['accent-' + item.id, { selected: localAppearance.accent === item.id }]" @click="updateAppearance({ accent: item.id })">
                     <Check v-if="localAppearance.accent === item.id" :size="12" />
                   </button>
                 </div>
               </div>
-              <div class="appearance-preview" aria-label="外观预览">
+              <div class="appearance-preview" :aria-label="t('settings.appearance.accent.previewAria')">
                 <div class="appearance-preview__rail"><i /><i /><i /></div>
                 <div class="appearance-preview__canvas"><span /><b /><b /><em /></div>
               </div>
@@ -434,21 +441,21 @@ const accents: Array<{ id: AccentColor; label: string }> = [
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>字体</h3>
-                  <p>分别设置界面与代码显示</p>
+                  <h3>{{ t('settings.appearance.font.title') }}</h3>
+                  <p>{{ t('settings.appearance.font.desc') }}</p>
                 </div>
                 <Type :size="16" />
               </div>
-              <div class="option-grid option-grid--3" role="radiogroup" aria-label="界面字体">
+              <div class="option-grid option-grid--3" role="radiogroup" :aria-label="t('settings.appearance.font.uiGroupAria')">
                 <button v-for="item in uiFontOptions" :key="item.id" type="button" class="font-btn" role="radio" :aria-label="item.label" :aria-checked="localAppearance.uiFont === item.id" :class="{ selected: localAppearance.uiFont === item.id }" @click="updateAppearance({ uiFont: item.id })">
-                  <span class="font-sample" :style="{ fontFamily: item.family }">Aa 字</span>
+                  <span class="font-sample" :style="{ fontFamily: item.family }">{{ t('settings.appearance.font.sampleText') }}</span>
                   <span class="font-name">{{ item.label }}</span>
                   <Check v-if="localAppearance.uiFont === item.id" :size="14" class="check-icon" />
                 </button>
               </div>
               <div class="form-row">
                 <label class="form-field">
-                  <span>代码字体</span>
+                  <span>{{ t('settings.appearance.font.code') }}</span>
                   <select :value="localAppearance.codeFont" class="form-select" @change="updateAppearance({ codeFont: ($event.target as HTMLSelectElement).value as CodeFont })">
                     <option value="cascadia">Cascadia Code</option>
                     <option value="jetbrains">JetBrains Mono</option>
@@ -458,38 +465,38 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               </div>
               <div class="list-row">
                 <div class="list-row__text">
-                  <b>界面字号</b>
-                  <p>调整正文与控件的基础字号</p>
+                  <b>{{ t('settings.appearance.font.size') }}</b>
+                  <p>{{ t('settings.appearance.font.sizeDesc') }}</p>
                 </div>
                 <div class="stepper">
-                  <button type="button" class="stepper-btn" title="减小字号" aria-label="减小字号" :disabled="localAppearance.fontSize <= MIN_UI_FONT_SIZE" @click="changeFontSize(-1)">−</button>
+                  <button type="button" class="stepper-btn" :title="t('settings.appearance.font.decrease')" :aria-label="t('settings.appearance.font.decrease')" :disabled="localAppearance.fontSize <= MIN_UI_FONT_SIZE" @click="changeFontSize(-1)">−</button>
                   <output class="stepper-value">{{ fontSizeLabel }}</output>
-                  <button type="button" class="stepper-btn" title="增大字号" aria-label="增大字号" :disabled="localAppearance.fontSize >= MAX_UI_FONT_SIZE" @click="changeFontSize(1)"><Plus :size="12" /></button>
+                  <button type="button" class="stepper-btn" :title="t('settings.appearance.font.increase')" :aria-label="t('settings.appearance.font.increase')" :disabled="localAppearance.fontSize >= MAX_UI_FONT_SIZE" @click="changeFontSize(1)"><Plus :size="12" /></button>
                 </div>
               </div>
               <label class="slider-row">
                 <span class="slider-label">
-                  <b>段落间距</b>
+                  <b>{{ t('settings.appearance.font.paragraphSpacing') }}</b>
                   <small>{{ paragraphSpacingLabel }}</small>
                 </span>
-                <input aria-label="段落间距" :value="localAppearance.paragraphSpacing" type="range" min="0.2" max="2" step="0.04" class="slider" @input="updateAppearance({ paragraphSpacing: Number(($event.target as HTMLInputElement).value) })" />
+                <input :aria-label="t('settings.appearance.font.paragraphSpacing')" :value="localAppearance.paragraphSpacing" type="range" min="0.2" max="2" step="0.04" class="slider" @input="updateAppearance({ paragraphSpacing: Number(($event.target as HTMLInputElement).value) })" />
               </label>
               <label class="slider-row">
                 <span class="slider-label">
-                  <b>行高</b>
+                  <b>{{ t('settings.appearance.font.lineHeight') }}</b>
                   <small>{{ lineHeightLabel }}</small>
                 </span>
-                <input aria-label="行高" :value="localAppearance.paragraphLineHeight" type="range" min="1" max="2" step="0.05" class="slider" @input="updateAppearance({ paragraphLineHeight: Number(($event.target as HTMLInputElement).value) })" />
+                <input :aria-label="t('settings.appearance.font.lineHeight')" :value="localAppearance.paragraphLineHeight" type="range" min="1" max="2" step="0.05" class="slider" @input="updateAppearance({ paragraphLineHeight: Number(($event.target as HTMLInputElement).value) })" />
               </label>
-              <div class="preview-box" aria-label="行距预览">
-                <p>调整上方滑块，下面两段文字之间的空隙会实时变化，与任务区 AI 输出的段落间距一致。</p>
-                <p>列表项之间的间距会按固定比例同步缩放。</p>
-                <ul><li>列表项示例一</li><li>列表项示例二</li></ul>
+              <div class="preview-box" :aria-label="t('settings.appearance.font.previewAria')">
+                <p>{{ t('settings.appearance.font.previewP1') }}</p>
+                <p>{{ t('settings.appearance.font.previewP2') }}</p>
+                <ul><li>{{ t('settings.appearance.font.previewLi1') }}</li><li>{{ t('settings.appearance.font.previewLi2') }}</li></ul>
               </div>
               <div class="list-row">
                 <div class="list-row__text">
-                  <b>紧凑布局</b>
-                  <p>缩短导航与列表行高，显示更多内容</p>
+                  <b>{{ t('settings.appearance.font.compact') }}</b>
+                  <p>{{ t('settings.appearance.font.compactDesc') }}</p>
                 </div>
                 <button class="toggle" type="button" role="switch" :aria-checked="localAppearance.compact" :class="{ enabled: localAppearance.compact }" @click="updateAppearance({ compact: !localAppearance.compact })">
                   <span class="toggle-thumb" />
@@ -501,22 +508,37 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           <template v-else-if="activeSection === 'general'">
             <header class="settings-pane-title">
               <div>
-                <h2>通用</h2>
-                <p>系统行为与通知</p>
+                <h2>{{ t('settings.general.title') }}</h2>
+                <p>{{ t('settings.general.subtitle') }}</p>
               </div>
               <Settings2 :size="18" />
             </header>
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>系统设置</h3>
-                  <p>控制桌面应用的启动与运行行为</p>
+                  <h3>{{ t('settings.language.title') }}</h3>
+                  <p>{{ t('settings.language.desc') }}</p>
+                </div>
+                <Languages :size="16" />
+              </div>
+              <div class="option-grid option-grid--2" role="radiogroup" :aria-label="t('settings.language.title')">
+                <button v-for="item in localeOptions" :key="item.id" type="button" class="option-btn option-btn--locale" role="radio" :aria-checked="locale === item.id" :class="{ selected: locale === item.id }" @click="selectLocale(item.id)">
+                  <span>{{ item.nativeLabel }}</span>
+                  <Check v-if="locale === item.id" :size="14" class="check-icon" />
+                </button>
+              </div>
+            </section>
+            <section class="settings-card">
+              <div class="settings-card__heading">
+                <div>
+                  <h3>{{ t('settings.general.system.title') }}</h3>
+                  <p>{{ t('settings.general.system.desc') }}</p>
                 </div>
               </div>
               <div class="list-row">
                 <div class="list-row__text">
-                  <b>开机自启动</b>
-                  <p>登录系统时自动启动 SztuCode</p>
+                  <b>{{ t('settings.general.system.autostart') }}</b>
+                  <p>{{ t('settings.general.system.autostartDesc') }}</p>
                 </div>
                 <button class="toggle" type="button" role="switch" :disabled="!nativeSettingsAvailable" :aria-checked="autostart" :class="{ enabled: autostart }" @click="toggleAutostart">
                   <span class="toggle-thumb" />
@@ -524,8 +546,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               </div>
               <div class="list-row">
                 <div class="list-row__text">
-                  <b>系统通知</b>
-                  <p>发送任务结果与重要提醒</p>
+                  <b>{{ t('settings.general.system.notifications') }}</b>
+                  <p>{{ t('settings.general.system.notificationsDesc') }}</p>
                 </div>
                 <button class="toggle" type="button" role="switch" :aria-checked="notifications" :class="{ enabled: notifications }" @click="notifications = !notifications">
                   <span class="toggle-thumb" />
@@ -533,8 +555,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               </div>
               <div class="list-row">
                 <div class="list-row__text">
-                  <b>保持电脑唤醒</b>
-                  <p>任务运行期间阻止电脑进入睡眠</p>
+                  <b>{{ t('settings.general.system.stayAwake') }}</b>
+                  <p>{{ t('settings.general.system.stayAwakeDesc') }}</p>
                 </div>
                 <button class="toggle" type="button" role="switch" :disabled="!nativeSettingsAvailable" :aria-checked="stayAwake" :class="{ enabled: stayAwake }" @click="toggleStayAwake">
                   <span class="toggle-thumb" />
@@ -547,7 +569,7 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           <template v-else-if="activeSection === 'agent'">
             <header class="settings-pane-title">
               <div>
-                <h2>模型管理</h2>
+                <h2>{{ t('settings.sections.agent') }}</h2>
               </div>
               <Cpu :size="18" />
             </header>
@@ -559,8 +581,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           <template v-else-if="activeSection === 'integrations'">
             <header class="settings-pane-title">
               <div>
-                <h2>连接</h2>
-                <p>浏览器与本机服务</p>
+                <h2>{{ t('settings.integrations.title') }}</h2>
+                <p>{{ t('settings.integrations.subtitle') }}</p>
               </div>
               <Globe2 :size="18" />
             </header>
@@ -568,42 +590,42 @@ const accents: Array<{ id: AccentColor; label: string }> = [
               <div class="integration-row">
                 <span class="integration-icon"><Link2 :size="17" :stroke-width="1.7" /></span>
                 <div class="integration-text">
-                  <b>浏览器连接</b>
-                  <p>连接状态与网站操作权限</p>
+                  <b>{{ t('settings.integrations.browser.title') }}</b>
+                  <p>{{ t('settings.integrations.browser.desc') }}</p>
                 </div>
-                <em class="status-badge">未连接</em>
+                <em class="status-badge">{{ t('settings.integrations.browser.status') }}</em>
               </div>
               <div class="integration-row">
                 <span class="integration-icon"><Server :size="17" :stroke-width="1.7" /></span>
                 <div class="integration-text">
-                  <b>本地运行时</b>
-                  <p>Agent、终端与项目文件服务</p>
+                  <b>{{ t('settings.integrations.runtime.title') }}</b>
+                  <p>{{ t('settings.integrations.runtime.desc') }}</p>
                 </div>
-                <em class="status-badge status-badge--online">已启用</em>
+                <em class="status-badge status-badge--online">{{ t('settings.integrations.runtime.status') }}</em>
               </div>
               <div class="integration-row">
                 <span class="integration-icon"><Clock3 :size="17" :stroke-width="1.7" /></span>
                 <div class="integration-text">
-                  <b>后台任务</b>
-                  <p>关闭设置后继续执行当前任务</p>
+                  <b>{{ t('settings.integrations.background.title') }}</b>
+                  <p>{{ t('settings.integrations.background.desc') }}</p>
                 </div>
-                <em class="status-badge status-badge--online">可用</em>
+                <em class="status-badge status-badge--online">{{ t('settings.integrations.background.status') }}</em>
               </div>
             </section>
             <section class="settings-card">
               <div class="settings-card__heading">
                 <div>
-                  <h3>模型供应商导入</h3>
-                  <p>从 CC Switch 一键导入已配置的模型</p>
+                  <h3>{{ t('settings.integrations.ccswitch.title') }}</h3>
+                  <p>{{ t('settings.integrations.ccswitch.desc') }}</p>
                 </div>
               </div>
               <button type="button" class="btn btn--primary" :disabled="ccswitchLoading" @click="loadCcswitchProviders">
                 <Download :size="15" />
-                {{ ccswitchLoading ? '加载中...' : '从 CC Switch 导入' }}
+                {{ ccswitchLoading ? t('settings.integrations.ccswitch.loading') : t('settings.integrations.ccswitch.import') }}
               </button>
               <div v-if="ccswitchError" class="form-error" role="alert">{{ ccswitchError }}</div>
               <div v-if="ccswitchOpen && ccswitchProviders.length" class="ccswitch-section">
-                <p class="ccswitch-hint">选择要导入的供应商配置：</p>
+                <p class="ccswitch-hint">{{ t('settings.integrations.ccswitch.hint') }}</p>
                 <div class="ccswitch-list">
                   <button v-for="provider in ccswitchProviders" :key="provider.id" type="button" class="ccswitch-item" :disabled="ccswitchApplying === provider.id" @click="useCcswitchProvider(provider.id)">
                     <span class="ccswitch-name">{{ provider.name }}</span>
@@ -618,8 +640,8 @@ const accents: Array<{ id: AccentColor; label: string }> = [
           <template v-else>
             <header class="settings-pane-title">
               <div>
-                <h2>关于</h2>
-                <p>SztuCode Desktop 项目信息</p>
+                <h2>{{ t('settings.about.title') }}</h2>
+                <p>{{ t('settings.about.subtitle') }}</p>
               </div>
               <Info :size="18" />
             </header>
@@ -628,18 +650,18 @@ const accents: Array<{ id: AccentColor; label: string }> = [
                 <AgentLogo class="about-logo" aria-hidden="true" size="small" />
                 <div>
                   <h3>SztuCode Desktop</h3>
-                  <p>本地优先的智能编码工作台</p>
+                  <p>{{ t('settings.about.tagline') }}</p>
                 </div>
               </div>
               <dl class="about-list">
                 <div class="about-row">
-                  <dt>项目版本</dt>
+                  <dt>{{ t('settings.about.version') }}</dt>
                   <dd><code>v{{ appVersion }}</code></dd>
                 </div>
                 <div class="about-row">
-                  <dt>项目链接</dt>
+                  <dt>{{ t('settings.about.link') }}</dt>
                   <dd>
-                    <button type="button" class="link-btn" aria-label="打开项目链接" title="在浏览器中打开项目" @click="openProjectLink">
+                    <button type="button" class="link-btn" :aria-label="t('settings.about.openLink')" :title="t('settings.about.openBrowser')" @click="openProjectLink">
                       <GitFork :size="14" />
                       <span>github.com/rojim666/SztuCode</span>
                       <ExternalLink :size="12" />
@@ -923,6 +945,15 @@ const accents: Array<{ id: AccentColor; label: string }> = [
 
 .option-grid--3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.option-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.option-btn--locale {
+  grid-template-columns: minmax(0, 1fr) 16px;
+  justify-items: center;
 }
 
 .option-grid--4 {

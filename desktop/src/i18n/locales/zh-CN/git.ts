@@ -1,0 +1,71 @@
+export const git = {
+  summaryRail: {
+    ariaLabel: "变更摘要轨"
+  },
+  diffReview: {
+    title: "变更审查",
+    accept: "接受此变更",
+    reject: "拒绝此变更",
+    rejectConfirm: "拒绝并回滚该文件改动？\n{path}",
+    rejectAll: "全部拒绝",
+    rejectAllConfirm: "拒绝全部待审文件改动并回滚？",
+    noChanges: "暂无待审查变更",
+    fileCount: "{count} 个文件已变更"
+  },
+  sourceControlPanel: {
+    title: "源代码控制",
+    stagedChanges: "暂存变更",
+    unstagedChanges: "未暂存变更",
+    untrackedFiles: "未跟踪文件",
+    discardChanges: "放弃 {path} 的已跟踪改动？",
+    stage: "暂存",
+    unstage: "取消暂存",
+    viewDiff: "查看差异",
+    stageAll: "暂存所有",
+    unstageAll: "取消暂存所有",
+    discardAll: "放弃所有",
+    commit: "提交",
+    commitMessage: "提交消息",
+    commitButton: "提交 {count} 项变更",
+    noChangesToCommit: "无变更可提交",
+    push: "推送",
+    pull: "拉取",
+    fetch: "获取",
+    refresh: "刷新",
+    workingTree: "工作区",
+    index: "索引",
+    modified: "已修改",
+    added: "已添加",
+    deleted: "已删除",
+    renamed: "已重命名",
+    copied: "已复制",
+    unmerged: "未合并"
+  },
+  gitGraph: {
+    title: "Git 历史",
+    head: "HEAD",
+    tag: "标签",
+    remote: "远程",
+    upstream: "上游",
+    noCommits: "暂无提交",
+    commit: "提交",
+    author: "作者",
+    date: "日期",
+    changes: "变更",
+    files: "文件",
+    fileCount: "{count} 个文件",
+    showMore: "显示更多",
+    showLess: "显示更少",
+    goToHead: "定位到 HEAD",
+    commitHash: "哈希：{hash}"
+  },
+  common: {
+    changes: "变更",
+    additions: "新增",
+    deletions: "删除",
+    noChanges: "无变更",
+    file: "文件",
+    line: "行",
+    lines: "行"
+  }
+};
