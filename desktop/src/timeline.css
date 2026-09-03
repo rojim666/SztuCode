@@ -371,16 +371,20 @@
 .token-stream code.file-link {
   color: #2563eb;
   background: #f3f4f6;
-  border-bottom: 1px solid #d1d5db;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
   text-decoration: none;
+  font-size: 14px;
+  padding: 2px 7px;
+  box-shadow: none;
+  border: none;
+  border-bottom: none;
+  border-radius: 4px;
 }
 .markdown-body code.file-link:hover,
 .token-stream code.file-link:hover {
   color: #1d4ed8;
   background: #e5e7eb;
-  border-bottom-color: #9ca3af;
 }
 .markdown-body code.file-link:focus-visible,
 .token-stream code.file-link:focus-visible {
@@ -391,11 +395,12 @@
 :root[data-app-theme="dark"] .token-stream code.file-link {
   color: #60a5fa;
   background: rgba(255, 255, 255, 0.08);
-  border-bottom-color: rgba(255, 255, 255, 0.15);
+  box-shadow: none;
+  border: none;
+  border-bottom: none;
 }
 :root[data-app-theme="dark"] .markdown-body code.file-link:hover,
 :root[data-app-theme="dark"] .token-stream code.file-link:hover {
   color: #93c5fd;
   background: rgba(255, 255, 255, 0.14);
-  border-bottom-color: rgba(255, 255, 255, 0.25);
 }

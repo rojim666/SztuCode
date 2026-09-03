@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, Circle, EllipsisVertical,
+  ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronRight, Circle, Code,
   ExternalLink, FileCode2, FileText, FolderOpen, Globe2,
-  ListChecks, LoaderCircle, Maximize2, Minimize2, PackageOpen, PanelRightClose,
-  Plus, RefreshCw, RotateCw, SquareTerminal, X,
+  ListChecks, LoaderCircle, Maximize2, Minimize2, Monitor, MousePointer2, PackageOpen, PanelRightClose,
+  Pencil, Plus, RefreshCw, RotateCw, Share2, SquareTerminal, X,
 } from "@lucide/vue";
 import {
   changeDiff, listChanges, readFile,
@@ -14,6 +14,7 @@ import {
 import BrowserWebview from "./BrowserWebview.vue";
 import CodePreview from "./CodePreview.vue";
 import FileTree from "./FileTree.vue";
+import AgentLogo from "../timeline/AgentLogo.vue";
 import { createProjectProfileController, type ProjectProfileState } from "./project-profile";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 import type { TimelineStep } from "../timeline/types";
@@ -40,10 +41,11 @@ type BrowserTab = {
   label: string;
   input: string;
   url: string;
-  history: string[];
-  historyIndex: number;
-  frameKey: number;
   loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  webviewRef: InstanceType<typeof BrowserWebview> | null;
+  devMenuOpen: boolean;
 };
 type ActiveTab = "home" | "summary" | "files" | `sandbox-${number}` | `browser-${number}` | "";
 type WorkspaceTab = { key: ActiveTab; kind: "summary" | "files" | "browser" | "sandbox" };
@@ -252,7 +254,17 @@ function activateBrowser(id: number) {
 function createBrowserTab() {
   const id = ++browserSequence.value;
   const key = `browser-${id}` as const;
-  browserTabs.value.push({ id, label: "新标签页", input: "", url: "", history: [], historyIndex: -1, frameKey: 0, loading: false });
+  browserTabs.value.push({
+    id,
+    label: "新标签页",
+    input: "",
+    url: "",
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    webviewRef: null,
+    devMenuOpen: false,
+  });
   workspaceTabs.value.push({ key, kind: "browser" });
   activateBrowser(id);
   toolMenuOpen.value = false;
@@ -352,49 +364,117 @@ function navigateBrowser(tab: BrowserTab) {
     tab.url = parsed.toString();
     tab.input = tab.url;
     tab.label = parsed.hostname.replace(/^www\./, "") || "新标签页";
-    tab.history = [...tab.history.slice(0, tab.historyIndex + 1), tab.url];
-    tab.historyIndex = tab.history.length - 1;
     tab.loading = true;
-    tab.frameKey += 1;
+    // webviewRef will be available after next render when tab.url is set
+    nextTick(() => {
+      if (tab.webviewRef) {
+        void tab.webviewRef.navigateTo(tab.url);
+      }
+    });
   } catch {
     notice.value = "请输入有效的网址";
   }
 }
 
-function moveBrowserHistory(tab: BrowserTab, offset: -1 | 1) {
-  const nextIndex = tab.historyIndex + offset;
-  const url = tab.history[nextIndex];
-  if (!url) return;
-  const parsed = new URL(url);
-  tab.historyIndex = nextIndex;
-  tab.url = url;
-  tab.input = url;
-  tab.label = parsed.hostname.replace(/^www\./, "") || "新标签页";
+async function moveBrowserHistory(tab: BrowserTab, direction: -1 | 1) {
+  if (!tab.webviewRef) return;
   tab.loading = true;
-  tab.frameKey += 1;
+  if (direction === -1) {
+    await tab.webviewRef.goBack();
+  } else {
+    await tab.webviewRef.goForward();
+  }
 }
 
-function reloadBrowser(tab: BrowserTab) {
-  if (!tab.url) return;
+async function reloadBrowser(tab: BrowserTab) {
+  if (!tab.webviewRef || !tab.url) return;
   tab.loading = true;
-  tab.frameKey += 1;
+  await tab.webviewRef.reload();
+}
+
+function browserLoadStart(tab: BrowserTab) {
+  tab.loading = true;
+  // 8秒超时自动结束加载状态，防止一直转圈
+  setTimeout(() => {
+    if (tab.loading) {
+      tab.loading = false;
+    }
+  }, 8000);
+}
+
+function browserLoaded(tab: BrowserTab, url: string) {
+  tab.loading = false;
+  if (url && url !== tab.url) {
+    tab.url = url;
+    tab.input = url;
+    try {
+      const parsed = new URL(url);
+      tab.label = parsed.hostname.replace(/^www\./, "") || "新标签页";
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function browserUrlChange(tab: BrowserTab, url: string) {
+  tab.url = url;
+  tab.input = url;
+  try {
+    const parsed = new URL(url);
+    tab.label = parsed.hostname.replace(/^www\./, "") || "新标签页";
+  } catch {
+    // ignore
+  }
+}
+
+function openExternalBrowser(tab: BrowserTab) {
+  if (!tab.url) return;
+  window.open(tab.url, "_blank");
+}
+
+function copyBrowserUrl(tab: BrowserTab) {
+  if (!tab.url) return;
+  navigator.clipboard.writeText(tab.url).catch(() => {});
+}
+
+async function toggleDevTools(tab: BrowserTab) {
+  tab.devMenuOpen = false;
+  if (tab.webviewRef) {
+    await tab.webviewRef.openDevTools();
+  }
+}
+
+function selectElement(tab: BrowserTab) {
+  tab.devMenuOpen = false;
+  notice.value = "元素选择功能开发中";
+}
+
+function cssInspector(tab: BrowserTab) {
+  tab.devMenuOpen = false;
+  notice.value = "CSS检查器功能开发中";
+}
+
+function deviceToolbar(tab: BrowserTab) {
+  tab.devMenuOpen = false;
+  notice.value = "设备工具栏功能开发中";
+}
+
+function setWebviewRef(tab: BrowserTab, el: any) {
+  tab.webviewRef = el;
 }
 
 function openUrlInAppBrowser(url: string) {
   // 复用第一个浏览器标签或新建：从输出链接直达内置浏览器栏
-  const tab = browserTabs.value[0];
+  let tab = browserTabs.value[0];
+  if (!tab) {
+    createBrowserTab();
+    tab = browserTabs.value[browserTabs.value.length - 1];
+  }
   if (tab) {
     tab.input = url;
     navigateBrowser(tab);
     activateBrowser(tab.id);
     toolMenuOpen.value = false;
-    return;
-  }
-  createBrowserTab();
-  const fresh = browserTabs.value[browserTabs.value.length - 1];
-  if (fresh) {
-    fresh.input = url;
-    navigateBrowser(fresh);
   }
 }
 
@@ -717,30 +797,123 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
 
     <main v-else-if="currentBrowser" class="browser-workspace">
       <form class="browser-toolbar" aria-label="网页导航" @submit.prevent="navigateBrowser(currentBrowser)">
-        <div class="browser-navigation-actions">
-          <button type="button" class="browser-toolbar-action" title="后退" aria-label="后退" :disabled="currentBrowser.historyIndex <= 0 || currentBrowser.loading" @click="moveBrowserHistory(currentBrowser, -1)"><ArrowLeft :size="17" /></button>
-          <button type="button" class="browser-toolbar-action" title="前进" aria-label="前进" :disabled="currentBrowser.historyIndex >= currentBrowser.history.length - 1 || currentBrowser.loading" @click="moveBrowserHistory(currentBrowser, 1)"><ArrowRight :size="17" /></button>
-          <button type="button" class="browser-toolbar-action" title="刷新网页" aria-label="刷新网页" :disabled="!currentBrowser.url || currentBrowser.loading" @click="reloadBrowser(currentBrowser)"><RotateCw :size="16" :class="{ spin: currentBrowser.loading }" /></button>
+        <div class="browser-nav-group">
+          <button
+            type="button"
+            class="browser-nav-btn"
+            title="后退"
+            aria-label="后退"
+            :disabled="currentBrowser.loading"
+            @click="moveBrowserHistory(currentBrowser, -1)"
+          >
+            <ArrowLeft :size="18" />
+          </button>
+          <button
+            type="button"
+            class="browser-nav-btn"
+            title="前进"
+            aria-label="前进"
+            :disabled="currentBrowser.loading"
+            @click="moveBrowserHistory(currentBrowser, 1)"
+          >
+            <ArrowRight :size="18" />
+          </button>
+          <button
+            type="button"
+            class="browser-nav-btn"
+            title="刷新网页"
+            aria-label="刷新网页"
+            :disabled="!currentBrowser.url || currentBrowser.loading"
+            @click="reloadBrowser(currentBrowser)"
+          >
+            <RotateCw :size="18" :class="{ spin: currentBrowser.loading }" />
+          </button>
         </div>
-        <div class="browser-address">
-          <input v-model="currentBrowser.input" aria-label="网页地址" placeholder="输入 URL" spellcheck="false" autocomplete="url" />
-          <button type="submit" class="browser-toolbar-submit" title="访问网页" aria-label="访问网页" :disabled="!currentBrowser.input.trim() || currentBrowser.loading"><ArrowUpRight :size="18" /></button>
+
+        <div class="browser-address-bar">
+          <input
+            v-model="currentBrowser.input"
+            aria-label="网页地址"
+            placeholder="输入URL或选择正在运行的服务"
+            spellcheck="false"
+            autocomplete="url"
+            class="browser-address-input"
+          />
+          <ChevronDown :size="16" class="browser-address-chev" />
         </div>
-        <button type="button" class="browser-toolbar-menu" title="更多选项" aria-label="更多选项"><EllipsisVertical :size="18" /></button>
+
+        <div class="browser-toolbar-actions">
+          <button type="button" class="browser-action-btn" title="编辑" :disabled="!currentBrowser.url">
+            <Pencil :size="18" />
+          </button>
+          <button type="button" class="browser-action-btn" title="分享" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
+            <Share2 :size="18" />
+          </button>
+
+          <div class="browser-dev-menu-wrap">
+            <button
+              type="button"
+              class="browser-action-btn browser-dev-trigger"
+              title="更多工具"
+              :class="{ active: currentBrowser.devMenuOpen }"
+              @click.stop="currentBrowser.devMenuOpen = !currentBrowser.devMenuOpen"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+              </svg>
+            </button>
+
+            <div v-if="currentBrowser.devMenuOpen" class="browser-dev-popover" @click.stop>
+              <button type="button" @click="selectElement(currentBrowser)">
+                <MousePointer2 :size="16" />
+                <span>选择元素</span>
+              </button>
+              <div class="browser-popover-divider" />
+              <button type="button" @click="cssInspector(currentBrowser)">
+                <Code :size="16" />
+                <span>CSS检查器</span>
+              </button>
+              <button type="button" @click="deviceToolbar(currentBrowser)">
+                <Monitor :size="16" />
+                <span>Device Toolbar</span>
+              </button>
+              <div class="browser-popover-divider" />
+              <button type="button" @click="toggleDevTools(currentBrowser)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+                <span>DevTools</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </form>
-      <div class="browser-stage">
+      <div class="browser-stage" @click="currentBrowser.devMenuOpen = false">
         <BrowserWebview
           v-if="currentBrowser.url"
+          :ref="(el) => setWebviewRef(currentBrowser, el)"
           :key="currentBrowser.id"
           :tab-id="currentBrowser.id"
           :url="currentBrowser.url"
-          :reload-key="currentBrowser.frameKey"
-          :visible="!toolMenuOpen && !currentBrowser.loading && !obscured"
-          @loaded="currentBrowser.loading = false"
-          @error="browserLoadError(currentBrowser, $event)"
+          :visible="activeTab === `browser-${currentBrowser.id}` && !toolMenuOpen && !obscured && !currentBrowser.devMenuOpen"
+          @load-start="browserLoadStart(currentBrowser)"
+          @loaded="browserLoaded(currentBrowser, $event)"
+          @url-change="browserUrlChange(currentBrowser, $event)"
+          @error="browserLoadError(currentBrowser, $event); currentBrowser.devMenuOpen = false"
         />
-        <div v-else class="browser-empty"><Globe2 :size="28" /><p>暂无网页预览，让AI生成一些内容看看吧！</p></div>
-        <div v-if="currentBrowser.loading" class="browser-loading"><LoaderCircle :size="20" /><span>正在载入网页</span></div>
+        <div v-else class="browser-empty">
+          <div class="browser-empty-inner">
+            <AgentLogo size="large" class="browser-empty-logo" />
+            <p class="browser-empty-title">内置浏览器</p>
+            <p class="browser-empty-desc">输入网址访问网页，或点击AI输出中的链接直接预览</p>
+            <div class="browser-quick-links">
+              <button type="button" @click="currentBrowser.input = 'https://www.bing.com'; navigateBrowser(currentBrowser)">必应搜索</button>
+              <button type="button" @click="currentBrowser.input = 'https://github.com'; navigateBrowser(currentBrowser)">GitHub</button>
+              <button type="button" @click="currentBrowser.input = 'https://developer.mozilla.org'; navigateBrowser(currentBrowser)">MDN</button>
+            </div>
+          </div>
+        </div>
+        <div v-if="currentBrowser.loading" class="browser-loading-bar" />
       </div>
     </main>
 

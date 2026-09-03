@@ -77,7 +77,8 @@ const currentLang = ref(normalizeLanguage(props.language));
 const dropdownOpen = ref(false);
 const searchQuery = ref("");
 const copied = ref(false);
-const containerRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
+const dropdownRef = ref<HTMLElement | null>(null);
 const dropdownStyle = ref<Record<string, string>>({});
 
 const filteredLanguages = computed(() => {
@@ -107,13 +108,37 @@ watch(
 );
 
 function updateDropdownPosition() {
-  if (!containerRef.value) return;
-  const rect = containerRef.value.getBoundingClientRect();
-  dropdownStyle.value = {
-    top: `${rect.bottom + 6}px`,
-    left: `${rect.left}px`,
-    minWidth: `${Math.max(rect.width, 220)}px`,
-  };
+  if (!triggerRef.value) return;
+  const triggerRect = triggerRef.value.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+
+  const dropdownHeight = dropdownRef.value?.offsetHeight || 400;
+  const spaceBelow = viewportHeight - triggerRect.bottom;
+  const spaceAbove = triggerRect.top;
+  const showAbove = spaceBelow < dropdownHeight + 8 && spaceAbove > spaceBelow;
+
+  let left = triggerRect.left;
+  const dropdownWidth = Math.max(triggerRect.width, 220);
+  if (left + dropdownWidth > viewportWidth - 8) {
+    left = viewportWidth - dropdownWidth - 8;
+  }
+
+  if (showAbove) {
+    dropdownStyle.value = {
+      top: `${Math.max(8, triggerRect.top - dropdownHeight - 6)}px`,
+      left: `${left}px`,
+      minWidth: `${dropdownWidth}px`,
+      maxHeight: `${Math.min(dropdownHeight, spaceAbove - 12)}px`,
+    };
+  } else {
+    dropdownStyle.value = {
+      top: `${triggerRect.bottom + 6}px`,
+      left: `${left}px`,
+      minWidth: `${dropdownWidth}px`,
+      maxHeight: `${Math.min(dropdownHeight, spaceBelow - 12)}px`,
+    };
+  }
 }
 
 function selectLanguage(lang: string) {
@@ -129,6 +154,9 @@ function toggleDropdown() {
     searchQuery.value = "";
     nextTick(() => {
       updateDropdownPosition();
+      requestAnimationFrame(() => {
+        updateDropdownPosition();
+      });
     });
   }
 }
@@ -159,7 +187,9 @@ async function copyCode() {
 function onDocClick(e: MouseEvent) {
   if (!dropdownOpen.value) return;
   const target = e.target as Node;
-  if (containerRef.value && !containerRef.value.contains(target)) {
+  const inTrigger = triggerRef.value?.contains(target);
+  const inDropdown = dropdownRef.value?.contains(target);
+  if (!inTrigger && !inDropdown) {
     dropdownOpen.value = false;
     searchQuery.value = "";
   }
@@ -194,9 +224,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="code-block-card" ref="containerRef">
+  <div class="code-block-card">
     <div class="code-block-header">
-      <button type="button" class="lang-selector" @click.stop="toggleDropdown">
+      <button type="button" class="lang-selector" ref="triggerRef" @click.stop="toggleDropdown">
         <span class="lang-label">{{ currentLangLabel }}</span>
         <ChevronDown :size="14" :class="{ 'chevron-open': dropdownOpen }" />
       </button>
@@ -217,6 +247,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="dropdownOpen"
+        ref="dropdownRef"
         class="lang-dropdown"
         :style="dropdownStyle"
         @click.stop
