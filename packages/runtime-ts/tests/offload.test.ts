@@ -33,9 +33,9 @@ test("agent loop offloads tool output and can recover it with read_ref", async (
     const provider: ModelProvider = { complete: async (messages) => {
       call += 1;
       if (call === 1) return { text: "", tool_calls: [{ id: "read-1", name: "read_file", input: { path: "large.txt" } }], stop_reason: "tool_use" };
-      const last = String(messages.at(-1)?.content ?? "");
-      if (call === 2) { assert.match(last, /\[上下文卸载:/); refPath = /\[上下文卸载: ([^\]]+)\]/.exec(last)?.[1] ?? ""; return { text: "", tool_calls: [{ id: "ref-1", name: "read_ref", input: { ref_path: refPath, limit: 8000 } }], stop_reason: "tool_use" }; }
-      recovered = last; return { text: "done", tool_calls: [], stop_reason: "end_turn" };
+      const contents = messages.map((message) => String(message.content ?? ""));
+      if (call === 2) { const placeholder = contents.find((content) => content.includes("[上下文卸载:")) ?? ""; assert.match(placeholder, /\[上下文卸载:/); refPath = /\[上下文卸载: ([^\]]+)\]/.exec(placeholder)?.[1] ?? ""; return { text: "", tool_calls: [{ id: "ref-1", name: "read_ref", input: { ref_path: refPath, limit: 8000 } }], stop_reason: "tool_use" }; }
+      recovered = contents.find((content) => content.includes("[ref page:")) ?? contents.at(-1) ?? ""; return { text: "done", tool_calls: [], stop_reason: "end_turn" };
     } };
     const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { offloadRoot: path.join(root, "run-data"), offloadMinChars: 100 });
     assert.equal((await loop.run("run-1", "read it", 4)).text, "done");
@@ -55,10 +55,11 @@ test("agent loop falls back to bounded context when offload storage fails", asyn
   try {
     const blocked = path.join(root, "not-a-directory"); await writeFile(blocked, "file");
     let calls = 0; let observed = "";
-    const provider: ModelProvider = { complete: async (messages) => { calls += 1; if (calls === 1) return { text: "", tool_calls: [{ id: "large", name: "read_file", input: { path: "large.txt" } }], stop_reason: "tool_use" }; observed = String(messages.at(-1)?.content ?? ""); return { text: "done", tool_calls: [], stop_reason: "end_turn" }; } };
+    const provider: ModelProvider = { complete: async (messages) => { calls += 1; if (calls === 1) return { text: "", tool_calls: [{ id: "large", name: "read_file", input: { path: "large.txt" } }], stop_reason: "tool_use" }; observed = messages.filter((message) => message.role === "tool").map((message) => String(message.content ?? "")).join("\n"); return { text: "done", tool_calls: [], stop_reason: "end_turn" }; } };
     await writeFile(path.join(root, "large.txt"), "x".repeat(20_000));
     const loop = new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { offloadRoot: blocked, offloadMinChars: 100 });
     assert.equal((await loop.run("fallback", "read it", 3)).text, "done");
-    assert.match(observed, /chars omitted/); assert.ok(observed.length <= 4_000);
+    const boundedToolResult = observed.includes("chars omitted") ? observed : "";
+    assert.match(boundedToolResult, /chars omitted/); assert.ok(boundedToolResult.length <= 4_000);
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
