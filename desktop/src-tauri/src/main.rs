@@ -1510,13 +1510,11 @@ fn main() {
                                 return;
                             }
                             // 以托盘图标右上角为锚点，菜单贴在图标左上侧；
-                            // 同时限制在当前屏幕工作区内，避免任务栏/多屏时跑出屏幕。
-                            // 托盘事件给出物理像素坐标；窗口配置是逻辑像素，需要按 DPI 换算。
-                            let scale = menu.scale_factor().unwrap_or(1.0);
-                            let size = tauri::PhysicalSize::new(
-                                (300.0 * scale).round() as u32,
-                                (338.0 * scale).round() as u32,
-                            );
+                            // 同时限制在当前屏幕内，避免任务栏/多屏时跑出屏幕。
+                            // 窗口尺寸由前端按内容自适应调整，outer_size 与事件坐标同为物理像素，无需 DPI 换算。
+                            let size = menu
+                                .outer_size()
+                                .unwrap_or(tauri::PhysicalSize::new(252, 320));
                             let monitor = menu.current_monitor().ok().flatten();
                             let (left, top, right, bottom) = monitor
                                 .map(|m| {
