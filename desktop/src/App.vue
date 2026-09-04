@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  AlertTriangle, Archive, ArrowUp, CalendarClock, Check, ChevronDown, CirclePlus, Clock, Coins, Ellipsis, Folder, FolderOpen, FolderPlus,
-  GitBranch, Globe2, Info, LayoutDashboard, MessageCircle, Minus, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Pencil, Unlink,
-  Plus, Puzzle, RotateCcw, Search, Settings, ShieldCheck, Square, Terminal, Trash2, X,
-} from "@lucide/vue";
+import AppIcon from "./components/icons/AppIcon.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
@@ -2958,8 +2954,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <header v-if="isMacOS" class="sidebar-macos-toolbar" @pointerdown="onMacTitlebandPointerDown" @dblclick="onMacTitlebandDblClick">
       <div class="nav-toggle-wrap" @pointerdown.stop @dblclick.stop>
         <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav')" @click="toggleSidebar">
-          <PanelLeftOpen v-if="sidebarCollapsed" :size="16" :stroke-width="1.8" />
-          <PanelLeftClose v-else :size="16" :stroke-width="1.8" />
+          <AppIcon v-if="sidebarCollapsed" name="PanelLeftOpen" :size="16" />
+          <AppIcon v-else name="PanelLeftClose" :size="16" />
         </button>
         <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav') }}</span><kbd>⌘</kbd><kbd>B</kbd></div>
       </div>
@@ -2967,8 +2963,8 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <header class="kimi-titlebar" :class="{ 'is-macos': isMacOS }">
       <div v-if="!isMacOS" class="nav-toggle-wrap">
         <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav')" @click="toggleSidebar">
-          <PanelLeftOpen v-if="sidebarCollapsed" :size="16" :stroke-width="1.8" />
-          <PanelLeftClose v-else :size="16" :stroke-width="1.8" />
+          <AppIcon v-if="sidebarCollapsed" name="PanelLeftOpen" :size="16" />
+          <AppIcon v-else name="PanelLeftClose" :size="16" />
         </button>
         <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav') }}</span><kbd>Ctrl</kbd><kbd>B</kbd></div>
       </div>
@@ -3032,9 +3028,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div v-if="isMacOS" class="titlebar-drag-region" @pointerdown="onMacTitlebandPointerDown" @dblclick="onMacTitlebandDblClick" />
       <div v-else class="titlebar-drag-region" data-tauri-drag-region @dblclick="toggleMaximizeWindow" />
       <div v-if="!isMacOS" class="window-actions" aria-label="Window controls">
-        <button class="window-action" type="button" title="Minimize" aria-label="Minimize window" @click="minimizeWindow"><Minus :size="15" :stroke-width="1.8" /></button>
-        <button class="window-action" type="button" title="Maximize or restore" aria-label="Maximize or restore window" @click="toggleMaximizeWindow"><Square :size="13" :stroke-width="1.8" /></button>
-        <button class="window-action window-action--close" type="button" title="Close" aria-label="Close window" @click="closeWindow"><X :size="17" :stroke-width="1.8" /></button>
+        <button class="window-action" type="button" title="Minimize" aria-label="Minimize window" @click="minimizeWindow"><AppIcon name="Minus" :size="15" /></button>
+        <button class="window-action" type="button" title="Maximize or restore" aria-label="Maximize or restore window" @click="toggleMaximizeWindow"><AppIcon name="SquareShape" :size="13" /></button>
+        <button class="window-action window-action--close" type="button" title="Close" aria-label="Close window" @click="closeWindow"><AppIcon name="X" :size="17" /></button>
       </div>
     </header>
 
@@ -3044,48 +3040,48 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <div class="mode-switch-wrap">
           <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" :aria-label="t('app.switchWorkMode')" @click="modeMenuOpen = !modeMenuOpen">
             <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuChat' }}</h1>
-            <ChevronDown :size="14" :stroke-width="1.8" />
+            <AppIcon name="ChevronDown" :size="14" />
           </button>
           <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" :aria-label="t('app.workMode')">
             <button type="button" role="menuitemradio" :aria-checked="workMode === 'code'" @click="switchWorkMode('code')">
               <span><b>SztuCode</b><small>{{ t('app.codeMode') }}</small></span>
-              <Check v-if="workMode === 'code'" :size="15" />
+              <AppIcon v-if="workMode === 'code'" name="Check" :size="15" />
             </button>
             <button type="button" role="menuitemradio" :aria-checked="workMode === 'chat'" @click="switchWorkMode('chat')">
               <span><b>SztuChat</b><small>{{ t('app.chatMode') }}</small></span>
-              <Check v-if="workMode === 'chat'" :size="15" />
+              <AppIcon v-if="workMode === 'chat'" name="Check" :size="15" />
             </button>
           </div>
         </div>
         <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
-          <Search :size="16" :stroke-width="1.8" aria-hidden="true" />
+          <AppIcon name="Search" :size="16" aria-hidden="true" />
         </button>
       </header>
 
       <Teleport to="body">
         <div v-if="taskSearchOpen" id="task-search-popover" class="task-search-popover" role="dialog" :aria-label="t('app.searchTasks')" @pointerdown.stop>
-          <div class="task-search-popover__input"><Search :size="17" :stroke-width="1.8" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" :placeholder="t('app.searchTasks')" :aria-label="t('app.searchTasks')" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" :title="t('app.clearSearch')" :aria-label="t('app.clearSearch')" @click="taskQuery = ''"><X :size="15" :stroke-width="1.8" /></button><kbd>Esc</kbd></div>
+          <div class="task-search-popover__input"><AppIcon name="Search" :size="17" aria-hidden="true" /><input ref="taskSearchInput" v-model="taskQuery" type="search" :placeholder="t('app.searchTasks')" :aria-label="t('app.searchTasks')" @keydown.esc="clearTaskSearch" /><button v-if="taskQuery" type="button" :title="t('app.clearSearch')" :aria-label="t('app.clearSearch')" @click="taskQuery = ''"><AppIcon name="X" :size="15" /></button><kbd>Esc</kbd></div>
           <p class="task-search-popover__hint">{{ taskQuery ? t('app.searchResultsCount', { n: visibleSessions.length }) : t('app.recentSessions') }}</p>
           <div class="task-search-popover__results">
-            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><Search :size="14" /><span>{{ task.title || t('app.unnamedTask') }}</span><small>{{ taskStatusLabel(task) }}</small></button>
+            <button v-for="task in (taskQuery ? visibleSessions : liveSessions.slice(0, 8))" :key="`popup-${task.session_id}`" type="button" @click="chooseTask(task.session_id)"><AppIcon name="Search" :size="14" /><span>{{ task.title || t('app.unnamedTask') }}</span><small>{{ taskStatusLabel(task) }}</small></button>
             <p v-if="taskQuery && !visibleSessions.length">{{ t('app.noMatchingSessions') }}</p>
           </div>
         </div>
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="beginTask()"><CirclePlus :size="16" :stroke-width="1.8" />{{ t('app.newTask') }}</button>
+        <button class="new-task-button" @click="beginTask()"><AppIcon name="CirclePlus" :size="16" />{{ t('app.newTask') }}</button>
       </div>
 
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
-        <button :class="{ active: page === 'board' }" @click="openPage('board')"><LayoutDashboard :size="16" :stroke-width="1.8" /><span>{{ t('app.allTasks') }}</span></button>
-        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><CalendarClock :size="16" :stroke-width="1.8" /><span>{{ t('app.automations') }}</span></button>
-        <button class="sidebar-more-trigger" :class="{ expanded: sidebarToolsExpanded }" :aria-expanded="sidebarToolsExpanded" aria-controls="sidebar-more-tools" @click="sidebarToolsExpanded = !sidebarToolsExpanded"><Ellipsis :size="16" :stroke-width="1.8" /><span>{{ t('app.more') }}</span><ChevronDown :size="16" :stroke-width="1.8" /></button>
+        <button :class="{ active: page === 'board' }" @click="openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :filled="page === 'board'" /><span>{{ t('app.allTasks') }}</span></button>
+        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="16" :filled="page === 'automations'" /><span>{{ t('app.automations') }}</span></button>
+        <button class="sidebar-more-trigger" :class="{ expanded: sidebarToolsExpanded }" :aria-expanded="sidebarToolsExpanded" aria-controls="sidebar-more-tools" @click="sidebarToolsExpanded = !sidebarToolsExpanded"><AppIcon name="Ellipsis" :size="16" /><span>{{ t('app.more') }}</span><AppIcon name="ChevronDown" :size="16" /></button>
         <div v-if="sidebarToolsExpanded" id="sidebar-more-tools" class="sidebar-more-tools">
           <div>
-            <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><Puzzle :size="16" :stroke-width="1.8" /><span>{{ t('app.skills') }}</span></button>
-            <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><Globe2 :size="16" :stroke-width="1.8" /><span>{{ t('app.webbridge') }}</span></button>
-            <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><MessageCircle :size="16" :stroke-width="1.8" /><span>{{ t('app.generalChat') }}</span></button>
+            <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
+            <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
+            <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><AppIcon name="MessageCircle" :size="16" :filled="page === 'chat'" /><span>{{ t('app.generalChat') }}</span></button>
           </div>
         </div>
       </nav>
@@ -3107,22 +3103,22 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <div v-if="pinnedTemporaryTasks.length && !normalizedTaskQuery" class="pinned-temporary-list">
             <div v-for="task in pinnedTemporaryTasks" :key="`pinned-temporary-${task.session_id}`" class="sidebar-session conversation-session"><button class="conversation-row" :class="{ active: task.session_id === activeId }" @click="chooseTask(task.session_id)"><span>{{ task.title || t('app.unnamedTask') }}</span></button><SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" /></div>
           </div>
-          <span class="side-label side-label--action project-tree-label"><span>{{ t('app.projects') }}</span><button :title="t('app.openLocalDir')" :aria-label="t('app.openLocalDir')" @click="openLocalProject"><FolderOpen :size="16" :stroke-width="1.8" /></button></span>
+          <span class="side-label side-label--action project-tree-label"><span>{{ t('app.projects') }}</span><button :title="t('app.openLocalDir')" :aria-label="t('app.openLocalDir')" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
             <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
               <button class="project-row-toggle" :title="t('app.newTempSessionInProject')" @click.stop.prevent>
-                <FolderOpen :size="16" :stroke-width="1.8" />
+                <AppIcon name="FolderOpen" :size="16" />
                 <span>{{ item.name }}</span>
               </button>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="t('app.projectActionsAria', { name: item.name })">
-                <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><PinOff v-if="item.pinned" :size="16" :stroke-width="1.8" /><Pin v-else :size="16" :stroke-width="1.8" />{{ item.pinned ? t('app.unpin') : t('app.pin') }}</button>
-                <button role="menuitem" @click="beginProjectEdit(item)"><Pencil :size="16" :stroke-width="1.8" />{{ t('app.edit') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="toggleProjectPinned(item)"><AppIcon v-if="item.pinned" name="PinOff" :size="16" /><AppIcon v-else name="Pin" :size="16" />{{ item.pinned ? t('app.unpin') : t('app.pin') }}</button>
+                <button role="menuitem" @click="beginProjectEdit(item)"><AppIcon name="Pencil" :size="16" />{{ t('app.edit') }}</button>
                 <div class="project-action-menu__separator" />
-                <button role="menuitem" @click="openProjectExplorer(item)"><FolderOpen :size="16" :stroke-width="1.8" />{{ t('app.openInExplorer') }}</button>
-                <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><GitBranch :size="16" :stroke-width="1.8" />{{ t('app.createWorktree') }}</button>
+                <button role="menuitem" @click="openProjectExplorer(item)"><AppIcon name="FolderOpen" :size="16" />{{ t('app.openInExplorer') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="createProjectWorktree(item)"><AppIcon name="GitBranch" :size="16" />{{ t('app.createWorktree') }}</button>
                 <div class="project-action-menu__separator" />
-                <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><Archive :size="16" :stroke-width="1.8" />{{ t('app.archiveChats') }}</button>
-                <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><Unlink :size="16" :stroke-width="1.8" />{{ t('app.removeProject') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="archiveProjectChats(item)"><AppIcon name="Archive" :size="16" />{{ t('app.archiveChats') }}</button>
+                <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><AppIcon name="Unlink" :size="16" />{{ t('app.removeProject') }}</button>
               </div>
             </div>
             <div class="project-task-list">
@@ -3149,24 +3145,24 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </section>
 
         <details v-if="archivedProjects.length && !normalizedTaskQuery" class="archived-projects">
-          <summary><Archive :size="16" :stroke-width="1.8" />{{ t('app.archivedProjects') }} <small>{{ archivedProjects.length }}</small></summary>
+          <summary><AppIcon name="Archive" :size="16" />{{ t('app.archivedProjects') }} <small>{{ archivedProjects.length }}</small></summary>
           <div v-for="item in archivedProjects" :key="item.workspace_id" class="project-row-shell">
-            <button class="project-row archived-project-row" :title="t('app.restoreProject')" @click="resumeProject(item)"><RotateCcw :size="16" :stroke-width="1.8" /><span>{{ item.name }}</span></button>
+            <button class="project-row archived-project-row" :title="t('app.restoreProject')" @click="resumeProject(item)"><AppIcon name="RotateCcw" :size="16" /><span>{{ item.name }}</span></button>
           </div>
         </details>
       </div>
 
       <footer v-if="statusBarVisible" class="sidebar-footer">
         <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>{{ t('app.localService') }}</b><small>{{ connected ? t('app.connected') : runtimeConnectionError ? t('app.reconnecting') : t('app.disconnected') }}</small></span></div>
-        <button ref="settingsButton" class="settings-link" :title="t('app.settings')" :aria-label="t('app.settings')" :aria-expanded="settingsOpen" @click="openSettings"><Settings :size="16" :stroke-width="1.8" /></button>
+        <button ref="settingsButton" class="settings-link" :title="t('app.settings')" :aria-label="t('app.settings')" :aria-expanded="settingsOpen" @click="openSettings"><AppIcon name="Settings" :size="16" /></button>
       </footer>
       </aside>
       <Teleport to="body">
         <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @pointerenter="keepProjectPreviewOpen" @pointerdown="keepProjectPreviewOpen" @focusin="keepProjectPreviewOpen" @focusout="handleProjectPreviewFocusOut" @mouseleave="scheduleProjectPreviewClose">
-          <header><FolderOpen :size="20" :stroke-width="1.7" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :aria-label="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><PinOff v-if="previewProject.pinned" :size="16" :stroke-width="1.7" /><Pin v-else :size="16" :stroke-width="1.7" /></button></header>
-          <div class="project-preview-card__meta"><span><MessageCircle :size="16" :stroke-width="1.7" />{{ t('app.tasksCount', { n: previewProject.tasks.length }) }}</span></div>
-          <div class="project-preview-card__path"><FolderOpen :size="16" :stroke-width="1.7" /><span>{{ previewProject.path }}</span></div>
-          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><Pencil :size="16" :stroke-width="1.7" />{{ t('app.editProject') }}</button>
+          <header><AppIcon name="FolderOpen" :size="20" /><b>{{ previewProject.name }}</b><button type="button" :title="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :aria-label="previewProject.pinned ? t('app.unpin') : t('app.pinProject')" :disabled="projectActionBusy" @pointerdown.stop @click.stop="toggleProjectPinned(previewProject)"><AppIcon v-if="previewProject.pinned" name="PinOff" :size="16" /><AppIcon v-else name="Pin" :size="16" /></button></header>
+          <div class="project-preview-card__meta"><span><AppIcon name="MessageCircle" :size="16" />{{ t('app.tasksCount', { n: previewProject.tasks.length }) }}</span></div>
+          <div class="project-preview-card__path"><AppIcon name="FolderOpen" :size="16" /><span>{{ previewProject.path }}</span></div>
+          <button type="button" class="project-preview-card__edit" @click.stop="beginProjectEdit(previewProject)"><AppIcon name="Pencil" :size="16" />{{ t('app.editProject') }}</button>
         </div>
       </Teleport>
     </div>
@@ -3187,10 +3183,10 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
     <div v-if="sessionPreview" class="session-preview" :style="{ top: `${sessionPreview.top}px`, left: `${sessionPreview.left}px` }" role="tooltip">
       <b class="session-preview__title">{{ sessionPreview.task.title || t('app.unnamedTask') }}</b>
-      <div class="session-preview__row"><Clock :size="16" :stroke-width="1.8" /><span>{{ t('app.timingLabel') }}</span><em>{{ previewElapsed(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><GitBranch :size="16" :stroke-width="1.8" /><span>{{ t('app.branch') }}</span><em>{{ previewBranch(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><Folder :size="16" :stroke-width="1.8" /><span>{{ t('app.projectDirectory') }}</span><em>{{ previewDirectory(sessionPreview.task) }}</em></div>
-      <div class="session-preview__row"><Coins :size="16" :stroke-width="1.8" /><span>{{ t('app.totalTokens') }}</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><AppIcon name="Clock" :size="16" /><span>{{ t('app.timingLabel') }}</span><em>{{ previewElapsed(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><AppIcon name="GitBranch" :size="16" /><span>{{ t('app.branch') }}</span><em>{{ previewBranch(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><AppIcon name="Folder" :size="16" /><span>{{ t('app.projectDirectory') }}</span><em>{{ previewDirectory(sessionPreview.task) }}</em></div>
+      <div class="session-preview__row"><AppIcon name="Coins" :size="16" /><span>{{ t('app.totalTokens') }}</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
     </div>
 
     <main class="kimi-main" :class="{ 'chat-main': page === 'chat', 'work-active': page === 'work' }">
@@ -3199,34 +3195,34 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div v-if="sessionLoading" class="session-loading" role="status" :aria-label="t('app.loadingSession')">
-                <Terminal :size="40" :stroke-width="1.5" />
+                <AppIcon name="Terminal" :size="40" />
                 <span>{{ t('app.loadingSessionDots') }}</span>
               </div>
               <header class="work-header">
-                <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || t('app.noProjectSelected') }}</span><ChevronDown :size="14" /></button>
+                <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || t('app.noProjectSelected') }}</span><AppIcon name="ChevronDown" :size="14" /></button>
                 <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
-                  <button class="source-control-toggle" :title="t('app.sourceControl')" :aria-label="t('app.sourceControl')" :disabled="!activeWorkspace" @click="openPage('source-control')"><GitBranch :size="18" /></button>
-                  <button class="workspace-panel-toggle" :title="t('app.workspace')" :aria-label="t('app.workspace')" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><Folder :size="18" /></button>
+                  <button class="source-control-toggle" :title="t('app.sourceControl')" :aria-label="t('app.sourceControl')" :disabled="!activeWorkspace" @click="openPage('source-control')"><AppIcon name="GitBranch" :size="18" /></button>
+                  <button class="workspace-panel-toggle" :title="t('app.workspace')" :aria-label="t('app.workspace')" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><AppIcon name="Folder" :size="18" :filled="inspectorOpen" /></button>
                 </div>
               </header>
               <div v-if="pendingPermissions.length" class="global-permission-banner" aria-live="polite">
                 <div v-for="perm in pendingPermissions" :key="perm.toolUseId" class="global-permission-item">
-                  <ShieldCheck :size="15" /><b>{{ t('app.bgTaskPermission') }}</b><span>{{ perm.toolName }} · {{ perm.preview }}</span>
+                  <AppIcon name="ShieldCheck" :size="15" /><b>{{ t('app.bgTaskPermission') }}</b><span>{{ perm.toolName }} · {{ perm.preview }}</span>
                   <button type="button" @click="decidePermission(perm.toolUseId, 'deny_once')">{{ t('app.deny') }}</button>
                   <button type="button" class="allow" @click="decidePermission(perm.toolUseId, 'allow_once')">{{ t('app.allowOnce') }}</button>
                 </div>
               </div>
               <div v-if="backgroundUserQuestions.length" class="global-permission-banner global-question-banner" aria-live="polite">
                 <div v-for="pending in backgroundUserQuestions" :key="pending.rpc_id" class="global-permission-item global-question-item">
-                  <MessageCircle :size="15" /><b>{{ t('app.bgTaskQuestion') }}</b><span>{{ pending.questions[0]?.question || t('app.agentNeedsChoice') }}</span>
+                  <AppIcon name="MessageCircle" :size="15" /><b>{{ t('app.bgTaskQuestion') }}</b><span>{{ pending.questions[0]?.question || t('app.agentNeedsChoice') }}</span>
                   <button type="button" class="open" @click="chooseTask(pending.session_id)">{{ t('app.openTask') }}</button>
                 </div>
               </div>
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
-                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><Terminal :size="36" :stroke-width="1.5" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
+                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><AppIcon name="Terminal" :size="36" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
                   <KeepAlive>
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
@@ -3264,7 +3260,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <span class="turn-dot-bubble-inner">{{ turnLabels[turnDotHoverIdx] }}</span>
                   </span>
                 </div>
-                <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" :title="t('app.backToBottom')" :aria-label="t('app.backToBottom')" @click="scrollTaskStreamToBottom"><ChevronDown :size="16" :stroke-width="2" /></button>
+                <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" :title="t('app.backToBottom')" :aria-label="t('app.backToBottom')" @click="scrollTaskStreamToBottom"><AppIcon name="ChevronDown" :size="16" /></button>
                 <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
                 <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
                 <!-- 暂时隐藏“修改了 N 个文件”提示。
@@ -3290,9 +3286,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   />
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><AppIcon name="X" :size="12" /></button></span></div>
                       <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder')))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><Plus :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><ShieldCheck :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<ChevronDown :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><Square :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><ArrowUp :size="15" /></button></div>
+                      <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
@@ -3326,12 +3322,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <form class="kimi-composer landing-composer" @submit.prevent="submit()">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
-                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><X :size="12" /></button></span></div>
+                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><AppIcon name="X" :size="12" /></button></span></div>
                 <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :placeholder="t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div class="composer-toolbar launcher-toolbar">
-                  <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><Plus :size="18" /></button>
+                  <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button>
                   <div class="launcher-permission-control">
-                    <button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><ShieldCheck :size="15" />{{ permissionModeLabel }}<ChevronDown :size="13" /></button>
+                    <button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><AppIcon name="ShieldCheck" :size="15" />{{ permissionModeLabel }}<AppIcon name="ChevronDown" :size="13" /></button>
                     <div v-if="launcherPermissionMenuOpen" class="launcher-popover permission-popover" role="menu" :aria-label="t('app.permissionModeAria')">
                       <button type="button" class="full-access-row" role="menuitemcheckbox" :aria-checked="runtimeSettings?.permission_mode === 'auto'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><span><b>{{ t('app.allowAllPermissions') }}</b><small>{{ t('app.skipConfirmations') }}</small></span><i :class="{ active: runtimeSettings?.permission_mode === 'auto' }"><em /></i></button>
                       <p v-if="permissionSettingsError" class="launcher-menu-error">{{ permissionSettingsError }}</p>
@@ -3339,21 +3335,21 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   </div>
                   <span />
                   <ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" />
-                  <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><Square :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim()"><ArrowUp :size="15" /></button>
+                  <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim()"><AppIcon name="ArrowUp" :size="15" /></button>
                 </div>
               </div>
               <div class="launcher-project-control">
-                <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><FolderOpen :size="15" /><span>{{ workspace?.name || t('app.selectLocalProject') }}</span><ChevronDown :size="13" /></button>
+                <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><AppIcon name="FolderOpen" :size="15" /><span>{{ workspace?.name || t('app.selectLocalProject') }}</span><AppIcon name="ChevronDown" :size="13" /></button>
                 <div v-if="launcherProjectMenuOpen" class="launcher-popover project-picker-popover" role="menu" :aria-label="t('app.selectProject')">
-                  <label class="project-picker-search"><Search :size="15" /><input v-model="launcherProjectQuery" type="search" :placeholder="t('app.searchWorkspace')" :aria-label="t('app.searchWorkspace')" /></label>
+                  <label class="project-picker-search"><AppIcon name="Search" :size="15" /><input v-model="launcherProjectQuery" type="search" :placeholder="t('app.searchWorkspace')" :aria-label="t('app.searchWorkspace')" /></label>
                   <div v-if="filteredLauncherWorkspaces.length" class="project-picker-list">
-                    <button v-for="item in filteredLauncherWorkspaces" :key="item.workspace_id" type="button" role="menuitemradio" :aria-checked="workspace?.workspace_id === item.workspace_id" @click="chooseLauncherWorkspace(item)"><Folder :size="16" /><span><b>{{ item.name }}</b><small>{{ item.path }}</small></span><Check v-if="workspace?.workspace_id === item.workspace_id" :size="15" /></button>
+                    <button v-for="item in filteredLauncherWorkspaces" :key="item.workspace_id" type="button" role="menuitemradio" :aria-checked="workspace?.workspace_id === item.workspace_id" @click="chooseLauncherWorkspace(item)"><AppIcon name="Folder" :size="16" /><span><b>{{ item.name }}</b><small>{{ item.path }}</small></span><AppIcon v-if="workspace?.workspace_id === item.workspace_id" name="Check" :size="15" /></button>
                   </div>
                   <p v-else class="project-picker-empty">{{ t('app.noMatchingWorkspaces') }}</p>
                   <div class="project-picker-actions">
-                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><CirclePlus :size="16" /><span>{{ t('app.temporaryTasks') }}</span></button>
-                    <button type="button" role="menuitem" @click="createLocalWorkspace"><FolderPlus :size="16" /><span>{{ t('app.newWorkspace') }}</span></button>
-                    <button type="button" role="menuitem" @click="openLocalProject"><FolderOpen :size="16" /><span>{{ t('app.openLocalFolder') }}</span></button>
+                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><AppIcon name="CirclePlus" :size="16" /><span>{{ t('app.temporaryTasks') }}</span></button>
+                    <button type="button" role="menuitem" @click="createLocalWorkspace"><AppIcon name="FolderPlus" :size="16" /><span>{{ t('app.newWorkspace') }}</span></button>
+                    <button type="button" role="menuitem" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /><span>{{ t('app.openLocalFolder') }}</span></button>
                   </div>
                 </div>
               </div>
@@ -3365,7 +3361,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <section v-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
 
-      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><GitBranch :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
+      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><AppIcon name="GitBranch" :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
 
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>{{ t('app.allTasks') }}</h1><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
@@ -3373,14 +3369,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.status }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
           <h2 v-if="archivedSessions.length">{{ t('app.archived') }}</h2>
           <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
-          <div v-if="!sessions.length" class="empty-state"><LayoutDashboard :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
+          <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
         </div>
       </section>
       <section v-else-if="page === 'automations'" class="chat-main"><ChatPortal view="automations" :connected="connected" @submit="submitChat" @navigate="(view) => { page = 'chat'; chatView = view }" @open-project="openLocalProject" /></section>
 
       <section v-else-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 
-      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div></header><div class="bridge-card"><Globe2 :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ t('app.webbridgeHint') }}</p></div><span class="status-pill">{{ t('app.disconnected') }}</span></div></section>
+      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ t('app.webbridgeHint') }}</p></div><span class="status-pill">{{ t('app.disconnected') }}</span></div></section>
     </main>
 
     <Teleport to="body">
@@ -3401,7 +3397,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">
           <header>
             <div><h2 id="project-edit-title">{{ t('app.editProject') }}</h2><p>{{ t('app.editProjectDesc') }}</p></div>
-            <button type="button" :aria-label="t('app.closeEditWindow')" :disabled="projectActionBusy" @click="closeProjectEdit"><X :size="18" /></button>
+            <button type="button" :aria-label="t('app.closeEditWindow')" :disabled="projectActionBusy" @click="closeProjectEdit"><AppIcon name="X" :size="18" /></button>
           </header>
           <div class="project-edit-dialog__body">
             <label><span>{{ t('app.projectName') }}</span><input v-model="projectEditName" maxlength="120" autocomplete="off" autofocus :placeholder="t('app.projectNamePlaceholder')" /></label>
@@ -3415,9 +3411,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div v-if="projectDialog" class="project-dialog-backdrop" role="presentation" @mousedown.self="settleProjectDialog(false)">
         <section class="project-dialog" :class="`project-dialog--${projectDialog.tone}`" :role="projectDialog.cancelLabel ? 'alertdialog' : 'dialog'" aria-modal="true" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-message" @keydown.esc.stop.prevent="settleProjectDialog(false)">
           <div class="project-dialog__icon" aria-hidden="true">
-            <Check v-if="projectDialog.tone === 'success'" :size="18" />
-            <AlertTriangle v-else-if="projectDialog.tone === 'danger'" :size="18" />
-            <Info v-else :size="18" />
+            <AppIcon v-if="projectDialog.tone === 'success'" name="Check" :size="18" />
+            <AppIcon v-else-if="projectDialog.tone === 'danger'" name="AlertTriangle" :size="18" />
+            <AppIcon v-else name="Info" :size="18" />
           </div>
           <div class="project-dialog__content">
             <h2 id="project-dialog-title">{{ projectDialog.title }}</h2>
@@ -3432,11 +3428,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <div v-if="permissionConfirmOpen" class="permission-confirm-backdrop" role="presentation" @mousedown.self="permissionConfirmOpen = false">
         <section class="permission-confirm" role="alertdialog" aria-modal="true" aria-labelledby="permission-confirm-title" aria-describedby="permission-confirm-description">
-          <header><span><AlertTriangle :size="19" /></span><div><h2 id="permission-confirm-title">{{ t('app.highRiskPermission') }}</h2><p id="permission-confirm-description">{{ t('app.fullAccessWarning') }}</p></div></header>
+          <header><span><AppIcon name="AlertTriangle" :size="19" /></span><div><h2 id="permission-confirm-title">{{ t('app.highRiskPermission') }}</h2><p id="permission-confirm-description">{{ t('app.fullAccessWarning') }}</p></div></header>
           <div class="permission-confirm__body">
             <b>{{ t('app.possibleConsequences') }}</b>
             <ul><li>{{ t('app.consequenceFiles') }}</li><li>{{ t('app.consequenceConfig') }}</li><li>{{ t('app.consequenceIrreversible') }}</li></ul>
-            <p><AlertTriangle :size="16" />{{ t('app.fullAccessCaution') }}</p>
+            <p><AppIcon name="AlertTriangle" :size="16" />{{ t('app.fullAccessCaution') }}</p>
           </div>
           <footer><button type="button" @click="permissionConfirmOpen = false">{{ t('app.cancel') }}</button><button type="button" class="danger" :disabled="permissionSaving" @click="confirmFullAccess">{{ permissionSaving ? t('app.enabling') : t('app.allowAllPermissions') }}</button></footer>
         </section>

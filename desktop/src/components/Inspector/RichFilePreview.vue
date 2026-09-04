@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
 import { marked, Renderer } from "marked";
-import { Code2, Eye } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import CodePreview from "./CodePreview.vue";
 import { readFile } from "../../services/sztu-runtime";
 
@@ -147,8 +147,8 @@ watch([markdownHtml, mode], () => {
   <div class="rich-file-preview">
     <div v-if="richKind" class="rich-preview-toolbar">
       <div class="rich-preview-toggle" role="tablist" aria-label="预览方式">
-        <button type="button" role="tab" :aria-selected="mode === 'rendered'" :class="{ active: mode === 'rendered' }" @click="mode = 'rendered'"><Eye :size="13" />预览</button>
-        <button type="button" role="tab" :aria-selected="mode === 'source'" :class="{ active: mode === 'source' }" @click="mode = 'source'"><Code2 :size="13" />源码</button>
+        <button type="button" role="tab" :aria-selected="mode === 'rendered'" :class="{ active: mode === 'rendered' }" @click="mode = 'rendered'"><AppIcon name="Eye" :size="13" :filled="mode === 'rendered'" />预览</button>
+        <button type="button" role="tab" :aria-selected="mode === 'source'" :class="{ active: mode === 'source' }" @click="mode = 'source'"><AppIcon name="Code2" :size="13" :filled="mode === 'source'" />源码</button>
       </div>
       <span v-if="truncated && mode === 'rendered'" class="rich-preview-truncated">文件过大，预览可能不完整</span>
     </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Brain, Check, ChevronDown, Code2, Cpu, LoaderCircle, MessageSquare, Settings2, Sparkles } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { CUSTOM_VENDOR_ID, logoForVendor, vendorIdByName } from "./model-vendors";
@@ -30,14 +30,14 @@ const activeModelName = computed(() =>
   models.value.find((item) => item.is_current)?.name || props.settings?.model || t("model.fallbackName")
 );
 const modelIcons = [
-  { id: "sparkles", component: Sparkles },
-  { id: "bot", component: Bot },
-  { id: "brain", component: Brain },
-  { id: "code", component: Code2 },
-  { id: "cpu", component: Cpu },
-  { id: "chat", component: MessageSquare },
+  { id: "sparkles", icon: "Sparkles" },
+  { id: "bot", icon: "Bot" },
+  { id: "brain", icon: "Brain" },
+  { id: "code", icon: "Code2" },
+  { id: "cpu", icon: "Cpu" },
+  { id: "chat", icon: "MessageSquare" },
 ] as const;
-const modelIcon = (value: string) => modelIcons.find((item) => item.id === value)?.component ?? Sparkles;
+const modelIcon = (value: string) => modelIcons.find((item) => item.id === value)?.icon ?? "Sparkles";
 const modelLogo = (value: string) => logoForVendor(value) ?? null;
 /** 服务商展示名：已知服务商按 id 走 i18n（model.vendor.*），未知服务商回退存储的原始名称 */
 const vendorLabel = (vendor: string) => {
@@ -85,7 +85,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
 <template>
   <div ref="root" class="model-config-control">
     <button type="button" class="model-config-trigger" aria-haspopup="menu" :aria-expanded="open" @click.stop="toggle">
-      <i :class="{ online: status?.ready_for_next_run }" /><span>{{ activeModelName }}</span><ChevronDown :size="13" />
+      <i :class="{ online: status?.ready_for_next_run }" /><span>{{ activeModelName }}</span><AppIcon name="ChevronDown" :size="13" />
     </button>
     <section v-if="open" class="model-picker-popover" role="menu" :aria-label="t('model.selectModel')" @click.stop>
       <header><span>{{ t("model.models") }}</span><small>{{ t("model.configCount", { n: models.length }) }}</small></header>
@@ -94,7 +94,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
           <i class="model-picker-logo">
             <template v-if="isCustomVendor(item.vendor)">
               <img v-if="modelLogo(item.icon)" :src="modelLogo(item.icon) || undefined" alt="" />
-              <component v-else :is="modelIcon(item.icon)" :size="14" />
+              <AppIcon v-else :name="modelIcon(item.icon)" :size="14" />
             </template>
             <template v-else>
               <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
@@ -102,12 +102,12 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
             </template>
           </i>
           <span class="model-name-cell"><b>{{ item.name }}</b><small>{{ vendorLabel(item.vendor) }}</small></span>
-          <LoaderCircle v-if="selecting === item.id" class="spin" :size="14" /><Check v-else-if="item.is_current" :size="14" />
+          <AppIcon v-if="selecting === item.id" name="LoaderCircle" class="spin" :size="14" /><AppIcon v-else-if="item.is_current" name="Check" :size="14" />
         </button>
         <p v-if="loading">{{ t("model.loading") }}</p><p v-else-if="!models.length">{{ t("model.empty") }}</p>
       </div>
       <p v-if="error" class="model-picker-error">{{ error }}</p>
-      <footer><button type="button" role="menuitem" @click="openManager"><Settings2 :size="15" />{{ t("model.manage") }}</button></footer>
+      <footer><button type="button" role="menuitem" @click="openManager"><AppIcon name="Settings2" :size="15" />{{ t("model.manage") }}</button></footer>
     </section>
   </div>
 </template>

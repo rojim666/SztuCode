@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { BrainCircuit, ChevronDown } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { reasoningSummary } from "../../utils/reasoningSummary";
 
 const props = defineProps<{ text?: string; completed?: boolean }>();
@@ -70,11 +70,11 @@ watch([summary, running], () => {
 <template>
   <section v-if="text" class="thinking-panel" :data-state="running ? 'running' : 'ok'" :class="{ open }">
     <button type="button" :aria-label="label" :aria-expanded="open" @click="open = !open">
-      <BrainCircuit class="thinking-panel__icon" :size="14" />
+      <AppIcon name="BrainCircuit" class="thinking-panel__icon" :size="14" />
       <span class="thinking-panel__label">{{ t('timeline.thinking.think') }}</span>
       <span class="timeline-row__separator">·</span>
       <span ref="summaryRef" class="thinking-panel__preview" :data-follow-end="running || undefined">{{ summary }}</span>
-      <ChevronDown class="timeline-row__chevron" :size="13" />
+      <AppIcon name="ChevronDown" class="timeline-row__chevron" :size="13" />
     </button>
     <pre v-if="open" class="thinking-panel__details">{{ displayedText }}</pre>
   </section>

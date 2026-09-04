@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Bot, Brain, Check, ChevronDown, Code2, Cpu, ExternalLink, Eye, EyeOff, Info, LoaderCircle, MessageSquare, Pencil, Plus, Sparkles, Trash2 } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Teleport, computed, nextTick, onMounted, ref, watch } from "vue";
@@ -28,12 +28,12 @@ const editingModel = ref<ModelProfile | null>(null);
 const selectedVendor = ref<ModelVendor | null>(null);
 const name = ref(""); const icon = ref("sparkles"); const modelId = ref(""); const baseUrl = ref(""); const apiKey = ref("");
 const customModelIcons = [
-  { id: "sparkles", component: Sparkles },
-  { id: "bot", component: Bot },
-  { id: "brain", component: Brain },
-  { id: "code", component: Code2 },
-  { id: "cpu", component: Cpu },
-  { id: "chat", component: MessageSquare },
+  { id: "sparkles", icon: "Sparkles" },
+  { id: "bot", icon: "Bot" },
+  { id: "brain", icon: "Brain" },
+  { id: "code", icon: "Code2" },
+  { id: "cpu", icon: "Cpu" },
+  { id: "chat", icon: "MessageSquare" },
 ] as const;
 const vendorIconOptions = modelVendors.filter((v) => v.id !== CUSTOM_VENDOR_ID && v.logo);
 const provider = ref<"anthropic" | "openai">("openai");
@@ -56,7 +56,7 @@ const { setInitialFocus, trapTab, restoreFocus } = useFocusTrap();
 let modelRequestVersion = 0;
 const canSave = computed(() => Boolean(selectedVendor.value && modelId.value.trim() && (editingModel.value !== null || apiKey.value.trim() || selectedVendor.value?.name === "自定义模型")));
 const currentModel = computed(() => models.value.find((item) => item.is_current) ?? null);
-const customModelIcon = (value: string) => customModelIcons.find((item) => item.id === value)?.component ?? Sparkles;
+const customModelIcon = (value: string) => customModelIcons.find((item) => item.id === value)?.icon ?? "Sparkles";
 const customModelLogo = (value: string) => logoForVendor(value) ?? null;
 
 const CUSTOM_VENDOR_NAME = t("model.vendor.custom");
@@ -274,7 +274,7 @@ onMounted(() => {
           <i class="model-provider-logo model-provider-logo--lg">
             <template v-if="currentModel.vendor === '自定义模型'">
               <img v-if="customModelLogo(currentModel.icon)" :src="customModelLogo(currentModel.icon) || undefined" alt="" />
-              <component v-else :is="customModelIcon(currentModel.icon)" :size="18" />
+              <AppIcon v-else :name="customModelIcon(currentModel.icon)" :size="18" />
             </template>
             <template v-else>
               <img v-if="logoForVendor(currentModel.vendor)" :src="logoForVendor(currentModel.vendor) || undefined" alt="" />
@@ -287,7 +287,7 @@ onMounted(() => {
             <small class="current-model-id">{{ currentModel.model }}</small>
           </div>
         </div>
-        <Check class="current-model-check" :size="22" />
+        <AppIcon name="Check" class="current-model-check" :size="22" />
       </div>
 
       <!-- 模型列表 -->
@@ -299,12 +299,12 @@ onMounted(() => {
 
         <div v-for="item in models" :key="item.id" class="model-card" :class="{ 'model-card--current': item.is_current }">
           <button class="model-card-select" :class="{ active: item.is_current }" :disabled="Boolean(deleteTarget || deletingId)" :aria-pressed="item.is_current" :title="item.is_current ? t('model.current') : t('model.setCurrent')" @click="selectModel(item)">
-            <Check v-if="item.is_current" :size="16" />
+            <AppIcon v-if="item.is_current" name="Check" :size="16" />
           </button>
           <i class="model-provider-logo">
             <template v-if="isCustomVendor(item.vendor)">
               <img v-if="customModelLogo(item.icon)" :src="customModelLogo(item.icon) || undefined" alt="" />
-              <component v-else :is="customModelIcon(item.icon)" :size="16" />
+              <AppIcon v-else :name="customModelIcon(item.icon)" :size="16" />
             </template>
             <template v-else>
               <img v-if="logoForVendor(item.vendor)" :src="logoForVendor(item.vendor) || undefined" alt="" />
@@ -320,24 +320,24 @@ onMounted(() => {
             <span v-else-if="item.builtin" class="model-badge">{{ t("model.builtin") }}</span>
             <template v-if="!item.builtin">
               <button type="button" class="model-action-btn" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="t('model.editAria', { name: item.name })" @click="beginEdit(item, $event)">
-                <Pencil :size="14" />
+                <AppIcon name="Pencil" :size="14" />
               </button>
               <button v-if="!item.is_current" type="button" class="model-action-btn model-action-btn--danger" :disabled="Boolean(deleteTarget || deletingId)" :aria-label="t('model.deleteAria', { name: item.name })" @click="remove(item, $event)">
-                <Trash2 :size="14" />
+                <AppIcon name="Trash2" :size="14" />
               </button>
             </template>
           </div>
         </div>
 
         <button v-if="!models.length" class="model-empty-btn" ref="editorTrigger" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
-          <Plus :size="18" />
+          <AppIcon name="Plus" :size="18" />
           <span>{{ t("model.addFirst") }}</span>
         </button>
       </div>
 
       <!-- 添加模型按钮 -->
       <button v-if="models.length > 0" ref="editorTrigger" type="button" class="add-model-btn" :disabled="Boolean(deleteTarget || deletingId)" @click="beginAdd($event)">
-        <Plus :size="16" />
+        <AppIcon name="Plus" :size="16" />
         <span>{{ t("model.add") }}</span>
       </button>
 
@@ -349,14 +349,14 @@ onMounted(() => {
       <div v-if="deleteTarget" class="mm-modal-backdrop" @mousedown.self="cancelRemove">
         <section ref="deleteDialog" class="mm-modal-dialog mm-modal-dialog--sm" role="alertdialog" aria-modal="true" aria-labelledby="model-delete-title" aria-describedby="model-delete-description" @keydown.esc.stop="cancelRemove" @keydown.tab="(e: KeyboardEvent) => trapTab(e, deleteDialog)">
           <div class="mm-modal-icon mm-modal-icon--danger">
-            <Trash2 :size="18" />
+            <AppIcon name="Trash2" :size="18" />
           </div>
           <h3 id="model-delete-title" class="mm-modal-title">{{ t("model.deleteTitle") }}</h3>
           <p id="model-delete-description" class="mm-modal-desc">{{ t("model.deleteConfirm", { name: deleteTarget.name }) }}</p>
           <div class="mm-modal-actions">
             <button ref="deleteCancelButton" type="button" class="mm-btn mm-btn--ghost" :disabled="Boolean(deletingId)" @click="cancelRemove">{{ t("model.cancel") }}</button>
             <button type="button" class="mm-btn mm-btn--danger" :disabled="Boolean(deletingId)" @click="confirmRemove">
-              <LoaderCircle v-if="deletingId" class="mm-spin" :size="11" />
+              <AppIcon v-if="deletingId" name="LoaderCircle" class="mm-spin" :size="11" />
               {{ deletingId ? t("model.deleting") : t("model.confirmDelete") }}
             </button>
           </div>
@@ -377,7 +377,7 @@ onMounted(() => {
               </i>
               <span class="mm-vendor-name">{{ vendorLabel(item) }}</span>
               <span v-if="item.freeTier" class="mm-vendor-free-badge">{{ t("model.freeBadge") }}</span>
-              <ChevronDown class="mm-vendor-arrow" :size="14" />
+              <AppIcon name="ChevronDown" class="mm-vendor-arrow" :size="14" />
             </button>
           </div>
         </section>
@@ -388,7 +388,7 @@ onMounted(() => {
         <section ref="formDialog" class="mm-modal-dialog mm-modal-dialog--lg" role="dialog" aria-modal="true" :aria-label="editingModel ? t('model.editTitle') : t('model.addTitle')" @keydown.esc.stop="closeEditor" @keydown.tab="(e: KeyboardEvent) => trapTab(e, formDialog)">
           <header class="mm-modal-header">
             <button v-if="!editingModel" type="button" class="mm-modal-back-btn" :aria-label="t('model.back')" @click="backToVendor">
-              <ArrowLeft :size="16" />
+              <AppIcon name="ArrowLeft" :size="16" />
             </button>
             <h3>{{ editingModel ? t("model.editTitle") : t("model.addTitle") }}</h3>
           </header>
@@ -400,7 +400,7 @@ onMounted(() => {
                 <option v-for="v in vendors" :key="v.name" :value="v">{{ vendorLabel(v) }}</option>
               </select>
               <p v-if="selectedVendor.freeTier" class="mm-free-tier-note">
-                <Sparkles :size="13" />
+                <AppIcon name="Sparkles" :size="13" />
                 {{ t("model.freeTierNote", { tier: freeTierText(selectedVendor.id) }) }}
               </p>
             </div>
@@ -464,20 +464,20 @@ onMounted(() => {
               <div class="mm-input-with-action">
                 <input v-model="apiKey" class="mm-form-input" :type="showKey ? 'text' : 'password'" :placeholder="editingModel?.has_api_key ? t('model.apiKeyKeep') : t('model.apiKeyPlaceholder')" />
                 <button type="button" class="mm-input-action-btn" :aria-label="showKey ? t('model.hideKey') : t('model.showKey')" @click="showKey = !showKey">
-                  <EyeOff v-if="showKey" :size="15" />
-                  <Eye v-else :size="15" />
+                  <AppIcon v-if="showKey" name="EyeOff" :size="15" />
+                  <AppIcon v-else name="Eye" :size="15" />
                 </button>
               </div>
               <button v-if="selectedVendor.apiKeyUrl" type="button" class="mm-link-btn" @click="getApiKey">
                 {{ t("model.getApiKey") }}
-                <ExternalLink :size="12" />
+                <AppIcon name="ExternalLink" :size="12" />
               </button>
             </div>
 
             <div class="mm-form-advanced">
               <button type="button" class="mm-advanced-toggle" :aria-expanded="advancedOpen" @click="advancedOpen = !advancedOpen">
                 <span>{{ t("model.advanced") }}</span>
-                <ChevronDown :size="14" :class="{ 'mm-rotated': advancedOpen }" />
+                <AppIcon name="ChevronDown" :size="14" :class="{ 'mm-rotated': advancedOpen }" />
               </button>
 
               <div v-if="advancedOpen" class="mm-advanced-body">
@@ -525,13 +525,13 @@ onMounted(() => {
 
           <footer class="mm-modal-footer">
             <button type="button" class="mm-btn mm-btn--ghost" @click="testConnection" :disabled="!canSave || saving || testing">
-              <LoaderCircle v-if="testing" class="mm-spin" :size="13" />
+              <AppIcon v-if="testing" name="LoaderCircle" class="mm-spin" :size="13" />
               {{ testing ? t("model.testing") : t("model.test") }}
             </button>
             <div class="mm-modal-footer-right">
               <button type="button" class="mm-btn mm-btn--ghost" @click="resetFormDefaults">{{ t("model.reset") }}</button>
               <button type="button" class="mm-btn mm-btn--primary" :disabled="!canSave || saving || testing" @click="save">
-                <LoaderCircle v-if="saving" class="mm-spin" :size="13" />
+                <AppIcon v-if="saving" name="LoaderCircle" class="mm-spin" :size="13" />
                 {{ saving ? t("model.saving") : (editingModel ? t("model.save") : t("model.create")) }}
               </button>
             </div>

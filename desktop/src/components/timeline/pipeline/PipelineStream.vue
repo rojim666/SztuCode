@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronDown, Play } from "@lucide/vue";
+import AppIcon from "../../icons/AppIcon.vue";
 import type { PermissionDecision, TimelineStep } from "../types";
 import { buildPipelineSegments, phaseStates, type PipelineSegment } from "./phase";
 import PipelinePhaseRail from "./PipelinePhaseRail.vue";
@@ -148,7 +148,7 @@ function formatTime(value?: string): string {
             <button type="button" class="pipeline-tool-group__trigger" :aria-expanded="isGroupOpen(segment)" @click="toggleGroup(segment.id)">
               <span class="pipeline-tool-group__title">{{ groupTitle(segment) }}</span>
               <span class="pipeline-tool-group__meta">{{ groupProgress(segment) }}/{{ segment.calls.length }}</span>
-              <ChevronDown :size="13" :class="{ 'is-open': isGroupOpen(segment) }" />
+              <AppIcon name="ChevronDown" :size="13" :class="{ 'is-open': isGroupOpen(segment) }" />
             </button>
             <div v-if="isGroupOpen(segment)" class="pipeline-tool-group__body">
               <ToolCallCard v-for="call in segment.calls" :key="call.id" :call="call" />
@@ -173,7 +173,7 @@ function formatTime(value?: string): string {
         </footer>
 
         <button v-if="turn.interrupted" type="button" class="pipeline-continue" @click="$emit('continue', turn.runId)">
-          <Play :size="13" />{{ t('timeline.pipeline.continue') }}
+          <AppIcon name="Play" :size="13" />{{ t('timeline.pipeline.continue') }}
         </button>
       </div>
     </article>

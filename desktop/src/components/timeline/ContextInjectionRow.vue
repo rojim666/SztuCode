@@ -1,17 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  Braces,
-  ChevronDown,
-  CornerUpLeft,
-  FileClock,
-  FileLock2,
-  Folder,
-  Image as FileImage,
-  Info,
-  ShieldAlert,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { ContextInjectionEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
@@ -23,15 +13,15 @@ const open = ref(false);
 const sourceConfig = computed(() => {
   switch (props.entry.source) {
     case "intervention":
-      return { icon: ShieldAlert, label: t("timeline.context.source.intervention"), color: "#b45309", bg: "#fef3c7" };
+      return { icon: "ShieldAlert", label: t("timeline.context.source.intervention"), color: "#b45309", bg: "#fef3c7" };
     case "steering":
-      return { icon: CornerUpLeft, label: t("timeline.context.source.steering"), color: "#1d4ed8", bg: "#dbeafe" };
+      return { icon: "CornerUpLeft", label: t("timeline.context.source.steering"), color: "#1d4ed8", bg: "#dbeafe" };
     case "compaction":
-      return { icon: FileClock, label: t("timeline.context.source.compaction"), color: "#6b7280", bg: "#f3f4f6" };
+      return { icon: "FileClock", label: t("timeline.context.source.compaction"), color: "#6b7280", bg: "#f3f4f6" };
     case "canvas":
-      return { icon: Braces, label: t("timeline.context.source.canvas"), color: "#7c3aed", bg: "#ede9fe" };
+      return { icon: "Braces", label: t("timeline.context.source.canvas"), color: "#7c3aed", bg: "#ede9fe" };
     default:
-      return { icon: Info, label: t("timeline.context.source.system"), color: "#4b5563", bg: "#f3f4f6" };
+      return { icon: "Info", label: t("timeline.context.source.system"), color: "#4b5563", bg: "#f3f4f6" };
   }
 });
 
@@ -62,16 +52,16 @@ const getFileIcon = (name: string) => {
   const lower = name.toLowerCase();
   // 目录（末尾带斜杠或无扩展名）
   if (lower.endsWith("/") || lower.endsWith("\\")) {
-    return { kind: "lucide" as const, icon: Folder, color: "#d97706" };
+    return { kind: "lucide" as const, icon: "Folder", color: "#d97706" };
   }
   const ext = lower.includes(".") ? lower.split(".").pop()! : "";
   const base = lower.split(/[\\/]/).pop()!;
   if (!ext && base.length > 0) {
-    return { kind: "lucide" as const, icon: Folder, color: "#d97706" };
+    return { kind: "lucide" as const, icon: "Folder", color: "#d97706" };
   }
   // lock 文件
   if (ext === "lock") {
-    return { kind: "lucide" as const, icon: FileLock2, color: "#9ca3af" };
+    return { kind: "lucide" as const, icon: "FileLock2", color: "#9ca3af" };
   }
   // 图片（本地图标已包含 image 类型，无需特判，走 fileTypeIconUrl 即可）
   const url = fileTypeIconUrl(name);
@@ -83,7 +73,7 @@ const getFileIcon = (name: string) => {
   if (defaultUrl) {
     return { kind: "url" as const, url: defaultUrl };
   }
-  return { kind: "lucide" as const, icon: FileImage, color: "#6b7280" };
+  return { kind: "lucide" as const, icon: "FileImage", color: "#6b7280" };
 };
 
 // 预计算每个文件的图标信息，避免模板中重复调用
@@ -108,19 +98,19 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
       @click="open = !open"
     >
       <span class="ctx-row__icon" :style="{ color: sourceConfig.color, background: sourceConfig.bg }">
-        <component :is="sourceConfig.icon" :size="13" />
+        <AppIcon :name="sourceConfig.icon" :size="13" />
       </span>
       <span class="ctx-row__title">{{ entry.label }}</span>
       <span class="ctx-row__badge">{{ t('timeline.context.chars', { count: charLabel }) }}</span>
       <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
-      <ChevronDown class="ctx-row__chevron" :size="13" />
+      <AppIcon name="ChevronDown" class="ctx-row__chevron" :size="13" />
     </button>
 
     <transition name="ctx-expand">
       <div v-if="open" class="ctx-row__body">
         <div v-if="files.length" class="ctx-row__section">
           <div class="ctx-row__section-header">
-            <Folder :size="14" />
+            <AppIcon name="Folder" :size="14" />
             <span>{{ t('timeline.context.filesSection') }}</span>
             <span class="ctx-row__section-count">{{ t('timeline.context.fileCount', { count: files.length }) }}</span>
           </div>
@@ -137,9 +127,9 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
                 class="ctx-row__file-icon-img"
                 :alt="item.name"
               />
-              <component
+              <AppIcon
                 v-else
-                :is="item.icon.icon"
+                :name="item.icon.icon"
                 :size="16"
                 :style="{ color: item.icon.color }"
               />
@@ -149,7 +139,7 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
         </div>
         <div v-if="body" class="ctx-row__section ctx-row__section--content">
           <div class="ctx-row__section-header">
-            <component :is="sourceConfig.icon" :size="14" />
+            <AppIcon :name="sourceConfig.icon" :size="14" />
             <span>{{ t('timeline.context.injectedContent') }}</span>
           </div>
           <pre class="ctx-row__content">{{ body }}</pre>

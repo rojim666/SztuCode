@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import {
-  ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronRight, Circle, Code,
-  ExternalLink, FileCode2, FileText, FolderOpen, Globe2,
-  ListChecks, LoaderCircle, Maximize2, MessageSquarePlus, Minimize2, Monitor, MousePointer2, PackageOpen, PanelRightClose,
-  Pencil, Plus, RefreshCw, RotateCw, Share2, SquareTerminal, X,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import {
   changeDiff, listChanges, readFile,
   getWorkspaceProfile,
@@ -679,39 +674,39 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
   <aside class="project-inspector file-rail" :class="{ 'is-expanded': expandedPanel }">
     <header v-if="activeTab !== 'home'" class="workspace-tab-strip">
       <div ref="toolMenuRoot" class="workspace-tool-menu-root">
-        <button type="button" class="workspace-tool-menu-trigger" :class="{ active: toolMenuOpen }" aria-label="打开功能" aria-haspopup="menu" :aria-expanded="toolMenuOpen" @click="toolMenuOpen = !toolMenuOpen"><Plus :size="16" /></button>
+        <button type="button" class="workspace-tool-menu-trigger" :class="{ active: toolMenuOpen }" aria-label="打开功能" aria-haspopup="menu" :aria-expanded="toolMenuOpen" @click="toolMenuOpen = !toolMenuOpen"><AppIcon name="Plus" :size="16" :filled="toolMenuOpen" /></button>
         <nav v-if="toolMenuOpen" class="workspace-tool-menu" aria-label="选择功能" role="menu">
-          <button type="button" role="menuitem" :class="{ active: activeTab === 'home' }" @click="goHome"><BookOpen :size="15" /><span>首页</span></button>
-          <button type="button" role="menuitem" :class="{ active: activeTab === 'summary' }" @click="openSummary"><ListChecks :size="15" /><span>任务摘要</span></button>
-          <button type="button" role="menuitem" :class="{ active: currentBrowser }" @click="openBrowser"><Globe2 :size="15" /><span>浏览器</span></button>
-          <button type="button" role="menuitem" :class="{ active: activeTab.startsWith('sandbox-') }" @click="openTerminal"><SquareTerminal :size="15" /><span>终端</span></button>
-          <button type="button" role="menuitem" :class="{ active: activeTab === 'files' }" @click="openFiles"><FolderOpen :size="15" /><span>文件</span></button>
+          <button type="button" role="menuitem" :class="{ active: activeTab === 'home' }" @click="goHome"><AppIcon name="BookOpen" :size="15" :filled="activeTab === 'home'" /><span>首页</span></button>
+          <button type="button" role="menuitem" :class="{ active: activeTab === 'summary' }" @click="openSummary"><AppIcon name="ListChecks" :size="15" :filled="activeTab === 'summary'" /><span>任务摘要</span></button>
+          <button type="button" role="menuitem" :class="{ active: currentBrowser }" @click="openBrowser"><AppIcon name="Globe2" :size="15" :filled="!!currentBrowser" /><span>浏览器</span></button>
+          <button type="button" role="menuitem" :class="{ active: activeTab.startsWith('sandbox-') }" @click="openTerminal"><AppIcon name="SquareTerminal" :size="15" :filled="activeTab.startsWith('sandbox-')" /><span>终端</span></button>
+          <button type="button" role="menuitem" :class="{ active: activeTab === 'files' }" @click="openFiles"><AppIcon name="FolderOpen" :size="15" :filled="activeTab === 'files'" /><span>文件</span></button>
         </nav>
       </div>
       <nav class="workspace-open-tabs" aria-label="已打开功能">
         <div v-for="tab in workspaceTabs" :key="tab.key" class="workspace-open-tab" :class="{ active: activeTab === tab.key }">
           <button type="button" :aria-pressed="activeTab === tab.key" @click="activeTab = tab.key">
             <span class="workspace-tab-icon">
-              <ListChecks v-if="tab.kind === 'summary'" class="workspace-tab-kind-icon" :size="14" />
-              <FolderOpen v-else-if="tab.kind === 'files'" class="workspace-tab-kind-icon" :size="14" />
-              <Globe2 v-else-if="tab.kind === 'browser'" class="workspace-tab-kind-icon" :size="14" />
-              <SquareTerminal v-else class="workspace-tab-kind-icon" :size="14" />
+              <AppIcon name="ListChecks" v-if="tab.kind === 'summary'" class="workspace-tab-kind-icon" :size="14" :filled="activeTab === tab.key" />
+              <AppIcon name="FolderOpen" v-else-if="tab.kind === 'files'" class="workspace-tab-kind-icon" :size="14" :filled="activeTab === tab.key" />
+              <AppIcon name="Globe2" v-else-if="tab.kind === 'browser'" class="workspace-tab-kind-icon" :size="14" :filled="activeTab === tab.key" />
+              <AppIcon name="SquareTerminal" v-else class="workspace-tab-kind-icon" :size="14" :filled="activeTab === tab.key" />
             </span>
             <span>{{ tab.kind === 'summary' ? '任务摘要' : tab.kind === 'files' ? '文件' : tab.kind === 'sandbox' ? sandboxLabel(tab.key) : (browserForKey(tab.key)?.label ?? '新标签页') }}</span>
           </button>
-          <button type="button" class="workspace-tab-close" :aria-label="`关闭${tab.kind === 'summary' ? '任务摘要' : tab.kind === 'files' ? '文件' : tab.kind === 'sandbox' ? sandboxLabel(tab.key) : (browserForKey(tab.key)?.label ?? '新标签页')}`" @click.stop="closeWorkspaceTab(tab.key)"><X :size="12" /></button>
+          <button type="button" class="workspace-tab-close" :aria-label="`关闭${tab.kind === 'summary' ? '任务摘要' : tab.kind === 'files' ? '文件' : tab.kind === 'sandbox' ? sandboxLabel(tab.key) : (browserForKey(tab.key)?.label ?? '新标签页')}`" @click.stop="closeWorkspaceTab(tab.key)"><AppIcon name="X" :size="12" /></button>
         </div>
       </nav>
-      <button type="button" class="workspace-browser-add" aria-label="新建浏览器标签页" @click="createBrowserTab"><Plus :size="16" /></button>
+      <button type="button" class="workspace-browser-add" aria-label="新建浏览器标签页" @click="createBrowserTab"><AppIcon name="Plus" :size="16" /></button>
       <span class="workspace-header-divider" />
-      <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><Minimize2 v-if="expandedPanel" :size="15" /><Maximize2 v-else :size="15" /></button>
-      <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><PanelRightClose :size="16" /></button>
+      <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><AppIcon name="Minimize2" v-if="expandedPanel" :size="15" /><AppIcon name="Maximize2" v-else :size="15" /></button>
+      <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><AppIcon name="PanelRightClose" :size="16" /></button>
     </header>
 
     <header v-else class="workspace-home-header">
       <div class="workspace-home-header__right">
-        <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><Minimize2 v-if="expandedPanel" :size="15" /><Maximize2 v-else :size="15" /></button>
-        <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><PanelRightClose :size="16" /></button>
+        <button type="button" class="workspace-expand" :aria-label="expandedPanel ? '退出全屏' : '全屏'" @click="expandedPanel = !expandedPanel"><AppIcon name="Minimize2" v-if="expandedPanel" :size="15" /><AppIcon name="Maximize2" v-else :size="15" /></button>
+        <button type="button" class="workspace-panel-close" aria-label="退出分屏布局" @click="emit('close')"><AppIcon name="PanelRightClose" :size="16" /></button>
       </div>
     </header>
 
@@ -719,16 +714,16 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
       <div class="home-launcher">
         <p class="home-launcher__prompt">从这里开始</p>
         <button class="home-launcher__button" @click="openFiles">
-          <FolderOpen :size="20" />文件
+          <AppIcon name="FolderOpen" :size="20" />文件
         </button>
         <button class="home-launcher__button" @click="openSummary">
-          <ListChecks :size="20" />任务摘要
+          <AppIcon name="ListChecks" :size="20" />任务摘要
         </button>
         <button class="home-launcher__button" @click="openBrowser">
-          <Globe2 :size="20" />浏览器
+          <AppIcon name="Globe2" :size="20" />浏览器
         </button>
         <button class="home-launcher__button" @click="openTerminal">
-          <SquareTerminal :size="20" />终端
+          <AppIcon name="SquareTerminal" :size="20" />终端
         </button>
       </div>
     </main>
@@ -736,14 +731,14 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
     <main v-if="activeTab === 'summary'" class="task-summary-view">
       <section class="summary-section project-profile-section" :class="{ collapsed: !openSections.has('profile') }">
         <button type="button" class="summary-section-trigger" :aria-expanded="openSections.has('profile')" @click="toggleSection('profile')">
-          <b>项目画像</b><ChevronDown :size="13" /><small v-if="profileState.profile">{{ profileState.profile.monorepo ? `Monorepo · ${profileState.profile.projects.length} 个项目` : `${profileState.profile.projects.length} 个项目` }}</small>
+          <b>项目画像</b><AppIcon name="ChevronDown" :size="13" /><small v-if="profileState.profile">{{ profileState.profile.monorepo ? `Monorepo · ${profileState.profile.projects.length} 个项目` : `${profileState.profile.projects.length} 个项目` }}</small>
         </button>
         <div v-if="openSections.has('profile')" class="summary-section-body project-profile-body">
           <div class="project-profile-toolbar">
             <p><b>基于工作区结构生成</b><small>仅建议，未执行；实际运行仍需经过工具权限与审批。</small></p>
-            <button type="button" class="summary-refresh" :disabled="profileState.loading" @click="refreshProjectProfile"><RefreshCw :size="13" :class="{ spin: profileState.loading }" />{{ profileState.refreshing ? '正在刷新' : '刷新项目画像' }}</button>
+            <button type="button" class="summary-refresh" :disabled="profileState.loading" @click="refreshProjectProfile"><AppIcon name="RefreshCw" :size="13" :class="{ spin: profileState.loading }" />{{ profileState.refreshing ? '正在刷新' : '刷新项目画像' }}</button>
           </div>
-          <div v-if="profileState.loading && !profileState.profile" class="project-profile-loading"><LoaderCircle :size="16" class="spin" /><span>正在识别项目结构</span></div>
+          <div v-if="profileState.loading && !profileState.profile" class="project-profile-loading"><AppIcon name="LoaderCircle" :size="16" class="spin" /><span>正在识别项目结构</span></div>
           <p v-if="profileState.error" class="project-profile-error" role="alert">{{ profileState.profile ? `刷新失败，仍显示上次检测结果：${profileState.error}` : `项目画像加载失败：${profileState.error}` }}</p>
           <template v-if="profileState.profile">
             <div class="project-profile-meta">
@@ -759,7 +754,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             </div>
             <article v-for="(project, projectIndex) in profileState.profile.projects" :key="project.path" class="project-profile-component">
               <header>
-                <span class="project-profile-component__icon"><FolderOpen :size="17" /></span>
+                <span class="project-profile-component__icon"><AppIcon name="FolderOpen" :size="17" /></span>
                 <div><b>{{ project.path === '.' ? '工作区根项目' : project.path }}</b><small>{{ project.path === '.' ? '位于工作区根目录' : `相对路径 ${project.path}` }}</small></div>
                 <span class="project-profile-component__index">{{ String(projectIndex + 1).padStart(2, '0') }}</span>
               </header>
@@ -785,7 +780,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
                 </section>
                 <p v-if="!project.validation_plan.length" class="project-validation-empty">当前结构下暂无可靠的验证命令建议。</p>
               </div>
-              <p v-if="project.validation_plan.length" class="project-recommendation-note"><SquareTerminal :size="13" />以上命令仅作为验证建议，不会自动执行。</p>
+              <p v-if="project.validation_plan.length" class="project-recommendation-note"><AppIcon name="SquareTerminal" :size="13" />以上命令仅作为验证建议，不会自动执行。</p>
               <details v-if="project.evidence.length" class="project-evidence">
                 <summary>识别证据（{{ project.evidence.length }}）</summary>
                 <ul><li v-for="evidence in project.evidence" :key="`${evidence.path}:${evidence.rule}`"><code>{{ evidence.path }}</code><span>{{ evidence.rule }}</span><small v-if="evidence.detail">{{ evidence.detail }}</small></li></ul>
@@ -793,7 +788,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             </article>
           </template>
           <div v-else-if="!profileState.loading && !profileState.error" class="summary-empty project-profile-empty">
-            <span class="summary-empty-icon"><ListChecks :size="15" /></span>
+            <span class="summary-empty-icon"><AppIcon name="ListChecks" :size="15" /></span>
             <b>暂无项目画像</b>
             <p>可点击“刷新项目画像”重新检测当前工作区。</p>
           </div>
@@ -802,7 +797,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
 
       <section class="summary-section" :class="{ collapsed: !openSections.has('todo') }">
         <button type="button" class="summary-section-trigger" :aria-expanded="openSections.has('todo')" @click="toggleSection('todo')">
-          <b>待办</b><ChevronDown :size="13" /><small v-if="plan.length">{{ completed }}/{{ plan.length }}</small>
+          <b>待办</b><AppIcon name="ChevronDown" :size="13" /><small v-if="plan.length">{{ completed }}/{{ plan.length }}</small>
         </button>
         <div v-if="openSections.has('todo')" class="summary-section-body todo-section-body">
           <template v-if="plan.length">
@@ -813,13 +808,13 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             </div>
             <ol class="summary-plan-list">
               <li v-for="item in plan" :key="item.id" :class="item.status">
-                <span><Check v-if="item.status === 'completed'" :size="11" /><LoaderCircle v-else-if="item.status === 'in_progress'" :size="12" /><Circle v-else :size="9" /></span>
+                <span><AppIcon name="Check" v-if="item.status === 'completed'" :size="11" /><AppIcon name="LoaderCircle" v-else-if="item.status === 'in_progress'" :size="12" /><AppIcon name="Circle" v-else :size="9" /></span>
                 <p>{{ item.subject }}</p>
               </li>
             </ol>
           </template>
           <div v-else class="summary-empty">
-            <span class="summary-empty-icon"><ListChecks :size="15" /></span>
+            <span class="summary-empty-icon"><AppIcon name="ListChecks" :size="15" /></span>
             <b>暂无待办</b>
             <p>复杂任务的进展会显示在这里</p>
           </div>
@@ -828,38 +823,38 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
 
       <section class="summary-section" :class="{ collapsed: !openSections.has('artifacts') }">
         <button type="button" class="summary-section-trigger" :aria-expanded="openSections.has('artifacts')" @click="toggleSection('artifacts')">
-          <b>任务产物</b><ChevronDown :size="13" /><small v-if="artifacts.length">{{ artifacts.length }} 项</small>
+          <b>任务产物</b><AppIcon name="ChevronDown" :size="13" /><small v-if="artifacts.length">{{ artifacts.length }} 项</small>
         </button>
         <div v-if="openSections.has('artifacts')" class="summary-section-body">
           <div v-if="artifacts.length" class="artifact-list">
             <button v-for="artifact in artifacts" :key="artifact.path" type="button" :title="artifact.path" @click="openArtifact(artifact)">
               <span>
                 <img v-if="!failedArtifactIcons.has(artifact.path) && artifactIconUrls.get(artifact.path)" :src="artifactIconUrls.get(artifact.path)" class="artifact-type-icon" alt="" draggable="false" @error="onArtifactIconError(artifact.path)" />
-                <FileCode2 v-else-if="artifact.source === 'change'" :size="15" />
-                <FileText v-else :size="15" />
+                <AppIcon name="FileCode2" v-else-if="artifact.source === 'change'" :size="15" />
+                <AppIcon name="FileText" v-else :size="15" />
               </span>
               <span><b>{{ basename(artifact.path) }}</b><small>{{ artifact.source === 'change' ? '代码变更' : '任务附件' }}</small></span>
               <code v-if="artifact.change">{{ artifact.change.index_status }}{{ artifact.change.worktree_status }}</code>
-              <ExternalLink v-else :size="13" />
+              <AppIcon name="ExternalLink" v-else :size="13" />
             </button>
           </div>
           <div v-else class="summary-empty">
-            <span class="summary-empty-icon"><PackageOpen :size="15" /></span>
+            <span class="summary-empty-icon"><AppIcon name="PackageOpen" :size="15" /></span>
             <b>暂无产物</b>
             <p>任务完成后，生成的文件将展示在这里</p>
           </div>
-          <button v-if="artifacts.length" type="button" class="summary-refresh" :disabled="loadingArtifacts" @click="refreshArtifacts"><RefreshCw :size="13" :class="{ spin: loadingArtifacts }" />刷新产物</button>
+          <button v-if="artifacts.length" type="button" class="summary-refresh" :disabled="loadingArtifacts" @click="refreshArtifacts"><AppIcon name="RefreshCw" :size="13" :class="{ spin: loadingArtifacts }" />刷新产物</button>
         </div>
       </section>
 
       <section class="summary-section" :class="{ collapsed: !openSections.has('references') }">
         <button type="button" class="summary-section-trigger" :aria-expanded="openSections.has('references')" @click="toggleSection('references')">
-          <b>参考信息</b><ChevronDown :size="13" />
+          <b>参考信息</b><AppIcon name="ChevronDown" :size="13" />
         </button>
         <div v-if="openSections.has('references')" class="summary-section-body reference-body">
           <div class="reference-row">
             <span>技能</span>
-            <div v-if="usedSkills.length" class="skill-list"><span v-for="skill in usedSkills" :key="skill.name"><BookOpen :size="14" />{{ skill.name }}</span></div>
+            <div v-if="usedSkills.length" class="skill-list"><span v-for="skill in usedSkills" :key="skill.name"><AppIcon name="BookOpen" :size="14" />{{ skill.name }}</span></div>
             <small v-else>本轮任务暂未加载技能</small>
           </div>
           <div class="reference-context">
@@ -882,7 +877,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             :disabled="currentBrowser.loading"
             @click="moveBrowserHistory(currentBrowser, -1)"
           >
-            <ArrowLeft :size="18" />
+            <AppIcon name="ArrowLeft" :size="18" />
           </button>
           <button
             type="button"
@@ -892,7 +887,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             :disabled="currentBrowser.loading"
             @click="moveBrowserHistory(currentBrowser, 1)"
           >
-            <ArrowRight :size="18" />
+            <AppIcon name="ArrowRight" :size="18" />
           </button>
           <button
             type="button"
@@ -902,7 +897,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             :disabled="!currentBrowser.url || currentBrowser.loading"
             @click="reloadBrowser(currentBrowser)"
           >
-            <RotateCw :size="18" :class="{ spin: currentBrowser.loading }" />
+            <AppIcon name="RotateCw" :size="18" :class="{ spin: currentBrowser.loading }" />
           </button>
         </div>
 
@@ -916,36 +911,34 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
             autocomplete="url"
             class="browser-address-input"
           />
-          <ChevronDown :size="16" class="browser-address-chev" />
+          <AppIcon name="ChevronDown" :size="16" class="browser-address-chev" />
         </div>
 
         <div class="browser-toolbar-actions">
           <button type="button" class="browser-action-btn" title="编辑地址" :disabled="!currentBrowser.url" @click="editBrowserAddress">
-            <Pencil :size="18" />
+            <AppIcon name="Pencil" :size="18" />
           </button>
           <button type="button" class="browser-action-btn" title="复制链接" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
-            <Share2 :size="18" />
+            <AppIcon name="Share2" :size="18" />
           </button>
           <div class="browser-toolbar-divider" />
           <button type="button" class="browser-action-btn" title="选择元素" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser)">
-            <MousePointer2 :size="17" />
+            <AppIcon name="MousePointer2" :size="17" />
           </button>
           <button type="button" class="browser-action-btn" title="CSS检查器" :disabled="!currentBrowser.url" @click="cssInspector">
-            <Code :size="17" />
+            <AppIcon name="Code" :size="17" />
           </button>
           <button type="button" class="browser-action-btn" title="设备工具栏" :disabled="!currentBrowser.url" @click="deviceToolbar">
-            <Monitor :size="17" />
+            <AppIcon name="Monitor" :size="17" />
           </button>
           <button type="button" class="browser-action-btn" title="打开DevTools" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser)">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-            </svg>
+            <AppIcon name="DevTools" :size="17" />
           </button>
         </div>
       </form>
       <div v-if="browserNotice" class="browser-notice-bar">
         <span>{{ browserNotice }}</span>
-        <button type="button" aria-label="关闭提示" @click="browserNotice = ''"><X :size="13" /></button>
+        <button type="button" aria-label="关闭提示" @click="browserNotice = ''"><AppIcon name="X" :size="13" /></button>
       </div>
       <div class="browser-stage">
         <BrowserWebview
@@ -981,12 +974,12 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
           <span class="element-size">{{ pickedElement.width }} × {{ pickedElement.height }} px</span>
           <div class="element-panel-actions">
             <button type="button" class="element-add-btn" title="把元素信息添加到对话输入框" @click="addElementToConversation(currentBrowser)">
-              <MessageSquarePlus :size="13" />
+              <AppIcon name="MessageSquarePlus" :size="13" />
               <span>添加到对话</span>
             </button>
             <button type="button" title="复制选择器" @click="copyPickedText(pickedSelector, '选择器')">复制选择器</button>
             <button type="button" title="复制HTML" @click="copyPickedText(pickedElement.html, 'HTML')">复制HTML</button>
-            <button type="button" class="element-close" aria-label="关闭元素面板" @click="pickedElement = null"><X :size="14" /></button>
+            <button type="button" class="element-close" aria-label="关闭元素面板" @click="pickedElement = null"><AppIcon name="X" :size="14" /></button>
           </div>
         </header>
         <div class="element-panel-body">
@@ -1022,15 +1015,15 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
       <div v-if="selectedPath" class="preview-modal-backdrop" @click="closePreview" />
       <section v-if="selectedPath" ref="previewModalRef" class="preview-modal">
         <header>
-          <span class="preview-modal__title"><FileText :size="15" /><b>{{ selectedName }}</b></span>
+          <span class="preview-modal__title"><AppIcon name="FileText" :size="15" /><b>{{ selectedName }}</b></span>
           <select v-if="previewArtifacts.length > 1" v-model="selectedPath" class="preview-modal__select" aria-label="查看其他附件" @change="onSelectFile">
             <option v-for="artifact in previewArtifacts" :key="artifact.path" :value="artifact.path">{{ basename(artifact.path) }}</option>
           </select>
-          <button title="关闭预览" @click="closePreview"><X :size="17" /></button>
+          <button title="关闭预览" @click="closePreview"><AppIcon name="X" :size="17" /></button>
         </header>
         <CodePreview :content="preview" :path="selectedPath" :encoding="previewEncoding" :binary="previewBinary" :truncated="previewTruncated" :force-language="previewLanguage" :media-base64="previewMediaBase64" :mime-type="previewMimeType" />
       </section>
     </Teleport>
-    <p v-if="notice" class="inspector-notice"><span>{{ notice }}</span><button type="button" aria-label="关闭提示" @click="notice = ''"><X :size="13" /></button></p>
+    <p v-if="notice" class="inspector-notice"><span>{{ notice }}</span><button type="button" aria-label="关闭提示" @click="notice = ''"><AppIcon name="X" :size="13" /></button></p>
   </aside>
 </template>

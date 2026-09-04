@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Check, ChevronDown, Circle, FileText, FolderOpen, ListChecks, Paperclip } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { TimelineStep } from "../timeline/types";
 
 const props = defineProps<{
@@ -48,13 +48,13 @@ const visibleContext = computed(() => expanded.value ? contextItems.value : cont
 <template>
   <aside class="work-context-panel" aria-label="任务进度与上下文">
     <section class="work-context-card progress-card">
-      <header><ListChecks :size="16" /><h2>进度</h2><span v-if="plan.length">{{ completed }}/{{ plan.length }}</span></header>
+      <header><AppIcon name="ListChecks" :size="16" /><h2>进度</h2><span v-if="plan.length">{{ completed }}/{{ plan.length }}</span></header>
       <div v-if="plan.length" class="progress-meter" :style="{ '--progress': progress + '%' }">
         <i /><span>{{ progress }}%</span>
       </div>
       <ol v-if="plan.length" class="progress-list">
         <li v-for="item in plan" :key="item.id" :class="item.status">
-          <span class="progress-state"><Check v-if="item.status === 'completed'" :size="11" /><Circle v-else :size="9" /></span>
+          <span class="progress-state"><AppIcon name="Check" v-if="item.status === 'completed'" :size="11" /><AppIcon name="Circle" v-else :size="9" /></span>
           <span>{{ item.subject }}</span>
         </li>
       </ol>
@@ -62,19 +62,19 @@ const visibleContext = computed(() => expanded.value ? contextItems.value : cont
     </section>
 
     <section class="work-context-card context-card">
-      <header><FolderOpen :size="16" /><h2>上下文</h2><span>{{ contextItems.length }}</span></header>
+      <header><AppIcon name="FolderOpen" :size="16" /><h2>上下文</h2><span>{{ contextItems.length }}</span></header>
       <div v-if="contextItems.length" class="context-list">
         <div v-for="item in visibleContext" :key="item.path" class="context-file" :title="item.path">
-          <Paperclip v-if="item.source === 'attachment'" :size="15" />
-          <FolderOpen v-else-if="item.source === 'workspace'" :size="15" />
-          <FileText v-else :size="15" />
+          <AppIcon name="Paperclip" v-if="item.source === 'attachment'" :size="15" />
+          <AppIcon name="FolderOpen" v-else-if="item.source === 'workspace'" :size="15" />
+          <AppIcon name="FileText" v-else :size="15" />
           <span><b>{{ item.source === 'workspace' ? (workspaceName || basename(item.path)) : basename(item.path) }}</b><small>{{ item.path }}</small></span>
         </div>
         <button v-if="contextItems.length > 5" class="context-expand" type="button" @click="expanded = !expanded">
-          <ChevronDown :size="14" :class="{ expanded }" />{{ expanded ? '收起' : '展开 ' + (contextItems.length - 5) + ' 个' }}
+          <AppIcon name="ChevronDown" :size="14" :class="{ expanded }" />{{ expanded ? '收起' : '展开 ' + (contextItems.length - 5) + ' 个' }}
         </button>
       </div>
-      <div v-else class="context-empty"><FileText :size="22" /><p>相关文件会显示在这里</p></div>
+      <div v-else class="context-empty"><AppIcon name="FileText" :size="22" /><p>相关文件会显示在这里</p></div>
     </section>
   </aside>
 </template>

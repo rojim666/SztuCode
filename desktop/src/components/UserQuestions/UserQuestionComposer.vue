@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Check, ChevronLeft, ChevronRight, Square } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { PendingUserQuestion, UserQuestionAnswer } from "../../services/sztu-runtime";
 
 const { t } = useI18n({ useScope: "global" });
@@ -144,7 +144,7 @@ watch(() => props.pending.rpc_id, resetDrafts, { immediate: true });
         @click="choose(option.label)"
       >
         <i :class="{ checked: draft.selected.includes(option.label), multi: question.multi_select }">
-          <Check v-if="draft.selected.includes(option.label)" :size="13" :stroke-width="2.5" />
+          <AppIcon v-if="draft.selected.includes(option.label)" name="Check" :size="13" />
           <template v-else>{{ optionIndex + 1 }}</template>
         </i>
         <span>
@@ -167,12 +167,12 @@ watch(() => props.pending.rpc_id, resetDrafts, { immediate: true });
 
     <footer class="user-question-footer">
       <div class="user-question-pager">
-        <button type="button" :title="t('questions.prev')" :aria-label="t('questions.prev')" :disabled="index === 0 || busy" @click="index -= 1"><ChevronLeft :size="15" /></button>
+        <button type="button" :title="t('questions.prev')" :aria-label="t('questions.prev')" :disabled="index === 0 || busy" @click="index -= 1"><AppIcon name="ChevronLeft" :size="15" /></button>
         <span>{{ index + 1 }} / {{ pending.questions.length }}</span>
-        <button type="button" :title="t('questions.next')" :aria-label="t('questions.next')" :disabled="index === pending.questions.length - 1 || busy" @click="index += 1"><ChevronRight :size="15" /></button>
+        <button type="button" :title="t('questions.next')" :aria-label="t('questions.next')" :disabled="index === pending.questions.length - 1 || busy" @click="index += 1"><AppIcon name="ChevronRight" :size="15" /></button>
       </div>
       <p role="status">{{ displayError }}</p>
-      <button type="button" class="user-question-stop" :title="t('questions.stop')" :aria-label="t('questions.stop')" :disabled="busy" @click="emit('stop')"><Square :size="13" /></button>
+      <button type="button" class="user-question-stop" :title="t('questions.stop')" :aria-label="t('questions.stop')" :disabled="busy" @click="emit('stop')"><AppIcon name="Square" :size="13" /></button>
       <button type="button" class="user-question-skip" :disabled="busy" @click="skip">{{ t("questions.skip") }}</button>
       <button type="button" class="user-question-submit" :disabled="busy" @click="continueFlow">
         {{ busy ? t('questions.submitting') : index === pending.questions.length - 1 ? t('questions.submit') : t('questions.next') }}

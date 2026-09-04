@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Archive, ChevronRight, Copy, Ellipsis, Eye, ExternalLink, Folder, Pin, PinOff, Pencil } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { useI18n } from "vue-i18n";
 import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
 import { friendlyError } from "../../utils/errorNotice";
@@ -226,17 +226,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'">
-    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? t('session.archiveBlockedTitle') : t('session.archiveTitle')" :aria-label="t('session.archiveTitle')" :disabled="busy || session.status === 'active'" @click="archive"><Archive :size="17" /></button>
+    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? t('session.archiveBlockedTitle') : t('session.archiveTitle')" :aria-label="t('session.archiveTitle')" :disabled="busy || session.status === 'active'" @click="archive"><AppIcon name="Archive" :size="17" /></button>
     <Teleport to="body">
       <div v-if="open" ref="menu" class="session-menu session-menu--floating" :style="menuStyle" role="menu" @contextmenu.stop>
         <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" :aria-label="t('session.nameLabel')" maxlength="120" autofocus /><button :disabled="busy">{{ t('session.save') }}</button></form>
         <template v-else>
-          <button role="menuitem" :disabled="busy" @click="togglePinned"><PinOff v-if="pinned" :size="19" /><Pin v-else :size="19" />{{ pinned ? t('session.unpin') : t('session.pin') }}</button>
-          <button role="menuitem" @click="renaming = true"><Pencil :size="19" />{{ t('session.rename') }}</button>
-          <button role="menuitem" @click="markUnread"><Eye :size="19" />{{ t('session.markUnread') }}</button>
+          <button role="menuitem" :disabled="busy" @click="togglePinned"><AppIcon name="PinOff" v-if="pinned" :size="19" /><AppIcon name="Pin" v-else :size="19" />{{ pinned ? t('session.unpin') : t('session.pin') }}</button>
+          <button role="menuitem" @click="renaming = true"><AppIcon name="Pencil" :size="19" />{{ t('session.rename') }}</button>
+          <button role="menuitem" @click="markUnread"><AppIcon name="Eye" :size="19" />{{ t('session.markUnread') }}</button>
           <div class="session-menu__separator" />
           <div class="session-menu__copy-wrap">
-            <button role="menuitem" :aria-expanded="projectOpen" @click="toggleProjectMenu"><Folder :size="19" /><span>{{ t('session.project') }}</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <button role="menuitem" :aria-expanded="projectOpen" @click="toggleProjectMenu"><AppIcon name="Folder" :size="19" /><span>{{ t('session.project') }}</span><AppIcon name="ChevronRight" class="session-menu__chevron" :size="18" /></button>
             <div v-if="projectOpen" class="session-menu__submenu" role="menu">
               <button role="menuitem" :class="{ active: !session.workspace_id }" @click="assignProject(null)">{{ t('session.noProject') }}</button>
               <button v-for="project in projects" :key="project.workspace_id" role="menuitem" :class="{ active: project.workspace_id === session.workspace_id }" @click="assignProject(project.workspace_id)">{{ project.name }}</button>
@@ -244,14 +244,14 @@ onBeforeUnmount(() => {
           </div>
           <div class="session-menu__separator" />
           <div class="session-menu__copy-wrap">
-            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen; projectOpen = false"><Copy :size="19" /><span>{{ t('session.copy') }}</span><ChevronRight class="session-menu__chevron" :size="18" /></button>
+            <button role="menuitem" :aria-expanded="copyOpen" @click="copyOpen = !copyOpen; projectOpen = false"><AppIcon name="Copy" :size="19" /><span>{{ t('session.copy') }}</span><AppIcon name="ChevronRight" class="session-menu__chevron" :size="18" /></button>
             <div v-if="copyOpen" class="session-menu__submenu" role="menu">
               <button role="menuitem" @click="copyText(session.title || t('session.untitled'), t('session.nameCopied'))">{{ t('session.copyName') }}</button>
               <button role="menuitem" @click="copyText(session.session_id, t('session.idCopied'))">{{ t('session.copyId') }}</button>
             </div>
           </div>
           <div class="session-menu__separator" />
-          <button role="menuitem" @click="openInNewWindow"><ExternalLink :size="19" />{{ t('session.openInNewWindow') }}</button>
+          <button role="menuitem" @click="openInNewWindow"><AppIcon name="ExternalLink" :size="19" />{{ t('session.openInNewWindow') }}</button>
         </template>
         <p v-if="notice" role="alert">{{ notice }}</p>
       </div>

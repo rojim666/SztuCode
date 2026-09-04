@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Check, CheckCircle2, ChevronDown, CircleAlert, Copy, ExternalLink, LoaderCircle, Play, RotateCw } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
@@ -474,10 +474,10 @@ watch(
             @click="toggleTurn(turn)"
           >
             <!-- 失败/中断的轮次在折叠态给出可见标记，避免用户不展开就发现不了异常 -->
-            <em v-if="turn.state === 'failed'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />{{ t('timeline.turn.failed') }}</em>
-            <em v-else-if="turn.state === 'interrupted'" class="turn-state-chip"><CircleAlert :size="13" :stroke-width="1.9" />{{ t('timeline.turn.interrupted') }}</em>
+            <em v-if="turn.state === 'failed'" class="turn-state-chip"><AppIcon name="CircleAlert" :size="13" />{{ t('timeline.turn.failed') }}</em>
+            <em v-else-if="turn.state === 'interrupted'" class="turn-state-chip"><AppIcon name="CircleAlert" :size="13" />{{ t('timeline.turn.interrupted') }}</em>
             <span>{{ isTurnExpanded(turn) ? t('timeline.turn.collapse') : t('timeline.turn.view', { duration: elapsedLabel(turn) }) }}</span>
-            <ChevronDown :size="15" />
+            <AppIcon name="ChevronDown" :size="15" />
           </button>
 
           <!-- 折叠态（已完成且未展开）：只展示最终输出文字 -->
@@ -500,11 +500,11 @@ watch(
               </div>
               <span class="task-progress-bar__label">
                 <template v-if="turn.state === 'running' || turn.state === 'waiting'">
-                  <LoaderCircle class="spin" :size="11" />
+                  <AppIcon name="LoaderCircle" class="spin" :size="11" />
                   {{ t('timeline.progress.step', { current: Math.min((getPlanProgress(turn)?.completed ?? 0) + 1, getPlanProgress(turn)?.total ?? 1), total: getPlanProgress(turn)?.total }) }}
                 </template>
                 <template v-else>
-                  <Check :size="11" />
+                  <AppIcon name="Check" :size="11" />
                   {{ t('timeline.progress.done', { completed: getPlanProgress(turn)?.completed, total: getPlanProgress(turn)?.total }) }}
                 </template>
               </span>
@@ -528,7 +528,7 @@ watch(
             </template>
             <!-- 进行中提示："正在规划下一步" -->
             <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">
-              <LoaderCircle class="spin" :size="14" />
+              <AppIcon name="LoaderCircle" class="spin" :size="14" />
               <span>{{ t('timeline.planningNext') }}</span>
             </div>
           </div>
@@ -543,8 +543,8 @@ watch(
               :aria-label="copiedTurn === turn.key ? t('timeline.action.copiedSummary') : t('timeline.action.copySummary')"
               @click="copyTurnSummary(turn)"
             >
-              <Check v-if="copiedTurn === turn.key" :size="14" :stroke-width="1.8" />
-              <Copy v-else :size="14" :stroke-width="1.8" />
+              <AppIcon v-if="copiedTurn === turn.key" name="Check" :size="14" />
+              <AppIcon v-else name="Copy" :size="14" />
             </button>
             <button
               v-if="turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting'"
@@ -555,8 +555,8 @@ watch(
               :disabled="retryingTurn === turn.key"
               @click="retryTurn(turn)"
             >
-              <LoaderCircle v-if="retryingTurn === turn.key" class="spin" :size="14" :stroke-width="1.8" />
-              <RotateCw v-else :size="14" :stroke-width="1.8" />
+              <AppIcon v-if="retryingTurn === turn.key" name="LoaderCircle" class="spin" :size="14" />
+              <AppIcon v-else name="RotateCw" :size="14" />
             </button>
           </div>
 
@@ -573,8 +573,8 @@ watch(
           </div>
 
           <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" :aria-label="t('timeline.evidence.aria')">
-            <div v-if="turn.passedTests" class="evidence-item passed"><CheckCircle2 :size="14" /><span><b>{{ turn.passedTests }}</b> {{ t('timeline.evidence.passedSuffix') }}</span></div>
-            <div v-if="turn.failedTests" class="evidence-item failed"><CircleAlert :size="14" /><span><b>{{ turn.failedTests }}</b> {{ t('timeline.evidence.failedSuffix') }}</span></div>
+            <div v-if="turn.passedTests" class="evidence-item passed"><AppIcon name="CheckCircle2" :size="14" /><span><b>{{ turn.passedTests }}</b> {{ t('timeline.evidence.passedSuffix') }}</span></div>
+            <div v-if="turn.failedTests" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span><b>{{ turn.failedTests }}</b> {{ t('timeline.evidence.failedSuffix') }}</span></div>
             <FileChangesBadge
               v-if="turn.changeFiles.length"
               :files="turn.changeFiles"
@@ -582,11 +582,11 @@ watch(
               @open-file="(path) => emit('openFile', path)"
               @open-all="turn.runId && emit('openChanges', turn.runId)"
             />
-            <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><CircleAlert :size="14" /><span>{{ turn.failureReason }}</span></div>
+            <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span>{{ turn.failureReason }}</span></div>
           </section>
 
           <button v-if="isTurnExpanded(turn) && turn.state === 'interrupted'" class="continue-button" type="button" :title="t('timeline.action.continueTitle')" @click="$emit('continue', turn.runId)">
-            <Play :size="14" />{{ t('timeline.action.continue') }}
+            <AppIcon name="Play" :size="14" />{{ t('timeline.action.continue') }}
           </button>
 
           <!-- turn 页脚时序指标（借鉴 dsh 8.6 turn-tail）：每轮首字延迟与吞吐，无读数不渲染 -->

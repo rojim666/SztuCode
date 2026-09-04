@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Check, Clipboard, GitCommitHorizontal, LocateFixed, RefreshCw } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { GitCommitEntry } from "../../services/sztu-runtime";
 
 const props = withDefaults(defineProps<{ commits: GitCommitEntry[]; branch: string | null; loading: boolean; loadingMore?: boolean; hasMore?: boolean }>(), { loadingMore: false, hasMore: false });
@@ -108,14 +108,14 @@ watch(() => props.commits, (commits) => {
 <template>
   <section ref="graphElement" class="git-graph">
     <header class="git-graph-toolbar">
-      <div><GitCommitHorizontal :size="15" /><b>图表</b><span>{{ commits.length }} 次提交</span></div>
+      <div><AppIcon name="GitCommitHorizontal" :size="15" /><b>图表</b><span>{{ commits.length }} 次提交</span></div>
       <span v-if="branch" class="git-graph-branch">{{ branch }}</span>
-      <button type="button" title="定位到 HEAD" aria-label="定位到 HEAD" :disabled="!commits.length" @click="locateHead"><LocateFixed :size="15" /></button>
-      <button type="button" :title="copied ? '已复制' : '复制选中提交哈希'" aria-label="复制选中提交哈希" :disabled="!selected" @click="copyHash"><Check v-if="copied" :size="15" /><Clipboard v-else :size="15" /></button>
-      <button type="button" title="刷新提交图表" aria-label="刷新提交图表" :disabled="loading" @click="emit('refresh')"><RefreshCw :size="15" :class="{ spin: loading }" /></button>
+      <button type="button" title="定位到 HEAD" aria-label="定位到 HEAD" :disabled="!commits.length" @click="locateHead"><AppIcon name="LocateFixed" :size="15" /></button>
+      <button type="button" :title="copied ? '已复制' : '复制选中提交哈希'" aria-label="复制选中提交哈希" :disabled="!selected" @click="copyHash"><AppIcon v-if="copied" name="Check" :size="15" /><AppIcon v-else name="Clipboard" :size="15" /></button>
+      <button type="button" title="刷新提交图表" aria-label="刷新提交图表" :disabled="loading" @click="emit('refresh')"><AppIcon name="RefreshCw" :size="15" :class="{ spin: loading }" /></button>
     </header>
-    <div v-if="loading && !commits.length" class="git-graph-empty"><RefreshCw :size="20" class="spin" />正在读取提交历史…</div>
-    <div v-else-if="!graph.rows.length" class="git-graph-empty"><GitCommitHorizontal :size="24" /><b>暂无提交记录</b><span>完成第一次提交后，提交图表会显示在这里。</span></div>
+    <div v-if="loading && !commits.length" class="git-graph-empty"><AppIcon name="RefreshCw" :size="20" class="spin" />正在读取提交历史…</div>
+    <div v-else-if="!graph.rows.length" class="git-graph-empty"><AppIcon name="GitCommitHorizontal" :size="24" /><b>暂无提交记录</b><span>完成第一次提交后，提交图表会显示在这里。</span></div>
     <div v-else ref="graphScroll" class="git-graph-scroll" @scroll.passive="maybeLoadMore">
       <div class="git-graph-list">
         <div v-if="outgoingCount" class="git-graph-outgoing"><i /><span>传出的更改</span><b>{{ outgoingCount }}</b></div>
@@ -134,7 +134,7 @@ watch(() => props.commits, (commits) => {
           <code>{{ commit.short_hash }}</code>
         </article>
         <div class="git-graph-page-state">
-          <template v-if="loadingMore"><RefreshCw :size="13" class="spin" />正在加载更早的提交…</template>
+          <template v-if="loadingMore"><AppIcon name="RefreshCw" :size="13" class="spin" />正在加载更早的提交…</template>
           <button v-else-if="hasMore" type="button" @click="emit('loadMore')">加载更早的提交</button>
           <template v-else>已到达最早提交</template>
         </div>

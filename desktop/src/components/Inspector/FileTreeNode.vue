@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { ChevronRight, FileText, Folder, FolderOpen, LoaderCircle } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 import type { TreeNode } from "./FileTree.vue";
 
@@ -41,15 +41,15 @@ function onRowClick() {
       :aria-expanded="node.kind === 'directory' ? Boolean(node.children) : undefined"
       @click="onRowClick"
     >
-      <ChevronRight v-if="node.kind === 'directory'" :size="13" class="row-chevron" :class="{ expanded: node.children }" />
+      <AppIcon name="ChevronRight" v-if="node.kind === 'directory'" :size="13" class="row-chevron" :class="{ expanded: node.children }" />
       <span class="row-icon">
-        <FolderOpen v-if="node.kind === 'directory' && node.children" :size="17" />
-        <Folder v-else-if="node.kind === 'directory'" :size="17" />
+        <AppIcon name="FolderOpen" v-if="node.kind === 'directory' && node.children" :size="17" :filled="selectedPath === node.path" />
+        <AppIcon name="Folder" v-else-if="node.kind === 'directory'" :size="17" :filled="selectedPath === node.path" />
         <img v-else-if="!iconFailed && typeIconUrl" :src="typeIconUrl" class="file-type-icon" alt="" draggable="false" @error="iconFailed = true" />
-        <FileText v-else :size="17" />
+        <AppIcon name="FileText" v-else :size="17" :filled="selectedPath === node.path" />
       </span>
       <span class="row-name">{{ node.name }}</span>
-      <LoaderCircle v-if="node.loading" :size="12" class="spin" />
+      <AppIcon name="LoaderCircle" v-if="node.loading" :size="12" class="spin" />
     </div>
     <ul v-if="node.children" class="file-tree file-tree--nested" role="group">
       <li v-for="child in node.children" :key="child.path">

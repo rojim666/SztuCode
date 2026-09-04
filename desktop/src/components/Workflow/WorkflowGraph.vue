@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Check, Circle, Loader2, RotateCcw, ZoomIn, ZoomOut, Maximize2 } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { WorkflowTask, WorkflowTaskStatus } from "../../protocol";
 import { layoutWorkflow, fitTransform, NODE_WIDTH, NODE_HEIGHT, type PlacedTask } from "./layout";
 import { edgeColor, roleLabel, statusMeta } from "./status";
@@ -158,9 +158,9 @@ const selected = computed(() => (props.selectedId ? byId.value.get(props.selecte
         <span class="wf-node__meta">
           <em :class="`wf-role wf-role--${p.task.owner}`">{{ roleLabel(p.task.owner) }}</em>
           <em class="wf-node__status" :style="{ color: statusMeta(taskStatus(p.task.id)).color }">
-            <template v-if="taskStatus(p.task.id) === 'running'"><Loader2 :size="11" class="wf-spin" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
-            <template v-else-if="taskStatus(p.task.id) === 'succeeded'"><Check :size="11" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
-            <template v-else-if="taskStatus(p.task.id) === 'pending'"><Circle :size="11" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
+            <template v-if="taskStatus(p.task.id) === 'running'"><AppIcon name="Loader2" :size="11" class="wf-spin" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
+            <template v-else-if="taskStatus(p.task.id) === 'succeeded'"><AppIcon name="Check" :size="11" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
+            <template v-else-if="taskStatus(p.task.id) === 'pending'"><AppIcon name="Circle" :size="11" />{{ statusMeta(taskStatus(p.task.id)).label }}</template>
             <template v-else>{{ statusMeta(taskStatus(p.task.id)).label }}</template>
           </em>
         </span>
@@ -173,10 +173,10 @@ const selected = computed(() => (props.selectedId ? byId.value.get(props.selecte
     </div>
 
     <div class="wf-graph__controls" @pointerdown.stop>
-      <button type="button" title="放大" aria-label="放大" @click="zoomAt(viewport.width / 2, viewport.height / 2, 1.2)"><ZoomIn :size="15" /></button>
-      <button type="button" title="缩小" aria-label="缩小" @click="zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.2)"><ZoomOut :size="15" /></button>
-      <button type="button" title="适配视图" aria-label="适配视图" @click="applyFit"><Maximize2 :size="15" /></button>
-      <button type="button" title="重置" aria-label="重置" @click="view = { x: 0, y: 0, k: 1 }"><RotateCcw :size="15" /></button>
+      <button type="button" title="放大" aria-label="放大" @click="zoomAt(viewport.width / 2, viewport.height / 2, 1.2)"><AppIcon name="ZoomIn" :size="15" /></button>
+      <button type="button" title="缩小" aria-label="缩小" @click="zoomAt(viewport.width / 2, viewport.height / 2, 1 / 1.2)"><AppIcon name="ZoomOut" :size="15" /></button>
+      <button type="button" title="适配视图" aria-label="适配视图" @click="applyFit"><AppIcon name="Maximize2" :size="15" /></button>
+      <button type="button" title="重置" aria-label="重置" @click="view = { x: 0, y: 0, k: 1 }"><AppIcon name="RotateCcw" :size="15" /></button>
       <span class="wf-graph__scale">{{ Math.round(view.k * 100) }}%</span>
     </div>
 

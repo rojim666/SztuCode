@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Check, ChevronDown, Code2, Edit3, FileSearch, FolderOpen, LoaderCircle, Search, Terminal } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
 
@@ -14,24 +14,24 @@ const allDone = computed(() => props.calls.every((call) => call.status === "done
 
 // Codex 风格：按工具类型分组统计；label 取自语言包，computed 内调用 t 保证切换语言时重建
 const groups = computed(() => {
-  const buckets: Record<string, { label: string; icon: typeof Terminal; count: number; calls: ToolCallEntry[] }> = {};
+  const buckets: Record<string, { label: string; icon: string; count: number; calls: ToolCallEntry[] }> = {};
 
   for (const call of props.calls) {
     const name = call.name.toLowerCase();
     let key: string;
     let label: string;
-    let icon: typeof Terminal;
+    let icon: string;
 
     if (/read|file|dir|ls/i.test(name)) {
-      key = "file"; label = t("timeline.activity.toolKind.read"); icon = FolderOpen;
+      key = "file"; label = t("timeline.activity.toolKind.read"); icon = "FolderOpen";
     } else if (/glob|search|grep|find/i.test(name)) {
-      key = "search"; label = t("timeline.activity.toolKind.search"); icon = Search;
+      key = "search"; label = t("timeline.activity.toolKind.search"); icon = "Search";
     } else if (/edit|write|patch|create/i.test(name)) {
-      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = Edit3;
+      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = "Edit3";
     } else if (/bash|shell|terminal|command|powershell|pwsh|exec|run/i.test(name)) {
-      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = Terminal;
+      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = "Terminal";
     } else {
-      key = "other"; label = t("timeline.activity.toolKind.operate"); icon = Code2;
+      key = "other"; label = t("timeline.activity.toolKind.operate"); icon = "Code2";
     }
 
     if (!buckets[key]) {
@@ -76,15 +76,15 @@ const detailPath = computed(() => {
       @click="open = !open"
     >
       <span class="tool-call-group__status">
-        <LoaderCircle v-if="running" class="spin" :size="13" />
-        <Check v-else-if="allDone" :size="13" />
-        <FolderOpen v-else :size="13" />
+        <AppIcon v-if="running" name="LoaderCircle" class="spin" :size="13" />
+        <AppIcon v-else-if="allDone" name="Check" :size="13" />
+        <AppIcon v-else name="FolderOpen" :size="13" />
       </span>
 
       <div class="tool-call-group__summary">
         <template v-for="(group, idx) in groups" :key="group.label">
           <span class="tool-call-group__item">
-            <component :is="group.icon" :size="11" />
+            <AppIcon :name="group.icon" :size="11" />
             {{ group.label }} <b>{{ group.count }}</b>
           </span>
           <span v-if="idx < groups.length - 1" class="tool-call-group__sep">·</span>
@@ -93,7 +93,7 @@ const detailPath = computed(() => {
 
       <span v-if="!open && detailPath" class="tool-call-group__detail">{{ detailPath }}</span>
 
-      <ChevronDown class="tool-call-group__chevron" :size="12" />
+      <AppIcon name="ChevronDown" class="tool-call-group__chevron" :size="12" />
     </button>
 
     <transition name="tool-group-expand">

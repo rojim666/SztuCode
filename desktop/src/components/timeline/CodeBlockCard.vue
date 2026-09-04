@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
-import { ChevronDown, Copy, Check } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import hljs from "highlight.js/lib/common";
 
 interface Props {
@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
     <div class="code-block-header">
       <button type="button" class="lang-selector" ref="triggerRef" @click.stop="toggleDropdown">
         <span class="lang-label">{{ currentLangLabel }}</span>
-        <ChevronDown :size="14" :class="{ 'chevron-open': dropdownOpen }" />
+        <AppIcon name="ChevronDown" :size="14" :class="{ 'chevron-open': dropdownOpen }" />
       </button>
 
       <div class="header-actions">
@@ -238,8 +238,8 @@ onBeforeUnmount(() => {
           :title="copied ? '已复制' : '复制代码'"
           @click="copyCode"
         >
-          <Check v-if="copied" :size="16" />
-          <Copy v-else :size="16" />
+          <AppIcon v-if="copied" name="Check" :size="16" />
+          <AppIcon v-else name="Copy" :size="16" />
         </button>
       </div>
     </div>
@@ -253,10 +253,7 @@ onBeforeUnmount(() => {
         @click.stop
       >
         <div class="dropdown-search">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
+          <AppIcon name="Search" :size="16" />
           <input
             v-model="searchQuery"
             type="text"
@@ -275,9 +272,7 @@ onBeforeUnmount(() => {
             @click="selectLanguage(lang.value)"
           >
             <span>{{ lang.label }}</span>
-            <svg v-if="lang.value === currentLang" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
+            <AppIcon v-if="lang.value === currentLang" name="Check" :size="16" />
           </button>
         </div>
       </div>

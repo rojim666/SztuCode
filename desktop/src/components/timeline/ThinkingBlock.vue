@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Brain, ChevronRight, LoaderCircle } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { reasoningSummary } from "../../utils/reasoningSummary";
 
 const props = defineProps<{
@@ -73,12 +73,12 @@ const preview = computed(() => reasoningSummary(displayed.value, thinkingActive.
       @click="userToggled = true; open = !open"
     >
       <span class="thinking-block__icon">
-        <LoaderCircle v-if="thinkingActive" class="spin" :size="14" />
-        <Brain v-else :size="14" />
+        <AppIcon v-if="thinkingActive" name="LoaderCircle" class="spin" :size="14" />
+        <AppIcon v-else name="Brain" :size="14" />
       </span>
       <span class="thinking-block__label">{{ t('timeline.thinking.label') }}</span>
       <span v-if="!open && thinkingActive" ref="previewRef" class="thinking-block__preview">{{ preview }}</span>
-      <ChevronRight class="thinking-block__chevron" :size="12" />
+      <AppIcon name="ChevronRight" class="thinking-block__chevron" :size="12" />
     </button>
 
     <transition name="think-expand">

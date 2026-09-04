@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronDown, FilePenLine, FileText, Image as ImageIcon, LoaderCircle, Search, Terminal, Timer } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { ToolCallEntry } from "./types";
 
 const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean; compact?: boolean }>(), {
@@ -95,17 +95,17 @@ const zoomedImage = ref<number | null>(null);
 <template>
   <section class="tool-call-event" :class="[call.status, { compact }]">
     <button :aria-label="title" :aria-expanded="isOpen" :disabled="!hasDetails" @click="hasDetails && (open = !open)">
-      <FilePenLine v-if="kind === 'edit'" :size="compact ? 12 : 14" />
-      <Search v-else-if="kind === 'search' || kind === 'glob'" :size="compact ? 12 : 14" />
-      <FileText v-else-if="isFileTool" :size="compact ? 12 : 14" />
-      <Terminal v-else :size="compact ? 12 : 14" />
+      <AppIcon v-if="kind === 'edit'" name="FilePenLine" :size="compact ? 12 : 14" />
+      <AppIcon v-else-if="kind === 'search' || kind === 'glob'" name="Search" :size="compact ? 12 : 14" />
+      <AppIcon v-else-if="isFileTool" name="FileText" :size="compact ? 12 : 14" />
+      <AppIcon v-else name="Terminal" :size="compact ? 12 : 14" />
       <span v-if="!compact" class="tool-call-event__action">{{ actionLabel }}</span>
       <span v-if="!compact" class="timeline-row__separator">·</span>
       <span class="tool-call-event__detail" :class="{ 'is-path': isPathLike }">{{ detail }}</span>
-      <span v-if="imageUrls.length" class="tool-call-event__image-badge" :title="t('timeline.tool.screenshotCount', { count: imageUrls.length })"><ImageIcon :size="compact ? 11 : 12" />{{ imageUrls.length }}</span>
-      <span v-if="elapsed" class="tool-call-event__elapsed"><Timer :size="10" />{{ elapsed }}</span>
-      <LoaderCircle v-if="call.status === 'running'" class="spin" :size="compact ? 12 : 13" />
-      <ChevronDown v-if="hasDetails" class="timeline-row__chevron" :size="11" />
+      <span v-if="imageUrls.length" class="tool-call-event__image-badge" :title="t('timeline.tool.screenshotCount', { count: imageUrls.length })"><AppIcon name="ImageIcon" :size="compact ? 11 : 12" />{{ imageUrls.length }}</span>
+      <span v-if="elapsed" class="tool-call-event__elapsed"><AppIcon name="Timer" :size="10" />{{ elapsed }}</span>
+      <AppIcon v-if="call.status === 'running'" name="LoaderCircle" class="spin" :size="compact ? 12 : 13" />
+      <AppIcon v-if="hasDetails" name="ChevronDown" class="timeline-row__chevron" :size="11" />
     </button>
     <transition name="tool-expand">
       <div v-if="isOpen && hasDetails" class="tool-call-event__details">

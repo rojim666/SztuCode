@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Check } from "@lucide/vue";
+import AppIcon from "../../icons/AppIcon.vue";
 import { buildPhaseMeta, type PhaseState } from "./phase";
 
 defineProps<{ states: PhaseState[] }>();
@@ -20,7 +20,7 @@ const phaseMeta = computed(() => buildPhaseMeta((key) => t(key)));
       :aria-current="item.active ? 'step' : undefined"
     >
       <span class="phase-rail__dot" aria-hidden="true">
-        <Check v-if="item.reached && !item.active" :size="10" :stroke-width="3" />
+        <AppIcon v-if="item.reached && !item.active" name="Check" :size="10" />
       </span>
       <span class="phase-rail__label">{{ phaseMeta[item.phase].label }}</span>
       <span class="phase-rail__hint">{{ phaseMeta[item.phase].hint }}</span>

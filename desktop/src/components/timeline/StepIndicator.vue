@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import { BrainCircuit, Check, CircleDotDashed, Wrench } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { TimelineStatus } from "./types";
 defineProps<{ step: number; status: TimelineStatus }>();
 const { t } = useI18n({ useScope: "global" });
@@ -8,6 +8,6 @@ const { t } = useI18n({ useScope: "global" });
 
 <template>
   <div class="step-indicator" :class="status" :aria-label="t('timeline.stepAria', { step })">
-    <span><Check v-if="status === 'done'" :size="13" /><Wrench v-else-if="status === 'acting'" :size="13" /><BrainCircuit v-else-if="status === 'thinking'" :size="13" /><CircleDotDashed v-else :size="13" /></span>
+    <span><AppIcon v-if="status === 'done'" name="Check" :size="13" /><AppIcon v-else-if="status === 'acting'" name="Wrench" :size="13" /><AppIcon v-else-if="status === 'thinking'" name="BrainCircuit" :size="13" /><AppIcon v-else name="CircleDotDashed" :size="13" /></span>
   </div>
 </template>

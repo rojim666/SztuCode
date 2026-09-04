@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronDown, ExternalLink, FileDiff } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { ChangeFile } from "./types";
 
 const props = defineProps<{
@@ -43,12 +43,12 @@ function relativePath(path: string): string {
     <div class="file-changes-badge__trigger">
       <button type="button" class="file-changes-badge__toggle" :aria-expanded="open" @click="open = !open">
         <span class="file-changes-badge__icon">
-          <FileDiff :size="16" />
+          <AppIcon name="FileDiff" :size="16" />
         </span>
         <span class="file-changes-badge__label">
           <b>{{ files.length }}</b> {{ t('timeline.changes.filesSuffix') }}
         </span>
-        <ChevronDown class="file-changes-badge__chevron" :size="16" />
+        <AppIcon name="ChevronDown" class="file-changes-badge__chevron" :size="16" />
         <span v-if="hasStats" class="file-changes-badge__stats">
           <span class="additions">+{{ totalAdditions }}</span>
           <span class="deletions">-{{ totalDeletions }}</span>
@@ -56,7 +56,7 @@ function relativePath(path: string): string {
       </button>
       <span class="file-changes-badge__divider" />
       <button type="button" class="file-changes-badge__open-all" :title="t('timeline.changes.openAll')" :aria-label="t('timeline.changes.openAll')" @click.stop="emit('openAll')">
-        <ExternalLink :size="16" />
+        <AppIcon name="ExternalLink" :size="16" />
       </button>
     </div>
 
@@ -68,7 +68,7 @@ function relativePath(path: string): string {
         @click="emit('openFile', file.path)"
       >
         <span class="file-changes-badge__item-icon">
-          <FileDiff :size="14" />
+          <AppIcon name="FileDiff" :size="14" />
         </span>
         <span class="file-changes-badge__item-name">{{ fileName(file.path) }}</span>
         <span class="file-changes-badge__item-path" :title="file.path">.{{ relativePath(file.path) }}</span>

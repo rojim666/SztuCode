@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { CirclePlay, Play, RotateCcw, Radio, Square, TerminalSquare } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { WorkflowGraph, WorkflowTaskStatus } from "../../protocol";
 import WorkflowGraphCanvas from "./WorkflowGraph.vue";
 import { statusMeta } from "./status";
@@ -245,25 +245,25 @@ onBeforeUnmount(() => {
       </div>
       <div class="wfp__actions">
         <span class="wfp__mode" :style="{ color: overallColor }">
-          <Radio v-if="overall === 'running'" :size="13" class="wfp__pulse" />
+          <AppIcon v-if="overall === 'running'" name="Radio" :size="13" class="wfp__pulse" />
           <template v-else-if="overall === 'succeeded'">✓</template>
           <template v-else-if="overall === 'failed'">✕</template>
           {{ modeLabel }} · {{ overallLabel }}<template v-if="runId"> · {{ runId.slice(0, 8) }}</template>
         </span>
         <button type="button" class="wfp__btn wfp__btn--primary" :disabled="overall === 'running'" @click="simulate">
-          <Play :size="14" />模拟运行
+          <AppIcon name="Play" :size="14" />模拟运行
         </button>
         <button type="button" class="wfp__btn" :disabled="!connected || overall === 'running'" :title="connected ? '通过 daemon 提交 workflow.run' : '本地服务未连接'" @click="runReal">
-          <TerminalSquare :size="14" />真实运行
+          <AppIcon name="TerminalSquare" :size="14" />真实运行
         </button>
         <button type="button" class="wfp__btn" :disabled="overall === 'idle' && !Object.values(statuses).some((s) => s !== 'pending')" @click="resetState">
-          <RotateCcw :size="14" />重置
+          <AppIcon name="RotateCcw" :size="14" />重置
         </button>
-        <button type="button" class="wfp__btn" @click="fitKey++"><CirclePlay :size="14" />适配视图</button>
+        <button type="button" class="wfp__btn" @click="fitKey++"><AppIcon name="CirclePlay" :size="14" />适配视图</button>
       </div>
     </header>
 
-    <p v-if="liveError" class="wfp__error"><Square :size="13" />{{ liveError }}</p>
+    <p v-if="liveError" class="wfp__error"><AppIcon name="Square" :size="13" />{{ liveError }}</p>
 
     <div class="wfp__body">
       <WorkflowGraphCanvas

@@ -2,10 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { confirm as confirmDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
-import {
-  Check, ChevronDown, FolderOpen, Package, Plug, Plus, Power,
-  RefreshCw, Search, Settings2, Sparkles, Trash2, X,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import {
   addPluginMarketplace, getPluginCatalog, installCatalogPlugin, installPlugin,
   installSkill, listPlugins, listSkills, refreshPluginMarketplaces,
@@ -355,14 +352,14 @@ onMounted(() => void refreshCatalog());
         <button :class="{ active: activeArea === 'skills' }" @click="activeArea = 'skills'">{{ t("skills.skillsTab") }}</button>
       </nav>
       <div class="skill-center__actions">
-        <button :title="t('skills.refresh')" :aria-label="t('skills.refresh')" :disabled="loading" @click="refreshCatalog"><RefreshCw :size="18" :class="{ spin: loading }" /></button>
-        <button :title="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :aria-label="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :disabled="activeArea !== 'plugins'" @click="pluginManageOpen = true"><Settings2 :size="18" /></button>
+        <button :title="t('skills.refresh')" :aria-label="t('skills.refresh')" :disabled="loading" @click="refreshCatalog"><AppIcon name="RefreshCw" :size="18" :class="{ spin: loading }" /></button>
+        <button :title="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :aria-label="activeArea === 'plugins' ? t('skills.managePlugins') : t('skills.skillSettings')" :disabled="activeArea !== 'plugins'" @click="pluginManageOpen = true"><AppIcon name="Settings2" :size="18" /></button>
         <div class="skill-add">
-          <button class="skill-add__trigger" :aria-expanded="addMenuOpen" @click="addMenuOpen = !addMenuOpen"><span>{{ t("skills.add") }}</span><ChevronDown :size="15" /></button>
+          <button class="skill-add__trigger" :aria-expanded="addMenuOpen" @click="addMenuOpen = !addMenuOpen"><span>{{ t("skills.add") }}</span><AppIcon name="ChevronDown" :size="15" /></button>
           <div v-if="addMenuOpen" class="skill-add__menu">
-            <button @click="openMarketplaceDialog"><Package :size="15" /><span><b>{{ t("skills.addMarketplace") }}</b><small>{{ t("skills.addMarketplaceHint") }}</small></span></button>
-            <button @click="openInstall('plugin')"><Plug :size="15" /><span><b>{{ t("skills.installPluginLocal") }}</b><small>{{ t("skills.installPluginLocalHint") }}</small></span></button>
-            <button @click="openInstall('skill')"><Sparkles :size="15" /><span><b>{{ t("skills.addSkill") }}</b><small>{{ t("skills.addSkillHint") }}</small></span></button>
+            <button @click="openMarketplaceDialog"><AppIcon name="Package" :size="15" /><span><b>{{ t("skills.addMarketplace") }}</b><small>{{ t("skills.addMarketplaceHint") }}</small></span></button>
+            <button @click="openInstall('plugin')"><AppIcon name="Plug" :size="15" /><span><b>{{ t("skills.installPluginLocal") }}</b><small>{{ t("skills.installPluginLocalHint") }}</small></span></button>
+            <button @click="openInstall('skill')"><AppIcon name="Sparkles" :size="15" /><span><b>{{ t("skills.addSkill") }}</b><small>{{ t("skills.addSkillHint") }}</small></span></button>
           </div>
         </div>
       </div>
@@ -375,7 +372,7 @@ onMounted(() => void refreshCatalog());
       </header>
 
       <label class="skill-search">
-        <Search :size="18" />
+        <AppIcon name="Search" :size="18" />
         <input v-model="query" :placeholder="activeArea === 'plugins' ? t('skills.searchPlugins') : t('skills.searchSkills')" />
       </label>
 
@@ -388,7 +385,7 @@ onMounted(() => void refreshCatalog());
             <article v-for="skill in visibleInstalledSkills" :key="skill.id" class="capability-row">
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
               <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small></span>
-              <Check :size="18" class="installed-check" />
+              <AppIcon name="Check" :size="18" class="installed-check" />
             </article>
           </div>
           <p v-else-if="!loading" class="section-empty">{{ t("skills.noEnabledSkills") }}</p>
@@ -405,9 +402,9 @@ onMounted(() => void refreshCatalog());
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
               <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small><em v-if="skill.plugin">{{ skill.plugin }}</em></span>
               <button class="skill-state" :class="{ enabled: skill.enabled }" :disabled="updatingSkill === skill.id" :title="skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')" @click="toggleSkill(skill)">
-                <RefreshCw v-if="updatingSkill === skill.id" :size="16" class="spin" />
-                <Check v-else-if="skill.enabled" :size="18" />
-                <Power v-else :size="16" />
+                <AppIcon v-if="updatingSkill === skill.id" name="RefreshCw" :size="16" class="spin" />
+                <AppIcon v-else-if="skill.enabled" name="Check" :size="18" />
+                <AppIcon v-else name="Power" :size="16" />
               </button>
             </article>
           </div>
@@ -417,9 +414,9 @@ onMounted(() => void refreshCatalog());
 
       <template v-else>
         <section class="plugin-installed-strip" aria-labelledby="installed-plugins-title">
-          <header><h2 id="installed-plugins-title">{{ t("skills.installed") }}</h2><button class="plugin-manage-trigger" @click="pluginManageOpen = true"><Settings2 :size="16" />{{ t("skills.manage") }}</button></header>
+          <header><h2 id="installed-plugins-title">{{ t("skills.installed") }}</h2><button class="plugin-manage-trigger" @click="pluginManageOpen = true"><AppIcon name="Settings2" :size="16" />{{ t("skills.manage") }}</button></header>
           <div v-if="plugins.length" class="plugin-icons">
-            <button v-for="plugin in plugins.slice(0, 9)" :key="plugin.id" :title="t('skills.pluginState', { name: plugin.display_name, state: plugin.enabled ? t('skills.enabledState') : t('skills.disabledState') })" :class="{ disabled: !plugin.enabled }" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }" @click="pluginManageOpen = true"><Plug :size="19" /></button>
+            <button v-for="plugin in plugins.slice(0, 9)" :key="plugin.id" :title="t('skills.pluginState', { name: plugin.display_name, state: plugin.enabled ? t('skills.enabledState') : t('skills.disabledState') })" :class="{ disabled: !plugin.enabled }" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }" @click="pluginManageOpen = true"><AppIcon name="Plug" :size="19" /></button>
           </div>
           <p v-else-if="!loading" class="section-empty">{{ t("skills.noLocalPlugins") }}</p>
         </section>
@@ -430,9 +427,9 @@ onMounted(() => void refreshCatalog());
             <button v-for="marketplace in marketplaces" :key="marketplace.id" :class="{ active: activeMarketplace === marketplace.id }" :title="marketplace.source" @click="activeMarketplace = marketplace.id">{{ marketplace.display_name }}</button>
           </nav>
           <div class="marketplace-toolbar__actions">
-            <button :title="t('skills.refreshMarketplace')" :disabled="refreshingMarketplaces || !marketplaces.some((item) => item.updatable)" @click="refreshMarketplaces"><RefreshCw :size="15" :class="{ spin: refreshingMarketplaces }" /></button>
-            <button v-if="activeMarketplaceInfo?.removable" :title="t('skills.removeMarketplace')" @click="removeMarketplace(activeMarketplaceInfo)"><Trash2 :size="15" /></button>
-            <button :title="t('skills.addMarketplace')" @click="openMarketplaceDialog"><Plus :size="16" /></button>
+            <button :title="t('skills.refreshMarketplace')" :disabled="refreshingMarketplaces || !marketplaces.some((item) => item.updatable)" @click="refreshMarketplaces"><AppIcon name="RefreshCw" :size="15" :class="{ spin: refreshingMarketplaces }" /></button>
+            <button v-if="activeMarketplaceInfo?.removable" :title="t('skills.removeMarketplace')" @click="removeMarketplace(activeMarketplaceInfo)"><AppIcon name="Trash2" :size="15" /></button>
+            <button :title="t('skills.addMarketplace')" @click="openMarketplaceDialog"><AppIcon name="Plus" :size="16" /></button>
           </div>
         </div>
 
@@ -440,14 +437,14 @@ onMounted(() => void refreshCatalog());
           <header><h2>{{ activeMarketplaceName }}</h2><small v-if="activeMarketplaceInfo">{{ t("skills.pluginCount", { n: activeMarketplaceInfo.plugin_count }) }}</small></header>
           <div v-if="visibleCatalogPlugins.length" class="capability-list">
             <article v-for="plugin in visibleCatalogPlugins" :key="plugin.id" class="capability-row plugin-row marketplace-plugin-row">
-              <span class="capability-icon plugin-icon" :style="{ '--skill-color': fallbackColor(plugin.name) }"><Package :size="18" /></span>
+              <span class="capability-icon plugin-icon" :style="{ '--skill-color': fallbackColor(plugin.name) }"><AppIcon name="Package" :size="18" /></span>
               <span class="capability-copy"><b>{{ plugin.display_name }}<em v-if="plugin.version">{{ plugin.version }}</em></b><small>{{ plugin.description || t('skills.codexPlugin') }}</small><em>{{ plugin.marketplace_name }}<template v-if="plugin.publisher"> · {{ plugin.publisher }}</template><template v-if="plugin.category"> · {{ plugin.category }}</template></em></span>
-              <span v-if="plugin.installed" class="catalog-installed"><Check :size="15" />{{ t("skills.installed") }}</span>
-              <button v-else class="catalog-install" :disabled="installingCatalogPlugin === plugin.id" @click="installFromCatalog(plugin)"><RefreshCw v-if="installingCatalogPlugin === plugin.id" :size="14" class="spin" /><Plus v-else :size="14" />{{ installingCatalogPlugin === plugin.id ? t('skills.installing') : t('skills.install') }}</button>
+              <span v-if="plugin.installed" class="catalog-installed"><AppIcon name="Check" :size="15" />{{ t("skills.installed") }}</span>
+              <button v-else class="catalog-install" :disabled="installingCatalogPlugin === plugin.id" @click="installFromCatalog(plugin)"><AppIcon v-if="installingCatalogPlugin === plugin.id" name="RefreshCw" :size="14" class="spin" /><AppIcon v-else name="Plus" :size="14" />{{ installingCatalogPlugin === plugin.id ? t('skills.installing') : t('skills.install') }}</button>
             </article>
           </div>
           <div v-else-if="!loading" class="plugin-empty">
-            <Plug :size="22" /><b>{{ marketplaces.length ? t('skills.emptyMarketTitle') : t('skills.noMarketTitle') }}</b><p>{{ marketplaces.length ? t('skills.emptyMarketHint') : t('skills.noMarketHint') }}</p><button @click="openMarketplaceDialog"><Plus :size="14" />{{ t("skills.addMarketplace") }}</button>
+            <AppIcon name="Plug" :size="22" /><b>{{ marketplaces.length ? t('skills.emptyMarketTitle') : t('skills.noMarketTitle') }}</b><p>{{ marketplaces.length ? t('skills.emptyMarketHint') : t('skills.noMarketHint') }}</p><button @click="openMarketplaceDialog"><AppIcon name="Plus" :size="14" />{{ t("skills.addMarketplace") }}</button>
           </div>
         </section>
       </template>
@@ -455,9 +452,9 @@ onMounted(() => void refreshCatalog());
 
     <div v-if="installDialogOpen" class="skill-dialog-backdrop" @mousedown.self="installDialogOpen = false">
       <form class="skill-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title" @submit.prevent="submitInstall">
-        <header><div><h2 id="install-title">{{ installKind === 'plugin' ? t('skills.addPlugin') : t('skills.addSkill') }}</h2><p>{{ installKind === 'plugin' ? t('skills.installPluginDesc') : t('skills.installSkillDesc') }}</p></div><button type="button" :aria-label="t('skills.close')" @click="installDialogOpen = false"><X :size="17" /></button></header>
+        <header><div><h2 id="install-title">{{ installKind === 'plugin' ? t('skills.addPlugin') : t('skills.addSkill') }}</h2><p>{{ installKind === 'plugin' ? t('skills.installPluginDesc') : t('skills.installSkillDesc') }}</p></div><button type="button" :aria-label="t('skills.close')" @click="installDialogOpen = false"><AppIcon name="X" :size="17" /></button></header>
         <label>{{ t("skills.installLocation") }}<select v-model="installScope"><option value="personal">{{ t("skills.personal") }}</option><option value="workspace" :disabled="!workspaceId">{{ t("skills.currentWorkspace") }}{{ workspaceName ? ` · ${workspaceName}` : '' }}</option></select></label>
-        <label>{{ t("skills.localSource") }}<div class="source-path-input"><input v-model="installSource" autofocus :placeholder="t('skills.sourcePlaceholder')" /><button type="button" @click="browseInstallSource"><FolderOpen :size="15" />{{ t("skills.browse") }}</button></div></label>
+        <label>{{ t("skills.localSource") }}<div class="source-path-input"><input v-model="installSource" autofocus :placeholder="t('skills.sourcePlaceholder')" /><button type="button" @click="browseInstallSource"><AppIcon name="FolderOpen" :size="15" />{{ t("skills.browse") }}</button></div></label>
         <p v-if="installError" class="install-error">{{ installError }}</p>
         <footer><button type="button" @click="installDialogOpen = false">{{ t("skills.cancel") }}</button><button class="primary" :disabled="!installSource.trim() || installing">{{ installing ? t('skills.installingDots') : t('skills.installNow') }}</button></footer>
       </form>
@@ -465,7 +462,7 @@ onMounted(() => void refreshCatalog());
 
     <div v-if="marketplaceDialogOpen" class="skill-dialog-backdrop marketplace-backdrop" @mousedown.self="marketplaceDialogOpen = false">
       <form class="skill-dialog marketplace-dialog" role="dialog" aria-modal="true" aria-labelledby="marketplace-title" @submit.prevent="submitMarketplace">
-        <header><div><h2 id="marketplace-title">{{ t("skills.marketplaceTitle") }}</h2><p>{{ t("skills.marketplaceDesc") }} <a href="https://developers.openai.com/plugins/build/plugins" target="_blank" rel="noreferrer">{{ t("skills.learnMore") }}</a></p></div><button type="button" :aria-label="t('skills.close')" @click="marketplaceDialogOpen = false"><X :size="19" /></button></header>
+        <header><div><h2 id="marketplace-title">{{ t("skills.marketplaceTitle") }}</h2><p>{{ t("skills.marketplaceDesc") }} <a href="https://developers.openai.com/plugins/build/plugins" target="_blank" rel="noreferrer">{{ t("skills.learnMore") }}</a></p></div><button type="button" :aria-label="t('skills.close')" @click="marketplaceDialogOpen = false"><AppIcon name="X" :size="19" /></button></header>
         <label>{{ t("skills.sourceLabel") }}<input ref="marketplaceSourceInput" v-model="marketplaceSource" :placeholder="t('skills.sourceInputPlaceholder')" /></label>
         <label>{{ t("skills.gitRef") }}<input v-model="marketplaceGitRef" :placeholder="t('skills.gitRefPlaceholder')" /></label>
         <label>{{ t("skills.sparsePaths") }}<textarea v-model="marketplaceSparsePaths" rows="4" placeholder="plugins/codex" /></label>
@@ -476,13 +473,13 @@ onMounted(() => void refreshCatalog());
 
     <div v-if="pluginManageOpen" class="skill-dialog-backdrop" @mousedown.self="pluginManageOpen = false">
       <section class="skill-dialog plugin-manage-dialog" role="dialog" aria-modal="true" aria-labelledby="plugin-manage-title">
-        <header><div><h2 id="plugin-manage-title">{{ t("skills.managePluginsTitle") }}</h2><p>{{ t("skills.managePluginsDesc") }}</p></div><button type="button" :aria-label="t('skills.close')" @click="pluginManageOpen = false"><X :size="17" /></button></header>
+        <header><div><h2 id="plugin-manage-title">{{ t("skills.managePluginsTitle") }}</h2><p>{{ t("skills.managePluginsDesc") }}</p></div><button type="button" :aria-label="t('skills.close')" @click="pluginManageOpen = false"><AppIcon name="X" :size="17" /></button></header>
         <div v-if="visibleInstalledPlugins.length" class="plugin-manage-list">
           <article v-for="plugin in visibleInstalledPlugins" :key="plugin.id" :class="{ disabled: !plugin.enabled }">
-            <span class="plugin-manage-icon" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }"><Plug :size="17" /></span>
+            <span class="plugin-manage-icon" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }"><AppIcon name="Plug" :size="17" /></span>
             <span><b>{{ plugin.display_name }}</b><small>{{ pluginDescription(plugin) }}</small><em>{{ plugin.source === 'workspace' ? t('skills.workspaceScope') : t('skills.personal') }}<template v-if="plugin.version"> · {{ plugin.version }}</template></em></span>
-            <button class="plugin-toggle" :class="{ enabled: plugin.enabled }" :disabled="updatingPlugin === plugin.id" :title="plugin.enabled ? t('skills.disablePlugin') : t('skills.enablePlugin')" @click="togglePlugin(plugin)"><RefreshCw v-if="updatingPlugin === plugin.id" :size="14" class="spin" /><span v-else /></button>
-            <button class="plugin-remove" :disabled="updatingPlugin === plugin.id" :title="t('skills.uninstallPlugin')" @click="removeInstalledPlugin(plugin)"><Trash2 :size="15" /></button>
+            <button class="plugin-toggle" :class="{ enabled: plugin.enabled }" :disabled="updatingPlugin === plugin.id" :title="plugin.enabled ? t('skills.disablePlugin') : t('skills.enablePlugin')" @click="togglePlugin(plugin)"><AppIcon v-if="updatingPlugin === plugin.id" name="RefreshCw" :size="14" class="spin" /><span v-else /></button>
+            <button class="plugin-remove" :disabled="updatingPlugin === plugin.id" :title="t('skills.uninstallPlugin')" @click="removeInstalledPlugin(plugin)"><AppIcon name="Trash2" :size="15" /></button>
           </article>
         </div>
         <p v-else class="section-empty">{{ t("skills.noMatchPlugins") }}</p>

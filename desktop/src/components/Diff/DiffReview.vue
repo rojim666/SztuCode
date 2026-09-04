@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ArrowLeft, Check, FileText, RotateCw, X } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { changeDiff, listChanges, revertChanges, stageChanges, type ChangeSummary } from "../../services/sztu-runtime";
 
 const props = defineProps<{ workspaceId: string; runId: string; paths: string[] }>();
@@ -160,7 +160,7 @@ function diffLines(text: string) {
 <template>
   <div class="diff-review">
     <header class="diff-review__top">
-      <button type="button" class="diff-review__back" @click="emit('close')"><ArrowLeft :size="16" />返回</button>
+      <button type="button" class="diff-review__back" @click="emit('close')"><AppIcon name="ArrowLeft" :size="16" />返回</button>
       <div class="diff-review__identity">
         <h1>代码变更审核</h1>
         <span class="diff-review__run">run {{ runId.slice(0, 8) }}</span>
@@ -175,20 +175,20 @@ function diffLines(text: string) {
         <div v-if="loadingChanges && !changes.length" class="diff-review__status">正在加载改动列表…</div>
         <div v-else-if="changesError && !changes.length" class="diff-review__status diff-review__error">
           <span>加载失败：{{ changesError }}</span>
-          <button type="button" class="diff-review__retry" @click="loadChanges"><RotateCw :size="12" />重试</button>
+          <button type="button" class="diff-review__retry" @click="loadChanges"><AppIcon name="RotateCw" :size="12" />重试</button>
         </div>
         <template v-else>
           <div v-for="change in changes" :key="change.path" class="diff-review__file"
                :class="{ active: selected === change.path, accepted: accepted.has(change.path), rejected: rejected.has(change.path), busy: busy.has(change.path) }">
             <button type="button" class="diff-review__file-path" :disabled="busy.has(change.path) || loadingDiff" @click="select(change.path)">
-              <FileText :size="14" /><span>{{ change.path }}</span>
+              <AppIcon name="FileText" :size="14" /><span>{{ change.path }}</span>
             </button>
             <span class="diff-review__file-nums"><em class="add">+{{ change.additions ?? 0 }}</em><em class="del">−{{ change.deletions ?? 0 }}</em></span>
             <span v-if="accepted.has(change.path)" class="diff-review__badge accepted">已暂存</span>
             <span v-else-if="rejected.has(change.path)" class="diff-review__badge rejected">已拒绝</span>
             <template v-else>
-              <button type="button" class="diff-review__file-accept" :disabled="busy.has(change.path) || busyAll" title="接受并暂存" @click="accept(change.path)"><Check :size="13" /></button>
-              <button type="button" class="diff-review__file-reject" :disabled="busy.has(change.path) || busyAll" title="拒绝并回滚" @click="reject(change.path)"><X :size="13" /></button>
+              <button type="button" class="diff-review__file-accept" :disabled="busy.has(change.path) || busyAll" title="接受并暂存" @click="accept(change.path)"><AppIcon name="Check" :size="13" /></button>
+              <button type="button" class="diff-review__file-reject" :disabled="busy.has(change.path) || busyAll" title="拒绝并回滚" @click="reject(change.path)"><AppIcon name="X" :size="13" /></button>
             </template>
           </div>
           <p v-if="!changes.length" class="diff-review__empty">暂无待审文件</p>
@@ -201,7 +201,7 @@ function diffLines(text: string) {
           <div v-if="loadingDiff" class="diff-review__status">正在加载差异…</div>
           <div v-else-if="diffError && !diff" class="diff-review__status diff-review__error">
             <span>差异加载失败：{{ diffError }}</span>
-            <button type="button" class="diff-review__retry" @click="retryDiff"><RotateCw :size="12" />重试</button>
+            <button type="button" class="diff-review__retry" @click="retryDiff"><AppIcon name="RotateCw" :size="12" />重试</button>
           </div>
           <template v-else>
             <pre class="diff-review__pre"><code v-for="(line, index) in parsedDiffLines" :key="index" :class="line.cls">{{ line.text }}{{ '\n' }}</code></pre>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
-import { Brain, Check, ChevronDown, Code2, Edit3, FolderOpen, LoaderCircle, Search, Terminal, XCircle } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
 import { reasoningSummary, firstLine } from "../../utils/reasoningSummary";
@@ -112,22 +112,22 @@ const thinkingRunning = computed(() => props.running || catchingUp.value);
 
 // 按类型分组统计工具调用；label 取自语言包，computed 内调用 t 保证切换语言时重建
 const groups = computed(() => {
-  const buckets: Record<string, { label: string; icon: typeof Terminal; count: number }> = {};
+  const buckets: Record<string, { label: string; icon: string; count: number }> = {};
   for (const call of props.calls) {
     const name = call.name.toLowerCase();
     let key: string;
     let label: string;
-    let icon: typeof Terminal;
+    let icon: string;
     if (/read|file|dir|ls/i.test(name)) {
-      key = "file"; label = t("timeline.activity.toolKind.read"); icon = FolderOpen;
+      key = "file"; label = t("timeline.activity.toolKind.read"); icon = "FolderOpen";
     } else if (/glob|search|grep|find/i.test(name)) {
-      key = "search"; label = t("timeline.activity.toolKind.search"); icon = Search;
+      key = "search"; label = t("timeline.activity.toolKind.search"); icon = "Search";
     } else if (/edit|write|patch|create/i.test(name)) {
-      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = Edit3;
+      key = "edit"; label = t("timeline.activity.toolKind.edit"); icon = "Edit3";
     } else if (/bash|shell|terminal|command|powershell|pwsh|exec|run/i.test(name)) {
-      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = Terminal;
+      key = "exec"; label = t("timeline.activity.toolKind.exec"); icon = "Terminal";
     } else {
-      key = "other"; label = t("timeline.activity.toolKind.call"); icon = Code2;
+      key = "other"; label = t("timeline.activity.toolKind.call"); icon = "Code2";
     }
     if (!buckets[key]) buckets[key] = { label, icon, count: 0 };
     buckets[key].count++;
@@ -224,19 +224,19 @@ watch([thinkingPreview, thinkingRunning], () => {
         <!-- 运行中：蓝色旋转圆圈 -->
         <template v-if="running">
           <span v-if="stepIndex !== undefined" class="step-badge step-badge--running">{{ stepIndex }}</span>
-          <LoaderCircle v-else class="spin" :size="14" />
+          <AppIcon v-else name="LoaderCircle" class="spin" :size="14" />
         </template>
         <!-- 失败：红色圆形叉号 -->
         <template v-else-if="hasFailedCalls">
-          <XCircle :size="14" />
+          <AppIcon name="XCircle" :size="14" />
         </template>
         <!-- 完成：绿色圆形对勾 -->
         <template v-else-if="completed">
           <span v-if="stepIndex !== undefined" class="step-badge step-badge--done">{{ stepIndex }}</span>
-          <Check v-else :size="14" />
+          <AppIcon v-else name="Check" :size="14" />
         </template>
         <!-- 默认/仅有思考：灰色脑图标 -->
-        <Brain v-else :size="13" />
+        <AppIcon v-else name="Brain" :size="13" />
       </span>
 
       <!-- 行为目的描述 -->
@@ -259,7 +259,7 @@ watch([thinkingPreview, thinkingRunning], () => {
         {{ t('timeline.activity.failHint') }}
       </span>
 
-      <ChevronDown v-if="hasContent" class="activity-phase__chevron" :size="11" />
+      <AppIcon v-if="hasContent" name="ChevronDown" class="activity-phase__chevron" :size="11" />
     </button>
 
     <transition name="phase-expand">
@@ -271,7 +271,7 @@ watch([thinkingPreview, thinkingRunning], () => {
         <!-- 工具调用列表 -->
         <div v-if="calls.length" class="activity-phase__tools">
           <div v-if="thinking" class="activity-phase__section-label">
-            <Terminal :size="11" /> {{ t('timeline.activity.toolCalls') }}
+            <AppIcon name="Terminal" :size="11" /> {{ t('timeline.activity.toolCalls') }}
           </div>
           <ToolCallCard v-for="call in calls" :key="call.id" :call="call" :compact="true" />
         </div>

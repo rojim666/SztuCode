@@ -4,11 +4,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  Bot, Check, Clock3, Cpu, Download, ExternalLink, GitFork, Globe2, Image, Info, Languages, Link2, Server,
-  LoaderCircle, Monitor, Moon, Palette, Plus, Settings2, SlidersHorizontal, Sun, Trash2,
-  Type, Upload, X,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import appPackage from "../../../package.json";
 import { localeOptions, setLocale, type AppLocale } from "../../i18n";
 import { useFocusTrap } from "../../composables/useFocusTrap";
@@ -255,18 +251,18 @@ async function useCcswitchProvider(providerId: string) {
   }
 }
 
-const sections = computed<Array<{ id: SettingsSection; label: string; icon: typeof Palette }>>(() => [
-  { id: "appearance", label: t("settings.sections.appearance"), icon: Palette },
-  { id: "general", label: t("settings.sections.general"), icon: SlidersHorizontal },
-  { id: "agent", label: t("settings.sections.agent"), icon: Cpu },
-  { id: "integrations", label: t("settings.sections.integrations"), icon: Globe2 },
-  { id: "about", label: t("settings.sections.about"), icon: Info },
+const sections = computed<Array<{ id: SettingsSection; label: string; icon: string }>>(() => [
+  { id: "appearance", label: t("settings.sections.appearance"), icon: "Palette" },
+  { id: "general", label: t("settings.sections.general"), icon: "SlidersHorizontal" },
+  { id: "agent", label: t("settings.sections.agent"), icon: "Cpu" },
+  { id: "integrations", label: t("settings.sections.integrations"), icon: "Globe2" },
+  { id: "about", label: t("settings.sections.about"), icon: "Info" },
 ]);
 
-const themes = computed<Array<{ id: ThemePreference; label: string; icon: typeof Sun }>>(() => [
-  { id: "system", label: t("settings.appearance.theme.system"), icon: Monitor },
-  { id: "light", label: t("settings.appearance.theme.light"), icon: Sun },
-  { id: "dark", label: t("settings.appearance.theme.dark"), icon: Moon },
+const themes = computed<Array<{ id: ThemePreference; label: string; icon: string }>>(() => [
+  { id: "system", label: t("settings.appearance.theme.system"), icon: "Monitor" },
+  { id: "light", label: t("settings.appearance.theme.light"), icon: "Sun" },
+  { id: "dark", label: t("settings.appearance.theme.dark"), icon: "Moon" },
 ]);
 
 const wallpapers = computed<Array<{ id: WallpaperStyle; label: string }>>(() => [
@@ -295,13 +291,13 @@ function selectLocale(value: AppLocale) {
         <div>
           <h1 id="settings-title">{{ t('settings.title') }}</h1>
         </div>
-        <button type="button" class="icon-btn" :title="t('settings.close')" :aria-label="t('settings.close')" @click="close"><X :size="16" /></button>
+        <button type="button" class="icon-btn" :title="t('settings.close')" :aria-label="t('settings.close')" @click="close"><AppIcon name="X" :size="16" /></button>
       </header>
 
       <div class="settings-dialog__body">
         <nav class="settings-dialog__nav" :aria-label="t('settings.navAria')">
           <button v-for="item in sections" :key="item.id" type="button" class="nav-item" :class="{ active: activeSection === item.id }" @click="activeSection = item.id">
-            <component :is="item.icon" :size="16" :stroke-width="1.8" />
+            <AppIcon :name="item.icon" :size="16" :filled="activeSection === item.id" />
             <span>{{ item.label }}</span>
           </button>
           <div class="settings-dialog__nav-foot">
@@ -317,7 +313,7 @@ function selectLocale(value: AppLocale) {
                 <h2>{{ t('settings.appearance.title') }}</h2>
                 <p>{{ t('settings.appearance.subtitle') }}</p>
               </div>
-              <Palette :size="18" />
+              <AppIcon name="Palette" :size="18" />
             </header>
 
             <section class="settings-card">
@@ -329,9 +325,9 @@ function selectLocale(value: AppLocale) {
               </div>
               <div class="option-grid option-grid--3" role="radiogroup" :aria-label="t('settings.appearance.theme.groupAria')">
                 <button v-for="item in themes" :key="item.id" type="button" class="option-btn" role="radio" :aria-checked="localAppearance.theme === item.id" :class="{ selected: localAppearance.theme === item.id }" @click="updateAppearance({ theme: item.id })">
-                  <component :is="item.icon" :size="16" />
+                  <AppIcon :name="item.icon" :size="16" :filled="localAppearance.theme === item.id" />
                   <span>{{ item.label }}</span>
-                  <Check v-if="localAppearance.theme === item.id" :size="14" class="check-icon" />
+                  <AppIcon v-if="localAppearance.theme === item.id" name="Check" :size="14" class="check-icon" />
                 </button>
               </div>
             </section>
@@ -342,20 +338,20 @@ function selectLocale(value: AppLocale) {
                   <h3>{{ t('settings.appearance.wallpaper.title') }}</h3>
                   <p>{{ t('settings.appearance.wallpaper.desc') }}</p>
                 </div>
-                <Image :size="16" />
+                <AppIcon name="Image" :size="16" />
               </div>
               <div class="option-grid option-grid--4" role="radiogroup" :aria-label="t('settings.appearance.wallpaper.groupAria')">
                 <button v-for="item in wallpapers" :key="item.id" type="button" class="wallpaper-btn" role="radio" :aria-checked="localAppearance.wallpaper === item.id" :class="['wallpaper-btn--' + item.id, { selected: localAppearance.wallpaper === item.id }]" @click="updateAppearance({ wallpaper: item.id })">
                   <span class="wallpaper-preview"><i /><b /></span>
                   <span class="wallpaper-label">{{ item.label }}</span>
-                  <Check v-if="localAppearance.wallpaper === item.id" :size="14" class="check-icon" />
+                  <AppIcon v-if="localAppearance.wallpaper === item.id" name="Check" :size="14" class="check-icon" />
                 </button>
               </div>
               <input ref="wallpaperInput" class="wallpaper-file-input" type="file" accept="image/png,image/jpeg,image/webp" @change="uploadWallpaper" />
               <div :class="['custom-wallpaper', { selected: localAppearance.wallpaper === 'custom' }]">
                 <button type="button" class="custom-wallpaper__preview" role="radio" :aria-checked="localAppearance.wallpaper === 'custom'" :aria-label="t('settings.appearance.wallpaper.customAria')" @click="selectCustomWallpaper">
                   <span v-if="localAppearance.customWallpaper" :style="{ backgroundImage: `url(${JSON.stringify(localAppearance.customWallpaper)})` }" />
-                  <Upload v-else :size="18" />
+                  <AppIcon v-else name="Upload" :size="18" />
                 </button>
                 <div class="custom-wallpaper__meta">
                   <b>{{ localAppearance.customWallpaperName || t('settings.appearance.wallpaper.customDefault') }}</b>
@@ -363,9 +359,9 @@ function selectLocale(value: AppLocale) {
                 </div>
                 <div class="custom-wallpaper__actions">
                   <button type="button" class="btn btn--ghost btn--sm" :disabled="wallpaperProcessing" @click="chooseWallpaperFile">
-                    <Upload :size="13" />{{ wallpaperProcessing ? t('settings.appearance.wallpaper.processing') : (localAppearance.customWallpaper ? t('settings.appearance.wallpaper.replace') : t('settings.appearance.wallpaper.upload')) }}
+                    <AppIcon name="Upload" :size="13" />{{ wallpaperProcessing ? t('settings.appearance.wallpaper.processing') : (localAppearance.customWallpaper ? t('settings.appearance.wallpaper.replace') : t('settings.appearance.wallpaper.upload')) }}
                   </button>
-                  <button v-if="localAppearance.customWallpaper" type="button" class="icon-btn icon-btn--sm icon-btn--danger" :title="t('settings.appearance.wallpaper.remove')" :aria-label="t('settings.appearance.wallpaper.remove')" @click="removeCustomWallpaper"><Trash2 :size="13" /></button>
+                  <button v-if="localAppearance.customWallpaper" type="button" class="icon-btn icon-btn--sm icon-btn--danger" :title="t('settings.appearance.wallpaper.remove')" :aria-label="t('settings.appearance.wallpaper.remove')" @click="removeCustomWallpaper"><AppIcon name="Trash2" :size="13" /></button>
                 </div>
               </div>
               <p v-if="wallpaperError" class="form-error" role="alert">{{ wallpaperError }}</p>
@@ -384,7 +380,7 @@ function selectLocale(value: AppLocale) {
                   <h3>{{ t('settings.appearance.transparency.title') }}</h3>
                   <p>{{ t('settings.appearance.transparency.desc') }}</p>
                 </div>
-                <SlidersHorizontal :size="16" />
+                <AppIcon name="SlidersHorizontal" :size="16" />
               </div>
               <div :class="['slider-group', { disabled: localAppearance.wallpaper === 'none' }]" :aria-disabled="localAppearance.wallpaper === 'none'">
                 <label class="slider-row slider-row--bordered">
@@ -428,7 +424,7 @@ function selectLocale(value: AppLocale) {
                 </div>
                 <div class="accent-picker" role="radiogroup" :aria-label="t('settings.appearance.accent.groupAria')">
                   <button v-for="item in accents" :key="item.id" type="button" class="accent-dot" role="radio" :aria-label="item.label" :title="item.label" :aria-checked="localAppearance.accent === item.id" :class="['accent-' + item.id, { selected: localAppearance.accent === item.id }]" @click="updateAppearance({ accent: item.id })">
-                    <Check v-if="localAppearance.accent === item.id" :size="12" />
+                    <AppIcon v-if="localAppearance.accent === item.id" name="Check" :size="12" />
                   </button>
                 </div>
               </div>
@@ -444,13 +440,13 @@ function selectLocale(value: AppLocale) {
                   <h3>{{ t('settings.appearance.font.title') }}</h3>
                   <p>{{ t('settings.appearance.font.desc') }}</p>
                 </div>
-                <Type :size="16" />
+                <AppIcon name="Type" :size="16" />
               </div>
               <div class="option-grid option-grid--3" role="radiogroup" :aria-label="t('settings.appearance.font.uiGroupAria')">
                 <button v-for="item in uiFontOptions" :key="item.id" type="button" class="font-btn" role="radio" :aria-label="item.label" :aria-checked="localAppearance.uiFont === item.id" :class="{ selected: localAppearance.uiFont === item.id }" @click="updateAppearance({ uiFont: item.id })">
                   <span class="font-sample" :style="{ fontFamily: item.family }">{{ t('settings.appearance.font.sampleText') }}</span>
                   <span class="font-name">{{ item.label }}</span>
-                  <Check v-if="localAppearance.uiFont === item.id" :size="14" class="check-icon" />
+                  <AppIcon v-if="localAppearance.uiFont === item.id" name="Check" :size="14" class="check-icon" />
                 </button>
               </div>
               <div class="form-row">
@@ -471,7 +467,7 @@ function selectLocale(value: AppLocale) {
                 <div class="stepper">
                   <button type="button" class="stepper-btn" :title="t('settings.appearance.font.decrease')" :aria-label="t('settings.appearance.font.decrease')" :disabled="localAppearance.fontSize <= MIN_UI_FONT_SIZE" @click="changeFontSize(-1)">−</button>
                   <output class="stepper-value">{{ fontSizeLabel }}</output>
-                  <button type="button" class="stepper-btn" :title="t('settings.appearance.font.increase')" :aria-label="t('settings.appearance.font.increase')" :disabled="localAppearance.fontSize >= MAX_UI_FONT_SIZE" @click="changeFontSize(1)"><Plus :size="12" /></button>
+                  <button type="button" class="stepper-btn" :title="t('settings.appearance.font.increase')" :aria-label="t('settings.appearance.font.increase')" :disabled="localAppearance.fontSize >= MAX_UI_FONT_SIZE" @click="changeFontSize(1)"><AppIcon name="Plus" :size="12" /></button>
                 </div>
               </div>
               <label class="slider-row">
@@ -511,7 +507,7 @@ function selectLocale(value: AppLocale) {
                 <h2>{{ t('settings.general.title') }}</h2>
                 <p>{{ t('settings.general.subtitle') }}</p>
               </div>
-              <Settings2 :size="18" />
+              <AppIcon name="Settings2" :size="18" />
             </header>
             <section class="settings-card">
               <div class="settings-card__heading">
@@ -519,7 +515,7 @@ function selectLocale(value: AppLocale) {
                   <h3>{{ t('settings.language.title') }}</h3>
                   <p>{{ t('settings.language.desc') }}</p>
                 </div>
-                <Languages :size="16" />
+                <AppIcon name="Languages" :size="16" />
               </div>
               <div class="form-row">
                 <label class="form-field">
@@ -573,7 +569,7 @@ function selectLocale(value: AppLocale) {
               <div>
                 <h2>{{ t('settings.sections.agent') }}</h2>
               </div>
-              <Cpu :size="18" />
+              <AppIcon name="Cpu" :size="18" />
             </header>
             <section class="settings-card settings-card--flush">
               <ModelManager embedded @close="close" @updated="handleModelUpdated" />
@@ -586,11 +582,11 @@ function selectLocale(value: AppLocale) {
                 <h2>{{ t('settings.integrations.title') }}</h2>
                 <p>{{ t('settings.integrations.subtitle') }}</p>
               </div>
-              <Globe2 :size="18" />
+              <AppIcon name="Globe2" :size="18" />
             </header>
             <section class="settings-card">
               <div class="integration-row">
-                <span class="integration-icon"><Link2 :size="17" :stroke-width="1.7" /></span>
+                <span class="integration-icon"><AppIcon name="Link2" :size="17" /></span>
                 <div class="integration-text">
                   <b>{{ t('settings.integrations.browser.title') }}</b>
                   <p>{{ t('settings.integrations.browser.desc') }}</p>
@@ -598,7 +594,7 @@ function selectLocale(value: AppLocale) {
                 <em class="status-badge">{{ t('settings.integrations.browser.status') }}</em>
               </div>
               <div class="integration-row">
-                <span class="integration-icon"><Server :size="17" :stroke-width="1.7" /></span>
+                <span class="integration-icon"><AppIcon name="Server" :size="17" /></span>
                 <div class="integration-text">
                   <b>{{ t('settings.integrations.runtime.title') }}</b>
                   <p>{{ t('settings.integrations.runtime.desc') }}</p>
@@ -606,7 +602,7 @@ function selectLocale(value: AppLocale) {
                 <em class="status-badge status-badge--online">{{ t('settings.integrations.runtime.status') }}</em>
               </div>
               <div class="integration-row">
-                <span class="integration-icon"><Clock3 :size="17" :stroke-width="1.7" /></span>
+                <span class="integration-icon"><AppIcon name="Clock3" :size="17" /></span>
                 <div class="integration-text">
                   <b>{{ t('settings.integrations.background.title') }}</b>
                   <p>{{ t('settings.integrations.background.desc') }}</p>
@@ -622,7 +618,7 @@ function selectLocale(value: AppLocale) {
                 </div>
               </div>
               <button type="button" class="btn btn--primary" :disabled="ccswitchLoading" @click="loadCcswitchProviders">
-                <Download :size="15" />
+                <AppIcon name="Download" :size="15" />
                 {{ ccswitchLoading ? t('settings.integrations.ccswitch.loading') : t('settings.integrations.ccswitch.import') }}
               </button>
               <div v-if="ccswitchError" class="form-error" role="alert">{{ ccswitchError }}</div>
@@ -631,8 +627,8 @@ function selectLocale(value: AppLocale) {
                 <div class="ccswitch-list">
                   <button v-for="provider in ccswitchProviders" :key="provider.id" type="button" class="ccswitch-item" :disabled="ccswitchApplying === provider.id" @click="useCcswitchProvider(provider.id)">
                     <span class="ccswitch-name">{{ provider.name }}</span>
-                    <LoaderCircle v-if="ccswitchApplying === provider.id" class="spin" :size="14" />
-                    <Plus v-else :size="14" />
+                    <AppIcon v-if="ccswitchApplying === provider.id" name="LoaderCircle" class="spin" :size="14" />
+                    <AppIcon v-else name="Plus" :size="14" />
                   </button>
                 </div>
               </div>
@@ -645,7 +641,7 @@ function selectLocale(value: AppLocale) {
                 <h2>{{ t('settings.about.title') }}</h2>
                 <p>{{ t('settings.about.subtitle') }}</p>
               </div>
-              <Info :size="18" />
+              <AppIcon name="Info" :size="18" />
             </header>
             <section class="settings-card settings-card--about">
               <div class="about-header">
@@ -664,9 +660,9 @@ function selectLocale(value: AppLocale) {
                   <dt>{{ t('settings.about.link') }}</dt>
                   <dd>
                     <button type="button" class="link-btn" :aria-label="t('settings.about.openLink')" :title="t('settings.about.openBrowser')" @click="openProjectLink">
-                      <GitFork :size="14" />
+                      <AppIcon name="GitFork" :size="14" />
                       <span>github.com/rojim666/SztuCode</span>
-                      <ExternalLink :size="12" />
+                      <AppIcon name="ExternalLink" :size="12" />
                     </button>
                   </dd>
                 </div>

@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  ChevronRight,
-  AlertCircle,
-  FileSearch,
-  FolderOpen,
-  Edit3,
-  Terminal,
-  Code2,
-  LoaderCircle,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
 
@@ -42,7 +33,7 @@ function classifyCall(name: string): CallKind {
 
 type GroupInfo = {
   kind: CallKind;
-  icon: typeof FolderOpen;
+  icon: string;
   count: number;
   failed: number;
   isRunning: boolean;
@@ -51,12 +42,12 @@ type GroupInfo = {
 
 const groups = computed<GroupInfo[]>(() => {
   const order: CallKind[] = ["read", "search", "edit", "exec", "other"];
-  const iconMap: Record<CallKind, typeof FolderOpen> = {
-    read: FolderOpen,
-    search: FileSearch,
-    edit: Edit3,
-    exec: Terminal,
-    other: Code2,
+  const iconMap: Record<CallKind, string> = {
+    read: "FolderOpen",
+    search: "FileSearch",
+    edit: "Edit3",
+    exec: "Terminal",
+    other: "Code2",
   };
 
   const counts: Record<CallKind, { count: number; failed: number; running: boolean }> = {
@@ -113,20 +104,20 @@ const expandable = computed(() =>
     >
       <span class="tool-summary__chips">
         <span v-for="g in groups" :key="g.kind" class="tool-chip" :class="`tool-chip--${g.kind}`">
-          <LoaderCircle v-if="g.isRunning" class="spin" :size="13" />
-          <AlertCircle v-else-if="g.failed" :size="13" />
-          <component v-else :is="g.icon" :size="13" />
+          <AppIcon v-if="g.isRunning" name="LoaderCircle" class="spin" :size="13" />
+          <AppIcon v-else-if="g.failed" name="AlertCircle" :size="13" />
+          <AppIcon v-else :name="g.icon" :size="13" />
           <span>{{ g.chipText }}</span>
         </span>
       </span>
-      <ChevronRight class="tool-summary__chevron" :size="12" />
+      <AppIcon name="ChevronRight" class="tool-summary__chevron" :size="12" />
     </button>
     <div v-else class="tool-summary__static">
       <span class="tool-summary__chips">
         <span v-for="g in groups" :key="g.kind" class="tool-chip" :class="`tool-chip--${g.kind}`">
-          <LoaderCircle v-if="g.isRunning" class="spin" :size="13" />
-          <AlertCircle v-else-if="g.failed" :size="13" />
-          <component v-else :is="g.icon" :size="13" />
+          <AppIcon v-if="g.isRunning" name="LoaderCircle" class="spin" :size="13" />
+          <AppIcon v-else-if="g.failed" name="AlertCircle" :size="13" />
+          <AppIcon v-else :name="g.icon" :size="13" />
           <span>{{ g.chipText }}</span>
         </span>
       </span>

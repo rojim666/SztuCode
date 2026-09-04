@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Braces, CornerDownLeft, Terminal } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import { useI18n } from "vue-i18n";
 import { BUILT_IN_SLASH_COMMANDS, slashMenuItems } from "./slash-menu";
 
@@ -39,10 +39,10 @@ const itemIndex = (id: string) => items.value.findIndex((item) => item.id === id
           @mousedown.prevent
           @click="emit('select', item.name)"
         >
-          <span class="slash-menu__icon command"><Terminal :size="15" /></span>
+          <span class="slash-menu__icon command"><AppIcon name="Terminal" :size="15" :filled="itemIndex(item.id) === activeIndex" /></span>
           <b>/{{ item.name }}</b>
           <span>{{ item.description }}</span>
-          <CornerDownLeft v-if="itemIndex(item.id) === activeIndex" :size="13" />
+          <AppIcon name="CornerDownLeft" v-if="itemIndex(item.id) === activeIndex" :size="13" />
         </button>
       </section>
 
@@ -59,15 +59,15 @@ const itemIndex = (id: string) => items.value.findIndex((item) => item.id === id
           @mousedown.prevent
           @click="emit('select', item.name)"
         >
-          <span class="slash-menu__icon"><Braces :size="15" /></span>
+          <span class="slash-menu__icon"><AppIcon name="Braces" :size="15" :filled="itemIndex(item.id) === activeIndex" /></span>
           <b>/{{ item.name }}</b>
           <span>{{ item.description || t('palette.invokeSkill') }}</span>
-          <CornerDownLeft v-if="itemIndex(item.id) === activeIndex" :size="13" />
+          <AppIcon name="CornerDownLeft" v-if="itemIndex(item.id) === activeIndex" :size="13" />
         </button>
       </section>
 
       <div v-if="!items.length" class="slash-menu__empty">
-        <Braces :size="20" />
+        <AppIcon name="Braces" :size="20" />
         <b>{{ t('palette.emptyTitle') }}</b>
         <span>{{ t('palette.emptyHint') }}</span>
       </div>

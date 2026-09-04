@@ -1,18 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import {
-  Folder,
-  Folders,
-  LoaderCircle,
-  FileX2,
-  PanelLeftClose,
-  PanelLeftOpen,
-  X,
-  ChevronDown,
-  ExternalLink,
-  FolderOpen,
-  Monitor,
-} from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import {
   readFile,
   workspaceTree,
@@ -485,10 +473,10 @@ onMounted(() => void loadDir(null));
             @keydown.enter.self.prevent="switchTab(tab.path)"
             @keydown.space.self.prevent="switchTab(tab.path)"
           >
-            <Folder :size="13" />
+            <AppIcon name="Folder" :size="13" :filled="tab.path === activeTabPath" />
             <span class="file-tab-name" :title="tab.path">{{ tab.name }}</span>
             <button class="file-tab-close" @click="closeTab(tab.path, $event)" title="关闭">
-              <X :size="12" />
+              <AppIcon name="X" :size="12" />
             </button>
           </div>
         </div>
@@ -496,9 +484,9 @@ onMounted(() => void loadDir(null));
           <!-- Open 按钮 -->
           <div v-if="activeTab" class="file-open-wrap">
             <button ref="openBtnRef" class="file-open-btn" @click="toggleOpenMenu" title="使用外部应用打开">
-              <ExternalLink :size="14" />
+              <AppIcon name="ExternalLink" :size="14" />
               <span>Open</span>
-              <ChevronDown :size="13" :class="{ rotated: openMenuOpen }" />
+              <AppIcon name="ChevronDown" :size="13" :class="{ rotated: openMenuOpen }" />
             </button>
           </div>
           <!-- 折叠/展开文件树按钮 -->
@@ -507,8 +495,8 @@ onMounted(() => void loadDir(null));
             :title="treeCollapsed ? '展开文件树' : '折叠文件树'"
             @click="toggleTreeCollapse"
           >
-            <PanelLeftOpen v-if="treeCollapsed" :size="15" />
-            <PanelLeftClose v-else :size="15" />
+            <AppIcon name="PanelLeftOpen" v-if="treeCollapsed" :size="15" />
+            <AppIcon name="PanelLeftClose" v-else :size="15" />
           </button>
         </div>
       </div>
@@ -519,15 +507,15 @@ onMounted(() => void loadDir(null));
           :title="treeCollapsed ? '展开文件树' : '折叠文件树'"
           @click="toggleTreeCollapse"
         >
-          <PanelLeftOpen v-if="treeCollapsed" :size="15" />
-          <PanelLeftClose v-else :size="15" />
+          <AppIcon name="PanelLeftOpen" v-if="treeCollapsed" :size="15" />
+          <AppIcon name="PanelLeftClose" v-else :size="15" />
         </button>
       </div>
 
       <!-- 预览内容 -->
       <template v-if="selectedPath">
         <div v-if="previewError" class="preview-error">
-          <FileX2 :size="20" :stroke-width="1.7" />
+          <AppIcon name="FileX2" :size="20" />
           <b>无法预览文件</b>
           <p>{{ previewError }}</p>
         </div>
@@ -545,7 +533,7 @@ onMounted(() => void loadDir(null));
         />
       </template>
       <div v-else class="files-empty files-preview-placeholder">
-        <Folders :size="28" :stroke-width="1.7" />
+        <AppIcon name="Folders" :size="28" />
         <b>打开文件</b>
         <p>从工作区目录树中选择文件</p>
       </div>
@@ -563,7 +551,7 @@ onMounted(() => void loadDir(null));
 
     <!-- 右：文件树 -->
     <div v-show="!treeCollapsed" class="files-body">
-      <div v-if="loading" class="files-loading"><LoaderCircle :size="18" class="spin" /><span>加载中…</span></div>
+      <div v-if="loading" class="files-loading"><AppIcon name="LoaderCircle" :size="18" class="spin" /><span>加载中…</span></div>
       <p v-else-if="treeError" class="files-error">{{ treeError }}</p>
       <ul v-else class="file-tree" role="tree">
         <li v-for="node in root" :key="node.path">
@@ -596,8 +584,8 @@ onMounted(() => void loadDir(null));
           @click="app.available && openWith(app.id)"
         >
           <span class="file-open-icon" :data-icon="appIconSvg(app.icon)">
-            <template v-if="app.icon === 'folder'"><FolderOpen :size="20" /></template>
-            <template v-else-if="app.icon === 'default'"><Monitor :size="20" /></template>
+            <template v-if="app.icon === 'folder'"><AppIcon name="FolderOpen" :size="20" /></template>
+            <template v-else-if="app.icon === 'default'"><AppIcon name="Monitor" :size="20" /></template>
             <template v-else-if="app.icon === 'vscode'">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17 3L7 12L17 21L21 19V5L17 3Z" fill="#007ACC"/><path d="M3 7L7 12L3 17L5.5 18.5L12 12L5.5 5.5L3 7Z" fill="#007ACC"/></svg>
             </template>
@@ -611,7 +599,7 @@ onMounted(() => void loadDir(null));
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="3" fill="#000"/><path d="M7 8h4v1.5H9v1.5h2V12H9v3H7V8z" fill="#fff"/><path d="M12 15l3-7h-1.5l-2 5-1-2H9l2 4z" fill="#ff318c"/></svg>
             </template>
             <template v-else>
-              <ExternalLink :size="20" />
+              <AppIcon name="ExternalLink" :size="20" />
             </template>
           </span>
           <span class="file-open-label">{{ app.name }}</span>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { AlertTriangle, FileWarning } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import hljs from "highlight.js/lib/common";
 
 const props = defineProps<{
@@ -47,7 +47,7 @@ const highlightedLines = computed(() => {
     <div v-if="!hideChrome" class="code-preview-meta">
       <span class="format-badge">{{ language.label }}</span>
       <span class="encoding-badge">{{ encoding || "UTF-8" }}</span>
-      <span v-if="truncated" class="truncated-badge"><AlertTriangle :size="12" />仅显示前 1 MB</span>
+      <span v-if="truncated" class="truncated-badge"><AppIcon name="AlertTriangle" :size="12" />仅显示前 1 MB</span>
     </div>
     <div v-if="!hideChrome" class="preview-breadcrumb">
       <span v-for="(part, index) in pathParts" :key="index">{{ part }}<i v-if="index < pathParts.length - 1">/</i></span>
@@ -56,7 +56,7 @@ const highlightedLines = computed(() => {
       <img :src="`data:${mimeType};base64,${mediaBase64}`" :alt="fileName" />
     </div>
     <div v-else-if="binary" class="code-preview-empty">
-      <FileWarning :size="28" />
+      <AppIcon name="FileWarning" :size="28" />
       <b>无法预览二进制文件</b>
       <span>该文件不是可显示的文本格式</span>
     </div>

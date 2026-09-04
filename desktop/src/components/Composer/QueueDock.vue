@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { ChevronDown, CornerUpLeft, ListOrdered, Pencil, Trash2 } from "@lucide/vue";
+import AppIcon from "../icons/AppIcon.vue";
 import type { QueueDockItem } from "../../utils/composerSubmission";
 
 const { t } = useI18n({ useScope: "global" });
@@ -37,19 +37,19 @@ watch(() => props.items.length, (length) => {
         :aria-expanded="expanded"
         @click="expanded = !expanded"
       >
-        <ListOrdered :size="14" />
+        <AppIcon name="ListOrdered" :size="14" />
         <span>{{ t("composer.queueSummary", { n: items.length }) }}</span>
-        <ChevronDown :size="13" />
+        <AppIcon name="ChevronDown" :size="13" />
       </button>
 
       <div v-if="items.length === 1 || expanded" class="queue-dock__items">
         <article v-for="item in visibleItems" :key="item.id" class="queue-dock__item">
-          <ListOrdered class="queue-dock__lead" :size="13" />
+          <AppIcon name="ListOrdered" class="queue-dock__lead" :size="13" />
           <span class="queue-dock__text" :title="item.text">{{ item.text }}</span>
           <small v-if="item.attachmentCount">{{ item.attachmentCount }} 个附件</small>
           <div class="queue-dock__actions">
-            <button type="button" class="queue-dock__action" :title="t('composer.edit')" :aria-label="t('composer.edit')" :disabled="busyId === item.id" @click="emit('edit', item.id)"><Pencil :size="13" /></button>
-            <button type="button" class="queue-dock__action queue-dock__action--danger" :title="t('composer.remove')" :aria-label="t('composer.removeAria')" :disabled="busyId === item.id" @click="emit('remove', item.id)"><Trash2 :size="13" /></button>
+            <button type="button" class="queue-dock__action" :title="t('composer.edit')" :aria-label="t('composer.edit')" :disabled="busyId === item.id" @click="emit('edit', item.id)"><AppIcon name="Pencil" :size="13" /></button>
+            <button type="button" class="queue-dock__action queue-dock__action--danger" :title="t('composer.remove')" :aria-label="t('composer.removeAria')" :disabled="busyId === item.id" @click="emit('remove', item.id)"><AppIcon name="Trash2" :size="13" /></button>
             <button
               type="button"
               class="queue-dock__action queue-dock__action--accent"
@@ -57,7 +57,7 @@ watch(() => props.items.length, (length) => {
               :aria-label="t('composer.steer')"
               :disabled="!running || busyId === item.id"
               @click="emit('steer', item.id)"
-            ><CornerUpLeft :size="13" /></button>
+            ><AppIcon name="CornerUpLeft" :size="13" /></button>
           </div>
         </article>
       </div>

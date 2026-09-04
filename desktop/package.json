@@ -13,6 +13,7 @@
     "test:visual": "playwright test"
   },
   "dependencies": {
+    "@fluentui/svg-icons": "^1.1.339",
     "@lobehub/icons-static-svg": "^1.94.0",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
@@ -26,7 +27,6 @@
     "vue-i18n": "^11.4.10"
   },
   "devDependencies": {
-    "@lucide/vue": "^1.27.0",
     "@playwright/test": "^1.62.0",
     "@tauri-apps/cli": "^2.9.0",
     "@types/node": "^22.10.2",
