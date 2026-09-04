@@ -1315,6 +1315,122 @@ fn open_workspace_in_ide(workspace_path: String, workspace_id: Option<String>) -
     Err(format!("无法启动 VS Code 或 Cursor。请先安装其中一个并确保命令可用。{detail}"))
 }
 
+// ── 内置浏览器 webview 控制（JS API 不含 navigate/eval/url，经 Rust 桥接实现）──
+
+#[tauri::command]
+fn browser_webview_eval(app: tauri::AppHandle, label: String, code: String) -> Result<(), String> {
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    webview.eval(&code).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn browser_webview_url(app: tauri::AppHandle, label: String) -> Result<String, String> {
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    let url = webview.url().map_err(|error| error.to_string())?;
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+fn browser_webview_navigate(
+    app: tauri::AppHandle,
+    label: String,
+    url: String,
+) -> Result<(), String> {
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    let parsed: tauri::Url = url
+        .parse()
+        .map_err(|error| format!("无效的 URL：{error}"))?;
+    webview.navigate(parsed).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn browser_webview_toggle_devtools(
+    app: tauri::AppHandle,
+    label: String,
+) -> Result<bool, String> {
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    #[cfg(any(debug_assertions, feature = "devtools"))]
+    {
+        if webview.is_devtools_open() {
+            webview.close_devtools();
+            Ok(false)
+        } else {
+            webview.open_devtools();
+            Ok(true)
+        }
+    }
+    #[cfg(not(any(debug_assertions, feature = "devtools")))]
+    {
+        let _ = webview;
+        Err("DevTools 仅在开发模式或启用 devtools 特性时可用".into())
+    }
+}
+
+// ── 元素选择器数据桥（原生 WebMessage 通道）──
+// 注入页面通过 chrome.webview.postMessage('__szpk__:<json>') 回传选中元素。
+// 该消息同时会到达 Tauri 的 IPC 入口（格式不符被忽略，无副作用），
+// 本命令在目标 webview 上额外注册一个 WebView2 WebMessageReceived 监听器，
+// 匹配前缀后经 Tauri 事件 sztu:element-picked 广播给主窗口——
+// 完全绕开远程页面的 IPC/ACL 限制，不产生导航，不打扰页面路由。
+
+#[cfg(windows)]
+#[tauri::command]
+fn browser_webview_attach_picker(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    use webview2_com::WebMessageReceivedEventHandler;
+    use windows::core::PWSTR;
+
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    let handler_app = app.clone();
+    let handler_label = label;
+    webview
+        .with_webview(move |platform_webview| unsafe {
+            let Ok(core) = platform_webview.controller().CoreWebView2() else {
+                return;
+            };
+            let handler = WebMessageReceivedEventHandler::create(Box::new(
+                move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    let mut message = PWSTR::null();
+                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
+                        let text = webview2_com::take_pwstr(message);
+                        if let Some(payload) = text.strip_prefix("__szpk__:") {
+                            let _ = handler_app.emit(
+                                "sztu:element-picked",
+                                serde_json::json!({
+                                    "label": handler_label,
+                                    "payload": payload,
+                                }),
+                            );
+                        }
+                    }
+                    Ok(())
+                },
+            ));
+            let mut token: i64 = 0;
+            let _ = core.add_WebMessageReceived(&handler, &mut token);
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn browser_webview_attach_picker(_app: tauri::AppHandle, _label: String) -> Result<(), String> {
+    // 非 Windows 平台没有 WebView2 原生消息桥；前端注入脚本会自动退化为 hash 回传通道
+    Err("元素选择器原生数据通道仅在 Windows (WebView2) 上可用".into())
+}
+
 // 主入口：注册受控 IPC 桥与系统目录选择能力。
 fn main() {
     tauri::Builder::default()
@@ -1338,6 +1454,11 @@ fn main() {
             list_external_apps,
             open_path_with_app,
             open_workspace_in_ide,
+            browser_webview_eval,
+            browser_webview_url,
+            browser_webview_navigate,
+            browser_webview_toggle_devtools,
+            browser_webview_attach_picker,
             macos_toggle_work_area
         ])
         .setup(|app| {

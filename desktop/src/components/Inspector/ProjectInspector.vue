@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import {
   ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronDown, ChevronRight, Circle, Code,
   ExternalLink, FileCode2, FileText, FolderOpen, Globe2,
-  ListChecks, LoaderCircle, Maximize2, Minimize2, Monitor, MousePointer2, PackageOpen, PanelRightClose,
+  ListChecks, LoaderCircle, Maximize2, MessageSquarePlus, Minimize2, Monitor, MousePointer2, PackageOpen, PanelRightClose,
   Pencil, Plus, RefreshCw, RotateCw, Share2, SquareTerminal, X,
 } from "@lucide/vue";
 import {
@@ -11,7 +11,7 @@ import {
   getWorkspaceProfile,
   type ChangeSummary, type DetectionEvidence, type ProjectComponent, type TechnologyFinding, type ValidationCategory,
 } from "../../services/sztu-runtime";
-import BrowserWebview from "./BrowserWebview.vue";
+import BrowserWebview, { type PickedElement } from "./BrowserWebview.vue";
 import CodePreview from "./CodePreview.vue";
 import FileTree from "./FileTree.vue";
 import AgentLogo from "../timeline/AgentLogo.vue";
@@ -45,7 +45,6 @@ type BrowserTab = {
   canGoBack: boolean;
   canGoForward: boolean;
   webviewRef: InstanceType<typeof BrowserWebview> | null;
-  devMenuOpen: boolean;
 };
 type ActiveTab = "home" | "summary" | "files" | `sandbox-${number}` | `browser-${number}` | "";
 type WorkspaceTab = { key: ActiveTab; kind: "summary" | "files" | "browser" | "sandbox" };
@@ -60,6 +59,21 @@ const openSections = ref<Set<SectionKey>>(new Set(["profile", "todo", "artifacts
 const changes = ref<ChangeSummary[]>([]);
 const loadingArtifacts = ref(false);
 const notice = ref("");
+// 浏览器工作区内的通知条：显示在工具栏与网页舞台之间，不会被原生 webview 遮挡
+const browserNotice = ref("");
+let browserNoticeTimer: number | null = null;
+const browserAddressRef = ref<HTMLInputElement | null>(null);
+// 元素选择器捕获结果：显示在网页舞台下方的信息面板
+const pickedElement = ref<PickedElement | null>(null);
+
+function showBrowserNotice(text: string) {
+  browserNotice.value = text;
+  if (browserNoticeTimer) clearTimeout(browserNoticeTimer);
+  browserNoticeTimer = window.setTimeout(() => {
+    browserNotice.value = "";
+    browserNoticeTimer = null;
+  }, 2600);
+}
 const selectedPath = ref("");
 const preview = ref("");
 const previewEncoding = ref("UTF-8");
@@ -263,7 +277,6 @@ function createBrowserTab() {
     canGoBack: false,
     canGoForward: false,
     webviewRef: null,
-    devMenuOpen: false,
   });
   workspaceTabs.value.push({ key, kind: "browser" });
   activateBrowser(id);
@@ -434,29 +447,92 @@ function openExternalBrowser(tab: BrowserTab) {
 
 function copyBrowserUrl(tab: BrowserTab) {
   if (!tab.url) return;
-  navigator.clipboard.writeText(tab.url).catch(() => {});
+  navigator.clipboard
+    .writeText(tab.url)
+    .then(() => showBrowserNotice("链接已复制"))
+    .catch(() => showBrowserNotice("复制失败，请手动复制地址栏内容"));
+}
+
+/** 编辑按钮：聚焦并全选地址栏，方便直接修改 URL */
+function editBrowserAddress() {
+  const input = browserAddressRef.value;
+  if (!input) return;
+  input.focus();
+  input.select();
 }
 
 async function toggleDevTools(tab: BrowserTab) {
-  tab.devMenuOpen = false;
-  if (tab.webviewRef) {
-    await tab.webviewRef.openDevTools();
+  if (!tab.webviewRef) return;
+  try {
+    const opened = await tab.webviewRef.openDevTools();
+    showBrowserNotice(opened ? "DevTools 已打开" : "DevTools 已关闭");
+  } catch (e) {
+    showBrowserNotice(`DevTools 操作失败：${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
-function selectElement(tab: BrowserTab) {
-  tab.devMenuOpen = false;
-  notice.value = "元素选择功能开发中";
+/** 元素选择器：注入选择脚本，进入点选模式（Esc 取消） */
+async function selectElement(tab: BrowserTab) {
+  if (!tab.webviewRef) return;
+  try {
+    await tab.webviewRef.startElementPicker();
+    showBrowserNotice("点击网页中的元素以选中，按 Esc 取消");
+  } catch (e) {
+    showBrowserNotice(`无法启动元素选择器：${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
-function cssInspector(tab: BrowserTab) {
-  tab.devMenuOpen = false;
-  notice.value = "CSS检查器功能开发中";
+/** 元素选中回调：在舞台下方展示元素信息面板 */
+function onElementPicked(data: PickedElement) {
+  pickedElement.value = data;
+  showBrowserNotice("已选中元素");
 }
 
-function deviceToolbar(tab: BrowserTab) {
-  tab.devMenuOpen = false;
-  notice.value = "设备工具栏功能开发中";
+/** 生成 CSS 选择器文本（tag#id.cls1.cls2） */
+const pickedSelector = computed(() => {
+  const el = pickedElement.value;
+  if (!el) return "";
+  const cls = el.classes.length ? `.${el.classes.slice(0, 3).join(".")}` : "";
+  return `${el.tag}${el.id ? `#${el.id}` : ""}${cls}`;
+});
+
+function copyPickedText(text: string, hint: string) {
+  navigator.clipboard
+    .writeText(text)
+    .then(() => showBrowserNotice(`${hint}已复制`))
+    .catch(() => showBrowserNotice("复制失败"));
+}
+
+/** 把选中元素组装成结构化文本，经 sztu:inject-element 事件追加到对话输入框 */
+function addElementToConversation(tab: BrowserTab) {
+  const el = pickedElement.value;
+  if (!el) return;
+  const s = el.style;
+  const lines: string[] = [
+    `[网页元素] ${tab.url || "（当前页面）"}`,
+    `选择器: ${pickedSelector.value}`,
+    `尺寸: ${el.width} × ${el.height} px`,
+    `标签: ${el.tag}${el.id ? ` | ID: ${el.id}` : ""}${el.classes.length ? ` | 类名: ${el.classes.join(" ")}` : ""}`,
+    `display: ${s.display} | position: ${s.position}`,
+    `字体: ${s.font} | 颜色: ${s.color} | 背景: ${s.background}`,
+    `margin: ${s.margin} | padding: ${s.padding}`,
+  ];
+  if (el.text) lines.push(`文本: ${el.text}`);
+  if (Object.keys(el.attrs).length) {
+    lines.push(`属性: ${Object.entries(el.attrs).map(([k, v]) => `${k}="${v}"`).join(" ")}`);
+  }
+  // 四反引号 fence，避免 HTML 内容本身含 ``` 时破坏代码块
+  lines.push("HTML:", "````html", el.html, "````");
+  window.dispatchEvent(new CustomEvent("sztu:inject-element", { detail: { text: lines.join("\n") } }));
+  showBrowserNotice("元素信息已添加到对话输入框");
+}
+
+function cssInspector() {
+  showBrowserNotice("CSS检查器功能开发中");
+}
+
+function deviceToolbar() {
+  showBrowserNotice("设备工具栏功能开发中");
 }
 
 function setWebviewRef(tab: BrowserTab, el: any) {
@@ -484,7 +560,7 @@ function clearBrowserInput(tab: BrowserTab) {
 
 function browserLoadError(tab: BrowserTab, message: string) {
   tab.loading = false;
-  notice.value = `网页加载失败：${message}`;
+  showBrowserNotice(`网页加载失败：${message}`);
 }
 
 async function refreshArtifacts() {
@@ -795,7 +871,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
       </section>
     </main>
 
-    <main v-else-if="currentBrowser" class="browser-workspace">
+    <main v-else-if="currentBrowser" class="browser-workspace" :class="{ 'has-notice': browserNotice, 'has-element': pickedElement }">
       <form class="browser-toolbar" aria-label="网页导航" @submit.prevent="navigateBrowser(currentBrowser)">
         <div class="browser-nav-group">
           <button
@@ -832,6 +908,7 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
 
         <div class="browser-address-bar">
           <input
+            ref="browserAddressRef"
             v-model="currentBrowser.input"
             aria-label="网页地址"
             placeholder="输入URL或选择正在运行的服务"
@@ -843,63 +920,46 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
         </div>
 
         <div class="browser-toolbar-actions">
-          <button type="button" class="browser-action-btn" title="编辑" :disabled="!currentBrowser.url">
+          <button type="button" class="browser-action-btn" title="编辑地址" :disabled="!currentBrowser.url" @click="editBrowserAddress">
             <Pencil :size="18" />
           </button>
-          <button type="button" class="browser-action-btn" title="分享" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
+          <button type="button" class="browser-action-btn" title="复制链接" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
             <Share2 :size="18" />
           </button>
-
-          <div class="browser-dev-menu-wrap">
-            <button
-              type="button"
-              class="browser-action-btn browser-dev-trigger"
-              title="更多工具"
-              :class="{ active: currentBrowser.devMenuOpen }"
-              @click.stop="currentBrowser.devMenuOpen = !currentBrowser.devMenuOpen"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-              </svg>
-            </button>
-
-            <div v-if="currentBrowser.devMenuOpen" class="browser-dev-popover" @click.stop>
-              <button type="button" @click="selectElement(currentBrowser)">
-                <MousePointer2 :size="16" />
-                <span>选择元素</span>
-              </button>
-              <div class="browser-popover-divider" />
-              <button type="button" @click="cssInspector(currentBrowser)">
-                <Code :size="16" />
-                <span>CSS检查器</span>
-              </button>
-              <button type="button" @click="deviceToolbar(currentBrowser)">
-                <Monitor :size="16" />
-                <span>Device Toolbar</span>
-              </button>
-              <div class="browser-popover-divider" />
-              <button type="button" @click="toggleDevTools(currentBrowser)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-                </svg>
-                <span>DevTools</span>
-              </button>
-            </div>
-          </div>
+          <div class="browser-toolbar-divider" />
+          <button type="button" class="browser-action-btn" title="选择元素" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser)">
+            <MousePointer2 :size="17" />
+          </button>
+          <button type="button" class="browser-action-btn" title="CSS检查器" :disabled="!currentBrowser.url" @click="cssInspector">
+            <Code :size="17" />
+          </button>
+          <button type="button" class="browser-action-btn" title="设备工具栏" :disabled="!currentBrowser.url" @click="deviceToolbar">
+            <Monitor :size="17" />
+          </button>
+          <button type="button" class="browser-action-btn" title="打开DevTools" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+            </svg>
+          </button>
         </div>
       </form>
-      <div class="browser-stage" @click="currentBrowser.devMenuOpen = false">
+      <div v-if="browserNotice" class="browser-notice-bar">
+        <span>{{ browserNotice }}</span>
+        <button type="button" aria-label="关闭提示" @click="browserNotice = ''"><X :size="13" /></button>
+      </div>
+      <div class="browser-stage">
         <BrowserWebview
           v-if="currentBrowser.url"
           :ref="(el) => setWebviewRef(currentBrowser, el)"
           :key="currentBrowser.id"
           :tab-id="currentBrowser.id"
           :url="currentBrowser.url"
-          :visible="activeTab === `browser-${currentBrowser.id}` && !toolMenuOpen && !obscured && !currentBrowser.devMenuOpen"
+          :visible="activeTab === `browser-${currentBrowser.id}` && !toolMenuOpen && !obscured"
           @load-start="browserLoadStart(currentBrowser)"
           @loaded="browserLoaded(currentBrowser, $event)"
           @url-change="browserUrlChange(currentBrowser, $event)"
-          @error="browserLoadError(currentBrowser, $event); currentBrowser.devMenuOpen = false"
+          @error="browserLoadError(currentBrowser, $event)"
+          @element-picked="onElementPicked"
         />
         <div v-else class="browser-empty">
           <div class="browser-empty-inner">
@@ -915,6 +975,43 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
         </div>
         <div v-if="currentBrowser.loading" class="browser-loading-bar" />
       </div>
+      <section v-if="pickedElement" class="element-panel">
+        <header class="element-panel-head">
+          <code class="element-selector" :title="pickedSelector">{{ pickedSelector }}</code>
+          <span class="element-size">{{ pickedElement.width }} × {{ pickedElement.height }} px</span>
+          <div class="element-panel-actions">
+            <button type="button" class="element-add-btn" title="把元素信息添加到对话输入框" @click="addElementToConversation(currentBrowser)">
+              <MessageSquarePlus :size="13" />
+              <span>添加到对话</span>
+            </button>
+            <button type="button" title="复制选择器" @click="copyPickedText(pickedSelector, '选择器')">复制选择器</button>
+            <button type="button" title="复制HTML" @click="copyPickedText(pickedElement.html, 'HTML')">复制HTML</button>
+            <button type="button" class="element-close" aria-label="关闭元素面板" @click="pickedElement = null"><X :size="14" /></button>
+          </div>
+        </header>
+        <div class="element-panel-body">
+          <dl class="element-facts">
+            <div><dt>标签</dt><dd>{{ pickedElement.tag }}</dd></div>
+            <div v-if="pickedElement.id"><dt>ID</dt><dd>{{ pickedElement.id }}</dd></div>
+            <div v-if="pickedElement.classes.length"><dt>类名</dt><dd class="element-classes">{{ pickedElement.classes.join(" ") }}</dd></div>
+            <div><dt>display</dt><dd>{{ pickedElement.style.display }}</dd></div>
+            <div><dt>position</dt><dd>{{ pickedElement.style.position }}</dd></div>
+            <div><dt>字体</dt><dd>{{ pickedElement.style.font }}</dd></div>
+            <div><dt>颜色</dt><dd>{{ pickedElement.style.color }}</dd></div>
+            <div><dt>背景</dt><dd>{{ pickedElement.style.background }}</dd></div>
+            <div><dt>margin</dt><dd>{{ pickedElement.style.margin }}</dd></div>
+            <div><dt>padding</dt><dd>{{ pickedElement.style.padding }}</dd></div>
+          </dl>
+          <div v-if="pickedElement.text" class="element-text">
+            <span class="element-text-label">文本</span>
+            <p>{{ pickedElement.text }}</p>
+          </div>
+          <details class="element-html">
+            <summary>HTML</summary>
+            <pre>{{ pickedElement.html }}</pre>
+          </details>
+        </div>
+      </section>
     </main>
 
     <main v-show="activeTab === 'files'" class="files-workspace"><FileTree ref="fileTreeRef" :workspace-id="fileTreeWorkspaceId" :workspace-name="workspaceName" :workspace-path="workspacePath" /></main>

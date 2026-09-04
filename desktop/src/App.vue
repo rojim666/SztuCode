@@ -2879,12 +2879,21 @@ async function onOpenChangesFromTimeline(_runId: string) {
   inspectorRef.value?.openChangesPanel();
 }
 
+// 内置浏览器元素选择器 → 把选中的元素信息追加到对话输入框
+function onInjectElement(event: Event) {
+  const text = (event as CustomEvent<{ text: string }>).detail?.text;
+  if (!text?.trim()) return;
+  prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${text}` : text;
+  void nextTick(() => currentComposer()?.focus());
+}
+
 onMounted(() => {
   window.addEventListener("keydown", handleGlobalShortcut);
   window.addEventListener("resize", handleWindowResize);
   handleWindowResize(); // 初始化窗口宽度与窄窗自动收起状态
   window.addEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   window.addEventListener("sztu:open-file", onOpenFileLink);
+  window.addEventListener("sztu:inject-element", onInjectElement);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
@@ -2928,6 +2937,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("sztu:open-in-app-browser", onOpenInAppBrowser);
   window.removeEventListener("sztu:open-file", onOpenFileLink);
+  window.removeEventListener("sztu:inject-element", onInjectElement);
   window.removeEventListener("hashchange", consumeSessionHash);
   document.removeEventListener("pointerdown", handleDocumentPointerDown);
   stopEvents?.();
