@@ -1431,6 +1431,73 @@ fn browser_webview_attach_picker(_app: tauri::AppHandle, _label: String) -> Resu
     Err("元素选择器原生数据通道仅在 Windows (WebView2) 上可用".into())
 }
 
+// Windows 图标按 DPI 精确加载：
+// Tauri 默认把 icon.ico 的第一帧（256px 大图）交给系统，任务栏在 125%/150% 缩放下
+// 会把它硬拉到 30/36px 导致发糊。这里改为按当前缩放比计算物理像素尺寸，
+// 用 LoadImageW 从 exe 内嵌的多尺寸图标资源（ID 32512）里取精确匹配的那一帧，
+// 分别设置标题栏（ICON_SMALL）、任务栏/Alt+Tab（ICON_BIG / ICON_SMALL2）图标。
+#[cfg(target_os = "windows")]
+fn apply_dpi_aware_window_icons(window: &WebviewWindow<tauri::Wry>, scale: f64) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        LoadImageW, SendMessageW, HICON, ICON_BIG, ICON_SMALL, ICON_SMALL2, IMAGE_ICON,
+        LR_DEFAULTCOLOR, WM_SETICON,
+    };
+
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+    unsafe {
+        let load = |size: i32| -> Option<HICON> {
+            LoadImageW(
+                GetModuleHandleW(PCWSTR::null()).map(Into::into).ok(),
+                PCWSTR::from_raw(32512usize as *const u16),
+                IMAGE_ICON,
+                size,
+                size,
+                LR_DEFAULTCOLOR,
+            )
+            .ok()
+            .map(|handle| HICON(handle.0))
+        };
+        let mut applied = false;
+        for (kind, size) in [
+            (ICON_SMALL, (16.0 * scale).round() as i32),
+            (ICON_BIG, (32.0 * scale).round() as i32),
+            (ICON_SMALL2, (24.0 * scale).round() as i32),
+        ] {
+            if let Some(icon) = load(size) {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(kind as usize)),
+                    Some(LPARAM(icon.0 as isize)),
+                );
+                applied = true;
+            }
+        }
+        applied
+    }
+}
+
+// 托盘图标同样按 DPI 取精确尺寸（16 逻辑像素 × 缩放比），避免 256px 大图被缩糊。
+// tray-N.rgba 是预渲染好的原始 RGBA 像素，include_bytes 编译期内嵌，运行时零解码。
+#[cfg(target_os = "windows")]
+fn tray_icon_image(scale: f64) -> tauri::image::Image<'static> {
+    let (rgba, size): (&[u8], u32) = match (16.0 * scale).round() as u32 {
+        0..=17 => (include_bytes!("../icons/tray-16.rgba"), 16),
+        18..=21 => (include_bytes!("../icons/tray-20.rgba"), 20),
+        22..=27 => (include_bytes!("../icons/tray-24.rgba"), 24),
+        28..=29 => (include_bytes!("../icons/tray-28.rgba"), 28),
+        30..=35 => (include_bytes!("../icons/tray-32.rgba"), 32),
+        36..=43 => (include_bytes!("../icons/tray-40.rgba"), 40),
+        _ => (include_bytes!("../icons/tray-48.rgba"), 48),
+    };
+    tauri::image::Image::new(rgba, size, size)
+}
+
 // 主入口：注册受控 IPC 桥与系统目录选择能力。
 fn main() {
     tauri::Builder::default()
@@ -1463,6 +1530,17 @@ fn main() {
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window exists");
+            let scale = window.scale_factor().unwrap_or(1.0);
+            #[cfg(target_os = "windows")]
+            {
+                // 按 DPI 精确设置任务栏/标题栏图标；失败时退回框架默认行为
+                if !apply_dpi_aware_window_icons(&window, scale) {
+                    if let Some(icon) = app.default_window_icon() {
+                        window.set_icon(icon.clone())?;
+                    }
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
             if let Some(icon) = app.default_window_icon() {
                 window.set_icon(icon.clone())?;
             }
@@ -1482,8 +1560,12 @@ fn main() {
                     }
                 });
             }
+            #[cfg(target_os = "windows")]
+            let tray_icon = tray_icon_image(scale);
+            #[cfg(not(target_os = "windows"))]
+            let tray_icon = app.default_window_icon().expect("application icon").clone();
             TrayIconBuilder::new()
-                .icon(app.default_window_icon().expect("application icon").clone())
+                .icon(tray_icon)
                 .tooltip("SztuCode")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(move |_tray, event| {

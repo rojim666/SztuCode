@@ -59,3 +59,5 @@ release-artifacts/v0.1.1/appimage-final.zip
 # 临时目录与中间产物
 .claude/
 .trae-html-share-packages/
+# 图标替换前的本地备份目录
+desktop/src-tauri/icons-backup-*/

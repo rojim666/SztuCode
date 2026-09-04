@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 透明背景 -->
+  <!-- 圆角外框 -->
+  <rect x="128" y="128" width="768" height="768" rx="160" ry="160" 
+        fill="none" stroke="#000000" stroke-width="64" stroke-linejoin="round"/>
+  <!-- 顶部三个圆点 -->
+  <circle cx="296" cy="296" r="36" fill="#000000"/>
+  <circle cx="408" cy="296" r="36" fill="#000000"/>
+  <circle cx="520" cy="296" r="36" fill="#000000"/>
+  <!-- 中间两个圆角矩形（眼睛/暂停） -->
+  <rect x="320" y="432" width="128" height="256" rx="56" ry="56" fill="#000000"/>
+  <rect x="576" y="432" width="128" height="256" rx="56" ry="56" fill="#000000"/>
+</svg>
