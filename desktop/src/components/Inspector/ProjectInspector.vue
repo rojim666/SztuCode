@@ -915,23 +915,24 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
         </div>
 
         <div class="browser-toolbar-actions">
-          <button type="button" class="browser-action-btn" title="编辑地址" :disabled="!currentBrowser.url" @click="editBrowserAddress">
+          <button type="button" class="browser-action-btn browser-action-btn--primary" title="编辑地址" :disabled="!currentBrowser.url" @click="editBrowserAddress">
             <AppIcon name="Pencil" :size="18" />
           </button>
-          <button type="button" class="browser-action-btn" title="复制链接" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
+          <button type="button" class="browser-action-btn browser-action-btn--primary" title="复制链接" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
             <AppIcon name="Share2" :size="18" />
           </button>
-          <div class="browser-toolbar-divider" />
-          <button type="button" class="browser-action-btn" title="选择元素" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser)">
+          <div class="browser-toolbar-divider browser-toolbar-divider--secondary" />
+          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="选择元素" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser)">
             <AppIcon name="MousePointer2" :size="17" />
           </button>
-          <button type="button" class="browser-action-btn" title="CSS检查器" :disabled="!currentBrowser.url" @click="cssInspector">
+          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="CSS检查器" :disabled="!currentBrowser.url" @click="cssInspector">
             <AppIcon name="Code" :size="17" />
           </button>
-          <button type="button" class="browser-action-btn" title="设备工具栏" :disabled="!currentBrowser.url" @click="deviceToolbar">
+          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="设备工具栏" :disabled="!currentBrowser.url" @click="deviceToolbar">
             <AppIcon name="Monitor" :size="17" />
           </button>
-          <button type="button" class="browser-action-btn" title="打开DevTools" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser)">
+          <div class="browser-toolbar-divider browser-toolbar-divider--dev" />
+          <button type="button" class="browser-action-btn browser-action-btn--dev" title="打开DevTools" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser)">
             <AppIcon name="DevTools" :size="17" />
           </button>
         </div>

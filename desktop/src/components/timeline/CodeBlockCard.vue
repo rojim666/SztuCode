@@ -292,6 +292,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .code-block-card {
   margin: 13px 0 18px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   background: #f5f5f5;
   border: 1px solid #e2e3e5;
   border-radius: 12px;
@@ -304,9 +308,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 8px 10px;
   background: #f0f0f1;
   border-bottom: 1px solid #e2e3e5;
+  min-width: 0;
 }
 
 .lang-selector {
@@ -322,6 +328,15 @@ onBeforeUnmount(() => {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.12s ease;
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lang-selector .lang-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lang-selector:hover {
@@ -461,6 +476,8 @@ onBeforeUnmount(() => {
 
 .code-block-body {
   overflow-x: auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .code-lines {
@@ -700,5 +717,54 @@ onBeforeUnmount(() => {
 
 :global([data-app-theme="dark"] .hljs-params){
   color: #c9d1d9;
+}
+
+/* ── 响应式：窄宽度下压缩代码块内边距 ── */
+@media (max-width: 520px) {
+  .code-block-card {
+    margin: 10px 0 14px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .code-block-header {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .lang-selector {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+  .copy-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .code-lines {
+    padding: 10px 0;
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+  .line-number {
+    min-width: 32px;
+    padding: 0 8px 0 10px;
+  }
+  .code-line {
+    padding-right: 10px;
+  }
+}
+
+@media (max-width: 400px) {
+  .code-block-header {
+    padding: 5px 6px;
+  }
+  .code-lines {
+    font-size: 11px;
+  }
+  .line-number {
+    min-width: 28px;
+    padding: 0 6px 0 8px;
+  }
+  .code-line {
+    padding-right: 8px;
+  }
 }
 </style>

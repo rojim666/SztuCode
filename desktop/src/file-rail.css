@@ -14,6 +14,8 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  container-type: inline-size;
+  container-name: inspector;
 }
 /* 展开态进入真正全屏：功能区独占整个窗口（无边框/圆角/阴影），其余窗口功能全部隐藏，而非用层级遮挡 */
 .project-inspector.file-rail.is-expanded { position: fixed; inset: 0; z-index: 210; width: auto; max-height: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
@@ -498,7 +500,7 @@
 .reference-context b { overflow: hidden; color: #303430; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .reference-context small { overflow: hidden; color: #a1a5a2; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 
-.browser-workspace { position: relative; isolation: isolate; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; background: #fff; border-radius: 0; }
+.browser-workspace { position: relative; isolation: isolate; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; background: #fff; border-radius: 0; container-type: inline-size; container-name: browser; }
 .browser-workspace.has-notice { grid-template-rows: auto auto minmax(0, 1fr); }
 .browser-workspace.has-element { grid-template-rows: auto minmax(0, 1fr) auto; }
 .browser-workspace.has-notice.has-element { grid-template-rows: auto auto minmax(0, 1fr) auto; }
@@ -569,6 +571,79 @@
 .browser-loading-bar { position: absolute; top: 0; left: 0; z-index: 10; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #666, transparent); background-size: 200% 100%; animation: browser-loading 1.2s linear infinite; }
 @keyframes browser-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* ── 浏览器工具栏响应式（容器查询） ───────────────────── */
+/* 中等宽度：减小按钮和间距，隐藏部分次要按钮 */
+@container browser (max-width: 620px) {
+  .browser-toolbar {
+    grid-template-columns: auto minmax(160px, 1fr) auto;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+  .browser-nav-btn,
+  .browser-action-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .browser-address-bar {
+    height: 34px;
+    padding: 0 10px;
+  }
+  /* 隐藏选择元素、CSS检查器、设备工具栏按钮 */
+  .browser-action-btn--secondary,
+  .browser-toolbar-divider--secondary {
+    display: none;
+  }
+}
+
+/* 窄宽度：进一步精简 */
+@container browser (max-width: 480px) {
+  .browser-toolbar {
+    grid-template-columns: auto minmax(120px, 1fr) auto;
+    gap: 4px;
+    padding: 5px 6px;
+  }
+  .browser-nav-group {
+    gap: 1px;
+  }
+  .browser-toolbar-actions {
+    gap: 1px;
+  }
+  .browser-nav-btn,
+  .browser-action-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+  }
+  .browser-address-bar {
+    height: 30px;
+    padding: 0 8px;
+    gap: 4px;
+    border-radius: 15px;
+  }
+  .browser-address-input {
+    font-size: 12px;
+  }
+  /* 在极窄宽度下，DevTools 也可考虑隐藏，但保留最核心的编辑和分享 */
+}
+
+/* 非常窄宽度：只保留最核心控件 */
+@container browser (max-width: 360px) {
+  .browser-toolbar {
+    grid-template-columns: auto minmax(80px, 1fr) auto;
+    gap: 3px;
+    padding: 4px 5px;
+  }
+  .browser-nav-btn,
+  .browser-action-btn {
+    width: 26px;
+    height: 26px;
+  }
+  .browser-toolbar-divider--dev {
+    display: none;
+  }
+  /* 可选：在极端窄宽度下隐藏前进按钮，只保留后退和刷新 */
+}
+
 /* Dark theme */
 :global([data-app-theme="dark"]) .browser-workspace { background: #1a1b1e; }
 :global([data-app-theme="dark"]) .browser-toolbar { background: #1a1b1e; border-bottom-color: #2a2b2e; }
@@ -610,6 +685,66 @@
 :global([data-app-theme="dark"]) .element-html summary { color: #6a707a; }
 :global([data-app-theme="dark"]) .element-html summary:hover { color: #a5a9b1; }
 :global([data-app-theme="dark"]) .element-html pre { color: #a5a9b1; }
+
+/* ── 标签栏响应式（inspector 容器查询） ───────────────── */
+@container inspector (max-width: 520px) {
+  .workspace-tab-strip {
+    padding: 0 8px;
+  }
+  .workspace-open-tabs {
+    gap: 3px;
+  }
+  .workspace-open-tab > button:first-child {
+    max-width: 100px;
+    padding: 0 7px;
+    gap: 4px;
+  }
+  .workspace-tool-menu-trigger,
+  .workspace-browser-add,
+  .workspace-expand,
+  .workspace-panel-close {
+    width: 26px;
+    height: 26px;
+  }
+  .workspace-header-divider {
+    margin: 0 4px;
+  }
+}
+
+@container inspector (max-width: 400px) {
+  .workspace-tab-strip {
+    padding: 0 6px;
+  }
+  .workspace-open-tab > button:first-child {
+    max-width: 80px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+  .workspace-tab-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+@container inspector (max-width: 340px) {
+  /* 极窄宽度下，标签只显示图标，隐藏文字 */
+  .workspace-open-tab > button:first-child {
+    max-width: 30px;
+    padding: 0 5px;
+    gap: 0;
+  }
+  .workspace-open-tab > button:first-child > span:last-child {
+    display: none;
+  }
+  .workspace-open-tab:not(.active) .workspace-tab-icon {
+    width: 14px;
+    opacity: 1;
+  }
+  .workspace-open-tab .workspace-tab-icon {
+    width: 14px !important;
+    opacity: 1 !important;
+  }
+}
 
 .sandbox-workspace { min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); border-radius: 0; }
 .workspace-empty-view { min-width: 0; min-height: 0; background: var(--surface); border-radius: 0; }
