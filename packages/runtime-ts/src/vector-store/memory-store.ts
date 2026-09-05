@@ -89,6 +89,21 @@ export class MemoryVectorStore implements VectorStore {
     this.records.clear();
   }
 
+  /** 导出稳定副本，供持久化存储保存索引内容。 */
+  exportRecords(): VectorRecord[] {
+    return [...this.records.values()].map(({ record }) => this.cloneRecord(record));
+  }
+
+  /** 从持久化文件恢复记录；恢复前会清空当前内容。 */
+  importRecords(records: readonly VectorRecord[]): void {
+    this.records.clear();
+    this.nextSequence = 0;
+    for (const record of records) {
+      this.validateRecord(record);
+      this.records.set(record.id, { sequence: this.nextSequence++, record: this.cloneRecord(record) });
+    }
+  }
+
   private matches(metadata: Record<string, MetadataValue>, filter?: Partial<Record<string, MetadataValue>>): boolean {
     if (!filter) return true;
     return Object.entries(filter).every(([key, value]) => metadata[key] === value);

@@ -78,7 +78,11 @@ for (const vipsVersion of await readdir(sharpVendor).catch(() => [])) {
 if (process.platform === "linux") {
   for (const file of await readdir(runtimeRoot)) {
     if (file.endsWith(".node")) {
-      const patched = spawnSync("patchelf", ["--set-rpath", "$ORIGIN", path.join(runtimeRoot, file)], { stdio: "inherit" });
+      const nativePath = path.join(runtimeRoot, file);
+      // .node 只是扩展名；只有 ELF 原生模块才能由 patchelf 修改 RPATH。
+      const header = readFileSync(nativePath).subarray(0, 4);
+      if (header.length < 4 || header[0] !== 0x7f || header[1] !== 0x45 || header[2] !== 0x4c || header[3] !== 0x46) continue;
+      const patched = spawnSync("patchelf", ["--set-rpath", "$ORIGIN", nativePath], { stdio: "inherit" });
       if (patched.status !== 0) throw new Error(`patchelf failed for ${file}`);
     }
   }

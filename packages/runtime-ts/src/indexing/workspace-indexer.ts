@@ -47,6 +47,8 @@ export class WorkspaceIndexer {
   private readonly workspace: Workspace;
   private readonly workspaceId: string;
 
+  get workspaceRoot(): string { return this.workspace.root; }
+
   constructor(
     workspaceRoot: string,
     private readonly embedder: Embedder,
@@ -100,6 +102,8 @@ export class WorkspaceIndexer {
         ...chunk.metadata,
         source,
         workspace_id: this.workspaceId,
+        mtime_ms: fileStat.mtimeMs,
+        file_size: fileStat.size,
       } as Record<string, string | number | boolean>,
     })));
     await this.observer?.(source, chunks);
@@ -128,6 +132,16 @@ export class WorkspaceIndexer {
       }
     }
     return { files_indexed: filesIndexed, chunks_indexed: chunksIndexed };
+  }
+
+  /** 扫描当前工作区，返回符合索引规则且未被 Git 忽略的文件。 */
+  async discoverFiles(): Promise<string[]> {
+    const allFiles = await this.listFiles(this.workspace.root);
+    const candidates: string[] = [];
+    for (const file of allFiles) {
+      if (this.shouldIndex(file) && await this.isTextFile(file) && !(await this.isGitIgnored(file))) candidates.push(file);
+    }
+    return candidates;
   }
 
   async updateIndex(changedFiles: string[]): Promise<void> {

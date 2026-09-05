@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { MemoryVectorStore, cosineSimilarity } from "../src/vector-store/index.js";
+import { JsonlVectorStore, MemoryVectorStore, cosineSimilarity } from "../src/vector-store/index.js";
 
 const records = [
   { vector: [1, 0, 0], text: "认证密码校验", metadata: { source: "auth.ts", workspace_id: "one", kind: "code" } },
@@ -57,4 +60,20 @@ test("零向量查询不会产生 NaN，分数相同时保持插入顺序", asyn
   assert.ok(results.every((result) => Number.isFinite(result.score)));
   assert.equal(cosineSimilarity([1, 0, 0], [0, 0, 0]), 0);
   assert.ok(Number.isFinite(cosineSimilarity([Number.MAX_VALUE, 0, 0], [Number.MAX_VALUE, 0, 0])));
+});
+
+test("JSONL 向量库可以保存、重启恢复并校验模型元数据", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-jsonl-store-"));
+  const file = path.join(root, "vectors.jsonl");
+  try {
+    const first = await JsonlVectorStore.open(file, 3, "jsonl", { embedderName: "test-model" });
+    await first.add(records);
+    const second = await JsonlVectorStore.open(file, 3, "jsonl", { embedderName: "test-model" });
+    assert.equal(await second.count(), 3);
+    assert.deepEqual((await second.search([1, 0, 0], 1))[0]!.record.text, "认证密码校验");
+    assert.match(await readFile(file, "utf8"), /"format_version":1/);
+    await assert.rejects(JsonlVectorStore.open(file, 3, "jsonl", { embedderName: "other-model" }), /模型不匹配/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

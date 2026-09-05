@@ -14,8 +14,9 @@ import { SkillLoader } from "./skills.js";
 import { detectDocumentFormat } from "./document-parser/detect.js";
 import type { ParsedDocument } from "./document-parser/types.js";
 import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
+import type { Chunk } from "./chunking/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
-import { MemoryVectorStore } from "./vector-store/index.js";
+import { JsonlVectorStore } from "./vector-store/index.js";
 import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
 
 export type { ToolPermission } from "./tools-types.js";
@@ -405,23 +406,34 @@ export interface SemanticSearchToolOptions {
 type SemanticIndexState = {
   embedder: Embedder;
   indexer: WorkspaceIndexer;
-  store: MemoryVectorStore;
+  store: JsonlVectorStore;
   lexical: LexicalIndex;
   indexPromise?: Promise<{ files_indexed: number; chunks_indexed: number }>;
 };
 
 /** 创建按工作区懒加载的语义搜索工具。 */
 export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}): Tool {
-  const states = new Map<string, SemanticIndexState>();
-  const getState = (root: string): SemanticIndexState => {
+  const states = new Map<string, Promise<SemanticIndexState>>();
+  const getState = (root: string): Promise<SemanticIndexState> => {
     const existing = states.get(root);
     if (existing) return existing;
-    const embedder = options.createEmbedder?.() ?? createTransformersEmbedder();
-    const store = new MemoryVectorStore(embedder.dimensions);
-    const lexical = new LexicalIndex();
-    const state = { embedder, indexer: new WorkspaceIndexer(root, embedder, store, (source, chunks) => lexical.replace(source, chunks)), store, lexical };
-    states.set(root, state);
-    return state;
+    const statePromise = (async () => {
+      const embedder = options.createEmbedder?.() ?? createTransformersEmbedder();
+      const store = await JsonlVectorStore.open(path.join(root, ".sztu", "vector", "semantic-index.jsonl"), embedder.dimensions, "jsonl", { embedderName: embedder.name });
+      const lexical = new LexicalIndex();
+      const chunksBySource = new Map<string, Array<{ text: string; metadata: Record<string, string | number | boolean> }>>();
+      for (const record of store.exportRecords()) {
+        const source = String(record.metadata.source ?? "");
+        const chunks = chunksBySource.get(source) ?? [];
+        chunks.push({ text: record.text, metadata: { ...record.metadata } });
+        chunksBySource.set(source, chunks);
+      }
+      for (const [source, chunks] of chunksBySource) lexical.replace(source, chunks as Chunk[]);
+      return { embedder, indexer: new WorkspaceIndexer(root, embedder, store, (source, chunks) => lexical.replace(source, chunks)), store, lexical };
+    })();
+    states.set(root, statePromise);
+    void statePromise.catch(() => states.delete(root));
+    return statePromise;
   };
 
   return {
@@ -454,13 +466,14 @@ export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}
       if (relativePath.split("/").some((part) => part === "..")) return fail("path must stay inside the workspace", "schema_error");
 
       try {
-        const state = getState(context.workspace.root);
+        const state = await getState(context.workspace.root);
         const autoIndex = params.auto_index === undefined ? true : Boolean(params.auto_index);
         if (await state.store.count() === 0) {
           if (!autoIndex) return ok("Semantic index is empty. Set auto_index=true or build the index before searching.");
           state.indexPromise ??= state.indexer.indexAll().catch((error) => { state.indexPromise = undefined; throw error; });
           await state.indexPromise;
         }
+        await refreshSemanticIndex(state);
         const queryVector = await state.embedder.embedQuery(query);
         const filter = { pathPrefix: relativePath, fileType: fileType as "code" | "markdown" | "document" | "any" };
         const recordCount = await state.store.count();
@@ -490,6 +503,30 @@ export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}
       }
     },
   };
+}
+
+/** 检查已持久化文件的轻量元数据，只增量重建发生变化的文件。 */
+async function refreshSemanticIndex(state: SemanticIndexState): Promise<void> {
+  const sources = new Map<string, Record<string, string | number | boolean>>();
+  for (const record of state.store.exportRecords()) {
+    const source = String(record.metadata.source ?? "");
+    if (source && !sources.has(source)) sources.set(source, record.metadata);
+  }
+  const changed: string[] = [];
+  for (const [source, metadata] of sources) {
+    try {
+      const file = await stat(path.join(state.indexer.workspaceRoot, source));
+      if (!file.isFile() || Number(metadata.mtime_ms) !== file.mtimeMs || Number(metadata.file_size) !== file.size) changed.push(source);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") changed.push(source);
+      else throw error;
+    }
+  }
+  const indexedSources = new Set(sources.keys());
+  for (const source of await state.indexer.discoverFiles()) {
+    if (!indexedSources.has(source)) changed.push(source);
+  }
+  if (changed.length > 0) await state.indexer.updateIndex([...new Set(changed)]);
 }
 
 export function createPlanTools(events: EventBus, runId: string, sessionId = "", tasksDir = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu"), "runs", runId.replace(/[^A-Za-z0-9_.-]/g, "_"), "tasks")): Tool[] {
