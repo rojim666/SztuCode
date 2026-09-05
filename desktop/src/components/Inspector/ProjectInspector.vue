@@ -915,26 +915,18 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
         </div>
 
         <div class="browser-toolbar-actions">
-          <button type="button" class="browser-action-btn browser-action-btn--primary" title="编辑地址" :disabled="!currentBrowser.url" @click="editBrowserAddress">
-            <AppIcon name="Pencil" :size="18" />
+          <button type="button" class="browser-action-btn" title="更多功能" aria-label="更多功能" :aria-expanded="toolMenuOpen" @click.stop="toolMenuOpen = !toolMenuOpen">
+            <AppIcon name="Ellipsis" :size="18" />
           </button>
-          <button type="button" class="browser-action-btn browser-action-btn--primary" title="复制链接" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser)">
-            <AppIcon name="Share2" :size="18" />
-          </button>
-          <div class="browser-toolbar-divider browser-toolbar-divider--secondary" />
-          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="选择元素" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser)">
-            <AppIcon name="MousePointer2" :size="17" />
-          </button>
-          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="CSS检查器" :disabled="!currentBrowser.url" @click="cssInspector">
-            <AppIcon name="Code" :size="17" />
-          </button>
-          <button type="button" class="browser-action-btn browser-action-btn--secondary" title="设备工具栏" :disabled="!currentBrowser.url" @click="deviceToolbar">
-            <AppIcon name="Monitor" :size="17" />
-          </button>
-          <div class="browser-toolbar-divider browser-toolbar-divider--dev" />
-          <button type="button" class="browser-action-btn browser-action-btn--dev" title="打开DevTools" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser)">
-            <AppIcon name="DevTools" :size="17" />
-          </button>
+          <div v-if="toolMenuOpen" class="browser-toolbar-menu" role="menu">
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="editBrowserAddress(); toolMenuOpen = false"><AppIcon name="Pencil" :size="15" />编辑地址</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser); toolMenuOpen = false"><AppIcon name="Share2" :size="15" />复制链接</button>
+            <div class="browser-toolbar-menu-divider" />
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser); toolMenuOpen = false"><AppIcon name="MousePointer2" :size="15" />选择元素</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="cssInspector(); toolMenuOpen = false"><AppIcon name="Code" :size="15" />CSS检查器</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="deviceToolbar(); toolMenuOpen = false"><AppIcon name="Monitor" :size="15" />设备工具栏</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser); toolMenuOpen = false"><AppIcon name="DevTools" :size="15" />打开 DevTools</button>
+          </div>
         </div>
       </form>
       <div v-if="browserNotice" class="browser-notice-bar">

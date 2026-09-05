@@ -98,10 +98,28 @@ function buildPickerScript(useNative: boolean) {
     badge.style.background = '#1d2733';
   }
 
+  function selectorOf(el) {
+    if (el.id) return '#' + CSS.escape(el.id);
+    const parts = [];
+    let node = el;
+    while (node && node.nodeType === 1 && parts.length < 5) {
+      let part = node.tagName.toLowerCase();
+      const classes = Array.from(node.classList || []).filter(c => /^[a-zA-Z_][\w-]*$/.test(c)).slice(0, 2);
+      if (classes.length) part += classes.map(c => '.' + CSS.escape(c)).join('');
+      const parent = node.parentElement;
+      if (parent) {
+        const same = Array.from(parent.children).filter(child => child.tagName === node.tagName);
+        if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(node) + 1) + ')';
+      }
+      parts.unshift(part);
+      if (node.parentElement && node.parentElement.id) { parts.unshift('#' + CSS.escape(node.parentElement.id)); break; }
+      node = node.parentElement;
+    }
+    return parts.join(' > ');
+  }
   function tagOf(el) {
     const r = el.getBoundingClientRect();
-    const cls = el.classList && el.classList.length ? '.' + Array.from(el.classList).slice(0, 2).join('.') : '';
-    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls + '  ' + Math.round(r.width) + ' × ' + Math.round(r.height);
+    return selectorOf(el) + '  ' + Math.round(r.width) + ' × ' + Math.round(r.height);
   }
 
   function draw() {

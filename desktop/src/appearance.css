@@ -192,8 +192,10 @@
 :root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell) {
   background: #252525 !important;
   border-color: #414141 !important;
+  border-radius: 14px !important;
   box-shadow: 0 5px 18px rgb(0 0 0 / 28%);
 }
+/* 输入壳保持基础样式的 overflow: visible，否则会裁掉落地页内向上弹出的模型/权限菜单 */
 :root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell):focus-within {
   border-color: #5a5a5a !important;
   box-shadow: 0 6px 20px rgb(0 0 0 / 34%);
@@ -205,6 +207,27 @@
 :root[data-app-theme="dark"] :is(.kimi-composer textarea, .composer-input-shell textarea)::placeholder {
   color: #a1a1a1 !important;
 }
+
+:root[data-app-theme="dark"] .model-picker-popover {
+  z-index: 300 !important;
+  color: var(--text) !important;
+  background: var(--surface-raised) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 22px 55px rgb(0 0 0 / 48%), 0 5px 16px rgb(0 0 0 / 32%);
+}
+:root[data-app-theme="dark"] .model-picker-list > button { color: var(--text) !important; }
+:root[data-app-theme="dark"] .model-picker-list > button:hover { background: var(--surface-soft) !important; border-color: var(--border) !important; }
+:root[data-app-theme="dark"] .model-picker-list > button[aria-checked="true"] { background: var(--accent-soft) !important; }
+:root[data-app-theme="dark"] .model-picker-list > button[aria-checked="true"] b,
+:root[data-app-theme="dark"] .model-picker-list b { color: var(--text) !important; }
+:root[data-app-theme="dark"] .model-picker-list small,
+:root[data-app-theme="dark"] .model-picker-popover > header,
+:root[data-app-theme="dark"] .model-picker-error { color: var(--text-muted) !important; }
+:root[data-app-theme="dark"] .model-picker-reasoning { background: var(--surface) !important; border-top-color: var(--border) !important; }
+:root[data-app-theme="dark"] .reasoning-slider-rail { background: #3b4148 !important; }
+:root[data-app-theme="dark"] .reasoning-slider-ticks i { background: #737b86 !important; }
+:root[data-app-theme="dark"] .reasoning-slider-input::-webkit-slider-thumb { background: #eef2f5 !important; border-color: #9aa4af !important; box-shadow: 0 1px 4px rgb(0 0 0 / 48%), 0 0 0 2px rgb(255 255 255 / 8%); }
+:root[data-app-theme="dark"] .reasoning-slider-input::-moz-range-thumb { background: #eef2f5 !important; border-color: #9aa4af !important; box-shadow: 0 1px 4px rgb(0 0 0 / 48%), 0 0 0 2px rgb(255 255 255 / 8%); }
 
 
 :root[data-app-theme="dark"] :is(
@@ -239,13 +262,10 @@
   .task-search,
   .run-chip,
   .timeline-user-message,
-  .permission,
-  .round,
-  .model-config-trigger,
   .outline-button,
   .bridge-card,
   select,
-  input
+  input:not([type="range"])
 ) {
   color: var(--text) !important;
   background: var(--surface-soft) !important;
@@ -342,8 +362,7 @@
   .project-row-toggle,
   .status-task-row,
   .work-header__tools button,
-  .icon-button,
-  .model-config-trigger
+  .icon-button
 ):hover {
   color: var(--text) !important;
   background: var(--surface-raised) !important;
