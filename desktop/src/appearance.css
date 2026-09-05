@@ -51,6 +51,24 @@
 :root[data-app-theme="dark"][data-accent="jade"] { --accent: #72c5a8; --accent-soft: #253f37; }
 :root[data-app-theme="dark"][data-accent="coral"] { --accent: #ee9a90; --accent-soft: #4c302e; }
 
+/* 项目悬浮详情卡片使用了独立的浅色基色，深色主题下需要显式映射到主题表面。 */
+:root[data-app-theme="dark"] .project-preview-card {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 42px rgb(0 0 0 / 46%), 0 4px 12px rgb(0 0 0 / 30%);
+}
+:root[data-app-theme="dark"] .project-preview-card > header > svg { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-preview-card > header button { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-preview-card > header button:hover { color: var(--text); background: var(--surface-soft); }
+:root[data-app-theme="dark"] .project-preview-card__meta,
+:root[data-app-theme="dark"] .project-preview-card__path,
+:root[data-app-theme="dark"] .project-preview-card__edit { border-top-color: var(--border); }
+:root[data-app-theme="dark"] .project-preview-card__meta { color: var(--text-muted); }
+:root[data-app-theme="dark"] .project-preview-card__path { color: var(--text); }
+:root[data-app-theme="dark"] .project-preview-card__edit { color: var(--text-muted); background: var(--surface-soft); }
+:root[data-app-theme="dark"] .project-preview-card__edit:hover { color: var(--text); background: var(--accent-soft); }
+
 /* 全局兜底焦点环：跟随 accent 色，组件未自定义 focus-visible 样式时生效（低特异性，可被覆盖） */
 :where(button, [role="button"], a, input, textarea, select, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
@@ -168,6 +186,24 @@
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
+}
+
+/* 深色模式下让输入区域与页面底色拉开层次，避免编辑框边界融入背景。 */
+:root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell) {
+  background: #252525 !important;
+  border-color: #414141 !important;
+  box-shadow: 0 5px 18px rgb(0 0 0 / 28%);
+}
+:root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell):focus-within {
+  border-color: #5a5a5a !important;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 34%);
+}
+:root[data-app-theme="dark"] :is(.kimi-composer textarea, .composer-input-shell textarea) {
+  color: #f1f1f1 !important;
+  background: transparent !important;
+}
+:root[data-app-theme="dark"] :is(.kimi-composer textarea, .composer-input-shell textarea)::placeholder {
+  color: #a1a1a1 !important;
 }
 
 
