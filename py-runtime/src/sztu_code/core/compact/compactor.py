@@ -42,7 +42,8 @@ def _admit_compaction_request(
 ) -> tuple[bool, int | None]:
     if remaining_token_budget <= 0:
         return True, None
-    estimate = counter.count(request_text)
+    # 与主循环准入同口径（全量 prompt）：估算须包含压缩请求自身的 system prompt
+    estimate = counter.count(request_text) + counter.count(_COMPACT_SYSTEM_PROMPT)
     output_room = remaining_token_budget - estimate
     if output_room < MIN_OUTPUT_RESERVE_TOKENS:
         logger.warning(

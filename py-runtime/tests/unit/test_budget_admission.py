@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import TypeAdapter
 
 from sztu_code.core.budget import (
     DEFAULT_MAX_OUTPUT_TOKENS,
@@ -13,6 +14,7 @@ from sztu_code.core.budget import (
     CounterInputEstimator,
     evaluate_token_budget,
 )
+from sztu_code.core.bus.events import Event, TokenBudgetAdmissionEvent
 from sztu_code.core.compact.compactor import Compactor
 from sztu_code.core.compact.context_usage import IncrementalUsageEstimator
 from sztu_code.core.context import ExecutionContext, TerminationReason
@@ -384,3 +386,24 @@ async def test_compaction_skipped_when_budget_insufficient() -> None:
 def test_termination_reason_token_budget_exists() -> None:
     assert TerminationReason.TOKEN_BUDGET_EXHAUSTED == "token_budget_exhausted"
     assert DEFAULT_MAX_OUTPUT_TOKENS > 0
+
+
+# 功能：验证预算准入事件已注册进 Event 判别联合（事件注册表完整性）
+# 设计：用 TypeAdapter(Event) 校验 wire 载荷；事件若从联合中移除，
+#       回放/IPC 校验路径会出现未知类型，本测试立即失败
+def test_budget_admission_event_registered_in_event_union() -> None:
+    payload = {
+        "type": "llm.budget_admission",
+        "run_id": "run-1",
+        "step": 3,
+        "action": "shrink",
+        "estimated_input_tokens": 100,
+        "remaining_tokens": 356,
+        "request_max_output_tokens": 256,
+        "reason": "shrunk_to_remaining",
+        "ts": "2026-09-05T00:00:00+00:00",
+    }
+    event = TypeAdapter(Event).validate_python(payload)
+    assert isinstance(event, TokenBudgetAdmissionEvent)
+    assert event.request_max_output_tokens == 256
+    assert event.action == "shrink"

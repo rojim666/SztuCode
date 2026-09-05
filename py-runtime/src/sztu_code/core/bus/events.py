@@ -484,6 +484,7 @@ Event = Annotated[
     | LlmThinkingEvent
     | LlmUsageEvent
     | LlmModelSelectedEvent
+    | TokenBudgetAdmissionEvent
     | ContextInjectedEvent
     | LogLineEvent
     | SessionCreatedEvent
