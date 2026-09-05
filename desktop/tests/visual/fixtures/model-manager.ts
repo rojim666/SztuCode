@@ -1,6 +1,5 @@
-import { createApp } from "vue";
-import ModelManager from "../../../src/components/ModelConfig/ModelManager.vue";
-import { connectRuntime, type ModelProfile } from "../../../src/services/sztu-runtime";
+import { createApp, h, ref } from "vue";
+import type { ModelProfile, RuntimeSettings } from "../../../src/services/sztu-runtime";
 import { i18n } from "../../../src/i18n";
 import "../../../src/kimi.css";
 import "../../../src/workbench.css";
@@ -35,17 +34,44 @@ let models: ModelProfile[] = [
   profile({ id: "builtin", name: "内置模型", model: "builtin-model", builtin: true }),
   profile({ id: "custom", name: "自定义模型", model: "custom-model" }),
 ];
+if (new URLSearchParams(location.search).has("many")) {
+  models.push(...["ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free", "openai-fast"].map((name, index) => profile({ id: 'extra-' + index, name, model: name, vendor: "opencode", builtin: true })));
+}
 let deleteMode: "success" | "error" = "success";
 let deleteDelayMs = 0;
 let selectDelayMs = 0;
 const deleteCalls: string[] = [];
+const saveCalls: Record<string, unknown>[] = [];
+const testCalls: Record<string, unknown>[] = [];
+const settingsCalls: Record<string, unknown>[] = [];
+let settingsError = false;
+let settingsDelay = 0;
+let runtimeSettings = { ...models[0], permission_mode: "normal" } as RuntimeSettings;
 const callbacks = new Map<number, Callback>();
 const listeners = new Map<string, number>();
 let callbackId = 0;
 
 async function handleRpc(request: RpcRequest): Promise<Record<string, unknown>> {
   if (request.method === "event.subscribe") return { subscribed: true };
+  if (request.method === "settings.update") {
+    settingsCalls.push(request.params ?? {});
+    if (settingsDelay) await new Promise(resolve => window.setTimeout(resolve, settingsDelay));
+    if (settingsError) return { error: { code: 500, message: "思考强度保存失败" } };
+    runtimeSettings = { ...runtimeSettings, ...request.params };
+    return { settings: runtimeSettings };
+  }
   if (request.method === "provider.model_list") return { models: [...models] };
+  if (request.method === "provider.model_save") {
+    const input = request.params ?? {};
+    saveCalls.push(input);
+    models = models.map(item => item.id === input.id ? { ...item, ...input, is_current: true } as ModelProfile : { ...item, is_current: false });
+    return { settings: models.find(item => item.is_current), models: [...models] };
+  }
+  if (request.method === "provider.model_test") {
+    testCalls.push(request.params ?? {});
+    return { success: true, elapsed_ms: 12 };
+  }
+  if (request.method === "provider.status") return {};
   if (request.method === "provider.model_delete") {
     const modelId = String(request.params?.model_id ?? "");
     deleteCalls.push(modelId);
@@ -59,8 +85,10 @@ async function handleRpc(request: RpcRequest): Promise<Record<string, unknown>> 
   if (request.method === "provider.model_select") {
     const modelId = String(request.params?.model_id ?? "");
     const selectedModels = models.map((item) => ({ ...item, is_current: item.id === modelId }));
+    models = selectedModels;
+    runtimeSettings = { ...runtimeSettings, ...selectedModels.find(item => item.is_current) };
     if (selectDelayMs) await new Promise((resolve) => window.setTimeout(resolve, selectDelayMs));
-    return { result: { settings: {}, models: selectedModels } };
+    return { result: { settings: runtimeSettings, models: selectedModels } };
   }
   return {};
 }
@@ -102,10 +130,25 @@ globalWindow.__TAURI_INTERNALS__ = tauriInternals;
 globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
 globalWindow.__modelManagerFixture = {
   deleteCalls,
+  saveCalls,
+  testCalls,
+  settingsCalls,
+  setSettingsError(value: boolean) { settingsError = value; },
+  setSettingsDelay(value: number) { settingsDelay = value; },
   setDeleteMode(mode: "success" | "error") { deleteMode = mode; },
   setDeleteDelay(delay: number) { deleteDelayMs = delay; },
   setSelectDelay(delay: number) { selectDelayMs = delay; },
 };
 
+const { connectRuntime } = await import("../../../src/services/sztu-runtime");
+const { default: ModelManager } = await import("../../../src/components/ModelConfig/ModelManager.vue");
 await connectRuntime();
-createApp(ModelManager).mount("#app");
+i18n.global.locale.value = "zh-CN";
+if (new URLSearchParams(location.search).has("menu")) {
+  const { default: ModelConfigMenu } = await import("../../../src/components/ModelConfig/ModelConfigMenu.vue");
+  models[2].reasoning_effort = "low";
+  const settings = ref(runtimeSettings);
+  createApp({ setup: () => () => h("div", { style: "position:fixed;bottom:24px;right:24px" }, [
+    h(ModelConfigMenu, { settings: settings.value, status: null, onUpdated: (value: RuntimeSettings) => { settings.value = value; } }),
+  ]) }).use(i18n).mount("#app");
+} else createApp(ModelManager).use(i18n).mount("#app");

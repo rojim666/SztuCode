@@ -408,7 +408,6 @@ const projectEditError = ref("");
 const projectActionBusy = ref(false);
 const projectDialog = ref<ProjectDialogState | null>(null);
 let projectDialogResolve: ((accepted: boolean) => void) | null = null;
-const sidebarToolsExpanded = ref(false);
 const taskQuery = ref("");
 const taskSearchOpen = ref(false);
 const taskSearchInput = ref<HTMLInputElement | null>(null);
@@ -3076,14 +3075,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
         <button :class="{ active: page === 'board' }" @click="openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :filled="page === 'board'" /><span>{{ t('app.allTasks') }}</span></button>
         <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="16" :filled="page === 'automations'" /><span>{{ t('app.automations') }}</span></button>
-        <button class="sidebar-more-trigger" :class="{ expanded: sidebarToolsExpanded }" :aria-expanded="sidebarToolsExpanded" aria-controls="sidebar-more-tools" @click="sidebarToolsExpanded = !sidebarToolsExpanded"><AppIcon name="Ellipsis" :size="16" /><span>{{ t('app.more') }}</span><AppIcon name="ChevronDown" :size="16" /></button>
-        <div v-if="sidebarToolsExpanded" id="sidebar-more-tools" class="sidebar-more-tools">
-          <div>
-            <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
-            <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
-            <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><AppIcon name="MessageCircle" :size="16" :filled="page === 'chat'" /><span>{{ t('app.generalChat') }}</span></button>
-          </div>
-        </div>
+        <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
+        <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
+        <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><AppIcon name="MessageCircle" :size="16" :filled="page === 'chat'" /><span>{{ t('app.generalChat') }}</span></button>
       </nav>
 
       <div class="sidebar-workspace">

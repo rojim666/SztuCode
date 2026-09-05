@@ -1,3 +1,4 @@
+import { anthropicReasoningParams, openaiReasoningParams, validateReasoningEffort } from "./providers/reasoning.js";
 import path from "node:path";
 import net from "node:net";
 import type { JsonRpcRequest, JsonRpcResponse } from "@sztucode/protocol";
@@ -73,7 +74,7 @@ export function validateSetting(key: SettingsUpdateKey, value: unknown): void {
   if (key === "provider") oneOf(["anthropic", "openai"]);
   else if (key === "api_format") oneOf(["openai_chat_completions", "anthropic_messages", "openai_responses"]);
   else if (key === "permission_mode") oneOf(["normal", "accept_edits", "plan", "auto"]);
-  else if (key === "reasoning_effort") oneOf(["", "low", "medium", "high", "xhigh", "max"]);
+  else if (key === "reasoning_effort") validateReasoningEffort(value);
   else if (key === "model") text(1, 200);
   else if (key === "base_url") text(0, 2_000);
   else if (key === "api_key") text(1, 4_000);
@@ -92,7 +93,11 @@ export async function probeModel(input: Record<string, unknown>): Promise<Record
   const headers: Record<string, string> = { "content-type": "application/json" }; const apiKey = typeof input.api_key === "string" ? input.api_key : "";
   if (input.keyless !== true && apiKey) { if (apiFormat === "anthropic_messages") { headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01"; } else headers.authorization = `Bearer ${apiKey}`; }
   const url = `${base}/${apiFormat === "anthropic_messages" ? "messages" : apiFormat === "openai_responses" ? "responses" : "chat/completions"}`;
-  const body = apiFormat === "anthropic_messages" ? { model, max_tokens: 1, messages: [{ role: "user", content: "Reply OK." }] } : apiFormat === "openai_responses" ? { model, input: "Reply OK.", max_output_tokens: 1 } : { model, messages: [{ role: "user", content: "Reply OK." }], max_completion_tokens: 1 };
+  const effort = input.reasoning_effort ?? "";
+  validateReasoningEffort(effort);
+  const maxTokens = effort ? Number(input.max_output_tokens ?? 8192) : 64;
+  validateSetting("max_output_tokens", maxTokens);
+  const body = apiFormat === "anthropic_messages" ? { model, ...anthropicReasoningParams(effort, maxTokens), messages: [{ role: "user", content: "Reply OK." }] } : apiFormat === "openai_responses" ? { model, input: "Reply OK.", max_output_tokens: maxTokens, ...openaiReasoningParams(effort, true) } : { model, messages: [{ role: "user", content: "Reply OK." }], max_completion_tokens: maxTokens, ...openaiReasoningParams(effort, false) };
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), Math.min(300, Math.max(1, Number(input.timeout_s ?? 30))) * 1000);
   try {
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });

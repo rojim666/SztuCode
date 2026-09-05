@@ -7,7 +7,6 @@ import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
-import AgentLogo from "./AgentLogo.vue";
 import FileChangesBadge from "./FileChangesBadge.vue";
 import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
@@ -461,7 +460,6 @@ watch(
         <span v-if="turn.model || turn.userMessageTime" class="timeline-user-message__meta">{{ turn.model || t('timeline.turn.modelUnrecorded') }} · {{ formatTime(turn.userMessageTime) }}</span>
       </div>
       <div v-if="turn.hasContent" class="timeline-assistant">
-        <AgentLogo :active="turn.state === 'running' || turn.state === 'waiting'" />
         <div class="timeline-step__content">
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
           <ContextInjectionRow v-for="entry in turn.contextInjections" :key="entry.id" :entry="entry" />

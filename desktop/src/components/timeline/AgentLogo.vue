@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
-const props = defineProps<{ active?: boolean; size?: "small" | "large" }>();
+const props = defineProps<{ active?: boolean; size?: "mini" | "small" | "large" }>();
 const { t } = useI18n({ useScope: "global" });
 const root = ref<HTMLElement | null>(null);
 // 主题适配：浅色模式黑底白瞳，深色模式白底黑瞳；跟随 data-app-theme 属性实时同步
@@ -139,6 +139,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
 }
 .app-icon--large { --logo-size: 40px; width: 52px; height: 52px; }
+.app-icon--mini { --logo-size: 24px; width: 28px; height: 28px; }
 
 .dots {
   position: absolute;

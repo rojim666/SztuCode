@@ -1,3 +1,4 @@
+import { anthropicReasoningParams } from "./reasoning.js";
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
@@ -18,14 +19,6 @@ function createIdleTimeout(onFire: () => void, ms: number): { reset: () => void;
   return { reset, clear };
 }
 
-/** effort 到官方 thinking budget 的映射（不区分大小写，未识别按 medium）。 */
-function thinkingBudget(effort: string): number {
-  switch (String(effort).trim().toLowerCase()) {
-    case "low": return 2_048;
-    case "high": return 24_576;
-    default: return 8_192;
-  }
-}
 
 export class AnthropicMessagesProvider implements ModelProvider {
   constructor(private readonly options: AnthropicProviderOptions) {}
@@ -45,9 +38,8 @@ export class AnthropicMessagesProvider implements ModelProvider {
       const systemValue = this.options.cacheControl && system ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] : system ? system : undefined;
       const streaming = Boolean(onToken);
       const baseMaxTokens = this.options.maxTokens ?? 8192;
-      let maxTokens = baseMaxTokens; let thinking: { type: string; budget_tokens: number } | undefined;
-      if (this.options.reasoningEffort) { const budget = thinkingBudget(this.options.reasoningEffort); thinking = { type: "enabled", budget_tokens: budget }; if (baseMaxTokens <= budget) maxTokens = budget + 4_096; }
-      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: maxTokens, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(this.options.topP != null ? { top_p: this.options.topP } : {}), ...(thinking ? { thinking } : {}) }), signal: controller.signal });
+      const { max_tokens: maxTokens, thinking } = anthropicReasoningParams(this.options.reasoningEffort, baseMaxTokens);
+      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: maxTokens, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(!thinking && this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(!thinking && this.options.topP != null ? { top_p: this.options.topP } : {}), ...(thinking ? { thinking } : {}) }), signal: controller.signal });
       if (!response.ok) throw await providerHttpError(response, "Anthropic");
       timeout.reset();
       if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking, timeout.reset);

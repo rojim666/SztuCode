@@ -28,8 +28,7 @@
 .turn-usage strong { margin-left: auto; color: #4d535a; font-weight: 600; white-space: nowrap; }
 .timeline-step { position: relative; padding: 0 0 28px; }
 .timeline-step:last-child { padding-bottom: 8px; }
-.timeline-assistant { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: start; gap: 10px; }
-.timeline-assistant > .agent-logo { justify-self: center; }
+.timeline-assistant { display: block; }
 .timeline-step__content { min-width: 0; padding-top: 1px; }
 .turn-actions {
   display: inline-flex;

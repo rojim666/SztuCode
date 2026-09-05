@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
+import AgentLogo from "./AgentLogo.vue";
 import type { ContextInjectionEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
@@ -9,19 +10,20 @@ const props = defineProps<{ entry: ContextInjectionEntry }>();
 const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 
-// 来源标签取自语言包：computed 内调用 t，切换语言时自动重建
+// 来源标签取自语言包：computed 内调用 t，切换语言时自动重建。
+// 左侧内嵌 mini AgentLogo（带眨眼/眼珠跟随/随机表情），iconActive 控制顶部三点呼吸动效
 const sourceConfig = computed(() => {
   switch (props.entry.source) {
     case "intervention":
-      return { icon: "ShieldAlert", label: t("timeline.context.source.intervention"), color: "#b45309", bg: "#fef3c7" };
+      return { label: t("timeline.context.source.intervention"), iconActive: true };
     case "steering":
-      return { icon: "CornerUpLeft", label: t("timeline.context.source.steering"), color: "#1d4ed8", bg: "#dbeafe" };
+      return { label: t("timeline.context.source.steering"), iconActive: true };
     case "compaction":
-      return { icon: "FileClock", label: t("timeline.context.source.compaction"), color: "#6b7280", bg: "#f3f4f6" };
+      return { label: t("timeline.context.source.compaction"), iconActive: false };
     case "canvas":
-      return { icon: "Braces", label: t("timeline.context.source.canvas"), color: "#7c3aed", bg: "#ede9fe" };
+      return { label: t("timeline.context.source.canvas"), iconActive: true };
     default:
-      return { icon: "Info", label: t("timeline.context.source.system"), color: "#4b5563", bg: "#f3f4f6" };
+      return { label: t("timeline.context.source.system"), iconActive: false };
   }
 });
 
@@ -97,8 +99,8 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
       :aria-expanded="open"
       @click="open = !open"
     >
-      <span class="ctx-row__icon" :style="{ color: sourceConfig.color, background: sourceConfig.bg }">
-        <AppIcon :name="sourceConfig.icon" :size="13" />
+      <span class="ctx-row__icon">
+        <AgentLogo :active="sourceConfig.iconActive" size="mini" />
       </span>
       <span class="ctx-row__title">{{ entry.label }}</span>
       <span class="ctx-row__badge">{{ t('timeline.context.chars', { count: charLabel }) }}</span>
@@ -179,12 +181,14 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
 
 .ctx-row__icon {
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   flex: 0 0 auto;
-  border-radius: 5px;
+  border-radius: 7px;
+  background: transparent;
 }
+.ctx-row__icon .app-icon { margin: 0; }
 
 .ctx-row__title {
   flex: 0 0 auto;
@@ -358,9 +362,8 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
   background: rgba(255, 255, 255, 0.05);
 }
 
-/* 图标块：去掉浅色底，改为来源色的半透明着色（currentColor 即来源色） */
 :global([data-app-theme="dark"] .ctx-row__icon){
-  background: color-mix(in srgb, currentColor 16%, transparent) !important;
+  background: transparent !important;
 }
 
 :global([data-app-theme="dark"] .ctx-row__title){

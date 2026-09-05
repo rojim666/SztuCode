@@ -2,6 +2,31 @@ import { expect, test } from "@playwright/test";
 
 const fixtureUrl = "/tests/visual/fixtures/model-manager.html";
 
+test("思考强度可以测试、保存、回显并恢复默认", async ({ page }) => {
+  await openModelManager(page);
+  await page.getByRole("button", { name: "编辑 自定义模型" }).click();
+  const effort = page.getByLabel("思考强度", { exact: true });
+  await expect(effort).toHaveValue("0");
+  await effort.press("ArrowRight");
+  await effort.press("ArrowRight");
+  await effort.press("ArrowRight");
+  await page.getByRole("button", { name: "测试连接", exact: true }).click();
+  await expect(page.getByText("连接成功 · 12 ms", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(page.locator(".current-model-id")).toContainText("高 · 深入思考");
+  await page.getByRole("button", { name: "编辑 自定义模型" }).click();
+  await expect(effort).toHaveValue("3");
+  await effort.press("Home");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("button", { name: "编辑 自定义模型" }).click();
+  await expect(effort).toHaveValue("0");
+  const calls = await page.evaluate(() => {
+    const api = (window as unknown as { __modelManagerFixture: { saveCalls: Record<string, unknown>[]; testCalls: Record<string, unknown>[] } }).__modelManagerFixture;
+    return { saves: api.saveCalls.map(call => call.reasoning_effort), tests: api.testCalls.map(call => call.reasoning_effort) };
+  });
+  expect(calls).toEqual({ saves: ["high", ""], tests: ["high"] });
+});
+
 type FixtureApi = {
   deleteCalls: string[];
   setDeleteMode: (mode: "success" | "error") => void;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReasoningEffortSlider from "./ReasoningEffortSlider.vue";
 import AppIcon from "../icons/AppIcon.vue";
 import { isTauri } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -40,7 +41,8 @@ const provider = ref<"anthropic" | "openai">("openai");
 const apiFormat = ref<ApiFormat>("openai_chat_completions");
 const advancedOpen = ref(false);
 const maxOutputTokens = ref(8192); const temperature = ref<number | null>(null); const topP = ref<number | null>(null);
-const reasoningEffort = ref<"" | "low" | "medium" | "high" | "xhigh" | "max">("");
+const reasoningEffort = ref<RuntimeSettings["reasoning_effort"]>("");
+const reasoningLabel = (level: string) => t(`model.reasoning.${level || "default"}`);
 const timeoutS = ref(120); const maxRetries = ref(2); const contextWindow = ref(128000); const cacheControl = ref(true);
 const showKey = ref(false); const saving = ref(false); const error = ref("");
 const testing = ref(false); const testResult = ref("");
@@ -111,7 +113,7 @@ function beginEdit(item: ModelProfile, event?: MouseEvent) {
   maxOutputTokens.value = latest.max_output_tokens;
   temperature.value = latest.temperature;
   topP.value = latest.top_p;
-  reasoningEffort.value = latest.reasoning_effort;
+  reasoningEffort.value = latest.reasoning_effort ?? "";
   timeoutS.value = latest.timeout_s;
   maxRetries.value = latest.max_retries;
   contextWindow.value = latest.context_window;
@@ -284,7 +286,7 @@ onMounted(() => {
           <div class="current-model-text">
             <span class="current-model-label">当前模型</span>
             <b class="current-model-name">{{ currentModel.name }}</b>
-            <small class="current-model-id">{{ currentModel.model }}</small>
+            <small class="current-model-id">{{ currentModel.model }} · {{ t("model.reasoningLabel") }}：{{ reasoningLabel(currentModel.reasoning_effort) }}</small>
           </div>
         </div>
         <AppIcon name="Check" class="current-model-check" :size="22" />
@@ -472,6 +474,11 @@ onMounted(() => {
                 {{ t("model.getApiKey") }}
                 <AppIcon name="ExternalLink" :size="12" />
               </button>
+            </div>
+
+            <div class="mm-form-field">
+              <ReasoningEffortSlider v-model="reasoningEffort" :model-name="modelId || name" :disabled="saving || testing" />
+              <p v-if="apiFormat === 'anthropic_messages' && reasoningEffort" class="mm-reasoning-hint">{{ t("model.reasoningBudgetHint") }}</p>
             </div>
 
             <div class="mm-form-advanced">
@@ -1706,6 +1713,13 @@ onMounted(() => {
 }
 
 /* 高级配置 */
+.mm-reasoning-hint {
+  margin: 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .mm-form-advanced {
   border-top: 1px solid var(--border, #e5e7eb);
   padding-top: 10px;

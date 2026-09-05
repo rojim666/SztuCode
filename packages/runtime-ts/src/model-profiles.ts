@@ -1,3 +1,4 @@
+import { validateReasoningEffort } from "./providers/reasoning.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,6 +30,7 @@ export class ModelProfileStore {
   }
 
   async save(input: Partial<StoredProfile> & { name: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; select?: boolean }): Promise<{ settings: RuntimeSettings; models: ModelProfile[] }> {
+    if (input.reasoning_effort !== undefined) validateReasoningEffort(input.reasoning_effort);
     await this.load(); const id = input.id || randomUUID(); if (BUILTIN_PROFILES.some((profile) => profile.id === id)) throw new Error("builtin profiles cannot be edited");
     let profile = this.profiles.find((item) => item.id === id);
     if (!profile) {

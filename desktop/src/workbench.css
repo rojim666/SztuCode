@@ -1172,23 +1172,23 @@
 .launcher-menu-error { margin: 2px 8px 6px; color: #a74343; font-size: 10px; }
 .task-launcher .model-label { min-width: 0; max-width: 210px; overflow: hidden; color: #5c626b; text-overflow: ellipsis; white-space: nowrap; }
 .model-config-control { position: relative; flex: 0 1 auto; min-width: 0; }
-.model-config-trigger { display: flex; min-width: 0; max-width: 250px; height: 36px; align-items: center; gap: 8px; padding: 0 9px; color: #51575f; background: transparent; border-radius: 7px; font-size: 14px; }
-.model-config-trigger:hover, .model-config-trigger[aria-expanded="true"] { color: #25292e; background: #f0f1f1; }
+.model-config-trigger { display: flex; min-width: 0; max-width: 250px; height: 36px; align-items: center; gap: 8px; padding: 0 10px; color: #51575f; background: transparent; border: 1px solid transparent; border-radius: 9px; font-size: 13px; font-weight: 560; transition: color 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
+.model-config-trigger:hover, .model-config-trigger[aria-expanded="true"] { color: #25292e; background: #f3f5f7; border-color: #e4e7ea; box-shadow: 0 1px 2px #20252d0a; }
 .model-config-trigger > i { width: 7px; height: 7px; flex: 0 0 auto; background: #a5aab0; border-radius: 50%; }
 .model-config-trigger > i.online { background: #48a366; box-shadow: 0 0 0 3px #48a36617; }
 .model-config-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-config-trigger > svg { flex: 0 0 auto; color: #858a91; }
-.model-picker-popover { position: absolute; z-index: 70; right: 0; bottom: calc(100% + 9px); width: 286px; overflow: hidden; color: #292d32; background: #fff; border: 1px solid #dedfe1; border-radius: 8px; box-shadow: 0 18px 48px #20252d20, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
-.model-picker-popover > header { display: flex; align-items: center; justify-content: space-between; padding: 11px 13px 7px; color: #737980; font-size: 12px; }
+.model-picker-popover { position: absolute; z-index: 70; right: 0; bottom: calc(100% + 10px); width: min(326px, calc(100vw - 28px)); overflow: hidden; color: #292d32; background: #fff; border: 1px solid #dfe3e7; border-radius: 14px; box-shadow: 0 22px 55px #20252d20, 0 4px 14px #20252d10; animation: launcher-popover-in 140ms ease-out; }
+.model-picker-popover > header { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px 9px; color: #737980; font-size: 12px; letter-spacing: .01em; }
 .model-picker-popover > header small { color: #a0a4a9; font-size: 10px; }
-.model-picker-list { max-height: 246px; padding: 2px 6px 7px; overflow-y: auto; scrollbar-width: thin; }
-.model-picker-list > button { display: grid; width: 100%; min-height: 48px; grid-template-columns: 22px minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 6px 7px; color: #30343a; background: transparent; border-radius: 6px; text-align: left; }
-.model-picker-list > button:hover { background: #f3f4f4; }
+.model-picker-list { max-height: 260px; padding: 5px 8px 9px; overflow-y: auto; scrollbar-width: thin; }
+.model-picker-list > button { display: grid; width: 100%; min-height: 52px; grid-template-columns: 30px minmax(0, 1fr) 20px; align-items: center; gap: 9px; padding: 7px 9px; color: #30343a; background: transparent; border: 1px solid transparent; border-radius: 9px; text-align: left; transition: background 120ms ease, border-color 120ms ease; }
+.model-picker-list > button:hover { background: #f5f7f9; border-color: #e9edf0; }
 .model-picker-logo {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
   background: transparent;
   font-size: 12px;
@@ -1202,15 +1202,15 @@
   object-fit: contain;
 }
 
-.model-picker-list .model-name-cell { display: grid; min-width: 0; gap: 2px; }
-.model-picker-list b { overflow: hidden; color: #000; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
-.model-picker-list small { overflow: hidden; color: #8d9298; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-list .model-name-cell { display: grid; min-width: 0; gap: 3px; }
+.model-picker-list b { overflow: hidden; color: #161a1f; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-list small { overflow: hidden; color: #858c94; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .model-picker-list > button > svg { color: #5366d7; }
 .model-picker-list > p { margin: 0; padding: 24px 10px; color: #969ba1; font-size: 12px; text-align: center; }
 .model-picker-error { margin: 0 12px 8px; color: #a74343; font-size: 11px; }
-.model-picker-popover > footer { padding: 6px; border-top: 1px solid #ededee; }
-.model-picker-popover > footer button { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; padding: 0 8px; color: #34383e; background: transparent; border-radius: 6px; font-size: 12px; }
-.model-picker-popover > footer button:hover { background: #f2f3f3; }
+.model-picker-popover > footer { padding: 8px; border-top: 1px solid #edf0f2; }
+.model-picker-popover > footer button { display: flex; width: 100%; min-height: 38px; align-items: center; gap: 8px; padding: 0 10px; color: #34383e; background: transparent; border-radius: 8px; font-size: 12px; transition: background 120ms ease; }
+.model-picker-popover > footer button:hover { background: #f3f5f7; }
 .model-config-popover { position: absolute; z-index: 70; right: 0; bottom: calc(100% + 9px); width: min(360px, calc(100vw - 36px)); overflow: hidden; color: #292d32; background: #fff; border: 1px solid #dedfe1; border-radius: 8px; box-shadow: 0 18px 48px #20252d20, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
 .model-config-popover > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 14px 15px 12px; border-bottom: 1px solid #ededee; }
 .model-config-popover > header > div { display: grid; gap: 3px; }
