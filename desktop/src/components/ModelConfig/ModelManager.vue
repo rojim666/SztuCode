@@ -1815,6 +1815,24 @@ onMounted(() => {
   font-size: 12px;
 }
 
+/* 编辑表单保持信息密度，避免图标墙和思考卡片压过字段本身。 */
+.mm-modal-dialog--lg { max-width: 520px; }
+.mm-modal-body { gap: 10px; padding: 16px 20px; }
+.mm-form-field { gap: 4px; }
+.mm-form-label { font-size: 12px; }
+.mm-form-input, .mm-form-select { height: 38px; border-radius: 8px; font-size: 14px; }
+.mm-icon-picker { max-height: 104px; overflow: hidden; gap: 6px; padding: 2px; }
+.mm-icon-option { width: 38px; height: 38px; border-radius: 8px; }
+.mm-icon-option img { width: 19px; height: 19px; }
+.mm-modal-footer { padding: 10px 20px; }
+.mm-form-field > :deep(.reasoning-slider) { gap: 5px; }
+.mm-form-field > :deep(.reasoning-slider-card) { padding: 11px 16px 9px; border-radius: 18px; }
+.mm-form-field > :deep(.reasoning-slider-track) { height: 38px; margin-top: 8px; }
+.mm-form-field > :deep(.reasoning-slider-input) { height: 38px; }
+.mm-form-field > :deep(.reasoning-slider-input::-webkit-slider-thumb) { width: 38px; height: 38px; }
+.mm-form-field > :deep(.reasoning-slider-input::-moz-range-thumb) { width: 38px; height: 38px; }
+.mm-form-field > :deep(.reasoning-slider-hint) { font-size: 11px; }
+
 /* 按钮样式 */
 .mm-btn {
   display: inline-flex;

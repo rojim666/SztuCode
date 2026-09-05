@@ -29,7 +29,7 @@ import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listArtifacts, listChanges, listOperations, listPendingUserQuestions, listSessions,
+  archiveSession, cancelRun, connectRuntime, createSession, forkSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listArtifacts, listChanges, listOperations, listPendingUserQuestions, listSessions,
   listWorkspaces, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Artifact, type Attachment, type DurableOperation, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
@@ -2302,6 +2302,20 @@ async function handleRetry(runId: string, userMessage: string) {
     void showProjectNotice(t("app.retryFailed"), friendlyError(error).message, "danger");
   }
 }
+async function handleBranch(turn: { runId?: string; userMessage?: string; text: string; summaryText: string }) {
+  const source = activeId.value;
+  if (!source) return;
+  try {
+    const title = (turn.userMessage || turn.text || turn.summaryText || "分支会话").trim().slice(0, 80);
+    const id = await forkSession(source, `分支：${title}`);
+    await refreshIndex(false);
+    const created = sessions.value.find((item) => item.session_id === id);
+    if (created) await chooseTask(id);
+    else { activeId.value = id; await loadSessionHistory(id); }
+  } catch (error) {
+    void showProjectNotice("分支失败", friendlyError(error).message, "danger");
+  }
+}
 // 中断任务的"继续执行"：向当前会话补发一条续跑消息，复用交接摘要作为上下文
 function handleContinue() {
   void submitTask("继续", null);
@@ -3223,7 +3237,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><AppIcon name="Terminal" :size="36" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->

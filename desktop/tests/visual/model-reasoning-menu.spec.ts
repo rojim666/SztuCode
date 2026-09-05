@@ -41,12 +41,16 @@ async function openMenu(page: Page) {
   return slider;
 }
 
-test("快捷思考滑块支持键盘、模型切换和内置模型", async ({ page }) => {
+test("快捷思考滑块支持键盘、模型切换和内置模型", async ({ page }, testInfo) => {
   const slider = await openMenu(page);
   await slider.press("End");
   await expect(page.getByRole("status", { name: "思考强度保存状态" })).toHaveText("已应用");
   await expect(slider).toBeFocused();
   await expect(slider).toHaveAttribute("aria-valuetext", "最高 · 最大思考投入");
+  await page.getByRole("dialog", { name: "选择模型" }).locator("header").click();
+  await page.screenshot({ path: testInfo.outputPath("reasoning-max-effects.png"), animations: "disabled" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => page.locator(".reasoning-slider").evaluate(element => element.getAnimations({ subtree: true }).filter(animation => animation.playState === "running").length)).toBe(0);
   await page.keyboard.press("Escape");
   const trigger = page.getByRole("button", { name: "当前模型", exact: true });
   await expect(trigger).toBeFocused();

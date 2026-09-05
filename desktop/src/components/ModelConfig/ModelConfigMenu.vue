@@ -138,7 +138,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
       <i :class="{ online: status?.ready_for_next_run }" /><span>{{ activeModelName }}</span><AppIcon name="ChevronDown" :size="13" />
     </button>
     <section v-if="open" class="model-picker-popover" role="dialog" :aria-label="t('model.selectModel')" @click.stop>
-      <header><span>{{ t("model.models") }}</span><small>{{ t("model.configCount", { n: models.length }) }}</small></header>
+      <header><span>{{ t("model.models") }}</span><button type="button" class="model-picker-settings" :disabled="busy" :aria-label="t('model.manage')" :title="t('model.manage')" @click="openManager"><AppIcon name="Settings2" :size="15" /></button></header>
       <div class="model-picker-list" role="menu" :aria-label="t('model.models')" @keydown="navigateModels">
         <button v-for="item in models" :key="item.id" type="button" role="menuitemradio" :aria-checked="item.is_current" :tabindex="item.is_current ? 0 : -1" :disabled="busy" @click="choose(item)">
           <i class="model-picker-logo">
@@ -160,15 +160,16 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
         <ReasoningEffortSlider v-model="reasoningEffort" :model-name="activeModelName" compact :status-text="savingReasoning ? t('model.saving') : reasoningApplied ? t('model.reasoningApplied') : ''" :disabled="busy" @update:model-value="reasoningApplied = false" @change="applyReasoning" />
       </div>
       <p v-if="error" class="model-picker-error" role="alert">{{ error }}</p>
-      <footer><button type="button" :disabled="busy" @click="openManager"><AppIcon name="Settings2" :size="15" />{{ t("model.manage") }}</button></footer>
     </section>
   </div>
 </template>
 
 <style scoped>
 .model-picker-popover { border-radius: 14px; }
-.model-picker-popover > header { padding: 12px 14px 8px; font-size: 11px; }
-.model-picker-popover > header small { font-size: 10px; }
+.model-picker-popover > header { padding: 10px 12px 8px; font-size: 11px; }
+.model-picker-settings { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; color: var(--text-muted); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.model-picker-settings:hover:not(:disabled) { color: var(--text); background: var(--surface-soft); }
+.model-picker-settings:disabled { opacity: .45; cursor: wait; }
 .model-picker-list { padding: 0 6px 6px; max-height: 222px; overscroll-behavior: contain; scrollbar-color: #c9cdd3 transparent; }
 .model-picker-list > button { min-height: 42px; padding: 6px 8px; gap: 8px; border-radius: 8px; }
 .model-picker-list b { color: #343940; font-size: 13px; font-weight: 500; line-height: 18px; }
@@ -181,6 +182,6 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
 .model-picker-popover { display: flex; flex-direction: column; width: min(300px, calc(100vw - 32px)); max-height: min(460px, calc(100dvh - 90px)); }
 .model-picker-list { min-height: 0; overflow-y: auto; flex: 1 1 auto; }
 .model-picker-popover > header, .model-picker-popover > footer, .model-picker-reasoning { flex-shrink: 0; }
-.model-picker-reasoning { padding: 10px 14px 12px; border-top: 1px solid #eef0f3; background: #fafbfd; }
+.model-picker-reasoning { padding: 10px 14px 12px; border-top: 1px solid var(--border); background: var(--surface); }
 .model-picker-list button:disabled { cursor: wait; opacity: 0.6; }
 </style>

@@ -266,6 +266,16 @@ export class ContextManager {
   budgetMaxToolResultChars(): number { return this.budget.maxToolResultChars; }
   contextPct(inputTokens?: number): number { return Math.max(0, Number(inputTokens ?? this.tokenEstimate())) / Math.max(1, this.budget.maxTokens); }
   needsCompaction(threshold = 0.70, inputTokens?: number, addedTokens = 0): boolean { return threshold > 0 && this.contextPct((inputTokens && inputTokens > 0 ? inputTokens : this.tokenEstimate()) + Math.max(0, addedTokens)) >= threshold; }
+  /** Token-budget 模式：切换到新的上下文窗口，保留最近完整轮次与可回溯记忆提示，不生成有损摘要。 */
+  rotateWindow(slidingWindow = 5): { originalTokens: number; summaryTokens: number; removedMessages: number; summaryText: string; usedModel: boolean; deferred?: boolean } {
+    const originalTokens = this.tokenEstimate(); const { system, preamble, body } = splitIntoTurns(this.messages);
+    if (body.length <= slidingWindow) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };
+    const recent = flat(body.slice(-slidingWindow)); const old = flat(body.slice(0, -slidingWindow));
+    const marker = `上下文窗口已切换。之前的 ${old.length} 条消息已完整保存在会话历史中；需要细节时请通过记忆/历史工具回溯，不要假设旧内容已被摘要。`;
+    this.messages.splice(0, this.messages.length, ...sanitizeContextMessages([...system, ...preamble, { role: "user", content: marker }, ...recent], this.budget.maxToolResultChars));
+    this.invalidateCache();
+    return { originalTokens, summaryTokens: this.tokenEstimate(), removedMessages: old.length, summaryText: marker, usedModel: false };
+  }
   compact(slidingWindow = 5): ContextCompactionResult {
     const originalTokens = this.tokenEstimate(); const { system, preamble, body } = splitIntoTurns(this.messages);
     if (body.length <= slidingWindow) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };

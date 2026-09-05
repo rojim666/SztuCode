@@ -292,6 +292,11 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function compactSession(sessionId: string, focus = ""): Promise<{ summary_tokens: number; saved_tokens: number; removed_messages?: number; used_model?: boolean }> {
   return await client.request("session.compact", { session_id: sessionId, focus }) as { summary_tokens: number; saved_tokens: number; removed_messages?: number; used_model?: boolean };
 }
+
+export async function forkSession(sessionId: string, title = ""): Promise<string> {
+  const result = await client.request("session.fork", { session_id: sessionId, title });
+  return String((result.session as { id?: string; session_id?: string } | undefined)?.id ?? result.session_id ?? "");
+}
 export async function pinWorkspace(workspaceId: string, pinned: boolean): Promise<Workspace> {
   const result = await client.request("workspace.pin", { workspace_id: workspaceId, pinned }); return result.workspace as Workspace;
 }

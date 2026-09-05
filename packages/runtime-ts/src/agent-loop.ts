@@ -23,7 +23,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[]; taskCanvas?: TaskCanvas };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -53,6 +53,7 @@ export class AgentLoop {
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.70, 0, 1);
+    const memoryMode = this.options.memoryMode ?? (process.env.SZTU_MEMORY_MODE === "compaction" ? "compaction" : "token_budget");
     const slidingWindowSize = this.options.slidingWindowSize ?? nonNegativeEnv("SZTU_SLIDING_WINDOW_SIZE", 5);
     const compactCooldownSteps = this.options.compactCooldownSteps ?? nonNegativeEnv("SZTU_COMPACT_COOLDOWN", 3);
     const compactCircuitBreaker = this.options.compactCircuitBreaker ?? nonNegativeEnv("SZTU_COMPACT_CIRCUIT_BREAKER", 3);
@@ -331,7 +332,14 @@ export class AgentLoop {
 
       // 达到阈值时启动后台压缩（利用工具执行期间的等待时间）
       if (lastContextPct >= compactThreshold && !pendingCompaction) {
-        void startCompaction(step);
+        if (memoryMode === "token_budget") {
+          const rotated = context.rotateWindow(slidingWindowSize);
+          if (!rotated.deferred) {
+            compacted = true;
+            this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "context", message: `Token budget window switched; retained full history and ${rotated.removedMessages} older messages are available for recall (available ${context.availableTokens()} tokens)`, ts: now() });
+            await this.options.onCompacted?.(messages, rotated.summaryText);
+          }
+        } else void startCompaction(step);
       }
 
       // TaskCanvas 记录本轮工具调用开始
@@ -628,9 +636,7 @@ export class AgentLoop {
       }
       // 兜底：如果还没有启动压缩且需要压缩，则启动（工具执行期间可能已经启动了）
       const addedTokens = Math.max(0, context.tokenEstimate() - requestTokens);
-      if (context.needsCompaction(compactThreshold, responseInputTokens || requestTokens, addedTokens) && !pendingCompaction) {
-        void startCompaction(step);
-      }
+      if (context.needsCompaction(compactThreshold, responseInputTokens || requestTokens, addedTokens) && !pendingCompaction && memoryMode === "compaction") void startCompaction(step);
     }
     throw new Error("Agent stopped unexpectedly");
     } catch (error) {

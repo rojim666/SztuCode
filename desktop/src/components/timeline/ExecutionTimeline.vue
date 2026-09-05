@@ -22,6 +22,7 @@ const emit = defineEmits<{
   openChanges: [runId: string];
   reverted: [runId: string];
   review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
+  branch: [turn: { runId?: string; userMessage?: string; text: string; summaryText: string }];
 }>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
@@ -544,6 +545,14 @@ watch(
               <AppIcon v-if="copiedTurn === turn.key" name="Check" :size="14" />
               <AppIcon v-else name="Copy" :size="14" />
             </button>
+            <button
+              v-if="turn.state !== 'running' && turn.state !== 'waiting'"
+              type="button"
+              class="turn-action-btn"
+              :title="t('timeline.action.branch')"
+              :aria-label="t('timeline.action.branch')"
+              @click="emit('branch', turn)"
+            ><AppIcon name="GitFork" :size="14" /></button>
             <button
               v-if="turn.runId && turn.userMessage && turn.state !== 'running' && turn.state !== 'waiting'"
               type="button"

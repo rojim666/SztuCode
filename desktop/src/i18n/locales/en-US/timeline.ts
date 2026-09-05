@@ -29,6 +29,7 @@ export const timeline = {
     retry: "Revert changes and rerun",
     continueTitle: "Continue from interruption",
     continue: "Continue",
+    branch: "Branch into new chat",
   },
   /** Token 用量 */
   usage: {

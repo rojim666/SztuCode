@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile, cp } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ContentBlock, ContextMessage } from "./context.js";
@@ -8,7 +8,7 @@ export type SessionMode = "one_shot" | "chat";
 export type SessionMessage = { role: "user" | "assistant"; content: string | ContentBlock[]; reasoning_content?: string; ts: string; run_id?: string };
 export type SessionRunEvent = { type: string; run_id?: string; [key: string]: unknown };
 export type RunStats = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number };
-export type Session = { id: string; mode: SessionMode; status: SessionStatus; title: string; created_at: string; updated_at: string; run_ids: string[]; run_stats: Record<string, RunStats>; archived: boolean; pinned: boolean; workspace_id: string | null };
+export type Session = { id: string; mode: SessionMode; status: SessionStatus; title: string; created_at: string; updated_at: string; run_ids: string[]; run_stats: Record<string, RunStats>; archived: boolean; pinned: boolean; workspace_id: string | null; parent_session_id?: string | null };
 
 export class SessionStore {
   constructor(private readonly root: string = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "sessions")) {}
@@ -22,12 +22,17 @@ export class SessionStore {
   async fork(sessionId: string, title = ""): Promise<Session> {
     const source = await this.get(sessionId);
     const id = randomUUID(); const ts = new Date().toISOString();
-    const forked: Session = { id, mode: source.mode, status: "waiting_for_input", title: title.trim().slice(0, 200) || `Fork of ${source.title || source.id}`, created_at: ts, updated_at: ts, run_ids: [], run_stats: {}, archived: false, pinned: false, workspace_id: source.workspace_id };
+    const forked: Session = { id, mode: source.mode, status: "waiting_for_input", title: title.trim().slice(0, 200) || `Fork of ${source.title || source.id}`, created_at: ts, updated_at: ts, run_ids: [], run_stats: {}, archived: false, pinned: false, workspace_id: source.workspace_id, parent_session_id: source.id };
     await this.save(forked);
     for (const message of await this.history(sessionId)) {
       if (message.role === "user" || message.role === "assistant") {
         await this.appendMessage(id, { role: message.role, content: message.content });
       }
+    }
+    // 保留模型完整上下文与本地 KV/cache 快照，避免分支后重新计算前缀。
+    const sourceDir = path.join(this.root, sessionId); const targetDir = path.join(this.root, id);
+    for (const name of ["context.json", "kvcache.json", "kv-cache.json", "cache.json"]) {
+      try { await cp(path.join(sourceDir, name), path.join(targetDir, name)); } catch { /* optional cache */ }
     }
     return forked;
   }

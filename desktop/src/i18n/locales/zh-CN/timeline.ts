@@ -29,6 +29,7 @@ export const timeline = {
     retry: "回退本次修改并重新执行",
     continueTitle: "从中断处继续执行",
     continue: "继续执行",
+    branch: "分支到新聊天",
   },
   /** Token 用量 */
   usage: {
