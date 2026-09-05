@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sztu_code.core.budget import MIN_OUTPUT_RESERVE_TOKENS
 from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent
 from sztu_code.core.compact.token_counter import TokenCounter
 from sztu_code.core.events.bus import EventBus
@@ -23,6 +24,25 @@ logger = logging.getLogger(__name__)
 
 # 进程级共享 token 计数器（编码器按名称缓存），避免每次压缩重复加载 tiktoken
 _token_counter = TokenCounter()
+
+
+# Token 预算准入（Issue #72）：压缩请求的输入为全量历史，余额不足以覆盖
+# 「估算输入 + 最小输出预留」时跳过压缩；remaining<=0 表示无预算限制
+def _admit_compaction_request(
+    remaining_token_budget: int, request_text: str, counter: TokenCounter
+) -> bool:
+    if remaining_token_budget <= 0:
+        return True
+    estimate = counter.count(request_text)
+    if estimate + MIN_OUTPUT_RESERVE_TOKENS > remaining_token_budget:
+        logger.warning(
+            "compactor: skip compaction, token budget insufficient "
+            "(estimate=%d remaining=%d)",
+            estimate,
+            remaining_token_budget,
+        )
+        return False
+    return True
 
 
 # 构造压缩续接 user 消息：说明会话续接并附摘要，要求直接续接不寒暄
@@ -169,6 +189,13 @@ class Compactor:
         self._pending_tasks: list[asyncio.Task[None]] = []
 
     # 压缩 ExecutionContext.messages，就地替换消息列表并写 summary 文件
+    # 计算 run 剩余 Token 预算；未配置预算（max_tokens=0）返回 0 表示不限制
+    @staticmethod
+    def _remaining_token_budget(context: ExecutionContext) -> int:
+        if context.max_tokens <= 0:
+            return 0
+        return max(0, context.max_tokens - context.budget_spend_tokens())
+
     async def compact(
         self,
         context: ExecutionContext,
@@ -186,6 +213,7 @@ class Compactor:
                 focus=focus,
                 sliding_window_size=sliding_window_size,
                 compaction_count=context.compaction_count,
+                remaining_token_budget=self._remaining_token_budget(context),
             )
             if isinstance(ret, tuple):
                 sliding_result, new_msgs = ret
@@ -196,7 +224,12 @@ class Compactor:
             else:
                 return None
         else:
-            ret = await self.compact_messages(context.messages, provider, focus=focus)
+            ret = await self.compact_messages(
+                context.messages,
+                provider,
+                focus=focus,
+                remaining_token_budget=self._remaining_token_budget(context),
+            )
             if ret is None or isinstance(ret, tuple):
                 return None
             context.messages = [
@@ -243,6 +276,7 @@ class Compactor:
                     focus=focus,
                     sliding_window_size=sliding_window_size,
                     compaction_count=context.compaction_count,
+                    remaining_token_budget=self._remaining_token_budget(context),
                 )
                 if not isinstance(ret, tuple):
                     context.compaction_failure_count += 1
@@ -272,7 +306,12 @@ class Compactor:
                     context.messages = new_msgs
                 final_result = sliding_result
             else:
-                ret = await self.compact_messages(snapshot, provider, focus=focus)
+                ret = await self.compact_messages(
+                    snapshot,
+                    provider,
+                    focus=focus,
+                    remaining_token_budget=self._remaining_token_budget(context),
+                )
                 if ret is None or isinstance(ret, tuple):
                     context.compaction_failure_count += 1
                     logger.warning(
@@ -354,6 +393,7 @@ class Compactor:
         *,
         sliding_window_size: int = 0,
         compaction_count: int = 0,
+        remaining_token_budget: int = 0,
     ) -> CompactionResult | None | tuple[CompactionResult | None, list[dict[str, Any]] | None]:
         from sztu_code.core.events.bus import EventBus as _Bus
 
@@ -375,6 +415,13 @@ class Compactor:
                 compact_req: list[dict[str, object]] = [
                     {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
                 ]
+
+                if not _admit_compaction_request(
+                    remaining_token_budget,
+                    str(compact_req[0]["content"]),
+                    counter,
+                ):
+                    return None, None
 
                 try:
                     silent_bus = _Bus()
@@ -434,6 +481,13 @@ class Compactor:
                 {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
             ]
 
+            if not _admit_compaction_request(
+                remaining_token_budget,
+                str(compact_req2[0]["content"]),
+                counter,
+            ):
+                return None, None
+
             try:
                 silent_bus = _Bus()
                 response = await provider.chat(
@@ -474,6 +528,13 @@ class Compactor:
             compress_request: list[dict[str, object]] = [
                 {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
             ]
+
+            if not _admit_compaction_request(
+                remaining_token_budget,
+                str(compress_request[0]["content"]),
+                counter,
+            ):
+                return None
 
             try:
                 silent_bus = _Bus()

@@ -19,6 +19,7 @@ class TerminationReason(StrEnum):
     LLM_ERROR = "llm_error"                      # LLM API 调用异常
     REPEATED_ERROR = "repeated_error"            # 同一错误连续 N 次
     MAX_BUDGET_USD = "max_budget_usd"            # 成本上限触及
+    TOKEN_BUDGET_EXHAUSTED = "token_budget_exhausted"  # Token 预算耗尽，无法容纳下一次请求
     BLOCKING_LIMIT = "blocking_limit"            # 上下文窗口即将溢出，无法继续
 
 
@@ -61,12 +62,15 @@ class ExecutionContext:
     # 已注入消息尾部的 working_state 版本；-1 表示尚未注入过
     working_state_injected_version: int = -1
     # ---- agent run 预算 ----
-    max_tokens: int = 0           # 仅保留给显式子任务预算；主 Agent 不设置累计 Token 上限
+    max_tokens: int = 0           # 累计 Token 上限（全量 prompt + 输出口径）；0=不限
     max_wall_clock_s: int = 0     # 累计墙钟秒数上限；0=不限
-    total_input_tokens: int = 0   # 已累计 input tokens（每步 LLM 调用后累加）
+    total_input_tokens: int = 0   # 已累计 input tokens（净输入，每步 LLM 调用后累加）
     total_output_tokens: int = 0  # 已累计 output tokens
     total_cache_read_input_tokens: int = 0  # 已累计命中提示词缓存的 input tokens
     total_cache_creation_input_tokens: int = 0  # 已累计写入提示词缓存的 input tokens
+    # 已累计的全量 prompt tokens（净输入+缓存读+缓存写），与 context_pct 同口径。
+    # Token 预算准入按本字段累计：请求前估算的是完整 prompt，口径必须一致
+    total_prompt_tokens: int = 0
     last_context_pct: float = 0.0  # 最近一次 LLM 调用的上下文占用百分比（用于 run 级结算透传）
     started_at: float = 0.0       # run 开始墙钟（time.monotonic()），loop 惰性初始化
     max_budget_usd: float = 0.0   # USD 成本上限（0 = 不限制）
@@ -184,13 +188,19 @@ class ExecutionContext:
         self.status = "interrupted"
         self.reason = reason
 
-    # 返回累计 token 总数（input + output）
+    # 返回累计 token 总数（净输入 + 输出；不含缓存部分，仅供统计展示）
     def total_tokens(self) -> int:
         return self.total_input_tokens + self.total_output_tokens
 
-    # 返回 token 预算是否已耗尽；max_tokens=0 视为不限
+    # 返回预算口径的累计消耗：全量 prompt（净输入+缓存读+缓存写）+ 输出。
+    # 请求前准入估算的是完整 prompt，两者必须同口径才能比较
+    def budget_spend_tokens(self) -> int:
+        return self.total_prompt_tokens + self.total_output_tokens
+
+    # 返回 token 预算是否已耗尽；max_tokens=0 视为不限。
+    # 口径为全量 prompt + 输出（见 budget_spend_tokens），缓存命中不减免预算
     def token_budget_exhausted(self) -> bool:
-        return self.max_tokens > 0 and self.total_tokens() >= self.max_tokens
+        return self.max_tokens > 0 and self.budget_spend_tokens() >= self.max_tokens
 
     # 返回 run 已运行的墙钟秒数；started_at 未初始化时返回 0
     def elapsed_s(self) -> float:

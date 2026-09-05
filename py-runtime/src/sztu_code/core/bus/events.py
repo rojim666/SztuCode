@@ -150,6 +150,27 @@ class LlmModelSelectedEvent(BaseModel):
     ts: str
 
 
+class TokenBudgetAdmissionEvent(BaseModel):
+    """请求前 Token 预算准入结果（Issue #72）。
+
+    仅在 run 配置了 max_tokens（>0）时发布：记录估算输入、剩余预算、
+    本次请求的输出上限（收缩值）或阻断决定，供事件流/Trace 审计预算行为。
+    实际 usage 与估算误差在 LLM 响应后由日志记录（llm.usage 事件含实际值）。
+    """
+
+    type: Literal["llm.budget_admission"] = "llm.budget_admission"
+    run_id: str
+    step: int
+    # "allow"：默认输出上限放行 | "shrink"：收缩输出上限放行 | "block"：不发起请求
+    action: str
+    estimated_input_tokens: int
+    remaining_tokens: int
+    # 收缩后的单次输出上限；None 表示使用 Provider 默认
+    request_max_output_tokens: int | None = None
+    reason: str = ""
+    ts: str
+
+
 class ContextInjectedEvent(BaseModel):
     type: Literal["context.injected"] = "context.injected"
     run_id: str

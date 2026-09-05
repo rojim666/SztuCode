@@ -6,10 +6,17 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from sztu_code.core.budget import (
+    DEFAULT_MAX_OUTPUT_TOKENS,
+    BudgetAdmission,
+    CounterInputEstimator,
+    evaluate_token_budget,
+)
 from sztu_code.core.bus.events import (
     StepFinishedEvent,
     StepStartedEvent,
     StuckLoopEvent,
+    TokenBudgetAdmissionEvent,
     ToolSchedulerMode,
 )
 from sztu_code.core.compact.budget import truncate_tool_results
@@ -17,7 +24,7 @@ from sztu_code.core.compact.context_usage import IncrementalUsageEstimator
 from sztu_code.core.context import ContinueReason, ExecutionContext, TerminationReason
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
-from sztu_code.core.llm.types import ToolCallBlock
+from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
 from sztu_code.core.permissions.policy import PermissionDecision
 from sztu_code.core.pricing import PricingCatalog, UnknownPricingPolicy
 from sztu_code.core.stuck_tracker import stuck_signature
@@ -197,6 +204,8 @@ class AgentLoop:
         pricing_model: str = "",
         pricing_catalog: PricingCatalog | None = None,
         unknown_pricing_policy: UnknownPricingPolicy = UnknownPricingPolicy.FAIL_OPEN,
+        # 与 Provider 构造配置一致的默认单次输出上限，预算收缩时以此为基准
+        default_max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
     ) -> None:
         if tool_max_concurrency < 1:
             raise ValueError("tool_max_concurrency must be at least 1")
@@ -231,6 +240,10 @@ class AgentLoop:
         # 压缩冷却期：两次压缩之间至少间隔 N 步；冷启动即可触发
         # 跨 LLM 调用增量估算 token 分类用量，避免每步全量重数上下文
         self._usage_estimator = IncrementalUsageEstimator()
+        # 请求前预算准入的输入估算器：与 provider 共用同一增量估算器，
+        # 保证准入估算与请求后实际分类统计口径一致且不重复编码
+        self._input_estimator = CounterInputEstimator(self._usage_estimator)
+        self._default_max_output_tokens = max(1, default_max_output_tokens)
         self._last_compact_step: int = -15
         # 熔断器日志去重：避免每步都刷屏
         self._circuit_breaker_logged: bool = False
@@ -249,6 +262,72 @@ class AgentLoop:
             self._steering_queue.task_done()
             drained += 1
         return drained
+
+    # 请求前 Token 预算准入：估算输入并判定放行/收缩/阻断。
+    # 仅在配置了 max_tokens（>0）的 run 上发布准入事件，供事件流审计预算行为
+    async def _admit_request(
+        self,
+        context: ExecutionContext,
+        *,
+        messages: list[dict[str, object]],
+        system: str,
+        tool_schemas: list[dict[str, object]],
+    ) -> BudgetAdmission:
+        admission = evaluate_token_budget(
+            budget_spend_tokens=context.budget_spend_tokens(),
+            max_tokens=context.max_tokens,
+            messages=messages,
+            system=system,
+            tool_schemas=tool_schemas,
+            estimator=self._input_estimator,
+            default_max_output_tokens=self._default_max_output_tokens,
+        )
+        if context.max_tokens > 0:
+            await self._bus.publish(
+                TokenBudgetAdmissionEvent(
+                    run_id=context.run_id,
+                    step=context.step,
+                    action=admission.action,
+                    estimated_input_tokens=admission.estimated_input_tokens,
+                    remaining_tokens=admission.remaining_tokens,
+                    request_max_output_tokens=admission.request_max_output_tokens,
+                    reason=admission.reason,
+                    ts=_now(),
+                )
+            )
+        return admission
+
+    # 按准入结果调用 provider：仅在收缩输出上限时才传 max_output_tokens，
+    # None 时省略参数，交由 provider 使用其构造配置的默认输出上限
+    async def _chat(
+        self,
+        context: ExecutionContext,
+        *,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        system: str,
+        admission: BudgetAdmission,
+    ) -> LlmResponse:
+        if admission.request_max_output_tokens is not None:
+            return await self._provider.chat(
+                messages=messages,
+                tool_schemas=tool_schemas,
+                bus=self._bus,
+                run_id=context.run_id,
+                step=context.step,
+                usage_estimator=self._usage_estimator,
+                system=system,
+                max_output_tokens=admission.request_max_output_tokens,
+            )
+        return await self._provider.chat(
+            messages=messages,
+            tool_schemas=tool_schemas,
+            bus=self._bus,
+            run_id=context.run_id,
+            step=context.step,
+            usage_estimator=self._usage_estimator,
+            system=system,
+        )
 
     # 驱动 plan→act→observe 循环直到上下文终止；CancelledError 向上传播
     async def run(self, context: ExecutionContext) -> None:
@@ -334,22 +413,48 @@ class AgentLoop:
                     context.mark_failed("stuck_loop")
                     break
 
+            # [plan] 请求前 Token 预算准入（Issue #72）：先截断并估算即将实发的
+            # 内容，再判定放行/收缩输出上限/阻断；截断只做一次并复用同一列表，
+            # 保证估算对象与实发对象一致（增量估算按对象身份识别前缀）
+            outgoing_messages = truncate_tool_results(
+                context.messages,
+                limit=self._tool_result_limit,
+                keep=self._tool_result_keep,
+            )
+            outgoing_system = context.system_prompt(
+                context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
+            )
+            admission = await self._admit_request(
+                context,
+                messages=outgoing_messages,
+                system=outgoing_system,
+                tool_schemas=self._registry.tool_schemas(),
+            )
+            if admission.action == "block":
+                # 余额连「估算输入 + 最小输出预留」都无法覆盖：压缩与收尾请求的
+                # 输入与之相同，同样无法通过准入，因此直接按预算耗尽终止
+                log.info(
+                    "token budget exhausted, blocking LLM request run_id=%s step=%d "
+                    "estimated_input=%d remaining=%d",
+                    context.run_id,
+                    context.step,
+                    admission.estimated_input_tokens,
+                    admission.remaining_tokens,
+                )
+                context.mark_interrupted(TerminationReason.TOKEN_BUDGET_EXHAUSTED)
+                await self._bus.publish(
+                    StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())
+                )
+                break
+
             # [plan] call LLM — API errors terminate the run
             try:
-                response = await self._provider.chat(
-                    messages=truncate_tool_results(
-                        context.messages,
-                        limit=self._tool_result_limit,
-                        keep=self._tool_result_keep,
-                    ),
+                response = await self._chat(
+                    context,
+                    messages=outgoing_messages,
                     tool_schemas=self._registry.tool_schemas(),
-                    bus=self._bus,
-                    run_id=context.run_id,
-                    step=context.step,
-                    usage_estimator=self._usage_estimator,
-                    system=context.system_prompt(
-                        context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
-                    ),
+                    system=outgoing_system,
+                    admission=admission,
                 )
             except asyncio.CancelledError:
                 context.mark_failed("cancelled")
@@ -361,12 +466,36 @@ class AgentLoop:
                 context.mark_failed("llm_error")
                 break
 
-            # [budget] 累计本步 LLM 用量
+            # [budget] 累计本步 LLM 用量（净输入口径 + 全量 prompt 口径）
             if response.usage is not None:
                 context.total_input_tokens += response.usage.input_tokens
                 context.total_output_tokens += response.usage.output_tokens
                 context.total_cache_read_input_tokens += response.usage.cache_read_input_tokens
+                context.total_prompt_tokens += (
+                    response.usage.input_tokens
+                    + response.usage.cache_read_input_tokens
+                    + response.usage.cache_creation_input_tokens
+                )
                 context.last_context_pct = response.usage.context_pct
+                # 估算误差审计：实际全量 prompt 与请求前估算的偏差（预算口径）
+                if context.max_tokens > 0:
+                    actual_prompt = (
+                        response.usage.input_tokens
+                        + response.usage.cache_read_input_tokens
+                        + response.usage.cache_creation_input_tokens
+                    )
+                    log.info(
+                        "token budget: step=%d estimated_input=%d actual_prompt=%d "
+                        "estimation_error=%+d output=%d request_cap=%s spend=%d/%d",
+                        context.step,
+                        admission.estimated_input_tokens,
+                        actual_prompt,
+                        actual_prompt - admission.estimated_input_tokens,
+                        response.usage.output_tokens,
+                        admission.request_max_output_tokens,
+                        context.budget_spend_tokens(),
+                        context.max_tokens,
+                    )
 
             # 在写入历史前补齐工具调用标题，确保回放与实时事件使用同一份参数
             for tool_call in response.tool_calls:
@@ -601,6 +730,11 @@ class AgentLoop:
             elif context.wall_clock_exceeded():
                 context.mark_interrupted("max_wall_clock_exceeded")
 
+            # token_budget: 累计消耗（全量 prompt + 输出）已达上限；
+            # 估算误差导致的单步超支在此收口，下一步准入也会兜底阻断
+            elif context.token_budget_exhausted():
+                context.mark_interrupted(TerminationReason.TOKEN_BUDGET_EXHAUSTED)
+
             # blocking_limit: 上下文即将溢出
             elif (
                 response.usage is not None
@@ -746,22 +880,44 @@ class AgentLoop:
         )
         if pending_summaries:
             instruction += "\n\nBackground subagent results:\n" + "\n".join(pending_summaries)
+        # 收尾请求同样走请求前预算准入：估算含本次指令的完整消息；
+        # 阻断时不追加指令消息，保持对话消息配对（指令无回复会破坏回放）
+        candidate_messages: list[dict[str, object]] = [
+            *context.messages,
+            {"role": "user", "content": instruction},
+        ]
+        outgoing_messages = truncate_tool_results(
+            candidate_messages,
+            limit=self._tool_result_limit,
+            keep=self._tool_result_keep,
+        )
+        outgoing_system = context.system_prompt(
+            context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
+        )
+        admission = await self._admit_request(
+            context,
+            messages=outgoing_messages,
+            system=outgoing_system,
+            tool_schemas=[],
+        )
+        if admission.action == "block":
+            log.info(
+                "token budget exhausted, skipping wrap-up run_id=%s step=%d "
+                "estimated_input=%d remaining=%d",
+                context.run_id,
+                context.step,
+                admission.estimated_input_tokens,
+                admission.remaining_tokens,
+            )
+            return ""
         context.messages.append({"role": "user", "content": instruction})
         try:
-            response = await self._provider.chat(
-                messages=truncate_tool_results(
-                    context.messages,
-                    limit=self._tool_result_limit,
-                    keep=self._tool_result_keep,
-                ),
+            response = await self._chat(
+                context,
+                messages=outgoing_messages,
                 tool_schemas=[],
-                bus=self._bus,
-                run_id=context.run_id,
-                step=context.step,
-                usage_estimator=self._usage_estimator,
-                system=context.system_prompt(
-                    context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
-                ),
+                system=outgoing_system,
+                admission=admission,
             )
         except asyncio.CancelledError:
             raise
@@ -774,6 +930,11 @@ class AgentLoop:
         if response.usage is not None:
             context.total_input_tokens += response.usage.input_tokens
             context.total_output_tokens += response.usage.output_tokens
+            context.total_prompt_tokens += (
+                response.usage.input_tokens
+                + response.usage.cache_read_input_tokens
+                + response.usage.cache_creation_input_tokens
+            )
             context.last_context_pct = response.usage.context_pct
         summary = (response.text or "").strip()
         # 保持消息配对：无论有无文本都追加 assistant 消息
@@ -796,22 +957,43 @@ class AgentLoop:
         )
         if pending_summaries:
             instruction += "\n\nBackground subagent results:\n" + "\n".join(pending_summaries)
+        # 结语请求同样走请求前预算准入：阻断时不追加指令消息，保持消息配对
+        candidate_messages: list[dict[str, object]] = [
+            *context.messages,
+            {"role": "user", "content": instruction},
+        ]
+        outgoing_messages = truncate_tool_results(
+            candidate_messages,
+            limit=self._tool_result_limit,
+            keep=self._tool_result_keep,
+        )
+        outgoing_system = context.system_prompt(
+            context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
+        )
+        admission = await self._admit_request(
+            context,
+            messages=outgoing_messages,
+            system=outgoing_system,
+            tool_schemas=[],
+        )
+        if admission.action == "block":
+            log.info(
+                "token budget exhausted, skipping conclude run_id=%s step=%d "
+                "estimated_input=%d remaining=%d",
+                context.run_id,
+                context.step,
+                admission.estimated_input_tokens,
+                admission.remaining_tokens,
+            )
+            return (False, "")
         context.messages.append({"role": "user", "content": instruction})
         try:
-            response = await self._provider.chat(
-                messages=truncate_tool_results(
-                    context.messages,
-                    limit=self._tool_result_limit,
-                    keep=self._tool_result_keep,
-                ),
+            response = await self._chat(
+                context,
+                messages=outgoing_messages,
                 tool_schemas=[],
-                bus=self._bus,
-                run_id=context.run_id,
-                step=context.step,
-                usage_estimator=self._usage_estimator,
-                system=context.system_prompt(
-                    context.base_system_prompt or _DEFAULT_SYSTEM_PROMPT
-                ),
+                system=outgoing_system,
+                admission=admission,
             )
         except asyncio.CancelledError:
             raise
@@ -824,6 +1006,11 @@ class AgentLoop:
         if response.usage is not None:
             context.total_input_tokens += response.usage.input_tokens
             context.total_output_tokens += response.usage.output_tokens
+            context.total_prompt_tokens += (
+                response.usage.input_tokens
+                + response.usage.cache_read_input_tokens
+                + response.usage.cache_creation_input_tokens
+            )
             context.last_context_pct = response.usage.context_pct
         text = (response.text or "").strip()
         # 保持消息配对：无论有无文本都追加 assistant 消息

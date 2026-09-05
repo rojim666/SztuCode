@@ -11,7 +11,7 @@ import pytest
 from pydantic import BaseModel
 
 from sztu_code.core.compact.compactor import Compactor
-from sztu_code.core.context import ExecutionContext
+from sztu_code.core.context import ExecutionContext, TerminationReason
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.loop import AgentLoop
@@ -51,6 +51,46 @@ class _MockProvider:
         if self._exc is not None:
             raise self._exc
         return next(self._responses)
+
+
+class _CapRecordingProvider:
+    """记录每次 chat 收到的 max_output_tokens 与调用次数，供预算准入断言使用。"""
+
+    def __init__(self, responses: list[LlmResponse]) -> None:
+        self._responses = iter(responses)
+        self.calls = 0
+        self.caps: list[int | None] = []
+        self.systems: list[str | None] = []
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        max_output_tokens: int | None = None,
+    ) -> LlmResponse:
+        self.calls += 1
+        self.caps.append(max_output_tokens)
+        self.systems.append(system)
+        return next(self._responses)
+
+
+class _ZeroEstimator:
+    """恒返回 0 的输入估算器：构造极端低估场景，验证误差容限口径。"""
+
+    def estimate_input_tokens(
+        self,
+        *,
+        messages: list[dict[str, object]],
+        system: str,
+        tool_schemas: list[dict[str, object]],
+    ) -> int:
+        return 0
 
 
 class _CompactingProvider:
@@ -1146,9 +1186,11 @@ async def test_blocking_limit_termination() -> None:
 # ============================================================
 
 
-# 功能：验证累计 Token 不再作为主循环终止条件
-# 设计：即使累计 usage 远超旧预算，也继续执行到模型 end_turn
-async def test_cumulative_token_budget_does_not_stop_loop() -> None:
+# 功能：验证 Token 预算由请求前准入执行（Issue #72），未配置预算时累计 usage 不截断
+# 设计：max_tokens=0（不限）时即使累计 usage 很大也执行到 end_turn；
+#       max_tokens 过小无法容纳「估算输入 + 最小输出预留」时，不发起请求，
+#       run 以 token_budget_exhausted 终止
+async def test_cumulative_token_budget_admission_enforced() -> None:
     tc = _tc()
     provider = _MockProvider([
         LlmResponse(
@@ -1164,10 +1206,20 @@ async def test_cumulative_token_budget_does_not_stop_loop() -> None:
     registry.register(_EchoTool())
     loop, _ = _make_loop(provider, registry)
     ctx = _ctx(max_steps=10)
-    ctx.max_tokens = 1  # 旧配置值不应再截断主 Agent Run
+    # 未配置预算（0=不限）：累计 usage 仅用于统计，不影响执行
     await loop.run(ctx)
     assert ctx.status == "success"
     assert ctx.result == "done"
+
+    # 配置预算：余额无法容纳下一次请求，准入在调用 provider 前阻断
+    blocked_provider = _MockProvider([])
+    loop2, _ = _make_loop(blocked_provider, registry)
+    ctx2 = _ctx(max_steps=10)
+    ctx2.max_tokens = 1
+    await loop2.run(ctx2)
+    assert ctx2.status == "interrupted"
+    assert ctx2.reason == TerminationReason.TOKEN_BUDGET_EXHAUSTED
+    assert ctx2.step == 1
 
 
 # 功能：验证未知模型价格不会回退旧 3/15 美元默认估价
@@ -1555,3 +1607,138 @@ async def test_loop_state_snapshot_evolves_across_steps() -> None:
     # 第二步的步前状态应含第一步的已验证事实
     assert "step evidence" in nodes[1].state
     assert "step evidence" not in nodes[0].state
+
+
+# ============================================================
+# Token 预算准入（Issue #72）— loop 级集成测试
+# ============================================================
+
+
+# 功能：验证余额可容纳输入但不足默认输出上限时，provider 收到收缩后的单次输出上限
+# 设计：max_tokens=1000，准入后剩余输出空间远小于默认 8192，断言 cap 为收缩值
+#       且 run 正常完成、用量照常累计
+async def test_budget_admission_shrinks_request_output_cap() -> None:
+    provider = _CapRecordingProvider([
+        LlmResponse(
+            stop_reason="end_turn", text="done",
+            usage=UsageStats(input_tokens=500, output_tokens=100, context_pct=0.1),
+        ),
+    ])
+    registry = ToolRegistry()
+    loop, _ = _make_loop(provider, registry)
+    ctx = _ctx(max_steps=5)
+    ctx.max_tokens = 1000
+    await loop.run(ctx)
+    assert ctx.status == "success"
+    # 只有一次主请求；cap 非默认（收缩），且等于剩余预算减估算输入
+    assert provider.calls == 1
+    assert provider.caps[0] is not None
+    # cap = 预算 - 请求前消耗(0) - 估算输入；估算输入为正，故 cap 严格小于预算
+    assert 256 <= provider.caps[0] < 1000
+    # 全量 prompt 口径累计：净输入 500 + 输出 100
+    assert ctx.total_prompt_tokens == 500
+    assert ctx.budget_spend_tokens() == 600
+
+
+# 功能：验证余额不足时准入在调用 provider 前阻断，并发布准入事件、保持事件配对
+# 设计：max_tokens 过小，断言 provider 零调用、状态为 token_budget_exhausted、
+#       事件流含 llm.budget_admission(action=block) 且 StepStarted/StepFinished 成对
+async def test_budget_admission_blocks_request_and_publishes_event() -> None:
+    provider = _CapRecordingProvider([])
+    registry = ToolRegistry()
+    loop, bus = _make_loop(provider, registry)
+    events = await _events(bus)
+    ctx = _ctx(max_steps=5)
+    ctx.max_tokens = 1
+    await loop.run(ctx)
+    assert provider.calls == 0
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.TOKEN_BUDGET_EXHAUSTED
+    types = [e.type for e in events]  # type: ignore[attr-defined]
+    assert "llm.budget_admission" in types
+    admission = next(
+        e for e in events  # type: ignore[attr-defined]
+        if e.type == "llm.budget_admission"  # type: ignore[attr-defined]
+    )
+    assert admission.action == "block"
+    assert admission.remaining_tokens == 1
+    started = types.count("step.started")
+    finished = types.count("step.finished")
+    assert started == finished == 1
+
+
+# 功能：验证预算约束的保证口径：实际累计不超过「预算 + 单次请求的估算输入误差」
+# 设计：注入恒为 0 的估算器（极端低估），每轮实际 prompt=700、输出=20，
+#       预算 1000：第一轮放行消耗 720，第二轮剩余 280 仍可收缩放行，
+#       实际再耗 720（超出预算的 440 恰为该轮估算误差），第三轮被阻断
+async def test_budget_tolerance_covers_single_request_estimation_error() -> None:
+    provider = _CapRecordingProvider([
+        LlmResponse(
+            stop_reason="tool_use", tool_calls=[_tc()],
+            usage=UsageStats(input_tokens=700, output_tokens=20, context_pct=0.1),
+        ),
+        LlmResponse(
+            stop_reason="tool_use", tool_calls=[_tc(uid="t2")],
+            usage=UsageStats(input_tokens=700, output_tokens=20, context_pct=0.1),
+        ),
+        LlmResponse(
+            stop_reason="end_turn", text="never reached",
+            usage=UsageStats(input_tokens=700, output_tokens=20, context_pct=0.1),
+        ),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(provider, registry)
+    loop._input_estimator = _ZeroEstimator()
+    ctx = _ctx(max_steps=10)
+    ctx.max_tokens = 1000
+    await loop.run(ctx)
+    # 第三轮请求被准入阻断，provider 只被调用两次
+    assert provider.calls == 2
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.TOKEN_BUDGET_EXHAUSTED
+    single_request_error = 700  # 最后一轮放行请求的「实际 prompt - 估算」
+    assert ctx.budget_spend_tokens() <= 1000 + single_request_error
+
+
+# 功能：验证预算不足时收尾（conclude）请求同样走准入：跳过 LLM 调用且不追加无回复指令
+# 设计：max_steps=1 触发结语宽限步；预算耗尽时 provider 只收到主请求一次，
+#       消息历史不含结语指令，状态为 exceeded_max_steps
+async def test_budget_blocks_conclude_and_preserves_message_pairing() -> None:
+    blocked = _CapRecordingProvider([
+        LlmResponse(
+            stop_reason="tool_use", tool_calls=[_tc()],
+            usage=UsageStats(input_tokens=900, output_tokens=900, context_pct=0.5),
+        ),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop, _ = _make_loop(blocked, registry)
+    ctx = _ctx(max_steps=1)
+    # 预算 1900：主请求后消耗 1800（未触发请求后耗尽判定），剩余 100
+    # 无法覆盖「结语输入估算 + 最小输出预留」，结语请求被准入跳过
+    ctx.max_tokens = 1900
+    await loop.run(ctx)
+    assert blocked.calls == 1  # 主请求执行，结语请求被准入跳过
+    assert ctx.status == "interrupted"
+    assert ctx.reason == "exceeded_max_steps"
+    assert not any(
+        "Give your final answer" in str(m.get("content", "")) for m in ctx.messages
+    )
+
+    # 对照：无预算时结语请求正常发起并按 [COMPLETE] 标记成功
+    ok = _CapRecordingProvider([
+        LlmResponse(
+            stop_reason="tool_use", tool_calls=[_tc()],
+            usage=UsageStats(input_tokens=100, output_tokens=10, context_pct=0.1),
+        ),
+        LlmResponse(
+            stop_reason="end_turn", text="[COMPLETE] all done",
+            usage=UsageStats(input_tokens=100, output_tokens=10, context_pct=0.1),
+        ),
+    ])
+    loop2, _ = _make_loop(ok, registry)
+    ctx2 = _ctx(max_steps=1)
+    await loop2.run(ctx2)
+    assert ok.calls == 2
+    assert ctx2.status == "success"
