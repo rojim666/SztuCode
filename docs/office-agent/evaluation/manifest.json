@@ -1,0 +1,8 @@
+{
+  "schema_version": "office-eval-1",
+  "scenarios": [
+    {"id":"research-report","input":"samples/sources","expected":"引用事实表，含 source-a §结论、source-b §风险、source-c §边界"},
+    {"id":"table-analysis","input":"samples/sales.csv","expected":"按地区汇总，合计 450，缺失值 1，图表序列可复算"},
+    {"id":"editable-artifacts","input":"table-analysis","expected":"可编辑 DOCX 与 PPTX；当前状态 unimplemented"}
+  ]
+}

@@ -84,6 +84,8 @@ export type SessionHistory = {
   run_stats: Record<string, RunStats>;
   context_injections: ContextInjectionRecord[];
 };
+export type Artifact = { artifact_id: string; workspace_id: string; session_id?: string; run_id?: string; type: string; path: string; summary: string; hash: string; version: number; input_sources: Array<{ path: string; version?: string; hash?: string }>; generation_status: string; verification_status: string; preview?: { mime_type: string; text?: string }; delivery_ids: string[]; versions: Array<{ version: number; hash: string; size: number; created_at: string; path: string }> };
+export type DurableOperation = { operation_id: string; task_id: string; run_id?: string; session_id?: string; status: string; params_summary: string; external_object_id?: string; updated_at: string };
 export type UserQuestionOption = { label: string; description?: string | null };
 export type UserQuestionItem = {
   id: string; header?: string | null; question: string;
@@ -524,6 +526,8 @@ export async function respondPermission(
     session_id: sessionId,
   });
 }
+export async function listArtifacts(workspaceId: string): Promise<Artifact[]> { const result = await client.request("artifact.list", { workspace_id: workspaceId }); return (result.artifacts as Artifact[] | undefined) ?? []; }
+export async function listOperations(taskId?: string): Promise<DurableOperation[]> { const result = await client.request("operation.list", taskId ? { task_id: taskId } : {}); return (result.operations as DurableOperation[] | undefined) ?? []; }
 
 export async function unstageChanges(workspaceId: string, paths: string[]): Promise<string[]> {
   const result = await client.request("change.unstage", { workspace_id: workspaceId, paths });

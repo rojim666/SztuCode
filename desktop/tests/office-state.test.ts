@@ -1,0 +1,2 @@
+import test from "node:test"; import assert from "node:assert/strict"; import { officeTaskState } from "../src/utils/officeState.ts";
+test("office task status uses daemon state and unknown takes precedence", () => { assert.equal(officeTaskState("active", "unknown"), "结果未知"); assert.equal(officeTaskState("waiting_for_input"), "等待用户"); assert.equal(officeTaskState("active"), "运行中"); assert.equal(officeTaskState("closed", "failed"), "失败"); assert.equal(officeTaskState("closed", "succeeded"), "完成"); });

@@ -43,6 +43,11 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Office offline acceptance
+        run: |
+          npm run office:eval
+          npx tsx --test packages/runtime-ts/tests/operation-store.test.ts packages/runtime-ts/tests/durable-checkpoint.test.ts packages/runtime-ts/tests/scheduler.test.ts packages/runtime-ts/tests/connectors.test.ts packages/runtime-ts/tests/workspace-indexer.test.ts
+
       - name: Build
         run: npm run build
 

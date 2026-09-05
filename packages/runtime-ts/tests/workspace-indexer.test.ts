@@ -8,6 +8,7 @@ import test from "node:test";
 import { WorkspaceIndexer } from "../src/indexing/index.js";
 import type { Embedder } from "../src/embedding/index.js";
 import { MemoryVectorStore } from "../src/vector-store/index.js";
+import * as XLSX from "xlsx";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +36,18 @@ test("索引单文件时会分块、携带路径上下文并保存元数据", as
     assert.equal(result[0]!.record.metadata.source, "auth.ts");
     assert.equal(result[0]!.record.metadata.workspace_id, root);
     assert.equal(result[0]!.record.metadata.start_line, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("Office XLSX enters the index with sheet and source version metadata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-office-indexer-"));
+  try {
+    const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["地区", "销售额"], ["华东", "180"]]), "汇总");
+    await writeFile(path.join(root, "sales.xlsx"), XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+    const store = new MemoryVectorStore(2); const indexer = new WorkspaceIndexer(root, createEmbedder(), store);
+    assert.equal(await indexer.indexFile("sales.xlsx"), 1);
+    const result = await store.search([0, 1], 2); const metadata = result[0]!.record.metadata;
+    assert.equal(metadata.source, "sales.xlsx"); assert.equal(metadata.sheet, "汇总"); assert.equal(typeof metadata.source_version, "string"); assert.equal(metadata.block_type, "table");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

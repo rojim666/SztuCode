@@ -20,6 +20,9 @@ import { loadExtensionModules } from "./extensions/loader.js";
 import { ServerService, type CodingAgentServices } from "./server-service.js";
 import { classifyError, dataRoot, clientId, error, requestRunId, responseRunId, matchesSubscription } from "./server-helpers.js";
 import { JsonlSessionBackend } from "@sztucode/session-fs";
+import { ArtifactStore } from "./artifact-store.js";
+import { OperationStore } from "./operation-store.js";
+import { SchedulerStore } from "./scheduler.js";
 
 const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
@@ -33,6 +36,9 @@ export class RuntimeServer {
   readonly runs: RunManager;
   readonly sessions = new SessionStore();
   readonly sessionBackend = new JsonlSessionBackend(path.join(dataRoot(), "sessions"));
+  readonly artifacts = new ArtifactStore(path.join(dataRoot(), "artifacts"));
+  readonly operations = new OperationStore(path.join(dataRoot(), "operations.json"));
+  readonly scheduler = new SchedulerStore(path.join(dataRoot(), "scheduled-tasks.json"));
   readonly workspaces = new WorkspaceManager();
   readonly git = new GitManager(this.workspaces);
   readonly models = new ModelProfileStore(this.settings);
@@ -56,8 +62,8 @@ export class RuntimeServer {
     this.telemetry = this.trace ? new TraceTelemetryContext(this.trace, { includeAttributes: false }) : NOOP_TELEMETRY_CONTEXT;
     const baseProvider = provider ?? new ConfigurableProvider(this.settings);
     this.provider = this.trace ? new TracingProvider(baseProvider, this.trace, /^(1|true|yes)$/i.test(process.env.SZTU_TRACE_INCLUDE_LLM_PAYLOAD ?? "false"), this.telemetry) : baseProvider;
-    this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, streaming: true }; }, this.sessions, this.extensions, this.telemetry);
-    this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, sessionBackend: this.sessionBackend, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider, telemetry: this.telemetry } satisfies CodingAgentServices);
+    this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, streaming: true }; }, this.sessions, this.extensions, this.telemetry, this.operations);
+    this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, sessionBackend: this.sessionBackend, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider, telemetry: this.telemetry, artifacts: this.artifacts, operations: this.operations, scheduler: this.scheduler } satisfies CodingAgentServices);
     this.transport = new TcpNdjsonTransport({ host, port, maxFrameBytes, compatibilityMode: true }, {
       onMessage: (connection, message) => {
         const socket = connection.socket;

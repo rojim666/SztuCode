@@ -26,12 +26,13 @@ import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { friendlyError } from "./utils/errorNotice";
+import { officeTaskState } from "./utils/officeState";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listPendingUserQuestions, listSessions,
+  archiveSession, cancelRun, connectRuntime, createSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listArtifacts, listChanges, listOperations, listPendingUserQuestions, listSessions,
   listWorkspaces, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
-  type Attachment, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
+  type Artifact, type Attachment, type DurableOperation, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
 } from "./services/sztu-runtime";
 
 const { t } = useI18n({ useScope: "global" });
@@ -488,6 +489,9 @@ const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
+const artifacts = ref<Artifact[]>([]);
+const operations = ref<DurableOperation[]>([]);
+const officeSupported = ref(true);
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
 // 历史会话的标题可能为空（例如旧版本创建的临时会话）；搜索弹窗首次打开时
@@ -1699,6 +1703,7 @@ async function refreshIndex(loadHistory = false) {
     listWorkspaces(), listSessions(), getRuntimeSettings(), getProviderStatus(), listPendingUserQuestions(),
   ]);
   workspaces.value = nextWorkspaces; sessions.value = nextSessions; runtimeSettings.value = nextSettings; providerStatus.value = nextProvider;
+  try { operations.value = await listOperations(); artifacts.value = activeWorkspace.value ? await listArtifacts(activeWorkspace.value.workspace_id) : []; officeSupported.value = true; } catch { officeSupported.value = false; artifacts.value = []; operations.value = []; }
   const snapshot = questionSnapshot.filter((item) => !resolvedQuestionIds.has(item.rpc_id));
   if (questionVersion === questionEventVersion) {
     pendingUserQuestions.value = snapshot;
@@ -3360,17 +3365,24 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <section v-else-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>{{ t('app.allTasks') }}</h1><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
         <div class="session-board">
-          <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.status }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
+          <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ officeTaskState(task.status, operations.find(operation => operation.session_id === task.session_id)?.status) }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
           <h2 v-if="archivedSessions.length">{{ t('app.archived') }}</h2>
           <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
           <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
         </div>
+        <p v-if="!officeSupported" class="status-pill">当前 daemon 不支持成果与操作查询，请升级服务后重试。</p>
+        <template v-else>
+          <h2>成果</h2>
+          <div class="session-board"><article v-for="artifact in artifacts" :key="artifact.artifact_id"><div><b>{{ artifact.path }}</b><p>{{ artifact.summary || artifact.preview?.text }}</p><span>版本 {{ artifact.version }} · 验证 {{ artifact.verification_status }} · {{ artifact.delivery_ids.length ? '已关联交付记录' : '未交付' }}</span><p v-for="source in artifact.input_sources" :key="source.path">资料：{{ source.path }} · {{ source.version || source.hash || '版本未记录' }}</p></div><button v-if="activeWorkspace" class="outline-button" @click="invoke('open_path_with_app', { path: activeWorkspace.path + '/' + artifact.path, appId: 'explorer' })">打开文件</button></article><p v-if="!artifacts.length">此工作区暂无成果。</p></div>
+          <h2>操作审阅</h2>
+          <div class="session-board"><article v-for="operation in operations" :key="operation.operation_id"><div><b>{{ operation.params_summary }}</b><p>{{ operation.status }} · {{ operation.external_object_id || '本地操作' }}</p><small>{{ operation.updated_at }}</small></div></article><p v-if="!operations.length">暂无操作记录。</p></div>
+        </template>
       </section>
       <section v-else-if="page === 'automations'" class="chat-main"><ChatPortal view="automations" :connected="connected" @submit="submitChat" @navigate="(view) => { page = 'chat'; chatView = view }" @open-project="openLocalProject" /></section>
 
       <section v-else-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 
-      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ t('app.webbridgeHint') }}</p></div><span class="status-pill">{{ t('app.disconnected') }}</span></div></section>
+      <section v-else-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p></section>
     </main>
 
     <Teleport to="body">

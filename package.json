@@ -21,7 +21,9 @@
     "bench:tbench:ts": "node scripts/run-tbench.mjs --ts",
     "docs:protocol": "tsx scripts/gen_protocol_doc.ts",
     "docs:links": "tsx scripts/check_markdown_links.ts",
-    "trace:permission": "tsx scripts/trace_permission_flow.ts"
+    "trace:permission": "tsx scripts/trace_permission_flow.ts",
+    "office:eval": "node scripts/eval-office-baseline.mjs",
+    "office:report": "tsx scripts/generate-office-report.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -31,3 +33,4 @@
     "yaml": "^2.9.0"
   }
 }
+

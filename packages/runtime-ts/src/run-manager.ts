@@ -19,6 +19,7 @@ import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@s
 import { SubagentManager } from "./subagent.js";
 import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 import { runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
+import type { OperationStore } from "./operation-store.js";
 
 type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
@@ -32,7 +33,7 @@ export class RunManager {
   private readonly sessionRuns = new Map<string, string>();
   private readonly runRoots = new Map<string, string>();
   readonly permissions: PermissionManager;
-  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) {
+  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
     this.permissions = new PermissionManager(events, 60_000, undefined, this.telemetry);
     this.events.subscribe((event) => {
       const root = ("workspace_path" in event && typeof event.workspace_path === "string" ? event.workspace_path : undefined) ?? ("run_id" in event ? this.runRoots.get(event.run_id) : undefined) ?? workspaceRoot;
@@ -48,6 +49,7 @@ export class RunManager {
     if (sessionId) this.sessionRuns.set(sessionId, runId);
     onRunCreated?.(runId);
     this.emit({ type: "operation.started", run_id: runId, operation_id: runId, goal, ts: now() });
+    void this.operations?.begin({ operation_id: runId, task_id: sessionId ?? runId, run_id: runId, session_id: sessionId, step: 0, attempt: 1, sequence: 1, params_summary: goal.slice(0, 500), permission_state: this.permissions.getMode(), budget_remaining: maxSteps() });
     this.emit({ type: "run.started", run_id: runId, goal, ts: now() });
     void safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); });
     return runId;
@@ -127,6 +129,7 @@ export class RunManager {
       run.status = "failed";
       this.sessionRuns.forEach((active, sessionId) => { if (active === run.runId) this.sessionRuns.delete(sessionId); });
       this.emit({ type: "operation.finished", run_id: run.runId, operation_id: run.runId, status: "failed", steps: run.steps, ts: now() });
+      await this.operations?.finish(run.runId, "failed", error instanceof Error ? error.message : String(error));
       this.emit({ type: "run.finished", run_id: run.runId, status: "failed", reason: error instanceof Error ? error.message : String(error), steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
       await this.extensions.dispatch("agent_end", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
       await this.extensions.dispatch("session_shutdown", { goal: run.goal, error }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
@@ -155,6 +158,7 @@ export class RunManager {
     run.status = "completed";
     if (sessionId && this.sessionRuns.get(sessionId) === run.runId) this.sessionRuns.delete(sessionId);
     this.emit({ type: "operation.finished", run_id: run.runId, operation_id: run.runId, status: "completed", steps: run.steps, ts: now() });
+    await this.operations?.finish(run.runId, "succeeded", "run completed");
     this.emit({ type: "run.finished", run_id: run.runId, status: "success", steps: run.steps, total_input_tokens: run.usage.input_tokens, total_output_tokens: run.usage.output_tokens, cache_read_input_tokens: run.usage.cache_read_input_tokens, cache_creation_input_tokens: run.usage.cache_creation_input_tokens, elapsed_s: elapsed(run.startedAt), context_pct: run.contextPct, ts: now() });
     await this.extensions.dispatch("agent_end", { goal: run.goal, messages: result.messages, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });
     await this.extensions.dispatch("session_shutdown", { goal: run.goal, result }, workspaceRoot ?? process.cwd(), { runId: run.runId, sessionId });

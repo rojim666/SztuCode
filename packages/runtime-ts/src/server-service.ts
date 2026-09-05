@@ -25,6 +25,9 @@ import type { RunManager } from "./run-manager.js";
 import type { ExtensionRegistry } from "./extensions/registry.js";
 import type { SessionBackend } from "@sztucode/session";
 import type { TelemetryContext } from "@sztucode/telemetry";
+import type { ArtifactStore } from "./artifact-store.js";
+import type { OperationStore } from "./operation-store.js";
+import type { SchedulerStore } from "./scheduler.js";
 
 export interface CodingAgentServices {
   readonly events: EventBus;
@@ -40,6 +43,9 @@ export interface CodingAgentServices {
   readonly extensions: ExtensionRegistry;
   readonly provider: unknown;
   readonly telemetry?: TelemetryContext;
+  readonly artifacts: ArtifactStore;
+  readonly operations: OperationStore;
+  readonly scheduler: SchedulerStore;
 }
 const METHOD_NOT_FOUND = -32601;
 const SESSION_BUSY = -32012;
@@ -83,8 +89,21 @@ export class ServerService {
       case "core.ping": {
         const params = request.params as unknown as PingParams;
         if (typeof params.client !== "string") throw new Error("client is required");
-        return ok(request.id, { server_version: "ts-0.2.0", uptime_ms: Date.now() - this.startedAt, received_at: new Date().toISOString(), capabilities: ["agent.run", "run.cancel", "run.get", "run.replay", "workspace.*", "session.*", "event.subscribe"] });
+        return ok(request.id, { server_version: "ts-0.2.0", uptime_ms: Date.now() - this.startedAt, received_at: new Date().toISOString(), capabilities: ["agent.run", "run.cancel", "run.get", "run.replay", "workspace.*", "session.*", "event.subscribe", "artifacts"] });
       }
+      case "artifact.list": { const p = request.params as { workspace_id: string }; return ok(request.id, { artifacts: await this.artifacts.list(p.workspace_id) }); }
+      case "artifact.get": { const p = request.params as { workspace_id: string; artifact_id: string }; return ok(request.id, { artifact: await this.artifacts.get(p.workspace_id, p.artifact_id) }); }
+      case "artifact.register":
+      case "artifact.create": { const p = request.params as { workspace_id: string; path: string; artifact_type?: any; summary?: string; session_id?: string; run_id?: string; input_sources?: any[] }; const workspace = await this.workspaces.get(p.workspace_id); const artifact = await this.artifacts.register(p.workspace_id, workspace.path, p.path, { type: p.artifact_type ?? "other", summary: p.summary ?? "", session_id: p.session_id, run_id: p.run_id, input_sources: p.input_sources ?? [] }); this.events.publish({ type: "log.line", run_id: p.run_id ?? "artifact", level: "INFO", source: "artifact", message: `artifact ${artifact.artifact_id} registered`, ts: new Date().toISOString() }); return ok(request.id, { artifact }); }
+      case "artifact.verify": { const p = request.params as { workspace_id: string; artifact_id: string; status: any; summary?: string }; return ok(request.id, { artifact: await this.artifacts.updateVerification(p.workspace_id, p.artifact_id, p.status, p.summary) }); }
+      case "operation.get": { const p = request.params as { operation_id: string }; return ok(request.id, { operation: await this.operations.get(p.operation_id) }); }
+      case "operation.list": { const p = request.params as { task_id?: string }; return ok(request.id, { operations: await this.operations.list(p.task_id) }); }
+      case "operation.recover": { const p = request.params as { operation_id: string }; return ok(request.id, { operation: await this.operations.recover(p.operation_id) }); }
+      case "schedule.list": { return ok(request.id, { tasks: await this.scheduler.list() }); }
+      case "schedule.create": { const task = request.params as any; const now = new Date().toISOString(); return ok(request.id, { task: await this.scheduler.upsert({ ...task, id: task.id ?? randomUUID(), status: task.status ?? "active", updated_at: now }) }); }
+      case "schedule.update": { const task = request.params as any; return ok(request.id, { task: await this.scheduler.upsert({ ...task, updated_at: new Date().toISOString() }) }); }
+      case "schedule.pause": { const p = request.params as { id: string }; const task = await this.scheduler.get(p.id); return ok(request.id, { task: await this.scheduler.upsert({ ...task, status: "paused", updated_at: new Date().toISOString() }) }); }
+      case "schedule.delete": { const p = request.params as { id: string }; await this.scheduler.delete(p.id); return ok(request.id, { id: p.id, deleted: true }); }
       case "core.shutdown": {
         setTimeout(() => { void this.close(); }, 0);
         return ok(request.id, { stopping: true });

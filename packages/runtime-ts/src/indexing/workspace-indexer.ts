@@ -1,4 +1,5 @@
 import { readdir, stat, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -6,11 +7,13 @@ import { createChunker, type Chunk } from "../chunking/index.js";
 import type { Embedder } from "../embedding/types.js";
 import type { VectorStore } from "../vector-store/types.js";
 import { ignored, Workspace } from "../workspace.js";
+import { detectDocumentFormat, documentParsers } from "../document-parser/index.js";
 
 const MAX_FILE_BYTES = 1 * 1024 * 1024;
 const DEFAULT_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php",
   ".md", ".markdown", ".txt", ".rst", ".adoc", ".json", ".yaml", ".yml", ".toml",
+  ".pdf", ".docx", ".xlsx",
 ]);
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +35,11 @@ export function formatEmbeddingText(source: string, chunk: Chunk): string {
   const symbol = typeof chunk.metadata.symbol === "string" ? `\n符号：${chunk.metadata.symbol}` : "";
   const kind = typeof chunk.metadata.symbol_kind === "string" ? `\n符号类型：${chunk.metadata.symbol_kind}` : "";
   return `${source}${symbol}${kind}\n\n${chunk.text}`;
+}
+
+/** 判断检索记录是否仍对应工作区当前文件版本；文件删除或哈希变化均视为失效引用。 */
+export async function isIndexedReferenceCurrent(workspaceRoot: string, source: string, sourceVersion: string): Promise<boolean> {
+  try { const absolute = await new Workspace(workspaceRoot).resolveExisting(source); const current = createHash("sha256").update(await readFile(absolute)).digest("hex"); return current === sourceVersion; } catch { return false; }
 }
 
 /** 负责把工作区文件转换成向量记录，不负责注册工具或持久化存储。 */
@@ -61,9 +69,21 @@ export class WorkspaceIndexer {
     if (!fileStat.isFile()) throw new Error(`不是文件：${source}`);
     if (fileStat.size > MAX_FILE_BYTES) throw new Error(`文件过大，超过 ${MAX_FILE_BYTES} 字节：${source}`);
     const buffer = await readFile(absolute);
-    if (buffer.includes(0)) throw new Error(`二进制文件不能建立文本索引：${source}`);
-    const content = buffer.toString("utf8");
-    const chunks = createChunker(source).split(content, { source });
+    const versionHash = createHash("sha256").update(buffer).digest("hex");
+    const format = detectDocumentFormat(source, buffer);
+    let chunks: Chunk[];
+    if (format && format !== "unknown") {
+      const document = await documentParsers.parse(buffer, format);
+      if (document.blocks.length === 0) throw new Error(`文档 ${source} 未提取到文本；当前未配置 OCR 适配器，未将空内容视为索引成功`);
+      chunks = document.blocks.flatMap((block, index) => {
+        const text = block.type === "table" ? (block.rows ?? []).map(row => row.join(" | ")).join("\n") : (block.content ?? "");
+        if (!text.trim()) return [];
+        return [{ text, metadata: { source, type: "document", chunk_index: index, ...(block.page !== undefined ? { page: block.page } : {}), ...(block.metadata?.sheet ? { sheet: String(block.metadata.sheet) } : {}), ...(block.type === "table" ? { block_type: "table" } : { block_type: block.type }), source_version: versionHash } }];
+      });
+    } else {
+      if (buffer.includes(0)) throw new Error(`二进制文件不能建立文本索引：${source}`);
+      chunks = createChunker(source).split(buffer.toString("utf8"), { source }).map(chunk => ({ ...chunk, metadata: { ...chunk.metadata, source_version: versionHash } }));
+    }
     const vectors = await this.embedder.embed(chunks.map((chunk) => formatEmbeddingText(source, chunk)));
     if (vectors.length !== chunks.length) throw new Error(`嵌入结果数量与分块数量不一致：${source}`);
 
@@ -94,7 +114,7 @@ export class WorkspaceIndexer {
     const candidates: string[] = [];
     for (const file of allFiles) {
       if (candidates.length >= maxFiles) break;
-      if (await this.isTextFile(file) && !(await this.isGitIgnored(file))) candidates.push(file);
+      if ((await this.isTextFile(file) || this.isOfficeFile(file)) && !(await this.isGitIgnored(file))) candidates.push(file);
     }
     let filesIndexed = 0;
     let chunksIndexed = 0;
@@ -169,6 +189,8 @@ export class WorkspaceIndexer {
       return false;
     }
   }
+
+  private isOfficeFile(source: string): boolean { return [".pdf", ".docx", ".xlsx"].includes(path.posix.extname(source).toLowerCase()); }
 
   private async isGitIgnored(source: string): Promise<boolean> {
     try {
