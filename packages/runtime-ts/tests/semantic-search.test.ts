@@ -74,6 +74,52 @@ test("semantic_search 混合排序会提升精确符号命中", async () => {
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("semantic_search 新实例会恢复 JSONL 索引并保留关键词检索", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-semantic-persist-"));
+  try {
+    await writeFile(path.join(root, "auth.ts"), "export function checkPermission() { return true; }", "utf8");
+    const first = createSemanticSearchTool({ createEmbedder: () => fixedEmbedder({ count: 0 }) });
+    const context = { workspace: new Workspace(root) };
+    assert.equal((await first.invoke({ query: "checkPermission" }, context)).ok, true);
+    const second = createSemanticSearchTool({ createEmbedder: () => fixedEmbedder({ count: 0 }) });
+    const restored = await second.invoke({ query: "checkPermission", auto_index: false }, context);
+    assert.equal(restored.ok, true);
+    assert.match(restored.output, /auth\.ts/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("semantic_search 会在文件变化后只更新对应索引", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-semantic-update-"));
+  try {
+    const file = path.join(root, "note.ts");
+    await writeFile(file, "const oldValue = true;", "utf8");
+    const tool = createSemanticSearchTool({ createEmbedder: () => fixedEmbedder({ count: 0 }) });
+    const context = { workspace: new Workspace(root) };
+    assert.equal((await tool.invoke({ query: "普通内容" }, context)).ok, true);
+    await writeFile(file, "const newValue = true;\n// 文件已经更新", "utf8");
+    const updated = await tool.invoke({ query: "普通内容" }, context);
+    assert.equal(updated.ok, true);
+    assert.match(updated.output, /newValue|文件已经更新/);
+    await rm(file);
+    const removed = await tool.invoke({ query: "普通内容" }, context);
+    assert.match(removed.output, /No semantic results/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("semantic_search 会发现索引建立后新增的文件", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-semantic-new-file-"));
+  try {
+    await writeFile(path.join(root, "first.ts"), "const first = true;", "utf8");
+    const tool = createSemanticSearchTool({ createEmbedder: () => fixedEmbedder({ count: 0 }) });
+    const context = { workspace: new Workspace(root) };
+    assert.equal((await tool.invoke({ query: "普通内容" }, context)).ok, true);
+    await writeFile(path.join(root, "second.ts"), "const second = true;\n// 新文件", "utf8");
+    const result = await tool.invoke({ query: "普通内容", top_k: 10 }, context);
+    assert.equal(result.ok, true);
+    assert.match(result.output, /second\.ts/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("createWorkspaceTools 注册 semantic_search 且保持只读权限", () => {
   const tool = createWorkspaceTools().get("semantic_search");
   assert.ok(tool);
