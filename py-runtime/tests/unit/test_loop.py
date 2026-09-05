@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -1625,7 +1626,8 @@ async def test_budget_admission_shrinks_request_output_cap() -> None:
         ),
     ])
     registry = ToolRegistry()
-    loop, _ = _make_loop(provider, registry)
+    loop, bus = _make_loop(provider, registry)
+    events = await _events(bus)
     ctx = _ctx(max_steps=5)
     ctx.max_tokens = 1000
     await loop.run(ctx)
@@ -1635,6 +1637,14 @@ async def test_budget_admission_shrinks_request_output_cap() -> None:
     assert provider.caps[0] is not None
     # cap = 预算 - 请求前消耗(0) - 估算输入；估算输入为正，故 cap 严格小于预算
     assert 256 <= provider.caps[0] < 1000
+    # 准入事件记录收缩决定，且事件中的 cap 与实际传给 provider 的一致
+    admission = next(
+        e for e in events  # type: ignore[attr-defined]
+        if e.type == "llm.budget_admission"  # type: ignore[attr-defined]
+    )
+    assert admission.action == "shrink"
+    assert admission.reason == "shrunk_to_remaining"
+    assert admission.request_max_output_tokens == provider.caps[0]
     # 全量 prompt 口径累计：净输入 500 + 输出 100
     assert ctx.total_prompt_tokens == 500
     assert ctx.budget_spend_tokens() == 600
@@ -1742,3 +1752,67 @@ async def test_budget_blocks_conclude_and_preserves_message_pairing() -> None:
     await loop2.run(ctx2)
     assert ok.calls == 2
     assert ctx2.status == "success"
+
+
+# 功能：验证压缩请求的实际用量计入预算口径，压缩消耗不被预算"退款"（Issue #72 审查修复）
+# 设计：预算充足不阻断；高水位触发异步压缩，压缩完成后其 usage（含全量历史输入）
+#       计入 total_prompt_tokens，后续步在压缩后的剩余预算上继续
+async def test_budget_records_compaction_usage() -> None:
+    bus = EventBus()
+    provider = _CompactingProvider(_SUMMARY)
+    compactor = Compactor(bus, Path(tempfile.mkdtemp()), "sess-1")
+    loop = AgentLoop(
+        provider,
+        ToolRegistry(),
+        bus,
+        compactor=compactor,
+        compact_threshold=0.8,
+    )
+    ctx = _ctx(max_steps=5)
+    ctx.max_tokens = 1_000_000  # 只验证记账，不触发阻断
+    await loop.run(ctx)
+    await asyncio.sleep(0.1)
+    assert ctx.compacted is True
+    assert ctx.status == "success"
+    # step1 主请求 100_000 + 压缩请求 100_000 + step2 主请求 200（全量 prompt 口径）
+    assert ctx.total_prompt_tokens == 200_200
+    assert ctx.total_output_tokens == 10 + 2 + 10
+
+
+# 功能：验证余额可容纳收尾请求但不足默认输出上限时，wrap-up 收到收缩上限并记账
+# 设计：关闭结语宽限步走 wrap-up 路径；主请求后剩余 1200，wrap-up 的输出上限
+#       收缩为剩余减估算输入；压缩路径的 prompt 累计同样覆盖 wrap-up
+async def test_budget_shrinks_wrap_up_and_records_usage() -> None:
+    provider = _CapRecordingProvider([
+        LlmResponse(
+            stop_reason="tool_use", tool_calls=[_tc()],
+            usage=UsageStats(input_tokens=900, output_tokens=900, context_pct=0.5),
+        ),
+        LlmResponse(
+            stop_reason="end_turn", text="wrapped up",
+            usage=UsageStats(input_tokens=100, output_tokens=50, context_pct=0.5),
+        ),
+    ])
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    loop = AgentLoop(
+        provider,
+        registry,
+        EventBus(),
+        wrap_up_on_max_steps=True,
+        grace_step_on_max_steps=False,
+    )
+    ctx = _ctx(max_steps=1)
+    # 预算 3000：主请求后消耗 1800，剩余 1200 足以覆盖收尾但低于默认输出上限
+    ctx.max_tokens = 3000
+    await loop.run(ctx)
+    assert provider.calls == 2
+    assert ctx.status == "interrupted"
+    assert ctx.reason == "exceeded_max_steps"
+    assert ctx.result == "wrapped up"
+    # wrap-up 收到收缩后的输出上限（非默认），且在剩余预算内
+    assert provider.caps[1] is not None
+    assert 256 <= provider.caps[1] <= 1200
+    # wrap-up 的 prompt 用量同样计入预算口径：900 + 100
+    assert ctx.total_prompt_tokens == 1000
+    assert ctx.budget_spend_tokens() == 1000 + 950

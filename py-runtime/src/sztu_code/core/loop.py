@@ -49,6 +49,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # 默认系统提示词，供主调用与收尾回合复用
+# 预算准入的 usage 缺失熔断阈值：连续 N 次响应缺失/全零 usage 时，
+# 消耗无法记账，继续放行会让预算保证失效，故 fail-closed 终止（Issue #72）
+_MAX_MISSING_USAGE_STREAK = 3
+
 _DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful AI assistant. "
     "Use the available tools to complete the user's goal. "
@@ -244,6 +248,8 @@ class AgentLoop:
         # 保证准入估算与请求后实际分类统计口径一致且不重复编码
         self._input_estimator = CounterInputEstimator(self._usage_estimator)
         self._default_max_output_tokens = max(1, default_max_output_tokens)
+        # 连续缺失/全零 usage 的响应计数（仅配置预算时有意义）
+        self._missing_usage_streak: int = 0
         self._last_compact_step: int = -15
         # 熔断器日志去重：避免每步都刷屏
         self._circuit_breaker_logged: bool = False
@@ -282,6 +288,19 @@ class AgentLoop:
             estimator=self._input_estimator,
             default_max_output_tokens=self._default_max_output_tokens,
         )
+        # fail-closed：连续多轮拿不到 usage，消耗无法记账，预算保证失效，
+        # 阻断后续请求而不是让预算被静默绕过（Issue #72）
+        if (
+            context.max_tokens > 0
+            and self._missing_usage_streak >= _MAX_MISSING_USAGE_STREAK
+        ):
+            admission = BudgetAdmission(
+                action="block",
+                estimated_input_tokens=admission.estimated_input_tokens,
+                remaining_tokens=admission.remaining_tokens,
+                request_max_output_tokens=None,
+                reason="usage_unavailable",
+            )
         if context.max_tokens > 0:
             await self._bus.publish(
                 TokenBudgetAdmissionEvent(
@@ -465,6 +484,17 @@ class AgentLoop:
                 )
                 context.mark_failed("llm_error")
                 break
+
+            # [budget] usage 缺失/全零 → 记账失败计数；恢复正常即清零。
+            # 必须在 usage 判空之外统计，否则 usage=None 的响应永远不计数
+            if context.max_tokens > 0:
+                if response.usage is None or (
+                    response.usage.input_tokens == 0
+                    and response.usage.output_tokens == 0
+                ):
+                    self._missing_usage_streak += 1
+                else:
+                    self._missing_usage_streak = 0
 
             # [budget] 累计本步 LLM 用量（净输入口径 + 全量 prompt 口径）
             if response.usage is not None:

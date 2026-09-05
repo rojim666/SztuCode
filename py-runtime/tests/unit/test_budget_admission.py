@@ -263,10 +263,10 @@ def test_total_tokens_remains_net_semantics() -> None:
     assert ctx.budget_spend_tokens() == 1_020
 
 
-# 功能：验证缺失 usage 的 run 不推进预算消耗，准入持续放行
-# 设计：provider 返回 usage=None 的多轮响应，配置小额预算，run 正常完成
+# 功能：验证缺失 usage 的 run 在无预算（0=不限）时不影响执行
+# 设计：provider 返回 usage=None 的多轮响应，未配置预算，run 正常完成
 @pytest.mark.asyncio
-async def test_missing_usage_keeps_budget_unchanged() -> None:
+async def test_missing_usage_unlimited_budget_unaffected() -> None:
     from sztu_code.core.loop import AgentLoop
     from sztu_code.core.tools.base import BaseTool, ToolResult
     from sztu_code.core.tools.registry import ToolRegistry
@@ -292,11 +292,61 @@ async def test_missing_usage_keeps_budget_unchanged() -> None:
     registry.register(_EchoTool())
     loop = AgentLoop(provider, registry, EventBus())
     ctx = ExecutionContext(run_id="r1", goal="g", max_steps=10)
-    ctx.max_tokens = 1_000
     await loop.run(ctx)
     assert ctx.status == "success"
     assert ctx.budget_spend_tokens() == 0
     assert provider.calls == 2
+
+
+# 功能：验证配置预算后连续缺失/全零 usage 触发 fail-closed 熔断（Issue #72）
+# 设计：3 次返回 usage=None 的 tool_use 响应后，记账失败计数达阈值，
+#       第 4 次请求在准入处被阻断（reason=usage_unavailable），预算不被静默绕过
+@pytest.mark.asyncio
+async def test_missing_usage_fails_closed_after_streak() -> None:
+    from sztu_code.core.bus.events import TokenBudgetAdmissionEvent
+    from sztu_code.core.loop import AgentLoop
+    from sztu_code.core.tools.base import BaseTool, ToolResult
+    from sztu_code.core.tools.registry import ToolRegistry
+
+    class _EchoTool(BaseTool):
+        name = "echo"
+        description = "Echoes msg"
+        input_schema: dict[str, object] = {
+            "type": "object",
+            "properties": {"msg": {"type": "string"}},
+            "required": ["msg"],
+        }
+
+        async def invoke(self, params: dict[str, object]) -> ToolResult:
+            return ToolResult(content=str(params["msg"]))
+
+    responses = [
+        LlmResponse(stop_reason="tool_use", usage=None),
+        LlmResponse(stop_reason="tool_use", usage=None),
+        LlmResponse(stop_reason="tool_use", usage=None),
+        LlmResponse(stop_reason="end_turn", text="never reached", usage=None),
+    ]
+    provider = _NoUsageProvider(responses)
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    bus = EventBus()
+    collected: list[object] = []
+
+    async def _collect(e: object) -> None:
+        collected.append(e)
+
+    bus.subscribe(_collect)
+    loop = AgentLoop(provider, registry, bus)
+    ctx = ExecutionContext(run_id="r1", goal="g", max_steps=10)
+    ctx.max_tokens = 1_000_000  # 预算充足，阻断只能来自 usage 熔断
+    await loop.run(ctx)
+    assert provider.calls == 3
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.TOKEN_BUDGET_EXHAUSTED
+    admissions = [e for e in collected if isinstance(e, TokenBudgetAdmissionEvent)]
+    assert admissions
+    assert admissions[-1].reason == "usage_unavailable"
+    assert admissions[-1].action == "block"
 
 
 # --- 压缩准入 --------------------------------------------------------------------
