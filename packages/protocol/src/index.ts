@@ -153,7 +153,7 @@ export interface WorkspaceListResult { workspaces: WorkspaceSummary[] }
 export interface SessionCreateParams { type?: "session.create"; mode?: "one_shot" | "chat"; title?: string; workspace_id?: string | null }
 export interface SessionAttachParams { type?: "session.attach"; session_id: string }
 export interface SessionDetachParams { type?: "session.detach"; session_id: string }
-export interface SessionForkParams { type?: "session.fork"; session_id: string; title?: string }
+export interface SessionForkParams { type?: "session.fork"; session_id: string; title?: string; through_run_id?: string }
 export interface SessionGetParams { type?: "session.get"; session_id: string }
 export interface SessionListParams { type?: "session.list"; include_archived?: boolean }
 export interface SessionHistoryParams { type?: "session.history" | "session.get_history"; session_id: string }
@@ -220,7 +220,7 @@ export interface SessionResult { session: SessionSnapshot }
 export interface SessionAttachResult { session_id: string; attached: true; session: SessionSnapshot }
 export interface SessionDetachResult { session_id: string; attached: false; session?: SessionSnapshot }
 export interface SessionListResult { sessions: SessionResult["session"][] }
-export interface SessionHistoryResult { messages: Array<{ role: "user" | "assistant"; content: string; ts: string; run_id?: string }> }
+export interface SessionHistoryResult { messages: Array<{ role: "user" | "assistant"; content: string; ts: string; run_id?: string; model?: string }> }
 
 export type KnownJsonRpcRequest =
   | { jsonrpc: "2.0"; id: RequestId; method: "core.ping"; params: PingParams; idempotency_key?: IdempotencyKey }

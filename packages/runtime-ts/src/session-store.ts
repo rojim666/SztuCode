@@ -5,7 +5,7 @@ import type { ContentBlock, ContextMessage } from "./context.js";
 
 export type SessionStatus = "active" | "waiting_for_input" | "closed";
 export type SessionMode = "one_shot" | "chat";
-export type SessionMessage = { role: "user" | "assistant"; content: string | ContentBlock[]; reasoning_content?: string; ts: string; run_id?: string };
+export type SessionMessage = { role: "user" | "assistant"; content: string | ContentBlock[]; reasoning_content?: string; ts: string; run_id?: string; model?: string };
 export type SessionRunEvent = { type: string; run_id?: string; [key: string]: unknown };
 export type RunStats = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; elapsed_s: number; context_pct: number };
 export type Session = { id: string; mode: SessionMode; status: SessionStatus; title: string; created_at: string; updated_at: string; run_ids: string[]; run_stats: Record<string, RunStats>; archived: boolean; pinned: boolean; workspace_id: string | null; parent_session_id?: string | null };
@@ -19,19 +19,39 @@ export class SessionStore {
   }
   // Fork a persisted session: 分配新 ID，复制源 session 的 user/assistant 可见历史，
   // 继承 workspace_id 与 mode，但不复制 run 统计或 active 状态（对齐 Python SessionManager.fork）。
-  async fork(sessionId: string, title = ""): Promise<Session> {
+  async fork(sessionId: string, title = "", throughRunId?: string): Promise<Session> {
     const source = await this.get(sessionId);
     const id = randomUUID(); const ts = new Date().toISOString();
     const forked: Session = { id, mode: source.mode, status: "waiting_for_input", title: title.trim().slice(0, 200) || `Fork of ${source.title || source.id}`, created_at: ts, updated_at: ts, run_ids: [], run_stats: {}, archived: false, pinned: false, workspace_id: source.workspace_id, parent_session_id: source.id };
     await this.save(forked);
-    for (const message of await this.history(sessionId)) {
+    const sourceHistory = await this.history(sessionId);
+    let cutoff = sourceHistory.length - 1;
+    if (throughRunId) { cutoff = -1; for (let index = sourceHistory.length - 1; index >= 0; index -= 1) if (sourceHistory[index]?.run_id === throughRunId) { cutoff = index; break; } }
+    for (const message of sourceHistory.slice(0, cutoff + 1)) {
       if (message.role === "user" || message.role === "assistant") {
-        await this.appendMessage(id, { role: message.role, content: message.content });
+        await this.appendMessage(id, { role: message.role, content: message.content, ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}), ...(message.run_id ? { run_id: message.run_id } : {}), ...(message.model ? { model: message.model } : {}) });
       }
     }
     // 保留模型完整上下文与本地 KV/cache 快照，避免分支后重新计算前缀。
     const sourceDir = path.join(this.root, sessionId); const targetDir = path.join(this.root, id);
-    for (const name of ["context.json", "kvcache.json", "kv-cache.json", "cache.json"]) {
+    try {
+      const raw = JSON.parse(await readFile(path.join(sourceDir, "context.json"), "utf8"));
+      if (Array.isArray(raw)) {
+        let contextCutoff = raw.length - 1;
+        if (throughRunId) {
+          const selected = sourceHistory[cutoff];
+          const selectedText = selected ? JSON.stringify(selected.content) : "";
+          contextCutoff = -1;
+          for (let index = raw.length - 1; index >= 0; index -= 1) {
+            const item = raw[index] as { role?: string; content?: unknown };
+            if (item?.role === "assistant" && JSON.stringify(item.content) === selectedText) { contextCutoff = index; break; }
+          }
+          if (contextCutoff < 0) contextCutoff = Math.max(0, cutoff);
+        }
+        await writeFile(path.join(targetDir, "context.json"), `${JSON.stringify(raw.slice(0, contextCutoff + 1))}\n`, "utf8");
+      }
+    } catch { /* optional model context */ }
+    for (const name of ["kvcache.json", "kv-cache.json", "cache.json"]) {
       try { await cp(path.join(sourceDir, name), path.join(targetDir, name)); } catch { /* optional cache */ }
     }
     return forked;

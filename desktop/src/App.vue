@@ -970,7 +970,7 @@ function addUserMessage(content: string, sessionId: string) {
   view.loaded = true;
   const step = maxTimelineStep(sessionId) + 1;
   const startedAt = new Date().toISOString();
-  setSessionStep(step, (current) => ({ ...current, status: "thinking", userMessage: content, userMessageTime: startedAt, runStartedAt: startedAt }), sessionId);
+  setSessionStep(step, (current) => ({ ...current, status: "thinking", userMessage: content, userMessageTime: startedAt, runStartedAt: startedAt, model: runtimeSettings.value?.model || current.model }), sessionId);
   return step;
 }
 function hydrateTimeline(
@@ -1088,6 +1088,7 @@ function hydrateTimeline(
         } : undefined,
         userMessage: text,
         userMessageTime: messageTime,
+        model: typeof messageRecord.model === "string" ? messageRecord.model : undefined,
         runStartedAt: messageRunId && messageTime ? messageTime : undefined,
       });
       continue;
@@ -2307,7 +2308,7 @@ async function handleBranch(turn: { runId?: string; userMessage?: string; text: 
   if (!source) return;
   try {
     const title = (turn.userMessage || turn.text || turn.summaryText || "分支会话").trim().slice(0, 80);
-    const id = await forkSession(source, `分支：${title}`);
+    const id = await forkSession(source, `分支：${title}`, turn.runId);
     await refreshIndex(false);
     const created = sessions.value.find((item) => item.session_id === id);
     if (created) await chooseTask(id);
@@ -2593,7 +2594,7 @@ function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; modeMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
-function switchWorkMode(mode: WorkMode) { workMode.value = mode; modeMenuOpen.value = false; }
+function switchWorkMode(mode: WorkMode) { workMode.value = mode; modeMenuOpen.value = false; page.value = mode === "chat" ? "board" : "work"; }
 async function submitChat(content: string) {
   const { content: payload, images } = buildMessagePayload(content);
   await submitTask(payload, null, images);
@@ -3057,7 +3058,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <header class="sidebar-brand">
         <div class="mode-switch-wrap">
           <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" :aria-label="t('app.switchWorkMode')" @click="modeMenuOpen = !modeMenuOpen">
-            <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuChat' }}</h1>
+            <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuWork' }}</h1>
             <AppIcon name="ChevronDown" :size="14" />
           </button>
           <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" :aria-label="t('app.workMode')">
@@ -3066,7 +3067,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               <AppIcon v-if="workMode === 'code'" name="Check" :size="15" />
             </button>
             <button type="button" role="menuitemradio" :aria-checked="workMode === 'chat'" @click="switchWorkMode('chat')">
-              <span><b>SztuChat</b><small>{{ t('app.chatMode') }}</small></span>
+              <span><b>SztuWork</b><small>办公任务与成果</small></span>
               <AppIcon v-if="workMode === 'chat'" name="Check" :size="15" />
             </button>
           </div>

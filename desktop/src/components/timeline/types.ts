@@ -124,6 +124,8 @@ export interface TimelineStep {
   usage?: LlmUsage;
   userMessage?: string;
   userMessageTime?: string;
+  // 发送时刻所选模型：实时由 App.vue 写入，历史会话由 hydrateTimeline 从持久化消息恢复
+  model?: string;
   finalText?: string;
   outcome?: RunOutcome;
   runStats?: RunStats;

@@ -184,8 +184,10 @@ export class ServerService {
         if (params.client_message_id) { const existing = this.clientMessageRuns.get(`${params.session_id}:${params.client_message_id}`); if (existing) return ok(request.id, { run_id: existing, session_id: params.session_id }); }
         if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy");
         const modelHistory = await this.sessions.modelHistory(params.session_id);
+        // 记录发送时刻的模型，供前端气泡元信息与历史会话恢复使用
+        const model = (await this.settings.get()).model;
         const content = params.images?.length ? [{ type: "text", text: params.content }, ...params.images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content;
-        await this.sessions.appendMessage(params.session_id, { role: "user", content });
+        await this.sessions.appendMessage(params.session_id, { role: "user", content, model });
         this.events.publish({ type: "session.message_received", session_id: params.session_id, content: params.content, ts: new Date().toISOString() });
         await this.sessions.setStatus(params.session_id, "active");
         const history = modelHistory.map((message: import("./context.js").ContextMessage) => ({ ...message } as import("./agent-loop.js").ChatMessage));
@@ -317,7 +319,7 @@ export class ServerService {
         return ok(request.id, { accepted, ok: accepted });
       }
       case "session.rename": { const params = request.params as { session_id: string; title: string }; return ok(request.id, { session: toSessionSummary(await this.sessions.rename(params.session_id, params.title)) }); }
-      case "session.fork": { const params = request.params as unknown as SessionForkParams; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); const forked = await this.sessions.fork(params.session_id, params.title ?? ""); this.events.publish({ type: "session.created", session_id: forked.id, mode: forked.mode, ts: new Date().toISOString() }); return ok(request.id, { session: toSessionSummary(forked) }); }
+      case "session.fork": { const params = request.params as unknown as SessionForkParams; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); const forked = await this.sessions.fork(params.session_id, params.title ?? "", params.through_run_id); this.events.publish({ type: "session.created", session_id: forked.id, mode: forked.mode, ts: new Date().toISOString() }); return ok(request.id, { session: toSessionSummary(forked) }); }
       case "session.archive": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, true)) }); }
       case "session.resume": { const params = request.params as { session_id: string }; if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy"); return ok(request.id, { session: toSessionSummary(await this.sessions.setArchived(params.session_id, false)) }); }
       case "session.set_workspace": { const params = request.params as { session_id: string; workspace_id: string | null }; if (params.workspace_id !== null) await this.workspaces.get(params.workspace_id); return ok(request.id, { session: toSessionSummary(await this.sessions.setWorkspace(params.session_id, params.workspace_id)) }); }
@@ -341,7 +343,7 @@ export class ServerService {
         this.events.publish({ type: "context.compacted", session_id: params.session_id, run_id: "", original_tokens: before, summary_tokens: after, ts: new Date().toISOString() });
         return ok(request.id, { summary_tokens: after, saved_tokens: Math.max(0, before - after), removed_messages: result.removedMessages, used_model: result.usedModel });
       }
-      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const content = params.images?.length ? [{ type: "text", text: params.content }, ...params.images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
+      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const content = params.images?.length ? [{ type: "text", text: params.content }, ...params.images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content, model: (await this.settings.get()).model }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
       default: return error(request.id, METHOD_NOT_FOUND, `Method not found: ${request.method}`);
     }
   }

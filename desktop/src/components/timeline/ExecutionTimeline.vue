@@ -343,10 +343,10 @@ function stateOf(steps: TimelineStep[], pending: PermissionState | undefined, ca
 }
 
 const turns = computed<TurnView[]>(() => {
-  const groups: { userMessage?: string; userMessageTime?: string; steps: TimelineStep[] }[] = [];
+  const groups: { userMessage?: string; userMessageTime?: string; model?: string; steps: TimelineStep[] }[] = [];
   for (const item of props.steps) {
     if (item.userMessage) {
-      const group = { userMessage: item.userMessage, userMessageTime: item.userMessageTime, steps: [] as TimelineStep[] };
+      const group = { userMessage: item.userMessage, userMessageTime: item.userMessageTime, model: item.model, steps: [] as TimelineStep[] };
       groups.push(group);
       if (hasAssistantContent(item)) group.steps.push(item);
     } else {
@@ -356,7 +356,8 @@ const turns = computed<TurnView[]>(() => {
   }
   return groups.map((group, index) => {
     const steps = group.steps;
-    const model = steps.find((step) => step.usage?.model)?.usage?.model ?? "";
+    // 实时优先取 llm.usage 回填的实际模型；历史会话/首响应前回退到发送时刻记录的模型
+    const model = steps.find((step) => step.usage?.model)?.usage?.model ?? group.model ?? "";
     const runStats = [...steps].reverse().find((step) => step.runStats)?.runStats;
     const runStartedAt = steps.find((step) => step.runStartedAt)?.runStartedAt ?? group.userMessageTime;
     const text = steps.map((step) => step.finalText || step.streamText || step.tokens.join("")).filter(Boolean).join("\n\n");
