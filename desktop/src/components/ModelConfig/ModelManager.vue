@@ -1326,15 +1326,15 @@ onMounted(() => {
 }
 
 /* 暗色主题适配（跟随应用内主题设置，而非操作系统偏好） */
-:global([data-app-theme="dark"]) .current-model-card {
+:global([data-app-theme="dark"] .current-model-card){
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-:global([data-app-theme="dark"]) .modal-backdrop {
+:global([data-app-theme="dark"] .modal-backdrop){
   background: rgba(0, 0, 0, 0.6);
 }
 
-:global([data-app-theme="dark"]) .model-card--current {
+:global([data-app-theme="dark"] .model-card--current){
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 

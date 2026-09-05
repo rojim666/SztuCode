@@ -354,63 +354,68 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
 }
 
 /* 暗色主题 */
-:global([data-app-theme="dark"]) .ctx-row__trigger:hover {
+:global([data-app-theme="dark"] .ctx-row__trigger:hover){
   background: rgba(255, 255, 255, 0.05);
 }
 
-:global([data-app-theme="dark"]) .ctx-row__title {
+/* 图标块：去掉浅色底，改为来源色的半透明着色（currentColor 即来源色） */
+:global([data-app-theme="dark"] .ctx-row__icon){
+  background: color-mix(in srgb, currentColor 16%, transparent) !important;
+}
+
+:global([data-app-theme="dark"] .ctx-row__title){
   color: #d1d5db;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__badge {
+:global([data-app-theme="dark"] .ctx-row__badge){
   color: #9ca3af;
   background: rgba(255, 255, 255, 0.07);
 }
 
-:global([data-app-theme="dark"]) .ctx-row__badge--files {
+:global([data-app-theme="dark"] .ctx-row__badge--files){
   color: #d1d5db;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__chevron {
+:global([data-app-theme="dark"] .ctx-row__chevron){
   color: #6b7280;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__body {
+:global([data-app-theme="dark"] .ctx-row__body){
   background: #1a1a1a;
   border-color: #2a2a2a;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__section-header {
+:global([data-app-theme="dark"] .ctx-row__section-header){
   color: #9ca3af;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__section-count {
+:global([data-app-theme="dark"] .ctx-row__section-count){
   color: #6b7280;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__file-chip {
+:global([data-app-theme="dark"] .ctx-row__file-chip){
   color: #d1d5db;
   background: #232323;
   border-color: #333;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__file-chip:hover {
+:global([data-app-theme="dark"] .ctx-row__file-chip:hover){
   border-color: #444;
   background: #2a2a2a;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-:global([data-app-theme="dark"]) .ctx-row__section--content {
+:global([data-app-theme="dark"] .ctx-row__section--content){
   border-top-color: #2a2a2a;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__content {
+:global([data-app-theme="dark"] .ctx-row__content){
   color: #d1d5db;
   background: #171717;
   border-color: #333;
 }
 
-:global([data-app-theme="dark"]) .ctx-row__content::-webkit-scrollbar-thumb {
+:global([data-app-theme="dark"] .ctx-row__content::-webkit-scrollbar-thumb){
   background: #404040;
 }
 

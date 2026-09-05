@@ -29,6 +29,7 @@
 .timeline-step { position: relative; padding: 0 0 28px; }
 .timeline-step:last-child { padding-bottom: 8px; }
 .timeline-assistant { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: start; gap: 10px; }
+.timeline-assistant > .agent-logo { justify-self: center; }
 .timeline-step__content { min-width: 0; padding-top: 1px; }
 .turn-actions {
   display: inline-flex;

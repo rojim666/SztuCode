@@ -47,6 +47,8 @@ import ic_play_circle_regular from "@fluentui/svg-icons/icons/play_circle_20_reg
 import ic_play_circle_filled from "@fluentui/svg-icons/icons/play_circle_20_filled.svg?raw";
 import ic_add_circle_regular from "@fluentui/svg-icons/icons/add_circle_20_regular.svg?raw";
 import ic_add_circle_filled from "@fluentui/svg-icons/icons/add_circle_20_filled.svg?raw";
+import ic_compose_regular from "@fluentui/svg-icons/icons/compose_20_regular.svg?raw";
+import ic_compose_filled from "@fluentui/svg-icons/icons/compose_20_filled.svg?raw";
 import ic_dismiss_circle_regular from "@fluentui/svg-icons/icons/dismiss_circle_20_regular.svg?raw";
 import ic_dismiss_circle_filled from "@fluentui/svg-icons/icons/dismiss_circle_20_filled.svg?raw";
 import ic_clipboard_regular from "@fluentui/svg-icons/icons/clipboard_20_regular.svg?raw";
@@ -242,7 +244,8 @@ import ic_zoom_in_filled from "@fluentui/svg-icons/icons/zoom_in_20_filled.svg?r
 import ic_zoom_out_regular from "@fluentui/svg-icons/icons/zoom_out_20_regular.svg?raw";
 import ic_zoom_out_filled from "@fluentui/svg-icons/icons/zoom_out_20_filled.svg?raw";
 
-const tint = (svg: string) => svg.replace(/#212121/gi, "currentColor");
+// @fluentui/svg-icons 原始文件不带 fill，必须在根节点注入 currentColor 才能跟随主题
+const tint = (svg: string) => svg.replace(/#212121/gi, "currentColor").replace(/<svg /, '<svg fill="currentColor" ');
 
 export type IconEntry = { regular: string; filled: string };
 
@@ -274,6 +277,7 @@ export const iconRegistry: Record<string, IconEntry> = {
   CircleDotDashed: { regular: tint(ic_circle_hint_regular), filled: tint(ic_circle_hint_filled) },
   CirclePlay: { regular: tint(ic_play_circle_regular), filled: tint(ic_play_circle_filled) },
   CirclePlus: { regular: tint(ic_add_circle_regular), filled: tint(ic_add_circle_filled) },
+  Compose: { regular: tint(ic_compose_regular), filled: tint(ic_compose_filled) },
   CircleX: { regular: tint(ic_dismiss_circle_regular), filled: tint(ic_dismiss_circle_filled) },
   Clipboard: { regular: tint(ic_clipboard_regular), filled: tint(ic_clipboard_filled) },
   Clock: { regular: tint(ic_clock_regular), filled: tint(ic_clock_filled) },

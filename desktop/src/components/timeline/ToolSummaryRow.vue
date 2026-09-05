@@ -235,25 +235,25 @@ const expandable = computed(() =>
 }
 
 /* 暗色主题 */
-:global([data-app-theme="dark"]) .tool-summary__trigger:hover {
+:global([data-app-theme="dark"] .tool-summary__trigger:hover){
   background: rgba(255, 255, 255, 0.04);
 }
-:global([data-app-theme="dark"]) .tool-summary__chips {
+:global([data-app-theme="dark"] .tool-summary__chips){
   color: #6b7280;
 }
-:global([data-app-theme="dark"]) .tool-chip {
+:global([data-app-theme="dark"] .tool-chip){
   color: #6b7280;
 }
-:global([data-app-theme="dark"]) .tool-summary.running .tool-chip {
+:global([data-app-theme="dark"] .tool-summary.running .tool-chip){
   color: #9ca3af;
 }
-:global([data-app-theme="dark"]) .tool-summary.failed .tool-chip {
+:global([data-app-theme="dark"] .tool-summary.failed .tool-chip){
   color: #fbbf24;
 }
-:global([data-app-theme="dark"]) .tool-summary__body {
+:global([data-app-theme="dark"] .tool-summary__body){
   border-left-color: #374151;
 }
-:global([data-app-theme="dark"]) .tool-summary__chevron {
+:global([data-app-theme="dark"] .tool-summary__chevron){
   color: #4b5563;
 }
 

@@ -3070,7 +3070,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="beginTask()"><AppIcon name="CirclePlus" :size="16" />{{ t('app.newTask') }}</button>
+        <button class="new-task-button" @click="beginTask()"><AppIcon name="Compose" :size="16" />{{ t('app.newTask') }}</button>
       </div>
 
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">

@@ -32,6 +32,7 @@ const candidates = {
   CircleDotDashed: ["circle_hint"],
   CirclePlay: ["play_circle"],
   CirclePlus: ["add_circle"],
+  Compose: ["compose"],
   CircleX: ["dismiss_circle"],
   Clipboard: ["clipboard"],
   Clock: ["clock"],
@@ -174,7 +175,8 @@ if (missing.length === 0) {
     lines.push(`import ic_${base}_filled from "@fluentui/svg-icons/icons/${base}_20_filled.svg?raw";`);
   }
   lines.push("");
-  lines.push("const tint = (svg: string) => svg.replace(/#212121/gi, \"currentColor\");");
+  lines.push("// @fluentui/svg-icons 原始文件不带 fill，必须在根节点注入 currentColor 才能跟随主题");
+  lines.push("const tint = (svg: string) => svg.replace(/#212121/gi, \"currentColor\").replace(/<svg /, '<svg fill=\"currentColor\" ');");
   lines.push("");
   lines.push("export type IconEntry = { regular: string; filled: string };");
   lines.push("");

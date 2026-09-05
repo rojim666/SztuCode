@@ -110,12 +110,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .app-icon {
-  --logo-size: 32px;
+  --logo-size: 26px;
   --look-x: 0px;
   --look-y: 0px;
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,6 +124,7 @@ onBeforeUnmount(() => {
   position: relative;
   width: var(--logo-size);
   height: var(--logo-size);
+  box-sizing: border-box;
   color: #fff;
   border: 0;
   border-radius: 26%;
@@ -131,14 +132,13 @@ onBeforeUnmount(() => {
   box-shadow: none;
   overflow: hidden;
 }
-/* 深色主题：白底黑瞳；浅色主题保持默认的黑底白瞳 */
+/* 深色主题：白底黑瞳，与浅色模式黑底白瞳互为反转（整体"变白"） */
 .app-icon.theme-dark .logo {
-  color: #000;
-  border: 1px solid #d9dddf;
   background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  color: #000;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
 }
-.app-icon--large { --logo-size: 48px; width: 62px; height: 62px; }
+.app-icon--large { --logo-size: 40px; width: 52px; height: 52px; }
 
 .dots {
   position: absolute;
@@ -175,7 +175,7 @@ onBeforeUnmount(() => {
   transition: transform .16s ease-out;
 }
 
-/* Normal pupil */
+/* Normal pupil - 纯色胶囊（双色主题通用） */
 .pupil {
   position: absolute;
   inset: 0;

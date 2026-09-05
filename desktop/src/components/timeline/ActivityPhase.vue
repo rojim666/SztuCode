@@ -537,69 +537,69 @@ watch([thinkingPreview, thinkingRunning], () => {
 }
 
 /* 暗色主题 */
-:global([data-app-theme="dark"]) .activity-phase__trigger:hover {
+:global([data-app-theme="dark"] .activity-phase__trigger:hover){
   background: rgba(255, 255, 255, 0.06);
 }
-:global([data-app-theme="dark"]) .activity-phase__status {
+:global([data-app-theme="dark"] .activity-phase__status){
   color: #6b7280;
   background: transparent;
 }
-:global([data-app-theme="dark"]) .step-badge--running {
+:global([data-app-theme="dark"] .step-badge--running){
   color: #fff;
   background: #3b82f6;
 }
-:global([data-app-theme="dark"]) .step-badge--done {
+:global([data-app-theme="dark"] .step-badge--done){
   color: #fff;
   background: #22c55e;
 }
-:global([data-app-theme="dark"]) .activity-phase.running .activity-phase__status {
+:global([data-app-theme="dark"] .activity-phase.running .activity-phase__status){
   color: #60a5fa;
   background: rgba(96, 165, 250, 0.15);
 }
-:global([data-app-theme="dark"]) .activity-phase.done .activity-phase__status {
+:global([data-app-theme="dark"] .activity-phase.done .activity-phase__status){
   color: #fff;
   background: #22c55e;
 }
-:global([data-app-theme="dark"]) .activity-phase.failed .activity-phase__status {
+:global([data-app-theme="dark"] .activity-phase.failed .activity-phase__status){
   color: #fff;
   background: #ff9c72;
 }
-:global([data-app-theme="dark"]) .activity-phase__purpose {
+:global([data-app-theme="dark"] .activity-phase__purpose){
   color: #d1d5db;
 }
-:global([data-app-theme="dark"]) .activity-phase.running .activity-phase__purpose {
+:global([data-app-theme="dark"] .activity-phase.running .activity-phase__purpose){
   color: #e5e7eb;
 }
-:global([data-app-theme="dark"]) .activity-phase.done .activity-phase__purpose {
+:global([data-app-theme="dark"] .activity-phase.done .activity-phase__purpose){
   color: #4ade80;
 }
-:global([data-app-theme="dark"]) .activity-phase__purpose::after {
+:global([data-app-theme="dark"] .activity-phase__purpose::after){
   color: #4b5563;
 }
-:global([data-app-theme="dark"]) .activity-phase__result {
+:global([data-app-theme="dark"] .activity-phase__result){
   color: #4ade80;
 }
-:global([data-app-theme="dark"]) .activity-phase__fail-hint {
+:global([data-app-theme="dark"] .activity-phase__fail-hint){
   color: #fd9851;
 }
-:global([data-app-theme="dark"]) .activity-phase__preview {
+:global([data-app-theme="dark"] .activity-phase__preview){
   color: #9ca3af;
 }
-:global([data-app-theme="dark"]) .activity-phase__chevron {
+:global([data-app-theme="dark"] .activity-phase__chevron){
   color: #6b7280;
 }
-:global([data-app-theme="dark"]) .activity-phase__body {
+:global([data-app-theme="dark"] .activity-phase__body){
   border-left-color: #374151;
 }
-:global([data-app-theme="dark"]) .activity-phase__section-label {
+:global([data-app-theme="dark"] .activity-phase__section-label){
   color: #6b7280;
 }
-:global([data-app-theme="dark"]) .activity-phase__thinking-text {
+:global([data-app-theme="dark"] .activity-phase__thinking-text){
   color: #9ca3af;
   background: #1f2937;
   border-color: #374151;
 }
-:global([data-app-theme="dark"]) .activity-phase.running.thinking .activity-phase__trigger::after {
+:global([data-app-theme="dark"] .activity-phase.running.thinking .activity-phase__trigger::after){
   background: linear-gradient(
     90deg,
     transparent 0%,

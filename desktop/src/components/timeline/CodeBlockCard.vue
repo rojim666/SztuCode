@@ -559,146 +559,146 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-/* Dark theme */
-:global([data-app-theme="dark"]) .code-block-card {
-  background: #1e1f22;
-  border-color: #2f3136;
+/* Dark theme：整体灰色系（卡片 #262626 / 头部 #2e2e2e / 边框 #3d3d3d），!important 防止被其他全局规则覆盖 */
+:global([data-app-theme="dark"] .code-block-card){
+  background: #262626 !important;
+  border-color: #3d3d3d !important;
 }
 
-:global([data-app-theme="dark"]) .code-block-header {
-  background: #252629;
-  border-bottom-color: #2f3136;
+:global([data-app-theme="dark"] .code-block-header){
+  background: #2e2e2e !important;
+  border-bottom-color: #3d3d3d !important;
 }
 
-:global([data-app-theme="dark"]) .lang-selector {
-  color: #c5c9d1;
+:global([data-app-theme="dark"] .lang-selector){
+  color: #e8e8e8;
 }
 
-:global([data-app-theme="dark"]) .lang-selector:hover {
-  background: #2f3136;
+:global([data-app-theme="dark"] .lang-selector:hover){
+  background: #3a3a3a;
 }
 
-:global([data-app-theme="dark"]) .lang-selector svg {
-  color: #8a9099;
+:global([data-app-theme="dark"] .lang-selector svg){
+  color: #a0a0a0;
 }
 
-:global([data-app-theme="dark"]) .copy-btn {
-  color: #8a9099;
+:global([data-app-theme="dark"] .copy-btn){
+  color: #a0a0a0;
 }
 
-:global([data-app-theme="dark"]) .copy-btn:hover {
-  color: #e5e7eb;
-  background: #2f3136;
+:global([data-app-theme="dark"] .copy-btn:hover){
+  color: #f0f0f0;
+  background: #3a3a3a;
 }
 
-:global([data-app-theme="dark"]) .lang-dropdown {
-  background: #252629;
-  border-color: #3a3d43;
+:global([data-app-theme="dark"] .lang-dropdown){
+  background: #2e2e2e;
+  border-color: #3d3d3d;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-:global([data-app-theme="dark"]) .dropdown-search {
-  border-bottom-color: #2f3136;
-  color: #6a707a;
+:global([data-app-theme="dark"] .dropdown-search){
+  border-bottom-color: #3d3d3d;
+  color: #7a7a7a;
 }
 
-:global([data-app-theme="dark"]) .search-input {
+:global([data-app-theme="dark"] .search-input){
   color: #e5e7eb;
 }
 
-:global([data-app-theme="dark"]) .search-input::placeholder {
+:global([data-app-theme="dark"] .search-input::placeholder){
   color: #5a606a;
 }
 
-:global([data-app-theme="dark"]) .dropdown-list {
+:global([data-app-theme="dark"] .dropdown-list){
   scrollbar-color: #3f444d transparent;
 }
 
-:global([data-app-theme="dark"]) .dropdown-list::-webkit-scrollbar-thumb {
+:global([data-app-theme="dark"] .dropdown-list::-webkit-scrollbar-thumb){
   background: #3f444d;
 }
 
-:global([data-app-theme="dark"]) .lang-option {
-  color: #c5c9d1;
+:global([data-app-theme="dark"] .lang-option){
+  color: #e0e0e0;
 }
 
-:global([data-app-theme="dark"]) .lang-option:hover {
-  background: #2f3136;
+:global([data-app-theme="dark"] .lang-option:hover){
+  background: #3a3a3a;
 }
 
-:global([data-app-theme="dark"]) .lang-option--selected {
+:global([data-app-theme="dark"] .lang-option--selected){
   background: #2a3748;
   color: #5ba0f5;
 }
 
-:global([data-app-theme="dark"]) .lang-option--selected svg {
+:global([data-app-theme="dark"] .lang-option--selected svg){
   color: #5ba0f5;
 }
 
-:global([data-app-theme="dark"]) .line-number {
-  color: #5a606a;
+:global([data-app-theme="dark"] .line-number){
+  color: #6e6e6e;
 }
 
-:global([data-app-theme="dark"]) .code-line {
-  color: #d5d7dc;
+:global([data-app-theme="dark"] .code-line){
+  color: #e0e0e0;
 }
 
 /* Dark theme syntax highlighting */
-:global([data-app-theme="dark"]) .hljs-comment,
-:global([data-app-theme="dark"]) .hljs-quote {
+:global([data-app-theme="dark"] .hljs-comment),
+:global([data-app-theme="dark"] .hljs-quote){
   color: #6a737d;
   font-style: italic;
 }
 
-:global([data-app-theme="dark"]) .hljs-keyword,
-:global([data-app-theme="dark"]) .hljs-selector-tag,
-:global([data-app-theme="dark"]) .hljs-literal {
+:global([data-app-theme="dark"] .hljs-keyword),
+:global([data-app-theme="dark"] .hljs-selector-tag),
+:global([data-app-theme="dark"] .hljs-literal){
   color: #c586c0;
   font-weight: 600;
 }
 
-:global([data-app-theme="dark"]) .hljs-string,
-:global([data-app-theme="dark"]) .hljs-regexp,
-:global([data-app-theme="dark"]) .hljs-addition {
+:global([data-app-theme="dark"] .hljs-string),
+:global([data-app-theme="dark"] .hljs-regexp),
+:global([data-app-theme="dark"] .hljs-addition){
   color: #6a9955;
 }
 
-:global([data-app-theme="dark"]) .hljs-number,
-:global([data-app-theme="dark"]) .hljs-built_in,
-:global([data-app-theme="dark"]) .hljs-type {
+:global([data-app-theme="dark"] .hljs-number),
+:global([data-app-theme="dark"] .hljs-built_in),
+:global([data-app-theme="dark"] .hljs-type){
   color: #b5cea8;
 }
 
-:global([data-app-theme="dark"]) .hljs-title,
-:global([data-app-theme="dark"]) .hljs-title.function_,
-:global([data-app-theme="dark"]) .hljs-section {
+:global([data-app-theme="dark"] .hljs-title),
+:global([data-app-theme="dark"] .hljs-title.function_),
+:global([data-app-theme="dark"] .hljs-section){
   color: #569cd6;
 }
 
-:global([data-app-theme="dark"]) .hljs-variable,
-:global([data-app-theme="dark"]) .hljs-template-variable,
-:global([data-app-theme="dark"]) .hljs-attr,
-:global([data-app-theme="dark"]) .hljs-attribute {
+:global([data-app-theme="dark"] .hljs-variable),
+:global([data-app-theme="dark"] .hljs-template-variable),
+:global([data-app-theme="dark"] .hljs-attr),
+:global([data-app-theme="dark"] .hljs-attribute){
   color: #9cdcfe;
 }
 
-:global([data-app-theme="dark"]) .hljs-meta,
-:global([data-app-theme="dark"]) .hljs-symbol,
-:global([data-app-theme="dark"]) .hljs-bullet {
+:global([data-app-theme="dark"] .hljs-meta),
+:global([data-app-theme="dark"] .hljs-symbol),
+:global([data-app-theme="dark"] .hljs-bullet){
   color: #4ec9b0;
 }
 
-:global([data-app-theme="dark"]) .hljs-deletion {
+:global([data-app-theme="dark"] .hljs-deletion){
   color: #f48771;
 }
 
-:global([data-app-theme="dark"]) .hljs-name,
-:global([data-app-theme="dark"]) .hljs-selector-id,
-:global([data-app-theme="dark"]) .hljs-selector-class {
+:global([data-app-theme="dark"] .hljs-name),
+:global([data-app-theme="dark"] .hljs-selector-id),
+:global([data-app-theme="dark"] .hljs-selector-class){
   color: #d7ba7d;
 }
 
-:global([data-app-theme="dark"]) .hljs-params {
+:global([data-app-theme="dark"] .hljs-params){
   color: #c9d1d9;
 }
 </style>

@@ -6,9 +6,6 @@ import { useI18n } from "vue-i18n";
 
 const { t } = useI18n({ useScope: "global" });
 
-// 纯色终端主题：白 + 深底，无彩色渐变
-const INK = "#e9eef6";
-
 // 启动阶段文案随语言包变化，用 computed 保持响应式
 const stages = computed(() => [
   t("splash.stageStartingService"),
@@ -92,25 +89,17 @@ onBeforeUnmount(() => {
   <div class="splash">
     <div class="card" :class="{ ready }">
       <div class="logo" aria-hidden="true">
-        <svg viewBox="0 0 112 96" fill="none">
-          <!-- 终端窗体外框 -->
-          <rect
-            x="20" y="14" width="72" height="64" rx="14"
-            :stroke="INK" stroke-width="3"
-          />
-          <!-- 标题栏圆点 -->
-          <circle cx="31" cy="26" r="2.4" :fill="INK" opacity="0.5" />
-          <circle cx="40" cy="26" r="2.4" :fill="INK" opacity="0.5" />
-          <circle cx="49" cy="26" r="2.4" :fill="INK" opacity="0.5" />
-          <!-- 提示符 > 与闪烁光标 _ -->
-          <path
-            d="M31 58 L39 52 L31 46"
-            :stroke="INK" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
-          />
-          <rect
-            x="46" y="48.5" width="3" height="7" rx="1.5"
-            :fill="INK" class="cursor"
-          />
+        <svg viewBox="0 0 512 512" fill="none">
+          <!-- 深色启动页用深色模式版本：白色圆点 + 白色双眼，无底 -->
+          <circle cx="148" cy="146" r="17" fill="#FFFFFF" />
+          <circle cx="204" cy="146" r="17" fill="#FFFFFF" />
+          <circle cx="260" cy="146" r="17" fill="#FFFFFF" />
+          <g class="eye">
+            <rect x="158" y="216" width="82" height="140" rx="41" fill="#FFFFFF" />
+          </g>
+          <g class="eye">
+            <rect x="272" y="216" width="82" height="140" rx="41" fill="#FFFFFF" />
+          </g>
         </svg>
       </div>
 
@@ -150,15 +139,16 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 0;
-  background: #0d1117;
+  background: #171717;
   overflow: hidden;
   transition: none;
 }
 
 .logo {
   width: 96px;
-  height: 82px;
+  height: 96px;
   display: block;
+  filter: drop-shadow(0 6px 18px rgb(0 0 0 / 45%)) drop-shadow(0 0 24px rgb(76 125 255 / 16%));
 }
 
 .logo svg {
@@ -166,8 +156,14 @@ onBeforeUnmount(() => {
   height: 100%;
 }
 
-.cursor {
-  animation: blink 1.1s steps(1) infinite;
+/* 双眼周期性轻眨，错峰一点点更自然 */
+.eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: eye-blink 4.6s cubic-bezier(.42, 0, .58, 1) infinite;
+}
+.eye:last-child {
+  animation-delay: .06s;
 }
 
 .brand {
@@ -219,13 +215,14 @@ onBeforeUnmount(() => {
   color: #ffffff;
 }
 
-@keyframes blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+@keyframes eye-blink {
+  0%, 88% { transform: scaleY(1); }
+  91.5%, 93.5% { transform: scaleY(.08); }
+  96%, 100% { transform: scaleY(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cursor {
+  .eye {
     animation: none;
   }
   .fill {

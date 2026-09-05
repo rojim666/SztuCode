@@ -28,19 +28,19 @@
 
 :root[data-app-theme="dark"] {
   color-scheme: dark;
-  --app-bg: #171a1b;
-  --surface: #202425;
-  --surface-soft: #282d2f;
-  --surface-raised: #2b3032;
+  --app-bg: #171717;
+  --surface: #171717;
+  --surface-soft: #1e1e1e;
+  --surface-raised: #242424;
   --chrome-bg: var(--surface-soft);
-  --border: #373d3f;
-  --border-strong: #4a5255;
-  --text: #edf0f1;
-  --text-muted: #a8b0b3;
-  --text-faint: #7d878b;
+  --border: #2e2e2e;
+  --border-strong: #3d3d3d;
+  --text: #ffffff;
+  --text-muted: #ffffff;
+  --text-faint: #ffffff;
   --accent: #d7dddf;
-  --accent-soft: #3a4144;
-  --accent-contrast: #171a1b;
+  --accent-soft: #2c2c2c;
+  --accent-contrast: #171717;
   --danger: #e37a70;
   --success: #66d496;
   --success-soft: rgb(55 150 91 / 16%);
@@ -60,6 +60,9 @@
 :root[data-app-theme="dark"] .kimi-shell::before {
   opacity: var(--wallpaper-opacity-dark) !important;
 }
+
+/* 深色模式下所有 AppIcon 图标强制纯白（currentColor 会继承父级颜色，这里统一兜底） */
+:root[data-app-theme="dark"] .app-icon { color: #ffffff; }
 
 .kimi-shell {
   position: relative;
@@ -228,6 +231,17 @@
   .conversation-row.active,
   .nav-toggle:hover
 ) { color: var(--text) !important; background: var(--accent-soft) !important; }
+
+/* 左侧栏功能按钮（全部任务/自动化/技能等 primary-nav 与项目行）：浅色 hover/active 底与深文字的深色修正 */
+:root[data-app-theme="dark"] :is(.primary-nav button, .project-row) { color: var(--text) !important; }
+:root[data-app-theme="dark"] :is(
+  .primary-nav button:hover,
+  .primary-nav button.active,
+  .project-row:hover,
+  .project-row.active
+) { color: var(--text) !important; background: var(--accent-soft) !important; }
+/* 侧栏工具按钮 hover/active 时图标保持纯白（基础样式里 active 图标是 #1f1f1f） */
+:root[data-app-theme="dark"] .sidebar-tools button:is(:hover, .active) .app-icon { color: #ffffff !important; }
 
 :root[data-app-theme="dark"] .nav-toggle {
   color: var(--text-muted) !important;
@@ -496,6 +510,24 @@
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
+}
+
+/* 深色模式：左侧任务栏与顶部栏统一 #202020，与主背景 #171717 分层（必须放在主框架规则之后才生效）。
+   注意层级是 .sidebar-viewport(外栏) > .kimi-sidebar(aside) > 各子容器；
+   子容器一律强制透明，否则会在栏体内出现颜色不一致的内嵌色块。 */
+:root[data-app-theme="dark"] :is(.kimi-titlebar, .sidebar-viewport, .kimi-sidebar) {
+  background: #202020 !important;
+}
+:root[data-app-theme="dark"] .kimi-sidebar :is(
+  .sidebar-brand,
+  .sidebar-command,
+  .sidebar-tools,
+  .sidebar-more-tools,
+  .sidebar-workspace,
+  .side-section,
+  .sidebar-footer
+) {
+  background: transparent !important;
 }
 :root[data-app-theme="dark"] .window-action:hover {
   color: var(--text) !important;
@@ -827,6 +859,14 @@
 }
 :root:not([data-wallpaper="none"]) .workspace-open-tab.active .workspace-tab-close {
   background: color-mix(in srgb, var(--surface-raised) 90%, transparent) !important;
+}
+
+/* 深色模式：会话区背景跟随主背景 #171717（覆盖默认 --surface 与壁纸模式半透明两种形态） */
+:root[data-app-theme="dark"] :is(.kimi-main, .task-canvas) {
+  background: var(--app-bg) !important;
+}
+:root[data-app-theme="dark"]:not([data-wallpaper="none"]) :is(.kimi-main, .task-canvas) {
+  background: color-mix(in srgb, #171717 var(--conversation-surface-opacity), transparent) !important;
 }
 
 /* 壁纸模式下文件标签hover和激活态半透明 */

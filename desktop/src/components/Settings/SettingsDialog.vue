@@ -1849,11 +1849,11 @@ function selectLocale(value: AppLocale) {
 }
 
 /* ========== 暗色主题适配（跟随应用内主题设置，而非操作系统偏好） ========== */
-:global([data-app-theme="dark"]) .settings-backdrop {
+:global([data-app-theme="dark"] .settings-backdrop){
   background: rgba(0, 0, 0, 0.6);
 }
 
-:global([data-app-theme="dark"]) .wallpaper-preview {
+:global([data-app-theme="dark"] .wallpaper-preview){
   border-color: rgba(255, 255, 255, 0.08);
   background: #2a2f31;
 }

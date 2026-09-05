@@ -220,35 +220,35 @@ const detailPath = computed(() => {
   max-height: 600px;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__trigger:hover {
+:global([data-app-theme="dark"] .tool-call-group__trigger:hover){
   background: rgba(255, 255, 255, 0.06);
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__status {
+:global([data-app-theme="dark"] .tool-call-group__status){
   color: #60a5fa;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group:not(.running) .tool-call-group__status {
+:global([data-app-theme="dark"] .tool-call-group:not(.running) .tool-call-group__status){
   color: #4ade80;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__item b {
+:global([data-app-theme="dark"] .tool-call-group__item b){
   color: #e5e7eb;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__sep {
+:global([data-app-theme="dark"] .tool-call-group__sep){
   color: #4b5563;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__detail {
+:global([data-app-theme="dark"] .tool-call-group__detail){
   color: #6b7280;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__chevron {
+:global([data-app-theme="dark"] .tool-call-group__chevron){
   color: #6b7280;
 }
 
-:global([data-app-theme="dark"]) .tool-call-group__body {
+:global([data-app-theme="dark"] .tool-call-group__body){
   border-left-color: #374151;
 }
 
