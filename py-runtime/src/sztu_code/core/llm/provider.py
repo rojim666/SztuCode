@@ -123,7 +123,8 @@ class AnthropicProvider:
         self._reasoning_effort = reasoning_effort
         self._cache_control = cache_control
 
-    # 流式调用 Anthropic API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试
+    # 流式调用 Anthropic API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试。
+    # max_output_tokens 覆盖本单次请求的输出上限（预算准入收缩时传入），None 用默认
     async def chat(
         self,
         messages: list[dict[str, object]],
@@ -134,7 +135,11 @@ class AnthropicProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: Any | None = None,
+        max_output_tokens: int | None = None,
     ) -> LlmResponse:
+        effective_max_output = (
+            max_output_tokens if max_output_tokens is not None else self._max_output_tokens
+        )
         await bus.publish(
             LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
         )
@@ -160,7 +165,7 @@ class AnthropicProvider:
 
         kwargs: dict[str, object] = {
             "model": self._model,
-            "max_tokens": self._max_output_tokens,
+            "max_tokens": effective_max_output,
             "system": system_blocks,
             "messages": messages,
         }
@@ -241,7 +246,7 @@ class AnthropicProvider:
         breakdown = estimate_context_usage(
             messages=messages, tool_schemas=tool_schemas, system=system or _SYSTEM_PROMPT,
             actual_input_tokens=total_prompt_tokens, context_window=context_window,
-            reserved_output_tokens=self._max_output_tokens,
+            reserved_output_tokens=effective_max_output,
             incremental=usage_estimator,
         )
 

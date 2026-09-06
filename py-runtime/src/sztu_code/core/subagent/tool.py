@@ -131,6 +131,8 @@ class SpawnAgentTool(BaseTool):
         tool_max_concurrency: int = 4,
         max_depth: int = 2,
         owner_run_id: str = "",
+        # 与父 run 一致的默认单次输出上限，供子 AgentLoop 预算收缩时参考
+        default_max_output_tokens: int = 8_192,
     ) -> None:
         self._provider = provider
         self._parent_bus = parent_bus
@@ -155,6 +157,7 @@ class SpawnAgentTool(BaseTool):
         # owner_run_id：所属 root run。嵌套 spawn 时从父 tool 继承，保证整个后代树的
         # 终态事件都路由回 root sink。为空时回退为 parent_run_id（root tool 自身场景）。
         self._owner_run_id = owner_run_id or parent_run_id
+        self._default_max_output_tokens = max(1, default_max_output_tokens)
 
     # 派生子 agent，前台时阻塞直到完成并返回结果，后台时立即返回 run_id
     async def invoke(self, params: dict[str, object]) -> ToolResult:
@@ -293,6 +296,7 @@ class SpawnAgentTool(BaseTool):
                 max_total=self._stuck_max_total,
             ),
             tool_max_concurrency=self._tool_max_concurrency,
+            default_max_output_tokens=self._default_max_output_tokens,
         )
 
         await self._parent_bus.publish(
@@ -491,6 +495,7 @@ class SpawnAgentTool(BaseTool):
                 tool_max_concurrency=self._tool_max_concurrency,
                 max_depth=self._max_depth,
                 owner_run_id=self._owner_run_id,
+                default_max_output_tokens=self._default_max_output_tokens,
             )
             if _allowed("spawn_agent"):
                 registry.register(nested)

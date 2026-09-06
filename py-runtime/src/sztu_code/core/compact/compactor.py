@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sztu_code.core.budget import DEFAULT_MAX_OUTPUT_TOKENS, MIN_OUTPUT_RESERVE_TOKENS
 from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent
 from sztu_code.core.compact.token_counter import TokenCounter
 from sztu_code.core.events.bus import EventBus
@@ -18,11 +20,42 @@ from sztu_code.core.prompts.context_management_prompts import (
 if TYPE_CHECKING:
     from sztu_code.core.context import ExecutionContext
     from sztu_code.core.llm.base import LLMProvider
+    from sztu_code.core.llm.types import LlmResponse
 
 logger = logging.getLogger(__name__)
 
 # 进程级共享 token 计数器（编码器按名称缓存），避免每次压缩重复加载 tiktoken
 _token_counter = TokenCounter()
+
+# 压缩摘要请求的固定 system prompt（三个调用点共用，保持前缀缓存稳定）
+_COMPACT_SYSTEM_PROMPT = "You are a helpful assistant that summarizes conversations."
+
+
+# Token 预算准入（Issue #72）：压缩请求的输入为全量历史，余额不足以覆盖
+# 「估算输入 + 最小输出预留」时跳过压缩；remaining<=0 表示无预算限制。
+# 返回 (是否放行, 收缩后的单次输出上限；None=使用 provider 默认输出上限)
+def _admit_compaction_request(
+    remaining_token_budget: int,
+    request_text: str,
+    counter: TokenCounter,
+    default_max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+) -> tuple[bool, int | None]:
+    if remaining_token_budget <= 0:
+        return True, None
+    # 与主循环准入同口径（全量 prompt）：估算须包含压缩请求自身的 system prompt
+    estimate = counter.count(request_text) + counter.count(_COMPACT_SYSTEM_PROMPT)
+    output_room = remaining_token_budget - estimate
+    if output_room < MIN_OUTPUT_RESERVE_TOKENS:
+        logger.warning(
+            "compactor: skip compaction, token budget insufficient "
+            "(estimate=%d remaining=%d)",
+            estimate,
+            remaining_token_budget,
+        )
+        return False, None
+    if output_room < default_max_output_tokens:
+        return True, output_room
+    return True, None
 
 
 # 构造压缩续接 user 消息：说明会话续接并附摘要，要求直接续接不寒暄
@@ -169,6 +202,29 @@ class Compactor:
         self._pending_tasks: list[asyncio.Task[None]] = []
 
     # 压缩 ExecutionContext.messages，就地替换消息列表并写 summary 文件
+    # 计算 run 剩余 Token 预算；未配置预算（max_tokens=0）返回 0 表示不限制
+    @staticmethod
+    def _remaining_token_budget(context: ExecutionContext) -> int:
+        if context.max_tokens <= 0:
+            return 0
+        return max(0, context.max_tokens - context.budget_spend_tokens())
+
+    # 将压缩请求的实际用量计入 run 预算口径（全量 prompt + 输出）。
+    # 压缩同样消耗真实 token，若不记账，准入会对同一份剩余预算重复放行（Issue #72）
+    @staticmethod
+    def _record_budget_usage(context: ExecutionContext, response: LlmResponse) -> None:
+        usage = response.usage
+        if usage is None:
+            return
+        context.total_input_tokens += usage.input_tokens
+        context.total_output_tokens += usage.output_tokens
+        context.total_cache_read_input_tokens += usage.cache_read_input_tokens
+        context.total_prompt_tokens += (
+            usage.input_tokens
+            + usage.cache_read_input_tokens
+            + usage.cache_creation_input_tokens
+        )
+
     async def compact(
         self,
         context: ExecutionContext,
@@ -186,6 +242,8 @@ class Compactor:
                 focus=focus,
                 sliding_window_size=sliding_window_size,
                 compaction_count=context.compaction_count,
+                remaining_token_budget=self._remaining_token_budget(context),
+                record_usage=lambda r: self._record_budget_usage(context, r),
             )
             if isinstance(ret, tuple):
                 sliding_result, new_msgs = ret
@@ -196,7 +254,13 @@ class Compactor:
             else:
                 return None
         else:
-            ret = await self.compact_messages(context.messages, provider, focus=focus)
+            ret = await self.compact_messages(
+                context.messages,
+                provider,
+                focus=focus,
+                remaining_token_budget=self._remaining_token_budget(context),
+                record_usage=lambda r: self._record_budget_usage(context, r),
+            )
             if ret is None or isinstance(ret, tuple):
                 return None
             context.messages = [
@@ -243,6 +307,8 @@ class Compactor:
                     focus=focus,
                     sliding_window_size=sliding_window_size,
                     compaction_count=context.compaction_count,
+                    remaining_token_budget=self._remaining_token_budget(context),
+                    record_usage=lambda r: self._record_budget_usage(context, r),
                 )
                 if not isinstance(ret, tuple):
                     context.compaction_failure_count += 1
@@ -272,7 +338,13 @@ class Compactor:
                     context.messages = new_msgs
                 final_result = sliding_result
             else:
-                ret = await self.compact_messages(snapshot, provider, focus=focus)
+                ret = await self.compact_messages(
+                    snapshot,
+                    provider,
+                    focus=focus,
+                    remaining_token_budget=self._remaining_token_budget(context),
+                    record_usage=lambda r: self._record_budget_usage(context, r),
+                )
                 if ret is None or isinstance(ret, tuple):
                     context.compaction_failure_count += 1
                     logger.warning(
@@ -354,10 +426,38 @@ class Compactor:
         *,
         sliding_window_size: int = 0,
         compaction_count: int = 0,
+        remaining_token_budget: int = 0,
+        # 压缩请求的实际用量记账回调（Issue #72）：防止压缩消耗被预算"退款"
+        record_usage: Callable[[LlmResponse], None] | None = None,
     ) -> CompactionResult | None | tuple[CompactionResult | None, list[dict[str, Any]] | None]:
         from sztu_code.core.events.bus import EventBus as _Bus
 
         counter = _token_counter
+
+        async def _compact_chat(
+            req: list[dict[str, object]], output_cap: int | None
+        ) -> LlmResponse:
+            # output_cap 仅在预算收缩时传入，与主循环条件传参保持一致，
+            # 避免破坏未声明该参数的 provider 实现
+            silent_bus = _Bus()
+            if output_cap is not None:
+                return await provider.chat(
+                    messages=req,
+                    tool_schemas=[],
+                    bus=silent_bus,
+                    run_id="compact",
+                    step=0,
+                    system=_COMPACT_SYSTEM_PROMPT,
+                    max_output_tokens=output_cap,
+                )
+            return await provider.chat(
+                messages=req,
+                tool_schemas=[],
+                bus=silent_bus,
+                run_id="compact",
+                step=0,
+                system=_COMPACT_SYSTEM_PROMPT,
+            )
 
         if sliding_window_size > 0:
             # ─── 滑动窗口模式 ───
@@ -376,16 +476,18 @@ class Compactor:
                     {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
                 ]
 
+                admitted, output_cap = _admit_compaction_request(
+                    remaining_token_budget,
+                    str(compact_req[0]["content"]),
+                    counter,
+                )
+                if not admitted:
+                    return None, None
+
                 try:
-                    silent_bus = _Bus()
-                    response = await provider.chat(
-                        messages=compact_req,
-                        tool_schemas=[],
-                        bus=silent_bus,
-                        run_id="compact",
-                        step=0,
-                        system="You are a helpful assistant that summarizes conversations.",
-                    )
+                    response = await _compact_chat(compact_req, output_cap)
+                    if record_usage is not None:
+                        record_usage(response)
                 except Exception:
                     logger.exception("compactor: LLM call failed, skipping compaction")
                     return None, None
@@ -434,16 +536,18 @@ class Compactor:
                 {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
             ]
 
+            admitted, output_cap = _admit_compaction_request(
+                remaining_token_budget,
+                str(compact_req2[0]["content"]),
+                counter,
+            )
+            if not admitted:
+                return None, None
+
             try:
-                silent_bus = _Bus()
-                response = await provider.chat(
-                    messages=compact_req2,
-                    tool_schemas=[],
-                    bus=silent_bus,
-                    run_id="compact",
-                    step=0,
-                    system="You are a helpful assistant that summarizes conversations.",
-                )
+                response = await _compact_chat(compact_req2, output_cap)
+                if record_usage is not None:
+                    record_usage(response)
             except Exception:
                 logger.exception("compactor: LLM call failed, skipping compaction")
                 return None, None
@@ -475,16 +579,18 @@ class Compactor:
                 {"role": "user", "content": f"{prompt}\n\n---\n\n{history_text}"}
             ]
 
+            admitted, output_cap = _admit_compaction_request(
+                remaining_token_budget,
+                str(compress_request[0]["content"]),
+                counter,
+            )
+            if not admitted:
+                return None
+
             try:
-                silent_bus = _Bus()
-                response = await provider.chat(
-                    messages=compress_request,
-                    tool_schemas=[],
-                    bus=silent_bus,
-                    run_id="compact",
-                    step=0,
-                    system="You are a helpful assistant that summarizes conversations.",
-                )
+                response = await _compact_chat(compress_request, output_cap)
+                if record_usage is not None:
+                    record_usage(response)
             except Exception:
                 logger.exception("compactor: LLM call failed, skipping compaction")
                 return None

@@ -7,7 +7,9 @@ from sztu_code.core.llm.types import LlmResponse
 
 
 class LLMProvider(Protocol):
-    # 流式调用 LLM 并发布进度事件，返回完整响应
+    # 流式调用 LLM 并发布进度事件，返回完整响应。
+    # max_output_tokens 为可选的单次请求输出上限（预算准入收缩时传入）；
+    # None 表示使用 Provider 构造时配置的默认输出上限
     async def chat(
         self,
         messages: list[dict[str, object]],
@@ -18,4 +20,5 @@ class LLMProvider(Protocol):
         step: int = 0,
         system: str | None = None,
         usage_estimator: Any | None = None,
+        max_output_tokens: int | None = None,
     ) -> LlmResponse: ...

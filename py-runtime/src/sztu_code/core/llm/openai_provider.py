@@ -458,7 +458,8 @@ class OpenAIProvider:
         self._reasoning_effort = reasoning_effort
         self._cache_control = cache_control
 
-    # 流式调用 OpenAI 兼容 API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试
+    # 流式调用 OpenAI 兼容 API，逐 token 发布事件并返回 LlmResponse；网络中断时自动重试。
+    # max_output_tokens 覆盖本单次请求的输出上限（预算准入收缩时传入），None 用默认
     async def chat(
         self,
         messages: list[dict[str, object]],
@@ -469,7 +470,11 @@ class OpenAIProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: Any | None = None,
+        max_output_tokens: int | None = None,
     ) -> LlmResponse:
+        effective_max_output = (
+            max_output_tokens if max_output_tokens is not None else self._max_output_tokens
+        )
         await bus.publish(
             LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
         )
@@ -485,7 +490,9 @@ class OpenAIProvider:
             if tool_schemas else None
         )
 
-        acc = await self._stream_with_retries(openai_msgs, tools, bus, run_id, step)
+        acc = await self._stream_with_retries(
+            openai_msgs, tools, bus, run_id, step, effective_max_output
+        )
 
         input_tokens, output_tokens, cache_read = _usage_from_final(acc.usage)
         context_window = _context_window(self._model, self._context_window_override)
@@ -500,7 +507,7 @@ class OpenAIProvider:
         breakdown = estimate_context_usage(
             messages=messages, tool_schemas=tool_schemas, system=system or _SYSTEM_PROMPT,
             actual_input_tokens=input_tokens, context_window=context_window,
-            reserved_output_tokens=self._max_output_tokens,
+            reserved_output_tokens=effective_max_output,
             incremental=usage_estimator,
         )
 
@@ -540,10 +547,13 @@ class OpenAIProvider:
         bus: EventBus,
         run_id: str,
         step: int,
+        max_output_tokens: int,
     ) -> _StreamResult:
         for attempt in range(1, _MAX_STREAM_RETRIES + 1):
             try:
-                return await self._stream_once(openai_msgs, tools, bus, run_id, step, attempt)
+                return await self._stream_once(
+                    openai_msgs, tools, bus, run_id, step, attempt, max_output_tokens
+                )
             except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as exc:
                 if attempt == _MAX_STREAM_RETRIES:
                     log.error(
@@ -581,8 +591,9 @@ class OpenAIProvider:
         run_id: str,
         step: int,
         attempt: int,
+        max_output_tokens: int,
     ) -> _StreamResult:
-        kwargs = self._request_kwargs(openai_msgs, tools)
+        kwargs = self._request_kwargs(openai_msgs, tools, max_output_tokens)
         stream = await self._client.chat.completions.create(**kwargs)
         result = _StreamResult()
         async for chunk in stream:
@@ -594,13 +605,14 @@ class OpenAIProvider:
         self,
         openai_msgs: list[dict[str, object]],
         tools: list[dict[str, object]] | None,
+        max_output_tokens: int,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {
             "model": self._model,
             "messages": openai_msgs,
             "stream": True,
             "stream_options": {"include_usage": True},
-            "max_completion_tokens": self._max_output_tokens,
+            "max_completion_tokens": max_output_tokens,
         }
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature

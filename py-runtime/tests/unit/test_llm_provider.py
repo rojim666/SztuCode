@@ -293,3 +293,18 @@ async def test_usage_estimator_forwarded(monkeypatch: pytest.MonkeyPatch) -> Non
         usage_estimator=estimator,
     )
     assert captured["incremental"] is estimator
+
+
+# 功能：验证预算准入收缩的单次输出上限覆盖请求 kwargs 中的 max_tokens（Issue #72）
+# 设计：默认调用断言使用构造配置的 8192；显式 max_output_tokens 调用断言覆盖生效
+async def test_chat_max_output_tokens_override() -> None:
+    provider, client = _make_provider(texts=["hi"])
+    await _chat(provider)
+    assert client.messages.stream.call_args.kwargs["max_tokens"] == 8192
+
+    provider2, client2 = _make_provider(texts=["hi"])
+    await provider2.chat(
+        messages=[], tool_schemas=[], bus=EventBus(), run_id="r1",
+        max_output_tokens=123,
+    )
+    assert client2.messages.stream.call_args.kwargs["max_tokens"] == 123
