@@ -190,6 +190,7 @@ class AgentRunner:
                 tool_max_concurrency=self._config.agent.tool_max_concurrency,
                 max_depth=self._config.workflow.max_depth,
                 owner_run_id=run_id,
+                default_max_output_tokens=self._config.llm.max_output_tokens,
             )
             if _ok("spawn_agent"):
                 registry.register(spawn_tool)
@@ -336,9 +337,9 @@ class AgentRunner:
             project_profile_context=project_profile_context,
             base_system_prompt=base_prompt,
             system_prompt_override=system_prompt_override,
-            # Cumulative Token budgets are intentionally disabled. Usage is still
-            # recorded for telemetry, while wall-clock/context/step guards remain.
-            max_tokens=0,
+            # Token 预算（Issue #72）：按「全量 prompt + 输出」口径由请求前准入执行；
+            # 0 = 不限（默认），保持既有行为
+            max_tokens=self._config.budget.max_tokens,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
         prefill_len = len(history)
@@ -458,6 +459,7 @@ class AgentRunner:
                     pricing_provider=self._config.llm.provider,
                     pricing_model=self._config.llm.default_model,
                     steering_queue=steering_queue,
+                    default_max_output_tokens=self._config.llm.max_output_tokens,
                 )
                 await loop.run(context)
             except asyncio.CancelledError:

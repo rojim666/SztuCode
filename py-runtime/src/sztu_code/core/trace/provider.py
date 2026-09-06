@@ -29,7 +29,8 @@ class TracingProvider:
         self._trace = trace
         self._include_payload = include_payload
 
-    # 记录 CORE→LLM 请求，调用真实 provider，记录 LLM→CORE 响应（含延迟）
+    # 记录 CORE→LLM 请求，调用真实 provider，记录 LLM→CORE 响应（含延迟）。
+    # max_output_tokens 为预算准入收缩时的单次输出上限，透传给内层 provider
     async def chat(
         self,
         messages: list[dict[str, object]],
@@ -40,6 +41,7 @@ class TracingProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: Any | None = None,
+        max_output_tokens: int | None = None,
     ) -> LlmResponse:
         call_data: dict[str, Any]
         if self._include_payload:
@@ -66,6 +68,7 @@ class TracingProvider:
         result = await self._inner.chat(
             messages, tool_schemas, bus, run_id, step=step, system=system,
             usage_estimator=usage_estimator,
+            max_output_tokens=max_output_tokens,
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
 

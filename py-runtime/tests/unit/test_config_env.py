@@ -231,7 +231,7 @@ def test_max_steps_env_accepts_zero_rejects_negative(tmp_path: Path, monkeypatch
         get_config()
 
 
-# 功能：验证 SZTU_BUDGET_* 环境变量仍可读取旧配置（但主 Agent 不再使用 Token 上限）
+# 功能：验证 SZTU_BUDGET_* 环境变量可读取预算配置（max_tokens 由请求前准入执行，见 Issue #72）
 # 设计：直接设环境变量，断言 get_config 读到对应值
 def test_budget_env_vars_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SZTU_BUDGET_MAX_TOKENS", "999")

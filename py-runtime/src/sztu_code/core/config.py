@@ -76,7 +76,10 @@ class AgentConfig:
 
 @dataclass
 class BudgetConfig:
-    # 已废弃：不再使用跨轮累计 Token 预算终止 Agent Run，保留字段仅兼容旧配置。
+    # 累计 Token 上限，按「全量 prompt（净输入+缓存读+缓存写）+ 输出」口径由请求前
+    # 预算准入执行（Issue #72）：每次请求前估算输入并预留最小输出，余额可容纳输入
+    # 但不足默认输出上限时收缩本次输出上限，连最小输出都无法覆盖时终止 run。
+    # 缓存命中与 context_pct 同口径计入预算，不从上限中减免；0=不限
     max_tokens: int = 0
     # 本 run 累计墙钟秒数上限；0=不限
     max_wall_clock_s: int = 1_200  # 20 分钟
