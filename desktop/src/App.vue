@@ -3070,7 +3070,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
 <template>
   <div
-    class="kimi-shell"
+    class="sztu-shell"
     :class="{ 'is-macos': isMacOS, 'sidebar-collapsed': sidebarCollapsed, 'sidebar-resizing': sidebarResizing, 'sidebar-animating': sidebarAnimating, 'sidebar-collapse-armed': sidebarCollapseArmed, 'window-resizing': windowResizing }"
     :style="{ '--sidebar-width': `${sidebarWidth}px`, '--sidebar-pull': `${sidebarPull}px` }"
   >
@@ -3084,7 +3084,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <div class="nav-toggle-tooltip" role="tooltip"><span>{{ sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav') }}</span><kbd>⌘</kbd><kbd>B</kbd></div>
       </div>
     </header>
-    <header class="kimi-titlebar" :class="{ 'is-macos': isMacOS }">
+    <header class="sztu-titlebar" :class="{ 'is-macos': isMacOS }">
       <div v-if="!isMacOS" class="nav-toggle-wrap">
         <button class="nav-toggle" type="button" aria-controls="primary-navigation" :aria-expanded="!sidebarCollapsed" :aria-label="sidebarCollapsed ? t('app.expandNav') : t('app.collapseNav')" @click="toggleSidebar">
           <AppIcon v-if="sidebarCollapsed" name="PanelLeftOpen" :size="16" />
@@ -3159,7 +3159,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     </header>
 
     <div class="sidebar-viewport">
-      <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
+      <aside id="primary-navigation" class="sztu-sidebar agent-sidebar">
       <header class="sidebar-brand">
         <h1>SztuCode</h1>
         <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
@@ -3292,7 +3292,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div class="session-preview__row"><AppIcon name="Coins" :size="16" /><span>{{ t('app.totalTokens') }}</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
     </div>
 
-    <main class="kimi-main work-active">
+    <main class="sztu-main work-active">
       <div v-show="page === 'work'" class="work-page-host">
         <section v-if="active" class="work-page">
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
@@ -3387,7 +3387,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     @submit="submitUserQuestion(activeUserQuestion, $event)"
                     @stop="stopActiveRun"
                   />
-                    <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
+                    <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
                       <div v-if="ocrProgress" class="ocr-progress-bar">
@@ -3426,7 +3426,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </header>
 
-            <form class="kimi-composer landing-composer" @submit.prevent="submit()">
+            <form class="sztu-composer landing-composer" @submit.prevent="submit()">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>

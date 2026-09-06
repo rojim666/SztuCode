@@ -1,4 +1,4 @@
-.task-canvas {
+﻿.task-canvas {
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -268,7 +268,7 @@
   max-width: min(82%, 720px);
 }
 
-.task-conversation .kimi-composer {
+.task-conversation .sztu-composer {
   position: relative;
   z-index: 6;
   width: min(600px, calc(100% - 48px));
@@ -478,32 +478,32 @@
 .task-intro { align-items: flex-start; max-width: 600px; padding-top: 34px; }
 .task-intro b { display: block; margin: 1px 0 6px; color: #292d31; font-size: 16px; }
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
-.task-conversation .kimi-composer { border-radius: 12px; border-color: #d9dcdf; box-shadow: 0 5px 18px rgb(28 36 44 / 8%); }
+.task-conversation .sztu-composer { border-radius: 12px; border-color: #d9dcdf; box-shadow: 0 5px 18px rgb(28 36 44 / 8%); }
 /* 运行态（追加模式）不再单独定尺寸：宽度、圆角、内外边距、字号、按钮尺寸全部沿用未运行态，
    避免 run 起停时输入框尺寸跳动。这里只保留权限入口的橙色作为「本轮正在运行」的状态提示。 */
-.task-conversation .kimi-composer .permission.permission--full-access { color: #e65d18; }
-.task-conversation .kimi-composer .permission.permission--per-item { color: #24262b; }
+.task-conversation .sztu-composer .permission.permission--full-access { color: #e65d18; }
+.task-conversation .sztu-composer .permission.permission--per-item { color: #24262b; }
 .task-launcher .permission.permission--full-access { color: #e65d18; }
 .task-launcher .permission.permission--per-item { color: #24262b; }
-.task-conversation .kimi-composer .attachment-strip { padding-top: 6px; }
-.task-conversation .kimi-composer textarea { min-height: 44px; padding: 8px 10px 4px; }
-.task-conversation .kimi-composer textarea { font-size: 12px; line-height: 1.4; }
-.task-conversation .kimi-composer .round,
-.task-conversation .kimi-composer .permission { border: 0; background: transparent; border-radius: 8px; }
-.task-conversation .kimi-composer .round { width: 23px; height: 23px; }
-.task-conversation .kimi-composer .round:hover,
-.task-conversation .kimi-composer .round:focus-visible,
-.task-conversation .kimi-composer .permission:hover,
-.task-conversation .kimi-composer .permission:focus-visible { background: #f3f5f5; }
-.task-conversation .kimi-composer .send { width: 28px; height: 28px; border-radius: 50%; font-size: 16px; font-weight: 600; }
-.task-conversation .kimi-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
-.task-conversation .kimi-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
-.task-conversation .kimi-composer .permission { padding: 6px 8px; font-size: 13px; }
+.task-conversation .sztu-composer .attachment-strip { padding-top: 6px; }
+.task-conversation .sztu-composer textarea { min-height: 44px; padding: 8px 10px 4px; }
+.task-conversation .sztu-composer textarea { font-size: 12px; line-height: 1.4; }
+.task-conversation .sztu-composer .round,
+.task-conversation .sztu-composer .permission { border: 0; background: transparent; border-radius: 8px; }
+.task-conversation .sztu-composer .round { width: 23px; height: 23px; }
+.task-conversation .sztu-composer .round:hover,
+.task-conversation .sztu-composer .round:focus-visible,
+.task-conversation .sztu-composer .permission:hover,
+.task-conversation .sztu-composer .permission:focus-visible { background: #f3f5f5; }
+.task-conversation .sztu-composer .send { width: 28px; height: 28px; border-radius: 50%; font-size: 16px; font-weight: 600; }
+.task-conversation .sztu-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
+.task-conversation .sztu-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
+.task-conversation .sztu-composer .permission { padding: 6px 8px; font-size: 13px; }
 
 @media (max-width: 620px) {
   .task-stream { width: 100%; }
   .task-stream > .execution-timeline { padding: 0 16px; }
-  .task-conversation .kimi-composer { width: calc(100% - 24px); }
+  .task-conversation .sztu-composer { width: calc(100% - 24px); }
   /* 暂时停用文件修改摘要的移动端定位。
   .change-summary-rail { top: auto; right: 12px; bottom: 96px; min-height: 126px; }
   */
@@ -837,10 +837,10 @@
 }
 
 /* Agent workbench sidebar: attention first, project context second. */
-.kimi-shell { position: relative; grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr); background: #f2f2f2; border-color: transparent; }
-.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
-.kimi-shell.sidebar-resizing { transition: none; cursor: col-resize; }
-.kimi-titlebar { background: #f2f2f2; }
+.sztu-shell { position: relative; grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr); background: #f2f2f2; border-color: transparent; }
+.sztu-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+.sztu-shell.sidebar-resizing { transition: none; cursor: col-resize; }
+.sztu-titlebar { background: #f2f2f2; }
 .nav-toggle { background: transparent; border-color: transparent; box-shadow: none; }
 .nav-toggle:hover { background: #e7e7e7; border-color: transparent; }
 .window-action:hover { background: #e5e5e5; }
@@ -848,31 +848,31 @@
 .agent-sidebar { width: var(--sidebar-width, 268px); min-width: var(--sidebar-width, 268px); height: 100%; padding: 0 10px; background: #f2f2f2; border-right: 0; opacity: 1; transform: translateX(0); transition: opacity 150ms ease, transform 220ms cubic-bezier(.22, .72, .22, 1); }
 .sidebar-collapsed .sidebar-viewport { width: 0; visibility: hidden; pointer-events: none; transition-delay: 220ms; }
 .sidebar-collapsed .agent-sidebar { opacity: 0; transform: translateX(-12px); }
-.kimi-shell.is-macos.sidebar-collapsed .agent-sidebar { transform: none; }
+.sztu-shell.is-macos.sidebar-collapsed .agent-sidebar { transform: none; }
 .sidebar-resizer { position: absolute; z-index: 25; top: 40px; bottom: 10px; left: var(--sidebar-width, 268px); width: 12px; padding: 0; color: #77808a; cursor: col-resize; outline: 0; opacity: 1; transform: translateX(calc(-50% + var(--sidebar-pull, 0px))); touch-action: none; transition: left 200ms ease, opacity 120ms ease, transform 160ms cubic-bezier(.2, .8, .2, 1); }
 .sidebar-resizing .sidebar-resizer { transition: none; }
 .sidebar-collapsed .sidebar-resizer { visibility: hidden; opacity: 0; pointer-events: none; transform: translateX(-50%); }
-.kimi-main { margin: 0; background: #fff; border: 0; border-radius: 0; box-shadow: none; }
+.sztu-main { margin: 0; background: #fff; border: 0; border-radius: 0; box-shadow: none; }
 /* 会话区卡片：灰边框改暖米、阴影改暖调并减淡 —— 四角圆角外不再出现冷灰边线与暗角 */
-.kimi-main .task-canvas {
+.sztu-main .task-canvas {
   border: 0;
   border-radius: 0;
   box-shadow: none;
 }
 /* 右侧功能栏：近白灰底改暖米，与整窗渐变同源 */
-.kimi-main .inspector-panel {
+.sztu-main .inspector-panel {
   background: #fdfbf7;
 }
-.kimi-shell.is-macos.sidebar-collapsed .kimi-main { margin-left: 0; }
-.kimi-main.work-active {
+.sztu-shell.is-macos.sidebar-collapsed .sztu-main { margin-left: 0; }
+.sztu-main.work-active {
   overflow: visible;
   background: transparent;
   border-radius: 0;
   box-shadow: none;
 }
-.kimi-main.chat-main, .chat-main { border: 0; border-radius: 0; }
+.sztu-main.chat-main, .chat-main { border: 0; border-radius: 0; }
 .sidebar-brand { display: flex; align-items: center; min-height: 36px; padding: 0 1px 0 8px; }
-.kimi-shell.is-macos .sidebar-brand { min-height: 36px; padding-top: 0; }
+.sztu-shell.is-macos .sidebar-brand { min-height: 36px; padding-top: 0; }
 .sidebar-brand h1 { margin: 0; min-width: 0; overflow: hidden; color: var(--accent); font-family: "Aptos Display", "Microsoft YaHei UI", sans-serif; font-size: 15px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .mode-switch-wrap { position: relative; display: flex; min-width: 0; }
 .brand-mode-trigger { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 6px; margin: 0 -6px 0 -2px; color: inherit; background: transparent; border: 0; border-radius: 6px; cursor: pointer; -webkit-app-region: no-drag; transition: background-color 120ms ease; }
@@ -931,7 +931,7 @@
 /* Shared Codex-style navigation shell: a cool glass layer over restrained orange/blue light.
    整窗统一背景：侧边栏与会话区共享同一块晨光渐变，连接处自然融入、无色块边界。
    四角均被彩色光斑覆盖（左上橙/右上蓝/右下暖紫/底中橙），圆角卡片外不会再露出灰角 */
-.kimi-shell {
+.sztu-shell {
   isolation: isolate;
   overflow: hidden;
   border: 0;
@@ -944,7 +944,7 @@
     radial-gradient(600px 500px at 50% 116%, rgb(255 189 126 / 15%), transparent 72%),
     linear-gradient(180deg, #faf5ec 0%, #f7f0e7 55%, #f9f2e9 100%);
 }
-.kimi-shell::before {
+.sztu-shell::before {
   position: absolute;
   z-index: -1;
   top: 0;
@@ -957,22 +957,22 @@
   content: "";
 }
 /* macOS: translucent chrome over system vibrancy; main panel stays opaque. */
-.kimi-shell.is-macos {
+.sztu-shell.is-macos {
   background: rgb(246 247 248 / 0.15);
 }
-.kimi-shell.is-macos::before {
+.sztu-shell.is-macos::before {
   content: none;
 }
-.kimi-shell.is-macos .kimi-main {
+.sztu-shell.is-macos .sztu-main {
   border-radius: 0;
 }
-.kimi-shell.is-macos.window-resizing .kimi-main {
+.sztu-shell.is-macos.window-resizing .sztu-main {
   box-shadow: none;
 }
-.kimi-shell.is-macos .kimi-main.chat-main {
+.sztu-shell.is-macos .sztu-main.chat-main {
   border-radius: 0;
 }
-.kimi-titlebar,
+.sztu-titlebar,
 .sidebar-viewport {
   background: #f9fafb;
   border: 0;
@@ -981,7 +981,7 @@
   -webkit-backdrop-filter: none;
 }
 /* 标题栏与侧边栏：透明承接整窗统一渐变，与会话区背景同源，连接处无边界 */
-.kimi-titlebar {
+.sztu-titlebar {
   border-bottom: 0;
 }
 .sidebar-viewport {
@@ -1000,19 +1000,19 @@
 }
 
 /* macOS：保留系统 vibrancy 半透明毛玻璃 */
-.kimi-shell.is-macos .agent-sidebar {
+.sztu-shell.is-macos .agent-sidebar {
   box-shadow: none;
 }
 :root[data-app-theme="dark"] .layout-divider {
   background: var(--border);
 }
-.kimi-titlebar .nav-toggle,
+.sztu-titlebar .nav-toggle,
 .sidebar-macos-toolbar .nav-toggle {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
 }
-.kimi-titlebar .nav-toggle:hover,
+.sztu-titlebar .nav-toggle:hover,
 .sidebar-macos-toolbar .nav-toggle:hover {
   background: rgb(255 255 255 / 54%);
   border-color: transparent;
@@ -1138,7 +1138,7 @@
   .work-layout .layout-divider,
   .work-layout .project-inspector { display: none; }
   /* 窄窗口下折叠侧栏完全让位（不保留折叠窄条），会话区保持水平居中 */
-  .kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+  .sztu-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
   .sidebar-collapsed .sidebar-viewport { width: 0; }
 }
 
@@ -1167,7 +1167,7 @@
 .task-launcher .launcher-attachment-trigger svg { display: block; width: 18px; height: 18px; stroke: currentColor; }
 .task-launcher .permission { padding: 6px 8px; background: transparent; border: 0; border-radius: 7px; font-size: 13px; }
 .task-launcher .permission svg,
-.task-conversation .kimi-composer .permission svg { width: 17px; height: 17px; }
+.task-conversation .sztu-composer .permission svg { width: 17px; height: 17px; }
 .task-launcher .round:hover, .task-launcher .permission:hover { background: #f2f3f4; }
 .launcher-permission-control { position: relative; flex: 0 0 auto; }
 .launcher-popover { position: absolute; z-index: 40; color: #292d33; background: #fff; border: 1px solid #dedfe1; border-radius: 10px; box-shadow: 0 14px 38px #20252d1c, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
@@ -1431,7 +1431,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .kimi-shell,
+  .sztu-shell,
   .sidebar-viewport,
   .agent-sidebar,
   .sidebar-resizer,
@@ -1712,19 +1712,19 @@
   }
 
   /* 会话输入框工具栏：加号/权限/模型默认透明，hover 或聚焦才出现深色底 */
-  .task-conversation .kimi-composer :is(.round, .permission) {
+  .task-conversation .sztu-composer :is(.round, .permission) {
     color: var(--text-muted) !important;
   }
-  .task-conversation .kimi-composer :is(.round, .permission):hover,
-  .task-conversation .kimi-composer :is(.round, .permission):focus-visible {
+  .task-conversation .sztu-composer :is(.round, .permission):hover,
+  .task-conversation .sztu-composer :is(.round, .permission):focus-visible {
     color: var(--text) !important;
     background: var(--surface-soft) !important;
   }
-  .task-conversation .kimi-composer .permission.permission--full-access,
+  .task-conversation .sztu-composer .permission.permission--full-access,
   .task-launcher .permission.permission--full-access {
     color: #f0954c !important;
   }
-  .task-conversation .kimi-composer .permission.permission--per-item {
+  .task-conversation .sztu-composer .permission.permission--per-item {
     color: var(--text-muted) !important;
   }
 
@@ -1767,13 +1767,13 @@
   }
 
   /* 侧边栏容器背景 */
-  .kimi-sidebar,
+  .sztu-sidebar,
   .chat-sidebar,
   .sidebar-viewport,
   .agent-sidebar {
     background: var(--surface) !important;
   }
-  .kimi-shell {
+  .sztu-shell {
     background: var(--app-bg) !important;
   }
   .sidebar-workspace {

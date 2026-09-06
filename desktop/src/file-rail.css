@@ -1,4 +1,4 @@
-.project-inspector.file-rail {
+﻿.project-inspector.file-rail {
   position: relative;
   align-self: stretch;
   display: grid;
@@ -20,11 +20,11 @@
 /* 展开态进入真正全屏：功能区独占整个窗口（无边框/圆角/阴影），其余窗口功能全部隐藏，而非用层级遮挡 */
 .project-inspector.file-rail.is-expanded { position: fixed; inset: 0; z-index: 210; width: auto; max-height: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 /* 全屏时隐藏标题栏、导航、会话区与分隔条，让功能区独占窗口 */
-.kimi-shell:has(.project-inspector.file-rail.is-expanded) .kimi-titlebar,
-.kimi-shell:has(.project-inspector.file-rail.is-expanded) .sidebar-viewport,
-.kimi-shell:has(.project-inspector.file-rail.is-expanded) .sidebar-resizer,
-.kimi-shell:has(.project-inspector.file-rail.is-expanded) .task-canvas,
-.kimi-shell:has(.project-inspector.file-rail.is-expanded) .layout-divider { display: none; }
+.sztu-shell:has(.project-inspector.file-rail.is-expanded) .sztu-titlebar,
+.sztu-shell:has(.project-inspector.file-rail.is-expanded) .sidebar-viewport,
+.sztu-shell:has(.project-inspector.file-rail.is-expanded) .sidebar-resizer,
+.sztu-shell:has(.project-inspector.file-rail.is-expanded) .task-canvas,
+.sztu-shell:has(.project-inspector.file-rail.is-expanded) .layout-divider { display: none; }
 
 .workspace-tab-strip {
   position: relative;

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --app-bg: #e6eaeb;
   --surface: #ffffff;
   --surface-soft: #eff1f1;
@@ -75,14 +75,14 @@
   outline-offset: 1px;
 }
 
-:root[data-app-theme="dark"] .kimi-shell::before {
+:root[data-app-theme="dark"] .sztu-shell::before {
   opacity: var(--wallpaper-opacity-dark) !important;
 }
 
 /* 深色模式下所有 AppIcon 图标强制纯白（currentColor 会继承父级颜色，这里统一兜底） */
 :root[data-app-theme="dark"] .app-icon { color: #ffffff; }
 
-.kimi-shell {
+.sztu-shell {
   position: relative;
   isolation: isolate;
   color: var(--text) !important;
@@ -90,7 +90,7 @@
   border-color: var(--border) !important;
 }
 
-.kimi-shell::before {
+.sztu-shell::before {
   position: absolute;
   z-index: -1;
   inset: 0;
@@ -100,37 +100,37 @@
   transition: opacity 160ms ease;
 }
 
-:root[data-wallpaper="none"] .kimi-shell::before { background: none; }
+:root[data-wallpaper="none"] .sztu-shell::before { background: none; }
 
-:root[data-wallpaper="mist"] .kimi-shell::before {
+:root[data-wallpaper="mist"] .sztu-shell::before {
   background:
     linear-gradient(128deg, color-mix(in srgb, var(--accent) 68%, transparent), transparent 42%),
     linear-gradient(310deg, rgb(172 116 88 / 52%), transparent 38%),
     linear-gradient(35deg, rgb(66 123 118 / 42%), transparent 52%);
 }
 
-:root[data-wallpaper="grid"] .kimi-shell::before {
+:root[data-wallpaper="grid"] .sztu-shell::before {
   background-image:
     linear-gradient(color-mix(in srgb, var(--accent) 68%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--accent) 68%, transparent) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
-:root[data-wallpaper="paper"] .kimi-shell::before {
+:root[data-wallpaper="paper"] .sztu-shell::before {
   background:
     repeating-linear-gradient(0deg, transparent 0 3px, color-mix(in srgb, var(--text) 32%, transparent) 3px 4px),
     linear-gradient(115deg, rgb(166 118 82 / 48%), transparent 55%);
   background-size: auto, 100% 100%;
 }
 
-:root[data-wallpaper="custom"] .kimi-shell::before {
+:root[data-wallpaper="custom"] .sztu-shell::before {
   background-image: var(--custom-wallpaper-image);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
 }
 
-.kimi-titlebar,
+.sztu-titlebar,
 .sidebar-viewport {
   color: var(--text) !important;
   background: var(--chrome-bg) !important;
@@ -139,14 +139,14 @@
   backdrop-filter: none;
 }
 
-.kimi-sidebar {
+.sztu-sidebar {
   color: var(--text) !important;
   background: var(--chrome-bg) !important;
   border: 0 !important;
   box-shadow: none !important;
 }
 
-.kimi-main {
+.sztu-main {
   color: var(--text) !important;
   background: var(--surface) !important;
 }
@@ -165,7 +165,7 @@
 :root[data-app-theme="dark"] :where(
   .work-header,
   .task-canvas,
-  .kimi-composer,
+  .sztu-composer,
   .queue-dock,
   .composer-input-shell,
   .project-popover,
@@ -189,22 +189,22 @@
 }
 
 /* 深色模式下让输入区域与页面底色拉开层次，避免编辑框边界融入背景。 */
-:root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell) {
+:root[data-app-theme="dark"] :is(.sztu-composer, .composer-input-shell) {
   background: #252525 !important;
   border-color: #414141 !important;
   border-radius: 14px !important;
   box-shadow: 0 5px 18px rgb(0 0 0 / 28%);
 }
 /* 输入壳保持基础样式的 overflow: visible，否则会裁掉落地页内向上弹出的模型/权限菜单 */
-:root[data-app-theme="dark"] :is(.kimi-composer, .composer-input-shell):focus-within {
+:root[data-app-theme="dark"] :is(.sztu-composer, .composer-input-shell):focus-within {
   border-color: #5a5a5a !important;
   box-shadow: 0 6px 20px rgb(0 0 0 / 34%);
 }
-:root[data-app-theme="dark"] :is(.kimi-composer textarea, .composer-input-shell textarea) {
+:root[data-app-theme="dark"] :is(.sztu-composer textarea, .composer-input-shell textarea) {
   color: #f1f1f1 !important;
   background: transparent !important;
 }
-:root[data-app-theme="dark"] :is(.kimi-composer textarea, .composer-input-shell textarea)::placeholder {
+:root[data-app-theme="dark"] :is(.sztu-composer textarea, .composer-input-shell textarea)::placeholder {
   color: #a1a1a1 !important;
 }
 
@@ -238,7 +238,7 @@
   .markdown-body h1,
   .markdown-body h2,
   .markdown-body h3,
-  .kimi-composer textarea,
+  .sztu-composer textarea,
   .service-status b,
   .simple-page h1,
   .bridge-card h2,
@@ -555,20 +555,20 @@
   border-color: var(--border) !important;
 }
 
-/* 主框架容器暗色适配（.kimi-shell 底色保持 --app-bg，由本文件 56 行与 workbench.css 统一控制） */
-:root[data-app-theme="dark"] :is(.kimi-titlebar, .kimi-sidebar, .kimi-main, .sidebar-viewport, .agent-sidebar) {
+/* 主框架容器暗色适配（.sztu-shell 底色保持 --app-bg，由本文件 56 行与 workbench.css 统一控制） */
+:root[data-app-theme="dark"] :is(.sztu-titlebar, .sztu-sidebar, .sztu-main, .sidebar-viewport, .agent-sidebar) {
   color: var(--text) !important;
   background: var(--surface) !important;
   border-color: var(--border) !important;
 }
 
 /* 深色模式：左侧任务栏与顶部栏统一 #202020，与主背景 #171717 分层（必须放在主框架规则之后才生效）。
-   注意层级是 .sidebar-viewport(外栏) > .kimi-sidebar(aside) > 各子容器；
+   注意层级是 .sidebar-viewport(外栏) > .sztu-sidebar(aside) > 各子容器；
    子容器一律强制透明，否则会在栏体内出现颜色不一致的内嵌色块。 */
-:root[data-app-theme="dark"] :is(.kimi-titlebar, .sidebar-viewport, .kimi-sidebar) {
+:root[data-app-theme="dark"] :is(.sztu-titlebar, .sidebar-viewport, .sztu-sidebar) {
   background: #202020 !important;
 }
-:root[data-app-theme="dark"] .kimi-sidebar :is(
+:root[data-app-theme="dark"] .sztu-sidebar :is(
   .sidebar-brand,
   .sidebar-command,
   .sidebar-tools,
@@ -758,32 +758,32 @@
 }
 
 /* Wallpaper remains a single continuous layer; large work surfaces reveal it softly. */
-:root:not([data-wallpaper="none"]) .kimi-shell.is-macos::before {
+:root:not([data-wallpaper="none"]) .sztu-shell.is-macos::before {
   content: "";
 }
 
-:root:not([data-wallpaper="none"]) :is(.kimi-titlebar, .sidebar-viewport) {
+:root:not([data-wallpaper="none"]) :is(.sztu-titlebar, .sidebar-viewport) {
   background: color-mix(in srgb, var(--chrome-bg) var(--chrome-surface-opacity), transparent) !important;
   backdrop-filter: blur(16px) saturate(112%);
   -webkit-backdrop-filter: blur(16px) saturate(112%);
 }
 
-:root:not([data-wallpaper="none"]) .kimi-sidebar {
+:root:not([data-wallpaper="none"]) .sztu-sidebar {
   background: transparent !important;
 }
 
-:root:not([data-wallpaper="none"]) .kimi-main {
+:root:not([data-wallpaper="none"]) .sztu-main {
   background: color-mix(in srgb, var(--surface) var(--conversation-surface-opacity), transparent) !important;
 }
 
 /* 工作页存在时整窗让位于壁纸，会话表面由 task-canvas 承担；
-   落地页（无工作页）仍由 kimi-main 提供会话区表面，透明度滑块可直接作用于它。 */
-:root:not([data-wallpaper="none"]) .kimi-main:has(.work-page) {
+   落地页（无工作页）仍由 sztu-main 提供会话区表面，透明度滑块可直接作用于它。 */
+:root:not([data-wallpaper="none"]) .sztu-main:has(.work-page) {
   background: transparent !important;
 }
 
-:root:not([data-wallpaper="none"]) .kimi-main:has(.skill-center),
-:root:not([data-wallpaper="none"]) .kimi-main:has(.chat-automations),
+:root:not([data-wallpaper="none"]) .sztu-main:has(.skill-center),
+:root:not([data-wallpaper="none"]) .sztu-main:has(.chat-automations),
 :root:not([data-wallpaper="none"]) :is(.skill-center, .chat-automations) {
   background: transparent !important;
 }
@@ -905,10 +905,10 @@
 }
 
 /* 深色模式：会话区背景跟随主背景 #171717（覆盖默认 --surface 与壁纸模式半透明两种形态） */
-:root[data-app-theme="dark"] :is(.kimi-main, .task-canvas) {
+:root[data-app-theme="dark"] :is(.sztu-main, .task-canvas) {
   background: var(--app-bg) !important;
 }
-:root[data-app-theme="dark"]:not([data-wallpaper="none"]) :is(.kimi-main, .task-canvas) {
+:root[data-app-theme="dark"]:not([data-wallpaper="none"]) :is(.sztu-main, .task-canvas) {
   background: color-mix(in srgb, #171717 var(--conversation-surface-opacity), transparent) !important;
 }
 
@@ -1001,7 +1001,7 @@
   background: transparent !important;
 }
 
-:root[data-wallpaper="mist"] :is(.kimi-titlebar, .sidebar-viewport) {
+:root[data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
   background:
     linear-gradient(
       118deg,
@@ -1017,7 +1017,7 @@
   animation: mist-chrome-flow 18s ease-in-out infinite;
 }
 
-:root[data-app-theme="dark"][data-wallpaper="mist"] :is(.kimi-titlebar, .sidebar-viewport) {
+:root[data-app-theme="dark"][data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
   background:
     linear-gradient(
       118deg,
@@ -1036,7 +1036,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-wallpaper="mist"] :is(.kimi-titlebar, .sidebar-viewport) {
+  :root[data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
     animation: none;
     background-position: 50% 50%;
   }

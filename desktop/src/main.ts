@@ -3,7 +3,7 @@ import { getCurrentWindow, IS_TAURI } from "./lib/tauri-shim";
 import { i18n } from "./i18n";
 import App from "./App.vue";
 import TrayMenu from "./tray/TrayMenu.vue";
-import "./kimi.css";
+import "./sztu.css";
 import "./chat.css";
 import "./skill-center.css";
 import "./timeline.css";

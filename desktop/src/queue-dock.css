@@ -1,8 +1,8 @@
-/* 任务输入卡片：外层同时包住待处理队列与输入框，两者恒等宽、共用同一张卡片 */
+﻿/* 任务输入卡片：外层同时包住待处理队列与输入框，两者恒等宽、共用同一张卡片 */
 .queue-dock {
   position: relative;
   z-index: 6;
-  width: min(660px, calc(100% - 64px)); /* 与 .task-conversation .kimi-composer 同款宽度公式 */
+  width: min(660px, calc(100% - 64px)); /* 与 .task-conversation .sztu-composer 同款宽度公式 */
   margin: 0 auto 17px;
   overflow: visible; /* 斜杠菜单与模型气泡需要溢出显示 */
   color: var(--text-muted);
@@ -32,7 +32,7 @@
 
 
 /* 被卡片包住后，内层的输入框与问答框不再单独描边，避免出现双边框与双重阴影 */
-.task-conversation > .queue-dock > .kimi-composer,
+.task-conversation > .queue-dock > .sztu-composer,
 .task-conversation > .queue-dock > .user-question-composer {
   width: 100%;
   margin: 0;
@@ -42,7 +42,7 @@
   box-shadow: none;
 }
 
-.task-conversation > .queue-dock > .kimi-composer:focus-within {
+.task-conversation > .queue-dock > .sztu-composer:focus-within {
   border-color: transparent;
   box-shadow: none;
 }

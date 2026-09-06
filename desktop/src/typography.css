@@ -1,4 +1,4 @@
-/* Shared typography scale. Keep this stylesheet last so every product surface reads consistently. */
+﻿/* Shared typography scale. Keep this stylesheet last so every product surface reads consistently. */
 :root {
   /* 动效 token（借鉴 dsh ui-theme base.css）：统一缓动曲线 + 三档时长，只用于状态反馈 */
   --sz-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
@@ -28,7 +28,7 @@
 
 body,
 #app,
-.kimi-shell,
+.sztu-shell,
 .skill-center {
   font-family: var(--font-ui);
   letter-spacing: 0;
@@ -144,7 +144,7 @@ p {
 .token-stream,
 .turn-result .token-stream,
 .markdown-body,
-.task-conversation .kimi-composer textarea,
+.task-conversation .sztu-composer textarea,
 .chat-composer > textarea,
 .task-launcher .landing-composer textarea {
   font-family: var(--font-ui);
