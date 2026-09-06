@@ -13,6 +13,7 @@ import { classifyBashPermission } from "./bash-permission.js";
 import { SkillLoader } from "./skills.js";
 import { detectDocumentFormat } from "./document-parser/detect.js";
 import type { ParsedDocument } from "./document-parser/types.js";
+import { createOfficeTools, invokeOffice } from "./office-tools.js";
 import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
 import type { Chunk } from "./chunking/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
@@ -544,6 +545,7 @@ export function createPlanTools(events: EventBus, runId: string, sessionId = "",
 
 export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   const registry = new ToolRegistry();
+  for (const tool of createOfficeTools()) registry.register(tool);
   // bash 后台任务管理器：闭包持有，bash/bash_status/bash_output/bash_kill 共用
   const jobManager = new BashJobManager();
   registry.register({ name: "read_file", timeoutMs: 30_000, description: "Read a UTF-8 file inside the workspace with line numbers and optional line pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based first line" }, limit: { type: "integer", minimum: 1, maximum: 2000, description: "Maximum lines" } }, required: ["path"] }, async invoke(params, context) {
@@ -553,7 +555,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       // 二进制办公文档（PDF/DOCX/XLSX/PPTX）按 UTF-8 读只会得到乱码：给出指向 parse_document 的提示
       const documentHint = detectDocumentFormat(path.basename(target));
       if (documentHint) {
-        return ok(`${file} is a binary ${documentHint.toUpperCase()} document; read_file cannot render its content. Use the parse_document tool ({"path": "${file}"}) to extract text, tables and metadata.`);
+        return ok(JSON.stringify(await invokeOffice("read_document", { path: file }, context)));
       }
       const data = await readFile(target); const byteLimit = 2 * 1024 * 1024;
       const content = data.subarray(0, byteLimit).toString("utf8"); const lines = content.split(/\r?\n/);
@@ -568,7 +570,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register(createSemanticSearchTool());
-  registry.register({ name: "parse_document", description: "Extract readable text, tables and metadata from binary documents (PDF, DOCX, XLSX) as Markdown", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path to the document, relative to workspace root" }, format: { type: "string", enum: ["auto", "pdf", "docx", "xlsx"], description: "Force a parser instead of extension/magic detection", default: "auto" }, max_pages: { type: "integer", minimum: 1, maximum: 200, description: "PDF: parse only the first N pages (default: all)" }, max_rows: { type: "integer", minimum: 1, maximum: 5000, description: "XLSX: maximum rows per sheet (default: 500)" } }, required: ["path"] }, async invoke(params, context) {
+  registry.register({ name: "parse_document", description: "Extract readable text, tables and metadata from binary documents (PDF, DOCX, XLSX, PPTX); use read_document for structured pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path to the document, relative to workspace root" }, format: { type: "string", enum: ["auto", "pdf", "docx", "xlsx", "pptx"], description: "Force a parser instead of extension/magic detection", default: "auto" }, max_pages: { type: "integer", minimum: 1, maximum: 200, description: "PDF: parse only the first N pages (default: all)" }, max_rows: { type: "integer", minimum: 1, maximum: 5000, description: "XLSX: maximum rows per sheet (default: 500)" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
     try {
       const target = await context.workspace.resolveExisting(file);
@@ -576,7 +578,8 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       if (buffer.length > sizeLimit) return fail(`document too large: ${buffer.length} bytes (limit ${sizeLimit})`);
       const requested = str(params, "format") ?? "auto";
       const format = requested === "auto" ? detectDocumentFormat(path.basename(target), buffer) : requested as ParsedDocument["format"];
-      if (!format || format === "unknown") return fail(`unsupported document format: ${path.extname(file) || "(no extension)"} — supported: pdf, docx, xlsx`, "schema_error");
+      if (!format || format === "unknown") return fail(`unsupported document format: ${path.extname(file) || "(no extension)"} — supported: pdf, docx, xlsx, pptx`, "schema_error");
+      if (format === "pptx") return ok(JSON.stringify(await invokeOffice("read_document", { path: file }, context)));
       // 懒加载：pdf/docx/xlsx 解析库较重，仅在真正解析文档时装入，不拖慢 daemon 启动
       const { documentParsers, formatDocumentMarkdown } = await import("./document-parser/index.js");
       if (!documentParsers.hasParser(format)) return fail(`parsing for ${format.toUpperCase()} is not supported yet`, "schema_error");

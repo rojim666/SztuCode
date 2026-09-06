@@ -8,7 +8,7 @@
   padding: 5px;
   color: var(--text, #202426);
   background: var(--surface-raised, #ffffff);
-  border: 1px solid var(--border, #dfe3e4);
+  border: 1px solid var(--border, #d5dadc);
   border-radius: 10px;
   box-shadow: var(--shadow-modal, 0 24px 70px rgb(26 34 38 / 22%));
   font-size: 13px;
@@ -28,7 +28,7 @@
   text-align: left;
 }
 .link-context-menu button:hover {
-  background: var(--accent-soft, #e5e9ea);
+  background: var(--accent-soft, #dce1e3);
 }
 .link-context-menu button:focus-visible {
   outline: 2px solid var(--accent, #30383b);

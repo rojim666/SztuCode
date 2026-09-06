@@ -1,16 +1,16 @@
 :root {
-  --app-bg: #edf0f1;
+  --app-bg: #e6eaeb;
   --surface: #ffffff;
-  --surface-soft: #f6f7f7;
+  --surface-soft: #eff1f1;
   --surface-raised: #ffffff;
-  --chrome-bg: #f9fafb;
-  --border: #dfe3e4;
-  --border-strong: #ccd2d4;
+  --chrome-bg: #f2f4f5;
+  --border: #d5dadc;
+  --border-strong: #c2c8ca;
   --text: #202426;
-  --text-muted: #6f777b;
-  --text-faint: #98a0a4;
+  --text-muted: #636b6f;
+  --text-faint: #8c9498;
   --accent: #30383b;
-  --accent-soft: #e5e9ea;
+  --accent-soft: #dce1e3;
   --accent-contrast: #ffffff;
   --danger: #b64a42;
   --shadow-modal: 0 24px 70px rgb(26 34 38 / 22%), 0 4px 18px rgb(26 34 38 / 12%);
@@ -242,7 +242,8 @@
   .service-status b,
   .simple-page h1,
   .bridge-card h2,
-  .session-board b
+  .session-board b,
+  .chat-welcome-heading h1
 ) { color: var(--text) !important; }
 
 :root[data-app-theme="dark"] .project-popover small { color: var(--text-muted) !important; }

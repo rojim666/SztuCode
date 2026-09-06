@@ -12,6 +12,7 @@ import {
 } from "../../services/sztu-runtime";
 import { CUSTOM_VENDOR_ID, logoForVendor, modelVendors, vendorIdByName, type ModelVendor } from "./model-vendors";
 import type { ApiFormat } from "../../services/sztu-runtime";
+import { detectVisionSupport } from "../../utils/modelVision";
 
 const { t } = useI18n({ useScope: "global" });
 
@@ -43,7 +44,7 @@ const advancedOpen = ref(false);
 const maxOutputTokens = ref(8192); const temperature = ref<number | null>(null); const topP = ref<number | null>(null);
 const reasoningEffort = ref<RuntimeSettings["reasoning_effort"]>("");
 const reasoningLabel = (level: string) => t(`model.reasoning.${level || "default"}`);
-const timeoutS = ref(120); const maxRetries = ref(2); const contextWindow = ref(128000); const cacheControl = ref(true);
+const timeoutS = ref(120); const maxRetries = ref(2); const contextWindow = ref(128000); const cacheControl = ref(true); const supportsVision = ref(true);
 const showKey = ref(false); const saving = ref(false); const error = ref("");
 const testing = ref(false); const testResult = ref("");
 const deleteTarget = ref<ModelProfile | null>(null); const deletingId = ref<string | null>(null);
@@ -94,7 +95,7 @@ function resetForm() {
   selectedVendor.value = null; name.value = ""; icon.value = "sparkles"; modelId.value = ""; baseUrl.value = ""; apiKey.value = "";
   apiFormat.value = "openai_chat_completions"; provider.value = "openai";
   maxOutputTokens.value = 16384; temperature.value = null; topP.value = null; reasoningEffort.value = "";
-  timeoutS.value = 120; maxRetries.value = 2; contextWindow.value = 128000; cacheControl.value = true;
+  timeoutS.value = 120; maxRetries.value = 2; contextWindow.value = 128000; cacheControl.value = true; supportsVision.value = true;
   advancedOpen.value = false; error.value = ""; testResult.value = ""; showKey.value = false;
 }
 function beginEdit(item: ModelProfile, event?: MouseEvent) {
@@ -118,6 +119,7 @@ function beginEdit(item: ModelProfile, event?: MouseEvent) {
   maxRetries.value = latest.max_retries;
   contextWindow.value = latest.context_window;
   cacheControl.value = latest.cache_control;
+  supportsVision.value = latest.supports_vision ?? detectVisionSupport(latest.model);
   advancedOpen.value = false;
   error.value = "";
   testResult.value = "";
@@ -134,6 +136,7 @@ function chooseVendor(item: ModelVendor) {
   provider.value = item.provider;
   apiFormat.value = item.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions";
   baseUrl.value = item.baseUrl;
+  supportsVision.value = true;
   addStep.value = "form";
 }
 function backToVendor() {
@@ -166,7 +169,7 @@ async function save() {
   saving.value = true; error.value = "";
   const finalName = name.value.trim() || selectedVendor.value.name;
   try {
-    const result = await saveModelProfile({ id: editingModel.value?.id, name: finalName, icon: icon.value, vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value });
+    const result = await saveModelProfile({ id: editingModel.value?.id, name: finalName, icon: icon.value, vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value, supports_vision: supportsVision.value });
     if (requestVersion !== modelRequestVersion) return;
     models.value = result.models; emit("updated", result.settings, await getProviderStatus()); closeEditor();
   } catch (reason) {
@@ -179,7 +182,7 @@ async function testConnection() {
   if (!canSave.value || !selectedVendor.value) return;
   testing.value = true; error.value = ""; testResult.value = "";
   try {
-    const result = await testModelProfile({ vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value });
+    const result = await testModelProfile({ vendor: selectedVendor.value.name, provider: provider.value, api_format: apiFormat.value, model: modelId.value.trim(), base_url: baseUrl.value.trim(), ...(apiKey.value.trim() ? { api_key: apiKey.value.trim() } : {}), max_output_tokens: maxOutputTokens.value, temperature: temperature.value, top_p: topP.value, reasoning_effort: reasoningEffort.value, timeout_s: timeoutS.value, max_retries: maxRetries.value, context_window: contextWindow.value, cache_control: cacheControl.value, supports_vision: supportsVision.value });
     if (!result.success) throw new Error(result.error || "连接失败");
     testResult.value = `连接成功 · ${Math.round(result.elapsed_ms)} ms`;
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
@@ -258,6 +261,7 @@ function resetFormDefaults() {
   maxRetries.value = 2;
   contextWindow.value = 128000;
   cacheControl.value = true;
+  supportsVision.value = detectVisionSupport(modelId.value);
   advancedOpen.value = false;
   error.value = "";
   testResult.value = "";
@@ -522,6 +526,15 @@ onMounted(() => {
                 <div class="mm-form-field">
                   <label class="mm-form-label">{{ t("model.maxRetries") }}</label>
                   <input v-model.number="maxRetries" class="mm-form-input" type="number" min="0" max="100" />
+                </div>
+
+                <div class="mm-form-field">
+                  <label class="mm-toggle-field">
+                    <input type="checkbox" v-model="supportsVision" class="mm-toggle-input" />
+                    <span class="mm-toggle-switch" aria-hidden="true"></span>
+                    <span class="mm-toggle-label">{{ t("model.supportsVision") }}</span>
+                  </label>
+                  <p class="mm-field-hint">{{ t("model.supportsVisionHint") }}</p>
                 </div>
 
               </div>
@@ -1814,6 +1827,64 @@ onMounted(() => {
   background: rgba(16, 185, 129, 0.08);
   border-radius: 5px;
   font-size: 12px;
+}
+
+/* Toggle switch */
+.mm-toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text, #111);
+}
+.mm-toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.mm-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  background: var(--border-strong, #d1d5db);
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.mm-toggle-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.15s ease;
+}
+.mm-toggle-input:checked + .mm-toggle-switch {
+  background: var(--accent, #3b82f6);
+}
+.mm-toggle-input:checked + .mm-toggle-switch::after {
+  transform: translateX(16px);
+}
+.mm-toggle-input:focus-visible + .mm-toggle-switch {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: 2px;
+}
+.mm-toggle-label {
+  flex: 1;
+}
+.mm-field-hint {
+  margin: 2px 0 0 46px;
+  font-size: 11px;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.4;
 }
 
 /* 编辑表单保持信息密度，避免图标墙和思考卡片压过字段本身。 */

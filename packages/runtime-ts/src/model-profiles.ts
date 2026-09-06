@@ -15,8 +15,8 @@ const OPENCODE_ZEN_FREE_MODELS = ["big-pickle", "ling-3.0-flash-fin-free", "mimo
 // Pollinations 免费端点（免 key，匿名 tier），匿名可用模型见 https://text.pollinations.ai/models
 const POLLINATIONS_BASE_URL = "https://text.pollinations.ai/openai";
 const BUILTIN_PROFILES: StoredProfile[] = [
-  ...OPENCODE_ZEN_FREE_MODELS.map((model) => ({ id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai" as const, api_format: "openai_chat_completions" as const, model, base_url: OPENCODE_ZEN_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true })),
-  { id: "builtin-pollinations-openai-fast", name: "openai-fast", vendor: "pollinations", provider: "openai" as const, api_format: "openai_chat_completions" as const, model: "openai-fast", base_url: POLLINATIONS_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true },
+  ...OPENCODE_ZEN_FREE_MODELS.map((model) => ({ id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai" as const, api_format: "openai_chat_completions" as const, model, base_url: OPENCODE_ZEN_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: false })),
+  { id: "builtin-pollinations-openai-fast", name: "openai-fast", vendor: "pollinations", provider: "openai" as const, api_format: "openai_chat_completions" as const, model: "openai-fast", base_url: POLLINATIONS_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: false },
 ];
 
 export class ModelProfileStore {
@@ -34,7 +34,7 @@ export class ModelProfileStore {
     await this.load(); const id = input.id || randomUUID(); if (BUILTIN_PROFILES.some((profile) => profile.id === id)) throw new Error("builtin profiles cannot be edited");
     let profile = this.profiles.find((item) => item.id === id);
     if (!profile) {
-      profile = { id, name: input.name, vendor: input.vendor, provider: input.provider, model: input.model, base_url: input.base_url, builtin: false, api_format: input.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions", context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true };
+      profile = { id, name: input.name, vendor: input.vendor, provider: input.provider, model: input.model, base_url: input.base_url, builtin: false, api_format: input.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions", context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: input.supports_vision ?? true };
       this.profiles.push(profile);
     }
     const { select: _select, builtin: _builtin, api_key: apiKey, keyless, ...values } = input;
@@ -47,14 +47,14 @@ export class ModelProfileStore {
 
   private all(): StoredProfile[] { const builtinIds = new Set(BUILTIN_PROFILES.map((profile) => profile.id)); return [...this.profiles.filter((profile) => !builtinIds.has(profile.id)), ...BUILTIN_PROFILES]; }
   private async activate(profile: StoredProfile): Promise<RuntimeSettings> {
-    const settings = await this.settings.update({ provider: profile.provider, api_format: profile.api_format, model: profile.model, base_url: profile.base_url, context_window: profile.context_window, max_output_tokens: profile.max_output_tokens, temperature: profile.temperature, top_p: profile.top_p, reasoning_effort: profile.reasoning_effort, timeout_s: profile.timeout_s, max_retries: profile.max_retries, cache_control: profile.cache_control, api_key: profile.api_key ?? "", keyless: Boolean(profile.keyless) }); this.activeId = profile.id; return settings;
+    const settings = await this.settings.update({ provider: profile.provider, api_format: profile.api_format, model: profile.model, base_url: profile.base_url, context_window: profile.context_window, max_output_tokens: profile.max_output_tokens, temperature: profile.temperature, top_p: profile.top_p, reasoning_effort: profile.reasoning_effort, timeout_s: profile.timeout_s, max_retries: profile.max_retries, cache_control: profile.cache_control, supports_vision: profile.supports_vision ?? true, api_key: profile.api_key ?? "", keyless: Boolean(profile.keyless) }); this.activeId = profile.id; return settings;
   }
   private async load(): Promise<void> {
     if (this.loaded) return; this.loaded = true;
     try { const value = JSON.parse(await readFile(this.filePath, "utf8")) as StoredProfile[] | Partial<ProfileFile>; if (Array.isArray(value)) this.profiles = value; else { this.profiles = Array.isArray(value.profiles) ? value.profiles : []; this.activeId = value.active_model_id ?? ""; } } catch { this.profiles = []; }
     // 过滤掉旧的内置模型（opencode zen、orcarouter等）
     this.profiles = this.profiles.filter(p => !p.builtin && !p.id.startsWith("builtin-"));
-    if (!this.profiles.length) { const current = await this.settings.getProviderConfig(); this.profiles.push({ id: "default", name: current.model, vendor: current.provider === "anthropic" ? "Anthropic" : "OpenAI", provider: current.provider, api_format: current.api_format, model: current.model, base_url: current.base_url, builtin: false, api_key: current.api_key, keyless: current.keyless, context_window: current.context_window, max_output_tokens: current.max_output_tokens, temperature: current.temperature, top_p: current.top_p, reasoning_effort: current.reasoning_effort, timeout_s: current.timeout_s, max_retries: current.max_retries, cache_control: current.cache_control }); this.activeId = "default"; }
+    if (!this.profiles.length) { const current = await this.settings.getProviderConfig(); this.profiles.push({ id: "default", name: current.model, vendor: current.provider === "anthropic" ? "Anthropic" : "OpenAI", provider: current.provider, api_format: current.api_format, model: current.model, base_url: current.base_url, builtin: false, api_key: current.api_key, keyless: current.keyless, context_window: current.context_window, max_output_tokens: current.max_output_tokens, temperature: current.temperature, top_p: current.top_p, reasoning_effort: current.reasoning_effort, timeout_s: current.timeout_s, max_retries: current.max_retries, cache_control: current.cache_control, supports_vision: current.supports_vision }); this.activeId = "default"; }
   }
   private async persist(): Promise<void> { await mkdir(path.dirname(this.filePath), { recursive: true }); await writeFile(this.filePath, `${JSON.stringify({ profiles: this.profiles, active_model_id: this.activeId }, null, 2)}\n`, "utf8"); }
 }

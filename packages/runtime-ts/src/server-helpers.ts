@@ -37,7 +37,7 @@ export const responseRunId = (response: JsonRpcResponse): string | null => "resu
 
 type SettingsUpdateKey = keyof import("./settings.js").RuntimeSettings | "api_key";
 type StoredSettingsUpdate = Partial<import("./settings.js").RuntimeSettings> & { api_key?: string; keyless?: boolean };
-const SETTINGS_UPDATE_KEYS: SettingsUpdateKey[] = ["provider", "api_format", "model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "permission_mode"];
+const SETTINGS_UPDATE_KEYS: SettingsUpdateKey[] = ["provider", "api_format", "model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode"];
 
 export function normalizeSettingsUpdate(input: Record<string, unknown>, current: Awaited<ReturnType<SettingsStore["getProviderConfig"]>>): { update: StoredSettingsUpdate; updated: SettingsUpdateKey[] } {
   const update: StoredSettingsUpdate = {}; const updated: SettingsUpdateKey[] = []; const next = { ...current };
@@ -54,7 +54,7 @@ export function normalizeSettingsUpdate(input: Record<string, unknown>, current:
     next.api_format = input.api_format as typeof next.api_format; next.provider = next.api_format === "anthropic_messages" ? "anthropic" : "openai";
     update.api_format = next.api_format; update.provider = next.provider; updated.push("api_format");
   }
-  const remaining: SettingsUpdateKey[] = ["model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "permission_mode"];
+  const remaining: SettingsUpdateKey[] = ["model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode"];
   for (const key of remaining) {
     const value = input[key];
     if (value === undefined || value === null || value === next[key]) continue;
@@ -84,6 +84,7 @@ export function validateSetting(key: SettingsUpdateKey, value: unknown): void {
   else if (key === "max_retries") number(0, 10, true);
   else if (key === "context_window") number(0, 10_000_000, true);
   else if (key === "cache_control" && typeof value !== "boolean") throw new Error("cache_control must be a boolean");
+  else if (key === "supports_vision" && typeof value !== "boolean") throw new Error("supports_vision must be a boolean");
 }
 
 export async function probeModel(input: Record<string, unknown>): Promise<Record<string, unknown>> {

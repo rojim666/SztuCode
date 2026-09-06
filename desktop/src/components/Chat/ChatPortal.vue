@@ -1,78 +1,49 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { localeTag } from "../../i18n";
-import { chat as chatZh } from "../../i18n/locales/zh-CN/chat";
+import { ref } from "vue";
 import AppIcon from "../icons/AppIcon.vue";
-export type ChatView = "home" | "plugins" | "automations" | "ppt" | "cluster" | "website" | "project";
-const props = defineProps<{ view: ChatView; connected: boolean }>();
-const emit = defineEmits<{ submit: [content: string]; navigate: [view: ChatView]; openProject: [] }>();
-const { t } = useI18n({ useScope: "global" });
-type ScheduleType = "daily" | "weekly" | "monthly";
-type Automation = { id: string; name: string; frequency: string; prompt: string; enabled: boolean; lastRun: string; nextRun: string; scheduleType?: ScheduleType; scheduleTime?: string; scheduleDay?: number };
-const prompt = ref(""); const pptCategory = ref("all"); const pluginCategory = ref("all"); const selectedTemplate = ref(0); const projectName = ref(""); const projectCreated = ref(false); const automationFormOpen = ref(false); const automationName = ref(""); const automationScheduleType = ref<ScheduleType>("daily"); const automationTime = ref("09:00"); const automationDay = ref(1); const automationPrompt = ref(""); const editingAutomationId = ref<string | null>(null); const automationNotice = ref(""); const automationFilter = ref<"all" | "enabled" | "paused">("all"); const pluginQuery = ref(""); const pluginTab = ref<"plugins" | "skills">("plugins"); const installed = ref(new Set(["image", "audio"]));
-const automationStorageKey = "sztucode.automations";
-const automations = ref<Automation[]>(loadAutomations());
 
-function loadAutomations(): Automation[] {
-  try { return JSON.parse(localStorage.getItem(automationStorageKey) ?? "[]") as Automation[]; } catch { return []; }
+const props = defineProps<{ connected: boolean }>();
+const emit = defineEmits<{ submit: [content: string] }>();
+
+const prompt = ref("");
+
+function submit() {
+  const value = prompt.value.trim();
+  if (!value) return;
+  emit("submit", value);
+  prompt.value = "";
 }
-function persistAutomations() { localStorage.setItem(automationStorageKey, JSON.stringify(automations.value)); }
-const visibleAutomations = computed(() => automations.value.filter((item) => automationFilter.value === "all" || (automationFilter.value === "enabled" ? item.enabled : !item.enabled)));
-// 历史任务的 frequency 只保存过中文摘要（如“每周周三 09:00”），解析旧数据时固定按中文文案匹配
-const legacyWeekdays = [chatZh.weekday.sun, chatZh.weekday.mon, chatZh.weekday.tue, chatZh.weekday.wed, chatZh.weekday.thu, chatZh.weekday.fri, chatZh.weekday.sat];
-const weekdayLabels = computed(() => [t("chat.weekday.sun"), t("chat.weekday.mon"), t("chat.weekday.tue"), t("chat.weekday.wed"), t("chat.weekday.thu"), t("chat.weekday.fri"), t("chat.weekday.sat")]);
-const scheduleSummary = computed(() => automationScheduleType.value === "daily" ? t("chat.scheduleSummaryDaily", { time: automationTime.value }) : automationScheduleType.value === "weekly" ? t("chat.scheduleSummaryWeekly", { weekday: weekdayLabels.value[automationDay.value], time: automationTime.value }) : t("chat.scheduleSummaryMonthly", { day: automationDay.value, time: automationTime.value }));
-function nextScheduledRun(type: ScheduleType, time: string, day: number): string { const [hour, minute] = time.split(":").map(Number); const now = new Date(); const next = new Date(now); next.setSeconds(0, 0); next.setHours(hour, minute, 0, 0); if (type === "daily" && next <= now) next.setDate(next.getDate() + 1); if (type === "weekly") { let offset = (day - now.getDay() + 7) % 7; if (!offset && next <= now) offset = 7; next.setDate(now.getDate() + offset); } if (type === "monthly") { next.setDate(Math.min(day, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate())); if (next <= now) { next.setMonth(next.getMonth() + 1, 1); next.setDate(Math.min(day, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate())); } } return next.toLocaleString(localeTag.value, { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }); }
-function resetAutomationForm() { automationName.value = ""; automationScheduleType.value = "daily"; automationTime.value = "09:00"; automationDay.value = 1; automationPrompt.value = ""; editingAutomationId.value = null; automationFormOpen.value = false; }
-function openAutomationForm(item?: Automation) { editingAutomationId.value = item?.id ?? null; automationName.value = item?.name ?? ""; automationScheduleType.value = item?.scheduleType ?? (item?.frequency.includes(chatZh.scheduleWeekly) ? "weekly" : item?.frequency.includes(chatZh.scheduleMonthly) ? "monthly" : "daily"); automationTime.value = item?.scheduleTime ?? item?.frequency.match(/\d{2}:\d{2}/)?.[0] ?? "09:00"; automationDay.value = item?.scheduleDay ?? (automationScheduleType.value === "weekly" ? Math.max(0, legacyWeekdays.findIndex((day) => item?.frequency.includes(day))) : Number(item?.frequency.match(new RegExp(`${chatZh.scheduleMonthly}\\s*(\\d+)`))?.[1] ?? 1)); automationPrompt.value = item?.prompt ?? ""; automationFormOpen.value = true; automationNotice.value = ""; }
-function saveAutomation() { const name = automationName.value.trim(); const taskPrompt = automationPrompt.value.trim(); if (!name || !taskPrompt) return; const type = automationScheduleType.value; const day = automationDay.value; const item: Automation = { id: editingAutomationId.value ?? crypto.randomUUID(), name, frequency: scheduleSummary.value, prompt: taskPrompt, enabled: true, lastRun: t("chat.notRunYet"), nextRun: nextScheduledRun(type, automationTime.value, day), scheduleType: type, scheduleTime: automationTime.value, scheduleDay: day }; const index = automations.value.findIndex((task) => task.id === item.id); if (index >= 0) automations.value[index] = { ...automations.value[index], ...item }; else automations.value.unshift(item); persistAutomations(); automationNotice.value = editingAutomationId.value ? t("chat.taskUpdated") : t("chat.taskCreated"); resetAutomationForm(); }
-function toggleAutomation(item: Automation) { item.enabled = !item.enabled; persistAutomations(); }
-function removeAutomation(item: Automation) { if (!window.confirm(t("chat.deleteTaskConfirm", { name: item.name }))) return; automations.value = automations.value.filter((task) => task.id !== item.id); persistAutomations(); }
-function runAutomation(item: Automation) { if (!props.connected) { automationNotice.value = t("chat.notConnected"); return; } item.lastRun = new Date().toLocaleString(localeTag.value, { hour: "2-digit", minute: "2-digit" }); automationNotice.value = t("chat.taskSubmitted", { name: item.name }); persistAutomations(); emit("submit", item.prompt); }
-const toolViews = ["ppt", "cluster", "website"] as const;
-type ToolView = (typeof toolViews)[number];
-const viewConfig = computed(() => { const key = props.view as ToolView; return toolViews.includes(key) ? { placeholder: t(`chat.view.${key}Placeholder`), title: t(`chat.view.${key}`), section: t(`chat.view.${key}Section`) } : null; });
-const templateTones: Record<string, string[]> = {
- ppt: ["mist","blueprint","sky","night","paper","cream"],
- cluster: ["space","typewriter","terminal"],
-  website: ["web-a","web-b","web-c","web-d","web-e","web-f"]
-};
-const templates = computed(() => (templateTones[props.view] ?? []).map((tone, index) => ({ title: t(`chat.templates.${props.view}.${index}.title`), subtitle: t(`chat.templates.${props.view}.${index}.subtitle`), tone })));
-// 插件目录只保留稳定 id 与分类 key，名称与描述全部走语言包
-const pluginCatalog = [
- { id: "report", category: "office" },
- { id: "finance", category: "finance" },
- { id: "bank", category: "finance" },
- { id: "accounting", category: "finance" },
- { id: "idea", category: "design" },
- { id: "standard", category: "office" },
- { id: "video", category: "design" },
- { id: "image", category: "design" },
- { id: "audio", category: "design" },
- { id: "wind", category: "finance" },
- { id: "global", category: "office" },
- { id: "stripe", category: "office" },
-] as const;
-const pluginTabs = computed(() => [{ id: "plugins" as const, label: t("chat.pluginsTab") }, { id: "skills" as const, label: t("chat.skillsTab") }]);
-const plugins = computed(() => pluginCatalog.map((meta) => ({ ...meta, name: t(`chat.plugin.${meta.id}.name`), desc: t(`chat.plugin.${meta.id}.desc`) })));
-const filteredPlugins = computed(() => plugins.value.filter(item => (pluginCategory.value === "all" || item.category === pluginCategory.value) && (!pluginQuery.value || (item.name + item.desc).toLowerCase().includes(pluginQuery.value.toLowerCase()))));
-function submit() { const value = prompt.value.trim(); if (!value) return; emit("submit", value); prompt.value = ""; }
-// 回车直接发送；Ctrl/Shift/Alt + 回车保留默认换行行为，且忽略中文输入法候选确认
-function onComposerKeydown(event: KeyboardEvent) { if (event.key !== "Enter" || event.isComposing) return; if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return; event.preventDefault(); submit(); }
-function togglePlugin(id: string) { const next = new Set(installed.value); next.has(id) ? next.delete(id) : next.add(id); installed.value = next; }
-function createProject() { if (projectName.value.trim()) projectCreated.value = true; }
-watch(() => props.view, () => { selectedTemplate.value = 0; if (props.view !== "project") projectCreated.value = false; });
+
+function onComposerKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || event.isComposing) return;
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault();
+  submit();
+}
 </script>
+
 <template>
- <section v-if="view === 'plugins'" class="chat-plugins">
-  <header class="plugin-top"><nav><button v-for="tab in pluginTabs" :key="tab.id" :class="{active: pluginTab === tab.id}" @click="pluginTab = tab.id">{{ tab.label }}</button></nav><button class="plugin-close" :aria-label="t('chat.backToChat')" @click="emit('navigate','home')"><AppIcon name="X" :size="19" /></button></header>
-  <div v-if="pluginTab === 'plugins'" class="plugin-content"><div class="plugin-heading"><div><h1>{{ t('chat.pluginsTitle') }}</h1><p>{{ t('chat.pluginsDesc') }}</p></div><label><AppIcon name="Search" :size="15" /><input v-model="pluginQuery" :placeholder="t('chat.searchPlugins')" /></label></div><div class="plugin-categories"><button v-for="item in [{ id: 'all', label: t('chat.categories.all') }, { id: 'finance', label: t('chat.categories.finance') }, { id: 'office', label: t('chat.categories.office') }, { id: 'code', label: t('chat.categories.code') }, { id: 'design', label: t('chat.categories.design') }]" :key="item.id" :class="{active: pluginCategory === item.id}" @click="pluginCategory = item.id">{{ item.label }}</button></div><div class="plugin-grid"><button v-for="item in filteredPlugins" :key="item.id" class="plugin-card" @click="togglePlugin(item.id)"><span class="plugin-logo" :class="'plugin-logo--' + item.id"><AppIcon name="Image" v-if="item.id === 'image'" :size="23" /><AppIcon name="Video" v-else-if="item.id === 'video'" :size="23" /><AppIcon name="Music2" v-else-if="item.id === 'audio'" :size="23" /><AppIcon name="Sparkles" v-else :size="22" /></span><span><b>{{ item.name }}</b><small>{{ item.desc }}</small></span><AppIcon name="Check" v-if="installed.has(item.id)" :size="16" /><AppIcon name="Plus" v-else class="plugin-add" :size="16" /></button></div></div>
-  <div v-else class="skills-empty"><AppIcon name="WandSparkles" :size="46" /><h1>{{ t('chat.skillsTab') }}</h1><p>{{ t('chat.skillsHintBefore') }} <kbd>/</kbd> {{ t('chat.skillsHintAfter') }}</p><button @click="emit('navigate','home')">{{ t('chat.tryInChat') }}</button></div>
- </section>
- <section v-else-if="view === 'automations'" class="chat-automations"><header><div><h1>{{ t('chat.automationsTitle') }}</h1><p>{{ t('chat.automationsDesc') }}</p></div><button @click="automationFormOpen ? resetAutomationForm() : openAutomationForm()"><AppIcon name="X" v-if="automationFormOpen" :size="16" /><AppIcon name="Plus" v-else :size="16" />{{ automationFormOpen ? t('chat.cancel') : t('chat.newTask') }}</button></header><p v-if="automationNotice" class="automation-notice" role="status">{{ automationNotice }}</p><form v-if="automationFormOpen" class="automation-form" @submit.prevent="saveAutomation"><div class="automation-form__heading"><div><b>{{ editingAutomationId ? t('chat.editAutomation') : t('chat.createAutomation') }}</b><small>{{ t('chat.automationFormHint') }}</small></div></div><section class="automation-form__content"><h3>{{ t('chat.taskSection') }}</h3><label>{{ t('chat.nameLabel') }}<input v-model="automationName" required autofocus :placeholder="t('chat.namePlaceholder')" /></label><label>{{ t('chat.contentLabel') }}<textarea v-model="automationPrompt" required rows="5" :placeholder="t('chat.contentPlaceholder')" /></label></section><section class="automation-form__schedule"><h3>{{ t('chat.scheduleSection') }}</h3><div class="automation-schedule-tabs"><button v-for="item in [['daily', t('chat.scheduleDaily')],['weekly', t('chat.scheduleWeekly')],['monthly', t('chat.scheduleMonthly')]]" :key="item[0]" type="button" :class="{ active: automationScheduleType === item[0] }" @click="automationScheduleType = item[0] as ScheduleType">{{ item[1] }}</button></div><div class="automation-schedule-fields"><label v-if="automationScheduleType === 'weekly'">{{ t('chat.weekdayLabel') }}<select v-model.number="automationDay"><option v-for="(day,index) in weekdayLabels" :key="index" :value="index">{{ day }}</option></select></label><label v-else-if="automationScheduleType === 'monthly'">{{ t('chat.dateLabel') }}<select v-model.number="automationDay"><option v-for="day in 28" :key="day" :value="day">{{ t('chat.dayOfMonth', { day }) }}</option></select></label><label>{{ t('chat.timeLabel') }}<input v-model="automationTime" type="time" required /></label></div><div class="automation-schedule-summary"><span>{{ t('chat.nextRunLabel') }}</span><b>{{ nextScheduledRun(automationScheduleType, automationTime, automationDay) }}</b><small>{{ scheduleSummary }}</small></div></section><footer><button type="button" @click="resetAutomationForm">{{ t('chat.cancel') }}</button><button type="submit" :disabled="!automationName.trim() || !automationPrompt.trim()">{{ editingAutomationId ? t('chat.saveChanges') : t('chat.createTask') }}</button></footer></form><template v-else><div v-if="automations.length" class="automation-toolbar"><span>{{ t('chat.taskCount', { n: automations.length }) }}</span><nav><button v-for="item in [['all', t('chat.filterAll')],['enabled', t('chat.filterRunning')],['paused', t('chat.filterPaused')]]" :key="item[0]" :class="{ active: automationFilter === item[0] }" @click="automationFilter = item[0] as typeof automationFilter">{{ item[1] }}</button></nav></div><div v-if="visibleAutomations.length" class="automation-list"><article v-for="item in visibleAutomations" :key="item.id" class="automation-card"><div class="automation-card__top"><span class="automation-status" :class="{ paused: !item.enabled }"><i />{{ item.enabled ? t('chat.statusRunning') : t('chat.statusPaused') }}</span><div class="automation-card__actions"><button :title="t('chat.runNow')" @click="runAutomation(item)"><AppIcon name="Play" :size="14" /></button><button :title="t('chat.edit')" @click="openAutomationForm(item)"><AppIcon name="Pencil" :size="14" /></button><button :title="t('chat.remove')" @click="removeAutomation(item)"><AppIcon name="Trash2" :size="14" /></button></div></div><h2>{{ item.name }}</h2><p>{{ item.prompt }}</p><dl><div><dt>{{ t('chat.frequencyLabel') }}</dt><dd>{{ item.frequency }}</dd></div><div><dt>{{ t('chat.lastRunLabel') }}</dt><dd>{{ item.lastRun }}</dd></div><div><dt>{{ t('chat.nextRunTimeLabel') }}</dt><dd>{{ item.nextRun }}</dd></div></dl><button class="automation-toggle" @click="toggleAutomation(item)"><AppIcon name="Pause" v-if="item.enabled" :size="13" />{{ item.enabled ? t('chat.pauseTask') : t('chat.resumeTask') }}</button></article></div><div v-else class="automation-empty"><AppIcon name="RefreshCw" :size="42" /><h2>{{ automations.length ? t('chat.noMatchTasks') : t('chat.noTasks') }}</h2><p>{{ automations.length ? t('chat.noMatchHint') : t('chat.noTasksHint') }}</p><button v-if="!automations.length" @click="openAutomationForm"><AppIcon name="Plus" :size="15" />{{ t('chat.createTask') }}</button></div></template></section> <section v-else-if="view === 'project'" class="chat-project"><div v-if="!projectCreated" class="project-create-card"><h1>{{ t('chat.newProjectTitle') }}</h1><p>{{ t('chat.newProjectDesc') }}</p><div class="project-folders"><span /><span /><button :aria-label="t('chat.chooseFolder')" @click="emit('openProject')"><AppIcon name="Folder" :size="78" /><AppIcon name="Plus" :size="34" /></button><span /><span /></div><form @submit.prevent="createProject"><input v-model="projectName" autofocus :placeholder="t('chat.projectNamePlaceholder')" /><button :disabled="!projectName.trim()">{{ t('chat.createProjectBtn') }}</button></form></div><div v-else class="project-success"><span><AppIcon name="Check" :size="30" /></span><h1>{{ t('chat.projectCreatedTitle', { name: projectName }) }}</h1><p>{{ t('chat.projectCreatedDesc') }}</p><button @click="emit('navigate','home')">{{ t('chat.startChat') }}</button></div></section>
- <section v-else class="chat-workspace" :class="'chat-workspace--' + view"><button v-if="view !== 'home'" class="chat-tool-back" :aria-label="t('chat.backToHome')" @click="emit('navigate','home')"><AppIcon name="ArrowLeft" :size="17" />{{ t('chat.generalChat') }}</button><button class="upgrade-pill"><AppIcon name="Music2" :size="16" />{{ t('chat.upgrade') }}</button><div class="dot-wordmark" aria-label="SztuCode"><span v-for="n in 72" :key="n" :class="{accent: [11,29,46,63].includes(n)}" /></div><form class="chat-composer" @submit.prevent="submit"><textarea v-model="prompt" :placeholder="viewConfig?.placeholder || t('chat.defaultPlaceholder')" rows="3" @keydown="onComposerKeydown" /><div class="chat-toolbar"><button type="button" :aria-label="t('chat.addAttachment')"><AppIcon name="Plus" :size="20" /></button><button v-if="viewConfig" type="button" class="active-tool"><AppIcon name="Presentation" v-if="view === 'ppt'" :size="16" :filled="view === 'ppt'" /><AppIcon name="Network" v-else-if="view === 'cluster'" :size="16" :filled="view === 'cluster'" /><AppIcon name="Image" v-else :size="16" :filled="view === 'website'" />{{ viewConfig.title }}</button><span /><button type="button" class="model-button">K3 <small>{{ t('chat.tierAdvanced') }}</small><AppIcon name="ChevronDown" :size="14" /></button><button class="chat-send" type="submit" :disabled="!prompt.trim() || !connected"><AppIcon name="ArrowUp" :size="20" /></button></div><button class="project-selector" type="button" @click="emit('navigate','project')"><AppIcon name="Folder" :size="16" />{{ t('chat.selectProject') }}<AppIcon name="ChevronDown" :size="14" /></button></form>
-  <div v-if="view === 'home'" class="quick-tools"><button v-for="item in [['ppt', t('chat.view.ppt')],['cluster', t('chat.view.cluster')],['website', t('chat.view.website')]]" :key="item[0]" @click="emit('navigate', item[0] as ChatView)">{{ item[1] }}</button></div>
-  <section v-else-if="viewConfig" class="template-section"><header><h2>{{ viewConfig.section }}</h2></header><div v-if="view === 'ppt'" class="template-categories"><button v-for="item in [{ id: 'all', label: t('chat.pptCategories.all') }, { id: 'strategy', label: t('chat.pptCategories.strategy') }, { id: 'finance', label: t('chat.pptCategories.finance') }, { id: 'report', label: t('chat.pptCategories.report') }, { id: 'marketing', label: t('chat.pptCategories.marketing') }, { id: 'academic', label: t('chat.pptCategories.academic') }]" :key="item.id" :class="{active: pptCategory === item.id}" @click="pptCategory = item.id">{{ item.label }}</button></div><div class="template-grid"><button v-for="(item,index) in templates" :key="item.title" :class="{selected: selectedTemplate === index}" @click="selectedTemplate = index"><span class="template-preview" :class="'template-preview--' + item.tone"><AppIcon name="Check" v-if="selectedTemplate === index" :size="18" /><b>{{ item.subtitle }}</b></span><strong>{{ item.title }}</strong></button></div></section><small v-if="view !== 'home'" class="ai-disclaimer">{{ t('chat.aiDisclaimer') }}</small>
- </section>
+  <section class="chat-workspace">
+    <div class="chat-welcome-heading">
+      <h1>Run it, Prove it</h1>
+    </div>
+    <form class="chat-composer" @submit.prevent="submit">
+      <textarea
+        v-model="prompt"
+        placeholder="输入你的任务..."
+        rows="3"
+        @keydown="onComposerKeydown"
+      />
+      <div class="chat-toolbar">
+        <span />
+        <button
+          class="chat-send"
+          type="submit"
+          :disabled="!prompt.trim() || !connected"
+        >
+          <AppIcon name="ArrowUp" :size="20" />
+        </button>
+      </div>
+    </form>
+  </section>
 </template>

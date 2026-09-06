@@ -185,8 +185,11 @@ export class ServerService {
         if (this.runs.hasActiveSession(params.session_id)) throw new RpcDispatchError(SESSION_BUSY, "session busy");
         const modelHistory = await this.sessions.modelHistory(params.session_id);
         // 记录发送时刻的模型，供前端气泡元信息与历史会话恢复使用
-        const model = (await this.settings.get()).model;
-        const content = params.images?.length ? [{ type: "text", text: params.content }, ...params.images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content;
+        const settings = await this.settings.get();
+        const model = settings.model;
+        const supportsVision = settings.supports_vision;
+        const images = supportsVision ? params.images : undefined;
+        const content = images?.length ? [{ type: "text", text: params.content }, ...images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content;
         await this.sessions.appendMessage(params.session_id, { role: "user", content, model });
         this.events.publish({ type: "session.message_received", session_id: params.session_id, content: params.content, ts: new Date().toISOString() });
         await this.sessions.setStatus(params.session_id, "active");
@@ -343,7 +346,7 @@ export class ServerService {
         this.events.publish({ type: "context.compacted", session_id: params.session_id, run_id: "", original_tokens: before, summary_tokens: after, ts: new Date().toISOString() });
         return ok(request.id, { summary_tokens: after, saved_tokens: Math.max(0, before - after), removed_messages: result.removedMessages, used_model: result.usedModel });
       }
-      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const content = params.images?.length ? [{ type: "text", text: params.content }, ...params.images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content, model: (await this.settings.get()).model }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
+      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const steerSettings = await this.settings.get(); const steerImages = steerSettings.supports_vision ? params.images : undefined; const content = steerImages?.length ? [{ type: "text", text: params.content }, ...steerImages.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content, model: steerSettings.model }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
       default: return error(request.id, METHOD_NOT_FOUND, `Method not found: ${request.method}`);
     }
   }

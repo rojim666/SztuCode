@@ -233,7 +233,7 @@ async function installFromCatalog(plugin: MarketplacePluginSummary): Promise<voi
 }
 
 async function removeInstalledPlugin(plugin: PluginSummary): Promise<void> {
-  const confirmed = await confirmDialog(`卸载“${plugin.display_name || plugin.name}”？捆绑技能将不再可用。`, { title: "卸载插件", kind: "warning" });
+  const confirmed = await confirmDialog(`卸载"${plugin.display_name || plugin.name}"？捆绑技能将不再可用。`, { title: "卸载插件", kind: "warning" });
   if (!confirmed) return;
   updatingPlugin.value = plugin.id;
   try {

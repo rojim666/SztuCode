@@ -24,6 +24,7 @@ class ModelRequestSettings(BaseModel):
     max_retries: int = Field(default=2, ge=0, le=10)
     context_window: int = Field(default=0, ge=0, le=10_000_000)
     cache_control: bool = True
+    supports_vision: bool = True
 
 
 class PingCommand(BaseModel):
@@ -581,6 +582,7 @@ class SettingsUpdateCommand(BaseModel):
     max_retries: int | None = Field(default=None, ge=0, le=10)
     context_window: int | None = Field(default=None, ge=0, le=10_000_000)
     cache_control: bool | None = None
+    supports_vision: bool | None = None
 
 
 class SettingsUpdateResult(BaseModel):

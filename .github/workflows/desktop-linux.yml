@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/desktop-linux.yml"
       - "desktop/**"
+      - "py-runtime/**"
       - "packages/protocol/**"
       - "packages/runtime-ts/**"
       - "scripts/prepare-skill-assets.js"
@@ -17,6 +18,7 @@ on:
     paths:
       - ".github/workflows/desktop-linux.yml"
       - "desktop/**"
+      - "py-runtime/**"
       - "packages/protocol/**"
       - "packages/runtime-ts/**"
       - "scripts/prepare-skill-assets.js"
@@ -65,6 +67,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python3 -m pip install uv==0.11.6
           npm ci
           npm ci --prefix desktop
 
@@ -80,6 +83,7 @@ jobs:
         run: |
           test -x desktop/src-tauri/resources/runtime/node
           test -f desktop/src-tauri/resources/runtime/main.js
+          test -x desktop/src-tauri/resources/runtime/document-parser/document-parser
           find desktop/src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -type f | grep -q .
           find desktop/src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -type f | grep -q .
 

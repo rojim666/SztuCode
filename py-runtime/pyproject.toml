@@ -20,6 +20,11 @@ dependencies = [
     "openai>=1.0",         # OpenAI LLM SDK（兼容 DeepSeek 等 OpenAI 协议）
     "textual>=0.75",       # 终端 UI 框架（sztu-tui）
     "httpx[socks]>=0.28.1",
+    "pypdf[crypto]>=6.0,<7",
+    "python-docx>=1.2,<2",
+    "openpyxl>=3.1.5,<4",
+    "python-pptx>=1.0.2,<2",
+    "defusedxml>=0.7.1",
 ]
 
 # Keep the Python command distinct from the TypeScript `sztu-ts` command so
@@ -38,6 +43,7 @@ packages = ["src/sztu_code"] # 源码在 src/sztu_code
 
 # ---- 开发期依赖（PEP 735）----
 [dependency-groups]
+desktop = ["pyinstaller>=6.16,<7"]
 dev = [
     "ruff>=0.4",            # 快速 linter + import 排序等
     "mypy>=1.10",           # 静态类型检查

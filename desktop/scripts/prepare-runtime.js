@@ -4,6 +4,7 @@ import { chmod, cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareSkillAssets } from "../../scripts/prepare-skill-assets.js";
+import { prepareDocumentParser } from "./prepare-document-parser.js";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(desktopRoot, "..");
@@ -93,6 +94,7 @@ if (process.platform === "linux") {
 await writeFile(path.join(runtimeRoot, "package.json"), `${JSON.stringify({ type: "module" }, null, 2)}\n`);
 await prepareSkillAssets(path.join(repositoryRoot, "packages", "runtime-ts", "skills"), path.join(runtimeRoot, "skills"), repositoryRoot);
 for (const directory of ["prompts", "agents"]) await cp(path.join(repositoryRoot, "packages", "runtime-ts", directory), path.join(runtimeRoot, directory), { recursive: true });
+await prepareDocumentParser(runtimeRoot);
 } finally {
   await rm(lockPath, { recursive: true, force: true });
 }

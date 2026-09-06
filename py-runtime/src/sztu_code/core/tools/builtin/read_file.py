@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
+from sztu_code.core.documents import SUPPORTED_FORMATS, DocumentError, parse_document
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 from sztu_code.core.tools.workspace import resolve_workspace_path
 
@@ -22,9 +24,10 @@ class ReadFileTool(BaseTool):
     required_permission = ToolPermission.READ_ONLY
     aliases: ClassVar[list[str]] = ["read", "Read"]
     description = (
-        "Read the text content of a file. "
+        "Read text files or extract text from PDF, DOCX, XLSX and PPTX documents. "
         "Path must be relative to the current working directory. "
-        "Files larger than 512 KB are truncated."
+        "Text files larger than 512 KB are truncated; documents allow 20 MB and return up to "
+        "32K characters. Scanned PDFs require OCR before reading."
     )
     input_schema: dict[str, object] = {
         "type": "object",
@@ -49,6 +52,14 @@ class ReadFileTool(BaseTool):
             raise PermissionError(f"path traversal not allowed: {path_str}")
 
         path = resolve_workspace_path(self._workspace_root, path_str)
+        with path.open("rb") as stream:
+            is_pdf = stream.read(5) == b"%PDF-"
+        if is_pdf or path.suffix.lower().lstrip(".") in SUPPORTED_FORMATS:
+            try:
+                document = await asyncio.to_thread(parse_document, path)
+                return ToolResult(content=document.text)
+            except DocumentError as exc:
+                return ToolResult(content=str(exc), is_error=True)
         raw = path.read_bytes()  # raises FileNotFoundError if absent
         truncated = len(raw) > _MAX_BYTES
         text = raw[:_MAX_BYTES].decode("utf-8", errors="replace")

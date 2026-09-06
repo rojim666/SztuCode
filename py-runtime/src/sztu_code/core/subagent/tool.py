@@ -28,6 +28,11 @@ from sztu_code.core.tools.builtin.glob_search import GlobSearchTool
 from sztu_code.core.tools.builtin.grep_search import GrepSearchTool
 from sztu_code.core.tools.builtin.list_dir import ListDirTool
 from sztu_code.core.tools.builtin.note_save import NoteSaveTool
+from sztu_code.core.tools.builtin.office import (
+    CreateDocumentTool,
+    EditDocumentTool,
+    ReadDocumentTool,
+)
 from sztu_code.core.tools.builtin.read_file import ReadFileTool
 from sztu_code.core.tools.builtin.task_create import TaskCreateTool
 from sztu_code.core.tools.builtin.task_get import TaskGetTool
@@ -446,6 +451,9 @@ class SpawnAgentTool(BaseTool):
         registry = ToolRegistry()
         _all_tools = [
             ReadFileTool(self._workspace_root),
+            ReadDocumentTool(self._workspace_root),
+            CreateDocumentTool(self._workspace_root, allowed_paths, scope_audit),
+            EditDocumentTool(self._workspace_root, allowed_paths, scope_audit),
             BashTool(self._workspace_root),
             WriteFileTool(self._workspace_root, allowed_paths, scope_audit),
             EditFileTool(self._workspace_root, allowed_paths, scope_audit),

@@ -777,7 +777,7 @@ class CoreApp:
                 cmd.session_id,
                 cmd.content,
                 run_id=run_id,
-                images=[image.model_dump() for image in cmd.images],
+                images=[image.model_dump() for image in cmd.images] if self._config.llm.supports_vision else None,
             )
         )
         self._active_session_runs[cmd.session_id] = run_task
@@ -792,7 +792,7 @@ class CoreApp:
         run_id = await self._sessions.steer_message(
             cmd.session_id,
             cmd.content,
-            images=[image.model_dump() for image in cmd.images],
+            images=[image.model_dump() for image in cmd.images] if self._config.llm.supports_vision else None,
         )
         return SessionSteerMessageResult(run_id=run_id)
 
@@ -924,6 +924,7 @@ class CoreApp:
             timeout_s=self._config.llm.timeout_s,
             max_retries=self._config.llm.max_retries,
             cache_control=self._config.llm.cache_control,
+            supports_vision=self._config.llm.supports_vision,
         )
 
     def _model_profile_summaries(
@@ -957,6 +958,7 @@ class CoreApp:
                 timeout_s=float(item.get("timeout_s", 120) or 120),
                 max_retries=int(item.get("max_retries", 2) or 0),
                 cache_control=bool(item.get("cache_control", True)),
+                supports_vision=bool(item.get("supports_vision", True)),
             )
             for item in profiles
             if item.get("id") and item.get("name") and item.get("model")
@@ -1018,6 +1020,7 @@ class CoreApp:
             )
         self._config.llm.reasoning_effort = str(profile.get("reasoning_effort", ""))
         self._config.llm.cache_control = bool(profile.get("cache_control", True))
+        self._config.llm.supports_vision = bool(profile.get("supports_vision", True))
         if self._sessions is not None:
             key_name = (
                 "OPENAI_API_KEY"
@@ -1158,6 +1161,7 @@ class CoreApp:
             "max_retries",
             "context_window",
             "cache_control",
+            "supports_vision",
         ):
             value = getattr(cmd, name)
             if value is not None and value != getattr(self._config.llm, name):
@@ -1195,6 +1199,7 @@ class CoreApp:
                     "max_retries",
                     "context_window",
                     "cache_control",
+                    "supports_vision",
                 )
             ):
                 current = next(
@@ -1221,6 +1226,7 @@ class CoreApp:
                         "max_retries": self._config.llm.max_retries,
                         "context_window": self._config.llm.context_window,
                         "cache_control": self._config.llm.cache_control,
+                        "supports_vision": self._config.llm.supports_vision,
                     }
                 )
             save_client_settings(
@@ -1244,6 +1250,7 @@ class CoreApp:
                 "max_retries",
                 "context_window",
                 "cache_control",
+                "supports_vision",
             )
         ):
             key_name = (

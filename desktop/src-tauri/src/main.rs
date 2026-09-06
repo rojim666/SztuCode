@@ -672,6 +672,8 @@ struct AttachmentData {
 const IMAGE_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const TEXT_MAX_BYTES: u64 = 1024 * 1024;
 const TEXT_READ_LIMIT: usize = 32 * 1024;
+// 文档解析由随安装包分发的 Python helper 完成。
+const DOCUMENT_MAX_BYTES: u64 = 20 * 1024 * 1024;
 
 // 按扩展名推断常见文件的 MIME 类型；未知类型返回 None
 fn guess_mime(path: &PathBuf) -> Option<String> {
@@ -684,6 +686,9 @@ fn guess_mime(path: &PathBuf) -> Option<String> {
         "bmp" => "image/bmp",
         "svg" => "image/svg+xml",
         "pdf" => "application/pdf",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         "txt" | "md" | "markdown" => "text/plain",
         "csv" => "text/csv",
         "html" | "htm" => "text/html",
@@ -718,7 +723,7 @@ fn looks_binary(bytes: &[u8]) -> bool {
 }
 
 // 读取单个附件：任何失败都落到 error 字段，不中断整批
-fn read_one_attachment(path: &str) -> AttachmentData {
+async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> AttachmentData {
     let pb = PathBuf::from(path);
     let name = pb
         .file_name()
@@ -739,19 +744,47 @@ fn read_one_attachment(path: &str) -> AttachmentData {
         Err(error) => return failed(0, None, format!("无法读取文件：{error}")),
     };
     let size = metadata.len();
-    let mime = guess_mime(&pb);
+    let mut mime = guess_mime(&pb);
+    let mut signature = [0; 5];
+    let pdf_header = std::fs::File::open(&pb)
+        .and_then(|mut file| file.read_exact(&mut signature))
+        .is_ok() && &signature == b"%PDF-";
+    if pdf_header {
+        mime = Some("application/pdf".into());
+    }
     let is_img = mime.as_deref().is_some_and(is_image);
+    let is_document = mime.as_deref() == Some("application/pdf")
+        || pb.extension().is_some_and(|ext| matches!(ext.to_string_lossy().to_lowercase().as_str(), "docx" | "xlsx" | "pptx"));
     if is_img && size > IMAGE_MAX_BYTES {
         return failed(size, mime, "图片超过 5MB 限制".into());
     }
-    if !is_img && size > TEXT_MAX_BYTES {
+    if is_document && size > DOCUMENT_MAX_BYTES {
+        return failed(size, mime, "资料文件超过 20MB 限制".into());
+    }
+    if !is_img && !is_document && size > TEXT_MAX_BYTES {
         return failed(size, mime, "文件超过 1MB 限制".into());
+    }
+    if is_document {
+        let (text_content, error) = match document_to_text(&pb, parser).await {
+            Ok(text) => (Some(text), None),
+            Err(error) => (None, Some(error)),
+        };
+        return AttachmentData {
+            path: path.to_string(),
+            name,
+            size,
+            mime_type: mime,
+            is_text: text_content.is_some(),
+            text_content,
+            data_base64: None,
+            error,
+        };
     }
     let mut data = Vec::new();
     if let Err(error) = std::fs::File::open(&pb).and_then(|mut file| file.read_to_end(&mut data)) {
         return failed(size, mime, format!("读取失败：{error}"));
     }
-    if !looks_binary(&data) {
+    if !is_img && !looks_binary(&data) {
         let text: String = String::from_utf8_lossy(&data).chars().take(TEXT_READ_LIMIT).collect();
         return AttachmentData {
             path: path.to_string(),
@@ -777,10 +810,103 @@ fn read_one_attachment(path: &str) -> AttachmentData {
     }
 }
 
+fn document_parser(app: &tauri::AppHandle) -> (PathBuf, Vec<String>) {
+    let executable = if cfg!(windows) { "document-parser.exe" } else { "document-parser" };
+    let bundled = app.path().resolve(
+        format!("resources/runtime/document-parser/{executable}"), BaseDirectory::Resource,
+    ).unwrap_or_else(|_| PathBuf::from(executable));
+    if bundled.is_file() {
+        return (child_path(&bundled), Vec::new());
+    }
+    #[cfg(debug_assertions)]
+    {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../py-runtime");
+        let python = root.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
+        if python.is_file() {
+            return (python, vec![root.join("src/sztu_code/core/documents.py").to_string_lossy().into_owned()]);
+        }
+    }
+    (bundled, Vec::new())
+}
+
+#[derive(Deserialize)]
+struct DocumentResult {
+    text: Option<String>,
+    error: Option<String>,
+}
+
+async fn document_to_text(path: &PathBuf, parser: &(PathBuf, Vec<String>)) -> Result<String, String> {
+    let mut command = Command::new(&parser.0);
+    command.args(&parser.1).arg(child_path(path)).kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let output = tokio::time::timeout(Duration::from_secs(30), command.output()).await
+        .map_err(|_| "资料解析超时，请拆分文件后重试。".to_string())?
+        .map_err(|error| format!("无法启动内置资料解析器，请重新构建或安装完整客户端：{error}"))?;
+    if !output.status.success() {
+        return Err("资料解析器异常退出，请检查文件或重新安装客户端。".into());
+    }
+    let result: DocumentResult = serde_json::from_slice(&output.stdout)
+        .map_err(|_| "资料解析器返回了无效结果。".to_string())?;
+    if let Some(error) = result.error { return Err(error); }
+    result.text.filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| "资料中没有可提取的文本内容。".into())
+}
+
 // 读取「添加附件」选中的文件内容：图片/二进制返回 base64，文本返回内容，逐文件报告错误
 #[tauri::command]
-fn read_attachment(paths: Vec<String>) -> Result<Vec<AttachmentData>, String> {
-    Ok(paths.iter().map(|path| read_one_attachment(path)).collect())
+async fn read_attachment(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<AttachmentData>, String> {
+    let parser = document_parser(&app);
+    let mut results = Vec::with_capacity(paths.len());
+    for path in paths {
+        results.push(read_one_attachment(&path, &parser).await);
+    }
+    Ok(results)
+}
+
+// Keep original office attachments inside the workspace for follow-up reads and edits.
+fn stage_document_files(workspace: &str, paths: &[String]) -> Result<Vec<String>, String> {
+    let root = fs::canonicalize(workspace).map_err(|error| error.to_string())?;
+    let mut directory = root.clone();
+    for part in [".sztu", "attachments"] {
+        directory.push(part);
+        match fs::create_dir(&directory) {
+            Ok(()) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Err(error) => return Err(error.to_string()),
+        }
+        directory = fs::canonicalize(&directory).map_err(|error| error.to_string())?;
+        if !directory.starts_with(&root) { return Err("附件目录超出项目范围".into()); }
+    }
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut staged = Vec::new();
+    for source in paths {
+        let source = PathBuf::from(source);
+        let metadata = fs::metadata(&source).map_err(|error| error.to_string())?;
+        if !metadata.is_file() || metadata.len() > DOCUMENT_MAX_BYTES {
+            return Err("附件不是文件或超过 20MB 限制".into());
+        }
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?.as_nanos();
+        let folder = directory.join(format!("{stamp}-{}", SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+        fs::create_dir(&folder).map_err(|error| error.to_string())?;
+        let destination = folder.join(source.file_name().ok_or("附件文件名无效")?);
+        let mut bytes = Vec::new();
+        fs::File::open(&source).map_err(|error| error.to_string())?
+            .take(DOCUMENT_MAX_BYTES + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
+        if bytes.len() as u64 > DOCUMENT_MAX_BYTES { return Err("资料文件超过 20MB 限制".into()); }
+        fs::OpenOptions::new().write(true).create_new(true).open(&destination)
+            .and_then(|mut file| file.write_all(&bytes)).map_err(|error| error.to_string())?;
+        staged.push(destination.strip_prefix(&root).map_err(|error| error.to_string())?
+            .to_string_lossy().replace('\\', "/"));
+    }
+    Ok(staged)
+}
+
+#[tauri::command]
+async fn stage_document_attachments(workspace: String, paths: Vec<String>) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || stage_document_files(&workspace, &paths))
+        .await.map_err(|error| error.to_string())?
 }
 
 // Connect to the TypeScript daemon and relay NDJSON messages to the frontend SDK.
@@ -1517,6 +1643,7 @@ fn main() {
             sandbox_pty_resize,
             sandbox_pty_close,
             read_attachment,
+            stage_document_attachments,
             create_persistent_worktree,
             list_external_apps,
             open_path_with_app,
@@ -1648,6 +1775,73 @@ fn main() {
 mod tests {
     use super::*;
     use std::sync::mpsc::{self, Receiver};
+
+    #[test]
+    fn document_attachments_use_bundled_parser() {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let executable = if cfg!(windows) { "document-parser.exe" } else { "document-parser" };
+        let parser = (manifest.join("resources/runtime/document-parser").join(executable), Vec::new());
+        assert!(parser.0.is_file(), "Run node desktop/scripts/prepare-document-parser.js first");
+        let directory = manifest.join("../../.sztu").join(format!("attachment-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        // Build an ordinary PDF with a valid cross-reference table, no external tools.
+        let content = "BT /F1 12 Tf 72 720 Td (Attachment content) Tj ET";
+        let objects = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_string(),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+            format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
+        ];
+        let mut pdf = "%PDF-1.4\n".to_string();
+        let mut offsets = Vec::new();
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.push_str(&format!("{} 0 obj\n{object}\nendobj\n", index + 1));
+        }
+        let xref = pdf.len();
+        pdf.push_str("xref\n0 6\n0000000000 65535 f \n");
+        for offset in offsets { pdf.push_str(&format!("{offset:010} 00000 n \n")); }
+        pdf.push_str(&format!("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"));
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            for name in ["中文 资料.PDF", "no-extension"] {
+                let path = directory.join(name);
+                fs::write(&path, &pdf).unwrap();
+                let result = read_one_attachment(path.to_str().unwrap(), &parser).await;
+                assert!(result.error.is_none(), "{:?}", result.error);
+                assert!(result.is_text);
+                assert_eq!(result.mime_type.as_deref(), Some("application/pdf"));
+                assert!(result.text_content.unwrap().contains("Attachment content"));
+                fs::remove_file(path).unwrap();
+            }
+            let broken = directory.join("broken.pdf");
+            fs::write(&broken, "broken").unwrap();
+            let result = read_one_attachment(broken.to_str().unwrap(), &parser).await;
+            assert!(result.error.unwrap().contains("解析失败"));
+            fs::remove_file(broken).unwrap();
+            let svg = directory.join("image.svg");
+            fs::write(&svg, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
+            let result = read_one_attachment(svg.to_str().unwrap(), &parser).await;
+            assert!(result.data_base64.is_some() && !result.is_text);
+            fs::remove_file(svg).unwrap();
+        });
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn office_attachments_are_staged_as_separate_workspace_copies() {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../.sztu").join(format!("stage-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let source = directory.join("原始 资料.docx");
+        fs::write(&source, "source bytes").unwrap();
+        let result = stage_document_files(directory.to_str().unwrap(), &[source.to_string_lossy().into_owned()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert!(result[0].starts_with(".sztu/attachments/"));
+        assert_eq!(fs::read(directory.join(&result[0])).unwrap(), b"source bytes");
+        assert_eq!(fs::read(source).unwrap(), b"source bytes");
+    }
 
     struct TestPty {
         _master: Box<dyn MasterPty + Send>,

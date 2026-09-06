@@ -39,6 +39,8 @@ from sztu_code.core.task.manager import TaskManager
 from sztu_code.core.tools.builtin import (
     AskUserQuestionTool,
     BashTool,
+    CreateDocumentTool,
+    EditDocumentTool,
     EditFileTool,
     GlobSearchTool,
     GrepSearchTool,
@@ -46,6 +48,7 @@ from sztu_code.core.tools.builtin import (
     MemoryReadTool,
     NoteSaveTool,
     NoteUpdateTool,
+    ReadDocumentTool,
     ReadFileTool,
     ReadRefTool,
     TaskCreateTool,
@@ -128,6 +131,9 @@ class AgentRunner:
         registry = ToolRegistry()
         for t in [
             ReadFileTool(workspace_root),
+            ReadDocumentTool(workspace_root),
+            CreateDocumentTool(workspace_root),
+            EditDocumentTool(workspace_root),
             BashTool(workspace_root),
             WriteFileTool(workspace_root),
             EditFileTool(workspace_root),

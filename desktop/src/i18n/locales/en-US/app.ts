@@ -138,6 +138,7 @@ export const app = {
   resumeTaskHint: "Resume the task to continue",
   composerPlaceholder: "Tell me what to build",
   sending: "Sending…",
+  ocrProcessing: "Recognizing text in images ({current}/{total})…",
   addContext: "Add context",
   allowAll: "Allow All",
   perItemApproval: "Approve Each",

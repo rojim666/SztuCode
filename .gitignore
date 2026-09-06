@@ -61,3 +61,6 @@ release-artifacts/v0.1.1/appimage-final.zip
 .trae-html-share-packages/
 # 图标替换前的本地备份目录
 desktop/src-tauri/icons-backup-*/
+
+# tesseract.js 运行时下载的语言训练数据（不入库）
+*.traineddata

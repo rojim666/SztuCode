@@ -138,6 +138,7 @@ export const app = {
   resumeTaskHint: "恢复任务后继续",
   composerPlaceholder: "汝之所想，皆以言成",
   sending: "正在发送…",
+  ocrProcessing: "正在识别图片文字 ({current}/{total})…",
   addContext: "添加上下文",
   allowAll: "全部允许",
   perItemApproval: "逐项审批",

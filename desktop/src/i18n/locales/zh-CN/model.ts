@@ -47,6 +47,8 @@ export const model = {
   tokenPlaceholder: "Token 数量",
   maxOutput: "最大输出",
   maxRetries: "工具调用轮数",
+  supportsVision: "支持图片识别",
+  supportsVisionHint: "关闭后，图片将通过 OCR 文字识别后发送给模型（适用于纯文本模型）",
   baseUrl: "API 地址",
   baseUrlInvalid: "API 地址需要以 http:// 或 https:// 开头",
   openKeyPageFailed: "无法打开 API 密钥页面：{reason}",

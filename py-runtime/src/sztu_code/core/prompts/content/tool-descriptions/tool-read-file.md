@@ -13,3 +13,5 @@
 - 不存在的文件返回错误。当确切路径未知时使用 `glob_search`。
 <!-- - Read relevant existing files before proposing or applying changes. -->
 - 在提议或应用更改之前，先读取相关的现有文件。
+
+- 支持 PDF、DOCX、XLSX、PPTX 的文本提取，资料文件最大 20MB，返回最多 32K 字符；扫描 PDF 需要 OCR。要获取结构化位置或继续读取长资料，使用 `read_document`，按 next_offset 翻页。

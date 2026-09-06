@@ -6,7 +6,6 @@ import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow,
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
 import SessionActions from "./components/session/SessionActions.vue";
-import ChatPortal, { type ChatView } from "./components/Chat/ChatPortal.vue";
 // 暂时隐藏“修改了 N 个文件”提示，保留组件以便后续恢复。
 // import ChangeSummaryRail from "./components/Diff/ChangeSummaryRail.vue";
 import ExecutionTimeline from "./components/timeline/ExecutionTimeline.vue";
@@ -28,6 +27,8 @@ import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockIt
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
+import { detectVisionSupport } from "./utils/modelVision";
+import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
   archiveSession, cancelRun, connectRuntime, createSession, forkSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listArtifacts, listChanges, listOperations, listPendingUserQuestions, listSessions,
@@ -38,8 +39,7 @@ import {
 
 const { t } = useI18n({ useScope: "global" });
 
-type Page = "work" | "chat" | "board" | "skills" | "automations" | "webbridge" | "source-control";
-type WorkMode = "code" | "chat";
+type Page = "work" | "board" | "skills" | "automations" | "webbridge" | "source-control";
 type AppMenu = "file" | "edit" | "view" | "help";
 type RuntimeEvent = Record<string, unknown>;
 type ProjectDialogTone = "neutral" | "success" | "danger";
@@ -70,12 +70,6 @@ const CONVERSATION_MIN_WIDTH = 320;
 // 窗口窄于该宽度时自动收起右侧功能栏
 const INSPECTOR_AUTO_COLLAPSE_WIDTH = 1000;
 const page = ref<Page>("work");
-const workMode = ref<WorkMode>("code");
-const modeMenuOpen = ref(false);
-const chatView = ref<ChatView>("home");
-// 正式界面暂时隐藏入口；视觉测试可用开发态查询参数覆盖，避免整套 ChatPortal 回归被跳过。
-const chatEntryVisible = import.meta.env.DEV
-  && new URLSearchParams(window.location.search).get("visual-chat") === "1";
 const sidebarCollapsed = ref(window.innerWidth < FULL_SIDEBAR_MIN_WIDTH || window.innerHeight < FULL_SIDEBAR_MIN_HEIGHT);
 let sidebarAutoCollapsed = sidebarCollapsed.value;
 const storedSidebarWidth = Number(localStorage.getItem("sztu.sidebarWidth"));
@@ -392,6 +386,7 @@ const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
 const sending = ref(false);
+const ocrProgress = ref<{ current: number; total: number; status: string } | null>(null);
 const projectMenuOpen = ref(false);
 const launcherProjectMenuOpen = ref(false);
 const launcherProjectQuery = ref("");
@@ -2074,7 +2069,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     return;
   }
   if (!await prepareOfficeAttachments()) return;
-  const { displayText, payload, images, timelineAttachments } = buildMessagePayload(content);
+  const { displayText, payload, images, timelineAttachments } = await buildMessagePayload(content);
   const sessionId = activeId.value;
   if (sessionId && isAppending.value) {
     const submitMode = resolveComposerSubmitMode(true, gesture, true);
@@ -2394,17 +2389,25 @@ function removeAttachment(index: number) { attachedFiles.value = attachedFiles.v
 // 从当前附件构造发送载荷：
 // - displayText: 用户原始输入文本，用于时间线气泡显示
 // - payload: 发送给后端的完整内容（含附件注入文本，供模型读取）
-// - images: 图片附件的多模态内容块
+// - images: 图片附件的多模态内容块（仅当模型支持视觉时）
 // - timelineAttachments: 时间线中展示用的附件元数据（不含大文本）
-function buildMessagePayload(baseText: string): {
+// 当模型不支持视觉时，图片会通过 OCR 转为文本注入 payload，images 为空数组。
+async function buildMessagePayload(baseText: string): Promise<{
   displayText: string;
   payload: string;
   images: ImageBlock[];
   timelineAttachments: UserAttachment[];
-} {
+}> {
   const images: ImageBlock[] = [];
   const sections: string[] = [];
   const timelineAttachments: UserAttachment[] = [];
+  const supportsVision = detectVisionSupport(
+    runtimeSettings.value?.model ?? "",
+    runtimeSettings.value?.supports_vision ?? null,
+  );
+  const imageAttachments = attachedFiles.value.filter((att) => att.kind === "image" && att.dataBase64);
+  const needsOcr = !supportsVision && imageAttachments.length > 0;
+
   for (const att of attachedFiles.value) {
     timelineAttachments.push({
       name: att.name,
@@ -2414,7 +2417,12 @@ function buildMessagePayload(baseText: string): {
       dataBase64: att.kind === "image" ? att.dataBase64 : undefined,
     });
     if (att.kind === "image" && att.dataBase64) {
-      images.push({ media_type: att.mime ?? "image/png", data: att.dataBase64 });
+      if (supportsVision) {
+        // 模型支持视觉：直接发送图片块
+        images.push({ media_type: att.mime ?? "image/png", data: att.dataBase64 });
+      } else {
+        // 模型不支持视觉：OCR 识别后转文本（在下面统一处理）
+      }
     } else if (att.kind === "text" && att.textContent) {
       const source = att.workspacePath
         ? `\n完整资料的项目相对路径：${JSON.stringify(att.workspacePath)}。请用 read_document 读取并按 next_offset 翻页；以下仅为上传预览。`
@@ -2422,6 +2430,37 @@ function buildMessagePayload(baseText: string): {
       sections.push(`[附件: ${att.name}]${source}\n\`\`\`\n${att.textContent}\n\`\`\``);
     }
   }
+
+  // 对不支持视觉的模型，执行 OCR 将图片转为文本
+  if (needsOcr) {
+    ocrProgress.value = { current: 0, total: imageAttachments.length, status: "initializing" };
+    for (let i = 0; i < imageAttachments.length; i++) {
+      const img = imageAttachments[i];
+      ocrProgress.value = { current: i + 1, total: imageAttachments.length, status: "recognizing" };
+      try {
+        const result = await recognizeImage(
+          img.dataBase64!,
+          img.mime ?? "image/png",
+          (progress: OcrProgress) => {
+            if (ocrProgress.value) {
+              ocrProgress.value.status = progress.status;
+            }
+          },
+        );
+        const ocrText = result.text.trim();
+        if (ocrText) {
+          sections.push(`[图片OCR识别: ${img.name}]\n\`\`\`\n${ocrText}\n\`\`\``);
+        } else {
+          sections.push(`[图片: ${img.name}]（当前模型不支持视觉，OCR 未识别到文字内容）`);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        sections.push(`[图片: ${img.name}]（当前模型不支持视觉，OCR 识别失败：${message}）`);
+      }
+    }
+    ocrProgress.value = null;
+  }
+
   return {
     displayText: baseText,
     payload: [baseText, ...sections].filter(Boolean).join("\n\n"),
@@ -2667,16 +2706,7 @@ function closeSettings() {
 function handleAppearanceChange(settings: AppearanceSettings) {
   appearanceSettings.value = settings;
 }
-function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; modeMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
-function switchWorkMode(mode: WorkMode) { workMode.value = mode; modeMenuOpen.value = false; page.value = mode === "chat" ? "board" : "work"; }
-async function submitChat(content: string) {
-  if (!await prepareOfficeAttachments()) return;
-  const { content: payload, images } = buildMessagePayload(content);
-  await submitTask(payload, attachedFiles.value.some((file) => file.workspacePath) ? activeWorkspace.value : null, images);
-  attachedFiles.value = [];
-  page.value = "chat";
-  chatView.value = "home";
-}
+function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; closeLauncherMenus(); }
 const isMacOS = isMacOSPlatform();
 async function minimizeWindow() { await getCurrentWindow().minimize(); }
 // macOS：Rust 无动画 work-area fill，避开 NSWindow.zoom 与主面板不同步
@@ -3131,22 +3161,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <div class="sidebar-viewport">
       <aside id="primary-navigation" class="kimi-sidebar agent-sidebar">
       <header class="sidebar-brand">
-        <div class="mode-switch-wrap">
-          <button class="brand-mode-trigger" :aria-expanded="modeMenuOpen" aria-haspopup="menu" :aria-label="t('app.switchWorkMode')" @click="modeMenuOpen = !modeMenuOpen">
-            <h1>{{ workMode === 'code' ? 'SztuCode' : 'SztuWork' }}</h1>
-            <AppIcon name="ChevronDown" :size="14" />
-          </button>
-          <div v-if="modeMenuOpen" class="brand-mode-popover" role="menu" :aria-label="t('app.workMode')">
-            <button type="button" role="menuitemradio" :aria-checked="workMode === 'code'" @click="switchWorkMode('code')">
-              <span><b>SztuCode</b><small>{{ t('app.codeMode') }}</small></span>
-              <AppIcon v-if="workMode === 'code'" name="Check" :size="15" />
-            </button>
-            <button type="button" role="menuitemradio" :aria-checked="workMode === 'chat'" @click="switchWorkMode('chat')">
-              <span><b>SztuWork</b><small>办公任务与成果</small></span>
-              <AppIcon v-if="workMode === 'chat'" name="Check" :size="15" />
-            </button>
-          </div>
-        </div>
+        <h1>SztuCode</h1>
         <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <AppIcon name="Search" :size="16" aria-hidden="true" />
         </button>
@@ -3172,7 +3187,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="16" :filled="page === 'automations'" /><span>{{ t('app.automations') }}</span></button>
         <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
         <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
-        <button v-if="chatEntryVisible" :class="{ active: page === 'chat' }" @click="openPage('chat')"><AppIcon name="MessageCircle" :size="16" :filled="page === 'chat'" /><span>{{ t('app.generalChat') }}</span></button>
       </nav>
 
       <div class="sidebar-workspace">
@@ -3278,7 +3292,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div class="session-preview__row"><AppIcon name="Coins" :size="16" /><span>{{ t('app.totalTokens') }}</span><em>{{ previewTokens(sessionPreview.task) }}</em></div>
     </div>
 
-    <main class="kimi-main" :class="{ 'chat-main': page === 'chat', 'work-active': page === 'work' }">
+    <main class="kimi-main work-active">
       <div v-show="page === 'work'" class="work-page-host">
         <section v-if="active" class="work-page">
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
@@ -3376,7 +3390,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
-                      <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder')))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                      <div v-if="ocrProgress" class="ocr-progress-bar">
+                        <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
+                        <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
+                      </div>
+                      <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed' || !!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : (active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder'))))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                       <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                     </form>
                 </QueueDock>
@@ -3412,7 +3430,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
-                <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :placeholder="t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                <div v-if="ocrProgress" class="ocr-progress-bar">
+                  <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
+                  <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
+                </div>
+                <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="!!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button>
                   <div class="launcher-permission-control">
@@ -3448,11 +3470,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
         </section>
       </div>
 
-      <section v-if="page === 'chat'"><ChatPortal :view="chatView" :connected="connected" @submit="submitChat" @navigate="chatView = $event" @open-project="openLocalProject" /></section>
+      <section v-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><AppIcon name="GitBranch" :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
 
-      <section v-else-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><AppIcon name="GitBranch" :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
-
-      <section v-else-if="page === 'board'" class="simple-page board-page">
+      <section v-if="page === 'board'" class="simple-page board-page">
         <header><div><h1>{{ t('app.allTasks') }}</h1><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
         <div class="session-board">
           <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ officeTaskState(task.status, operations.find(operation => operation.session_id === task.session_id)?.status) }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
@@ -3468,7 +3488,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <div class="session-board"><article v-for="operation in operations" :key="operation.operation_id"><div><b>{{ operation.params_summary }}</b><p>{{ operation.status }} · {{ operation.external_object_id || '本地操作' }}</p><small>{{ operation.updated_at }}</small></div></article><p v-if="!operations.length">暂无操作记录。</p></div>
         </template>
       </section>
-      <section v-else-if="page === 'automations'" class="chat-main"><ChatPortal view="automations" :connected="connected" @submit="submitChat" @navigate="(view) => { page = 'chat'; chatView = view }" @open-project="openLocalProject" /></section>
+      <section v-else-if="page === 'automations'" class="simple-page"><header><div><h1>{{ t('app.automations') }}</h1><p>自动化任务管理</p></div></header><div class="bridge-card"><AppIcon name="CalendarClock" :size="24" /><div><h2>功能开发中</h2><p>定时自动化任务功能即将上线</p></div></div></section>
 
       <section v-else-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 

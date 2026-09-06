@@ -158,7 +158,7 @@ test("parse_document tool parses a document inside the workspace", async () => {
   assert.match(result.output, /Integration body text/);
 });
 
-test("parse_document rejects unsupported types and read_file hints at documents", async () => {
+test("parse_document rejects damaged documents and read_file extracts document content", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-doc-parser-"));
   await writeFile(path.join(root, "slides.pptx"), Buffer.from("PK\u0003\u0004fake"));
   await writeFile(path.join(root, "report.pdf"), buildPdf(["hint target"]));
@@ -168,11 +168,12 @@ test("parse_document rejects unsupported types and read_file hints at documents"
 
   const unsupported = await tools.get("parse_document")!.invoke({ path: "slides.pptx" }, context);
   assert.equal(unsupported.ok, false);
-  assert.match(unsupported.error ?? "", /not supported/);
+  assert.ok(unsupported.error);
 
   const hint = await tools.get("read_file")!.invoke({ path: "report.pdf" }, context);
   assert.equal(hint.ok, true);
-  assert.match(hint.output, /parse_document/);
+  assert.match(hint.output, /hint target/);
+  assert.match(hint.output, /page:1/);
 
   const normal = await tools.get("read_file")!.invoke({ path: "notes.txt" }, context);
   assert.equal(normal.ok, true);

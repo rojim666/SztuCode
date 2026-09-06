@@ -99,7 +99,7 @@ export type ApiFormat = "openai_chat_completions" | "anthropic_messages" | "open
 export type ModelRequestSettings = {
   api_format: ApiFormat; context_window: number; max_output_tokens: number;
   temperature: number | null; top_p: number | null; reasoning_effort: "" | "low" | "medium" | "high" | "xhigh" | "max";
-  timeout_s: number; max_retries: number; cache_control: boolean;
+  timeout_s: number; max_retries: number; cache_control: boolean; supports_vision: boolean;
 };
 export type RuntimeSettings = ModelRequestSettings & { provider: "anthropic" | "openai"; model: string; permission_mode: "normal" | "accept_edits" | "plan" | "auto"; base_url?: string };
 export type RuntimeSettingsUpdate = Partial<RuntimeSettings> & { api_key?: string };

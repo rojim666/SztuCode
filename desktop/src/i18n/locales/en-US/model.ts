@@ -47,6 +47,8 @@ export const model = {
   tokenPlaceholder: "Token count",
   maxOutput: "Max output",
   maxRetries: "Tool call rounds",
+  supportsVision: "Supports image input",
+  supportsVisionHint: "When off, images are converted to text via OCR before sending (for text-only models)",
   baseUrl: "API URL",
   baseUrlInvalid: "The API URL must start with http:// or https://",
   openKeyPageFailed: "Could not open the API key page: {reason}",

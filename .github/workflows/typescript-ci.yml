@@ -37,11 +37,19 @@ jobs:
       - name: Install desktop dependencies
         run: npm ci --prefix desktop
 
+      - name: Prepare Python office runtime
+        run: |
+          python3 -m pip install uv==0.11.6
+          uv sync --project py-runtime --frozen
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm test
+
+      - name: Office document regression
+        run: uv run --project py-runtime --frozen pytest py-runtime/tests/unit/test_documents.py py-runtime/tests/unit/test_office.py
 
       - name: Office offline acceptance
         run: |

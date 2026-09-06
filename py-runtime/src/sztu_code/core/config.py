@@ -117,6 +117,8 @@ class LlmConfig:
     # 部分端点（DeepSeek/Zen）是自动前缀缓存、忽略此字段，纯 OpenAI 规范端点也忽略；
     # 仅对识别该标记的网关有命中收益；端点拒收未知字段时可关掉。
     cache_control: bool = True
+    # 模型是否支持视觉/多模态输入（图片等）。不支持时，图片附件将通过 OCR 转文字后发送。
+    supports_vision: bool = True
 
 
 @dataclass
