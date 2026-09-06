@@ -270,19 +270,20 @@
 
 /* 进行中提示："正在规划下一步" */
 .turn-planning-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-block;
   margin: 6px 0 2px;
   color: #9ca3af;
   font-size: 13px;
   line-height: 1.4;
 }
-.turn-planning-hint .spin {
-  animation: planning-spin 1s linear infinite;
+
+.turn-planning-hint span {
+  animation: planning-text-pulse 1.45s ease-in-out infinite;
 }
-@keyframes planning-spin {
-  to { transform: rotate(360deg); }
+
+@keyframes planning-text-pulse {
+  0%, 100% { opacity: .42; }
+  50% { opacity: 1; }
 }
 
 .tool-call-group { min-width: 0; margin-bottom: 4px; }

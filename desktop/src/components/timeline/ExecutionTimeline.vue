@@ -528,7 +528,6 @@ watch(
             </template>
             <!-- 进行中提示："正在规划下一步" -->
             <div v-if="shouldShowPlanningHint(turn)" class="turn-planning-hint">
-              <AppIcon name="LoaderCircle" class="spin" :size="14" />
               <span>{{ t('timeline.planningNext') }}</span>
             </div>
           </div>

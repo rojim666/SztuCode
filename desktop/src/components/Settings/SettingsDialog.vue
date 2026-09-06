@@ -1933,4 +1933,104 @@ function selectLocale(value: AppLocale) {
     transition: none !important;
   }
 }
+
+
+
+
+/* 设置面板桌面化精修：改用主题变量，兼容浅色与深色主题。 */
+.settings-backdrop {
+  background: rgba(16, 18, 19, .42);
+  backdrop-filter: none;
+  padding: 20px;
+}
+
+.settings-dialog {
+  width: min(920px, 94vw);
+  height: min(680px, 90vh);
+  min-height: 520px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--app-bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .16);
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.settings-dialog__header {
+  height: 64px;
+  padding: 0 22px;
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-dialog__header h1 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.settings-dialog__body { grid-template-columns: 196px minmax(0, 1fr); }
+
+.settings-dialog__nav {
+  padding: 16px 10px 12px;
+  background: var(--chrome-bg);
+  border-right: 0;
+}
+
+.nav-item {
+  min-height: 36px;
+  margin: 2px 0;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: background .12s ease, color .12s ease;
+}
+
+.nav-item:hover { transform: none; background: var(--surface-soft); }
+
+.nav-item.active {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.settings-dialog__nav-foot {
+  margin: auto 8px 2px;
+  padding: 12px 0 0;
+}
+
+.settings-dialog__content {
+  padding: 24px 30px 36px;
+  background: var(--surface-raised);
+}
+
+.settings-pane-title { margin-bottom: 18px; }
+.settings-pane-title h2 { font-size: 19px; letter-spacing: 0; }
+
+.settings-card {
+  margin-bottom: 10px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  box-shadow: none;
+  border: 0;
+}
+
+.settings-card__heading { margin-bottom: 13px; }
+.settings-card__heading h3 { font-size: 13px; }
+
+.option-btn, .wallpaper-btn, .font-btn {
+  border-radius: 6px;
+  transition: border-color .12s ease, background .12s ease;
+}
+
+.option-btn:hover, .wallpaper-btn:hover, .font-btn:hover { transform: none; box-shadow: none; }
+.option-btn.selected, .wallpaper-btn.selected, .font-btn.selected { box-shadow: none; }
+
+.appearance-preview { height: 84px; border-radius: 6px; }
+
+@media (max-width: 760px) {
+  .settings-dialog { border-radius: 8px; }
+  .settings-dialog__content { padding: 20px 16px 26px; }
+}
 </style>

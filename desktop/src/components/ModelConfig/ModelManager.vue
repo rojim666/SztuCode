@@ -407,6 +407,11 @@ onMounted(() => {
               </p>
             </div>
 
+            <div class="mm-form-field">
+              <label class="mm-form-label">{{ t("model.baseUrl") }}</label>
+              <input v-model="baseUrl" class="mm-form-input" placeholder="https://api.example.com/v1" />
+            </div>
+
             <template v-if="selectedVendor.id === CUSTOM_VENDOR_ID">
               <div class="mm-form-field">
                 <label class="mm-form-label"><span class="mm-required">*</span>{{ t("model.displayName") }}</label>
@@ -477,7 +482,7 @@ onMounted(() => {
             </div>
 
             <div class="mm-form-field">
-              <ReasoningEffortSlider v-model="reasoningEffort" :model-name="modelId || name" :disabled="saving || testing" />
+              <ReasoningEffortSlider v-model="reasoningEffort" compact :model-name="modelId || name" :disabled="saving || testing" />
               <p v-if="apiFormat === 'anthropic_messages' && reasoningEffort" class="mm-reasoning-hint">{{ t("model.reasoningBudgetHint") }}</p>
             </div>
 
@@ -519,10 +524,6 @@ onMounted(() => {
                   <input v-model.number="maxRetries" class="mm-form-input" type="number" min="0" max="100" />
                 </div>
 
-                <div v-if="selectedVendor.id === CUSTOM_VENDOR_ID" class="mm-form-field">
-                  <label class="mm-form-label">{{ t("model.baseUrl") }}</label>
-                  <input v-model="baseUrl" class="mm-form-input" placeholder="https://api.example.com/v1" />
-                </div>
               </div>
             </div>
 
@@ -1821,7 +1822,14 @@ onMounted(() => {
 .mm-form-field { gap: 4px; }
 .mm-form-label { font-size: 12px; }
 .mm-form-input, .mm-form-select { height: 38px; border-radius: 8px; font-size: 14px; }
-.mm-icon-picker { max-height: 104px; overflow: hidden; gap: 6px; padding: 2px; }
+.mm-icon-picker {
+  max-height: 168px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 6px;
+  padding: 2px 4px 4px 2px;
+  scrollbar-width: thin;
+}
 .mm-icon-option { width: 38px; height: 38px; border-radius: 8px; }
 .mm-icon-option img { width: 19px; height: 19px; }
 .mm-modal-footer { padding: 10px 20px; }
@@ -1832,6 +1840,12 @@ onMounted(() => {
 .mm-form-field > :deep(.reasoning-slider-input::-webkit-slider-thumb) { width: 38px; height: 38px; }
 .mm-form-field > :deep(.reasoning-slider-input::-moz-range-thumb) { width: 38px; height: 38px; }
 .mm-form-field > :deep(.reasoning-slider-hint) { font-size: 11px; }
+.mm-modal-body > .mm-form-field:has(.reasoning-slider) { margin-top: 2px; }
+.mm-form-field > :deep(.reasoning-slider-card) { padding: 8px 12px 7px; border-radius: 10px; }
+.mm-form-field > :deep(.reasoning-slider-track) { height: 28px; margin-top: 6px; }
+.mm-form-field > :deep(.reasoning-slider-input) { height: 28px; }
+.mm-form-field > :deep(.reasoning-slider-input::-webkit-slider-thumb) { width: 28px; height: 28px; }
+.mm-form-field > :deep(.reasoning-slider-input::-moz-range-thumb) { width: 28px; height: 28px; }
 
 /* 按钮样式 */
 .mm-btn {
