@@ -4,16 +4,16 @@ body, #app { height: 100vh; } body { margin: 0; min-width: 680px; overflow: hidd
 button, input, select, textarea { font: inherit; }
 button { border: 0; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .48; }
-.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 40px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
+.kimi-shell { height: 100vh; overflow: hidden; display: grid; grid-template: 52px minmax(0, 1fr) / 240px minmax(0, 1fr); color: #202124; background: #f7f9fa; border: 1px solid #dfe1e4; border-radius: 12px; }.kimi-shell.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr); }
 .kimi-shell.sidebar-animating { transition: grid-template-columns .2s ease; }
 .kimi-shell.window-resizing,
 .kimi-shell.window-resizing .agent-sidebar,
 .kimi-shell.window-resizing .sidebar-resizer { transition: none !important; }
-.kimi-titlebar { grid-column: 1 / -1; position: relative; z-index: 80; isolation: isolate; display: flex; align-items: center; min-height: 40px; height: 40px; background: #fff; user-select: none; transform: translateZ(0); -webkit-transform: translateZ(0); }
+.kimi-titlebar { grid-column: 1 / -1; position: relative; z-index: 80; isolation: isolate; display: flex; align-items: center; min-height: 52px; height: 52px; background: #fff; user-select: none; transform: translateZ(0); -webkit-transform: translateZ(0); }
 /* macOS: fixed toolbar owns toggle inset; titlebar is drag-only. */
 .kimi-shell.is-macos { --macos-nav-inset: 77px; border-radius: 0; }
 .kimi-titlebar.is-macos { padding-left: 0; }
-.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 70; isolation: isolate; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 40px; min-height: 40px; padding-left: var(--macos-nav-inset, 77px); pointer-events: none; }
+.kimi-shell.is-macos .sidebar-macos-toolbar { position: absolute; z-index: 70; isolation: isolate; top: 0; left: 0; right: 0; width: 100%; display: flex; align-items: center; height: 52px; min-height: 52px; padding-left: var(--macos-nav-inset, 77px); pointer-events: none; }
 .kimi-shell.is-macos .sidebar-macos-toolbar > * { pointer-events: auto; }
 .kimi-shell.is-macos .nav-toggle-wrap { margin: 0; }
 .kimi-shell.is-macos.sidebar-collapsed .titlebar-drag-region { margin-left: calc(var(--macos-nav-inset) + 34px); }
@@ -22,7 +22,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .kimi-shell.is-macos .kimi-titlebar { grid-column: 2; grid-row: 1; z-index: 80; isolation: isolate; position: relative; transform: translateZ(0); -webkit-transform: translateZ(0); }
 .kimi-shell.is-macos .kimi-main { grid-column: 2; grid-row: 2; border-radius: 0; z-index: 1; }
 .kimi-shell.is-macos.sidebar-collapsed .kimi-titlebar { grid-column: 1 / -1; }
-.kimi-shell.is-macos .agent-sidebar { padding-top: 40px; }
+.kimi-shell.is-macos .agent-sidebar { padding-top: 52px; }
 .window-mark { align-self: center; flex: 0 0 auto; width: 15px; height: 15px; margin-left: 16px; border: 1.5px solid #8e9298; border-radius: 4px; box-shadow: inset -4px 0 #fff; pointer-events: none; }
 .nav-toggle-wrap { position: relative; z-index: 70; display: grid; flex: 0 0 auto; width: 34px; height: 34px; margin: 0 0 0 5px; place-items: center; }
 .nav-toggle { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; color: #303236; background: transparent; border: 1px solid transparent; border-radius: 7px; box-shadow: none; transition: color .14s ease, background-color .14s ease, border-color .14s ease; -webkit-app-region: no-drag; }
@@ -47,8 +47,8 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .kimi-shell.is-macos .app-menu-bar { margin-left: 4px; }
 .kimi-shell.is-macos.sidebar-collapsed .app-menu-bar { margin-left: calc(var(--macos-nav-inset) + 38px); }
 .titlebar-drag-region { flex: 1 1 auto; align-self: stretch; min-width: 48px; cursor: default; }
-.window-actions { display: flex; flex: 0 0 auto; align-items: stretch; height: 39px; margin-left: auto; color: #34373c; }
-.window-action { display: grid; width: 46px; height: 39px; padding: 0; place-items: center; color: inherit; background: transparent; border-radius: 0; transition: color .12s ease, background-color .12s ease; -webkit-app-region: no-drag; }
+.window-actions { display: flex; flex: 0 0 auto; align-items: stretch; height: 52px; margin-left: auto; color: #34373c; }
+.window-action { display: grid; width: 46px; height: 52px; padding: 0; place-items: center; color: inherit; background: transparent; border-radius: 0; transition: color .12s ease, background-color .12s ease; -webkit-app-region: no-drag; }
 .window-action svg { pointer-events: none; }
 .window-action:hover { color: #111317; background: #eef0f2; }
 .window-action:active { background: #dfe2e5; }
