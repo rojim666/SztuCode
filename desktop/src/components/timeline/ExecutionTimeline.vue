@@ -8,8 +8,9 @@ import ContextInjectionRow from "./ContextInjectionRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
 import FileChangesBadge from "./FileChangesBadge.vue";
-import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry } from "./types";
+import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry, UserAttachment } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
+import { fileTypeIconUrl } from "../../utils/fileIcon";
 import { localeTag } from "../../i18n";
 
 const props = defineProps<{ steps: TimelineStep[]; workspaceId?: string; workspacePath?: string }>();
@@ -35,6 +36,7 @@ type TurnView = {
   changeFiles: ChangeFile[];
   userMessage?: string;
   userMessageTime?: string;
+  userAttachments: UserAttachment[];
   model?: string;
   runStats?: RunStats;
   runStartedAt?: string;
@@ -209,6 +211,38 @@ function stepText(step: TimelineStep): string {
   return step.finalText || step.streamText || step.tokens.join("");
 }
 
+function attachmentCategory(att: UserAttachment): string {
+  const ext = att.name.match(/\.([^.]+)$/)?.[1].toLowerCase() ?? "";
+  if (att.kind === "image" || att.mime?.startsWith("image/")) return "image";
+  if (ext === "pdf" || att.mime === "application/pdf") return "pdf";
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "word";
+  if (["xls", "xlsx", "xlsm", "csv", "tsv", "ods"].includes(ext)) return "excel";
+  if (["ppt", "pptx", "odp"].includes(ext)) return "powerpoint";
+  if (["txt", "md", "markdown", "json", "xml", "yaml", "yml", "log"].includes(ext)) return "text";
+  return "file";
+}
+
+function attachmentIcon(att: UserAttachment): string {
+  const cat = attachmentCategory(att);
+  const representative: Record<string, string> = {
+    pdf: "file.pdf", word: "file.docx", excel: "file.xlsx", powerpoint: "file.pptx",
+    text: "file.txt", file: att.name.toLowerCase(),
+  };
+  return fileTypeIconUrl(representative[cat] ?? att.name.toLowerCase()) || fileTypeIconUrl("file.txt");
+}
+
+function attachmentThumbnail(att: UserAttachment): string | null {
+  return att.kind === "image" && att.dataBase64
+    ? `data:${att.mime ?? "image/png"};base64,${att.dataBase64}`
+    : null;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function stepHasDetails(step: TimelineStep): boolean {
   return Boolean(
     stepText(step) || step.thinking || step.toolCalls.length || step.plan?.length ||
@@ -343,10 +377,16 @@ function stateOf(steps: TimelineStep[], pending: PermissionState | undefined, ca
 }
 
 const turns = computed<TurnView[]>(() => {
-  const groups: { userMessage?: string; userMessageTime?: string; model?: string; steps: TimelineStep[] }[] = [];
+  const groups: { userMessage?: string; userMessageTime?: string; userAttachments?: UserAttachment[]; model?: string; steps: TimelineStep[] }[] = [];
   for (const item of props.steps) {
     if (item.userMessage) {
-      const group = { userMessage: item.userMessage, userMessageTime: item.userMessageTime, model: item.model, steps: [] as TimelineStep[] };
+      const group = {
+        userMessage: item.userMessage,
+        userMessageTime: item.userMessageTime,
+        userAttachments: item.userAttachments,
+        model: item.model,
+        steps: [] as TimelineStep[],
+      };
       groups.push(group);
       if (hasAssistantContent(item)) group.steps.push(item);
     } else {
@@ -403,6 +443,7 @@ const turns = computed<TurnView[]>(() => {
       changeFiles,
       userMessage: group.userMessage,
       userMessageTime: group.userMessageTime,
+      userAttachments: group.userAttachments ?? [],
       model,
       runStats,
       runStartedAt,
@@ -457,6 +498,21 @@ watch(
       v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null, localeTag]"
       class="timeline-step"
     >
+      <div v-if="turn.userAttachments.length" class="timeline-user-attachments">
+        <span
+          v-for="(att, idx) in turn.userAttachments"
+          :key="`${att.name}-${idx}`"
+          class="timeline-attachment-chip"
+          :data-category="attachmentCategory(att)"
+          :title="`${att.name} · ${formatSize(att.size)}`"
+        >
+          <span class="timeline-attachment-chip__visual" :class="{ 'is-thumbnail': attachmentThumbnail(att) }">
+            <img v-if="attachmentThumbnail(att)" :src="attachmentThumbnail(att)!" alt="" />
+            <img v-else :src="attachmentIcon(att)" alt="" />
+          </span>
+          <span class="timeline-attachment-chip__name">{{ att.name }}</span>
+        </span>
+      </div>
       <div v-if="turn.userMessage" class="timeline-user-message">
         {{ turn.userMessage }}
         <span v-if="turn.model || turn.userMessageTime" class="timeline-user-message__meta">{{ turn.model || t('timeline.turn.modelUnrecorded') }} · {{ formatTime(turn.userMessageTime) }}</span>

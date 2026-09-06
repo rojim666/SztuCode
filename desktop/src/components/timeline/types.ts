@@ -2,6 +2,14 @@ export type TimelineStatus = "thinking" | "acting" | "observing" | "done" | "fai
 export type RunOutcome = { status: "success" | "failed" | "interrupted"; reason?: string };
 export type RunStats = { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; elapsedSeconds: number; ttftMs?: number; contextPct?: number };
 
+export type UserAttachment = {
+  name: string;
+  size: number;
+  kind: "image" | "text";
+  mime?: string;
+  dataBase64?: string;
+};
+
 export type ToolCallEntry = {
   id: string;
   name: string;
@@ -124,6 +132,7 @@ export interface TimelineStep {
   usage?: LlmUsage;
   userMessage?: string;
   userMessageTime?: string;
+  userAttachments?: UserAttachment[];
   // 发送时刻所选模型：实时由 App.vue 写入，历史会话由 hydrateTimeline 从持久化消息恢复
   model?: string;
   finalText?: string;

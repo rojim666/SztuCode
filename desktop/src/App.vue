@@ -16,10 +16,11 @@ import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
 import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
+import AttachmentChip from "./components/Composer/AttachmentChip.vue";
 import UserQuestionComposer from "./components/UserQuestions/UserQuestionComposer.vue";
 import SourceControlPanel from "./components/SourceControl/SourceControlPanel.vue";
 import { slashMenuItems } from "./components/CommandPalette/slash-menu";
-import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, TimelineEvent, TimelineStep, ToolCallEntry, WorkflowTaskEntry } from "./components/timeline/types";
+import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, TimelineEvent, TimelineStep, ToolCallEntry, UserAttachment, WorkflowTaskEntry } from "./components/timeline/types";
 import { isMacOSPlatform } from "./lib/platform";
 import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "./utils/timelineStream";
 import { deriveSessionStats } from "./utils/sessionStats";
@@ -51,12 +52,13 @@ type ProjectDialogState = {
 };
 type QueuedSubmission = {
   id: string;
-  text: string;
-  contentSuffix: string;
+  displayText: string;
+  payload: string;
   images: ImageBlock[];
-  attachmentCount: number;
   // 原样保留入列时的附件，编辑时需要把内容完整退回输入框重来
   attachments: PendingAttachment[];
+  // 时间线中展示用的附件摘要（不含大文本内容）
+  timelineAttachments: UserAttachment[];
 };
 const FULL_SIDEBAR_MIN_WIDTH = 952;
 const FULL_SIDEBAR_MIN_HEIGHT = 640;
@@ -142,8 +144,8 @@ const runActive = computed<boolean>({
 });
 const activeQueueItems = computed<QueueDockItem[]>(() => (activeView.value?.queue ?? []).map((item) => ({
   id: item.id,
-  text: item.text,
-  attachmentCount: item.attachmentCount,
+  text: item.displayText,
+  attachmentCount: item.attachments.length,
 })));
 const runToSession = new Map<string, string>();
 const finishedRunIds = new Set<string>();
@@ -438,6 +440,8 @@ type PendingAttachment = {
   mime?: string;
   textContent?: string;
   dataBase64?: string;
+  workspacePath?: string;
+  workspaceRoot?: string;
 };
 const attachedFiles = ref<PendingAttachment[]>([]);
 const providerStatus = ref<ProviderStatus | null>(null);
@@ -965,12 +969,20 @@ function stepForSession(event: RuntimeEvent, sessionId: string): number {
   currentStepByRun.set(runId, fallback);
   return fallback;
 }
-function addUserMessage(content: string, sessionId: string) {
+function addUserMessage(content: string, sessionId: string, attachments?: UserAttachment[]) {
   const view = ensureSessionView(sessionId);
   view.loaded = true;
   const step = maxTimelineStep(sessionId) + 1;
   const startedAt = new Date().toISOString();
-  setSessionStep(step, (current) => ({ ...current, status: "thinking", userMessage: content, userMessageTime: startedAt, runStartedAt: startedAt, model: runtimeSettings.value?.model || current.model }), sessionId);
+  setSessionStep(step, (current) => ({
+    ...current,
+    status: "thinking",
+    userMessage: content,
+    userMessageTime: startedAt,
+    userAttachments: attachments,
+    runStartedAt: startedAt,
+    model: runtimeSettings.value?.model || current.model,
+  }), sessionId);
   return step;
 }
 function hydrateTimeline(
@@ -1785,14 +1797,21 @@ function insertProvisionalSession(sessionId: string, title: string, project: Wor
   };
   sessions.value = [provisional, ...sessions.value.filter((item) => item.session_id !== sessionId)];
 }
-async function startSessionRun(sessionId: string, content: string, images: ImageBlock[] = [], clearDraft = false): Promise<boolean> {
-  const trimmed = content.trim();
+async function startSessionRun(
+  sessionId: string,
+  displayText: string,
+  payload: string,
+  images: ImageBlock[] = [],
+  attachments?: UserAttachment[],
+  clearDraft = false,
+): Promise<boolean> {
+  const trimmed = payload.trim();
   if (!trimmed || !connected.value || sending.value) return false;
   const session = sessions.value.find((item) => item.session_id === sessionId);
   if (session?.archived || session?.status === "closed") return false;
   const clientMessageId = crypto.randomUUID();
   const view = ensureSessionView(sessionId);
-  const messageStep = addUserMessage(trimmed, sessionId);
+  const messageStep = addUserMessage(displayText.trim() || trimmed, sessionId, attachments);
   sending.value = true;
   if (clearDraft && activeId.value === sessionId) prompt.value = "";
   try {
@@ -1828,16 +1847,22 @@ async function startSessionRun(sessionId: string, content: string, images: Image
     sending.value = false;
   }
 }
-async function submitTask(content: string, project: Workspace | null = workspace.value, images: ImageBlock[] = []): Promise<boolean> {
-  const trimmed = content.trim();
+async function submitTask(
+  displayText: string,
+  payload: string,
+  project: Workspace | null = workspace.value,
+  images: ImageBlock[] = [],
+  attachments?: UserAttachment[],
+): Promise<boolean> {
+  const trimmed = payload.trim();
   if (!trimmed || !connected.value || sending.value) return false;
-  if (activeId.value) return await startSessionRun(activeId.value, trimmed, images, true);
+  if (activeId.value) return await startSessionRun(activeId.value, displayText, trimmed, images, attachments, true);
 
   sending.value = true;
   try {
     const sessionId = await createSession(project);
     // 先把新会话放入本地索引，避免等待下一次 session.list 才能渲染会话区。
-    insertProvisionalSession(sessionId, trimmed, project);
+    insertProvisionalSession(sessionId, displayText.trim() || trimmed, project);
     const view = ensureSessionView(sessionId);
     view.timeline = new Map();
     view.activeRunId = null;
@@ -1848,7 +1873,7 @@ async function submitTask(content: string, project: Workspace | null = workspace
     saveComposerDraft(project?.workspace_id ?? null, "");
     prompt.value = "";
     sending.value = false;
-    const sent = await startSessionRun(sessionId, trimmed, images);
+    const sent = await startSessionRun(sessionId, displayText, trimmed, images, attachments);
     if (sent) void refreshIndex(false);
     return sent;
   } finally {
@@ -1856,15 +1881,15 @@ async function submitTask(content: string, project: Workspace | null = workspace
     sending.value = false;
   }
 }
-function enqueueSubmission(sessionId: string, text: string, payload: string, images: ImageBlock[], attachmentCount: number) {
+function enqueueSubmission(sessionId: string, displayText: string, payload: string, images: ImageBlock[], timelineAttachments: UserAttachment[]) {
   const view = ensureSessionView(sessionId);
   view.queue = [...view.queue, {
     id: crypto.randomUUID(),
-    text,
-    contentSuffix: payload.startsWith(text) ? payload.slice(text.length) : "",
+    displayText,
+    payload,
     images: images.map((image) => ({ ...image })),
-    attachmentCount,
     attachments: attachedFiles.value.map((file) => ({ ...file })),
+    timelineAttachments: timelineAttachments.map((att) => ({ ...att })),
   }];
 }
 // 编辑待处理任务 = 把它原样退回输入框：文本回到 prompt，附件回到 attachedFiles，
@@ -1873,7 +1898,7 @@ function editQueuedSubmission(id: string) {
   const view = activeView.value;
   const item = view?.queue.find((entry) => entry.id === id);
   if (!view || !item || view.queueBusyId === id) return;
-  prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${item.text}` : item.text;
+  prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${item.displayText}` : item.displayText;
   const known = new Set(attachedFiles.value.map((file) => file.path));
   attachedFiles.value = [
     ...attachedFiles.value,
@@ -1895,7 +1920,7 @@ async function steerQueuedSubmission(id: string) {
   if (!sessionId || !view?.runActive || !item || view.queueBusyId) return;
   view.queueBusyId = id;
   try {
-    await steerPrompt(sessionId, item.text + item.contentSuffix, item.images);
+    await steerPrompt(sessionId, item.payload, item.images);
     view.queue = view.queue.filter((entry) => entry.id !== id);
   } catch (error) {
     void showProjectNotice(t("app.steerFailed"), friendlyError(error).message, "danger");
@@ -1914,7 +1939,7 @@ async function drainSessionQueue(sessionId: string) {
   view.queueDispatching = true;
   view.queueBusyId = item.id;
   try {
-    const sent = await startSessionRun(sessionId, item.text + item.contentSuffix, item.images);
+    const sent = await startSessionRun(sessionId, item.displayText, item.payload, item.images, item.timelineAttachments);
     if (sent) view.queue = view.queue.filter((entry) => entry.id !== item.id);
   } finally {
     view.queueBusyId = null;
@@ -2048,13 +2073,13 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
     return;
   }
-  const { content: payload, images } = buildMessagePayload(content);
-  const attachmentCount = attachedFiles.value.length;
+  if (!await prepareOfficeAttachments()) return;
+  const { displayText, payload, images, timelineAttachments } = buildMessagePayload(content);
   const sessionId = activeId.value;
   if (sessionId && isAppending.value) {
     const submitMode = resolveComposerSubmitMode(true, gesture, true);
     if (submitMode === "queue") {
-      enqueueSubmission(sessionId, content, payload, images, attachmentCount);
+      enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
       prompt.value = "";
       attachedFiles.value = [];
     } else {
@@ -2070,13 +2095,13 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
         if (!runStillActive && sessionId) {
           // 追加提交与 run.finished 同时到达时，直接启动一个新的 run，
           // 避免输入框一直停留在追加模式且任务没有进入运行态。
-          const sent = await startSessionRun(sessionId, payload, images);
+          const sent = await startSessionRun(sessionId, displayText, payload, images, timelineAttachments);
           if (sent) {
             prompt.value = "";
             attachedFiles.value = [];
           }
         } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
-          enqueueSubmission(sessionId, content, payload, images, attachmentCount);
+          enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
           prompt.value = "";
           attachedFiles.value = [];
         } else {
@@ -2090,7 +2115,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     void nextTick(() => activePrompt.value?.focus());
     return;
   }
-  const sent = await submitTask(payload, workspace.value, images);
+  const sent = await submitTask(displayText, payload, workspace.value, images, timelineAttachments);
   if (sent) attachedFiles.value = [];
 }
 // Shift+Enter 换行；运行中 Enter 排队，Ctrl/Cmd+Enter 转入当前轮，并忽略输入法候选确认
@@ -2365,25 +2390,74 @@ async function createLocalWorkspace() {
   await refreshIndex(false);
   beginTask(workspace.value);
 }
-// 按 1KB/1MB 格式化附件大小
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 function removeAttachment(index: number) { attachedFiles.value = attachedFiles.value.filter((_, i) => i !== index); }
-// 从当前附件构造发送载荷：文本附件拼进 content，图片附件收集成 images 内容块
-function buildMessagePayload(baseText: string): { content: string; images: ImageBlock[] } {
+// 从当前附件构造发送载荷：
+// - displayText: 用户原始输入文本，用于时间线气泡显示
+// - payload: 发送给后端的完整内容（含附件注入文本，供模型读取）
+// - images: 图片附件的多模态内容块
+// - timelineAttachments: 时间线中展示用的附件元数据（不含大文本）
+function buildMessagePayload(baseText: string): {
+  displayText: string;
+  payload: string;
+  images: ImageBlock[];
+  timelineAttachments: UserAttachment[];
+} {
   const images: ImageBlock[] = [];
   const sections: string[] = [];
+  const timelineAttachments: UserAttachment[] = [];
   for (const att of attachedFiles.value) {
+    timelineAttachments.push({
+      name: att.name,
+      size: att.size,
+      kind: att.kind,
+      mime: att.mime,
+      dataBase64: att.kind === "image" ? att.dataBase64 : undefined,
+    });
     if (att.kind === "image" && att.dataBase64) {
       images.push({ media_type: att.mime ?? "image/png", data: att.dataBase64 });
     } else if (att.kind === "text" && att.textContent) {
-      sections.push(`[附件: ${att.name}]\n\`\`\`\n${att.textContent}\n\`\`\``);
+      const source = att.workspacePath
+        ? `\n完整资料的项目相对路径：${JSON.stringify(att.workspacePath)}。请用 read_document 读取并按 next_offset 翻页；以下仅为上传预览。`
+        : "";
+      sections.push(`[附件: ${att.name}]${source}\n\`\`\`\n${att.textContent}\n\`\`\``);
     }
   }
-  return { content: [baseText, ...sections].filter(Boolean).join("\n\n"), images };
+  return {
+    displayText: baseText,
+    payload: [baseText, ...sections].filter(Boolean).join("\n\n"),
+    images,
+    timelineAttachments,
+  };
+}
+
+let preparingOfficeAttachments = false;
+async function prepareOfficeAttachments(): Promise<boolean> {
+  if (preparingOfficeAttachments) return false;
+  if (!("__TAURI_INTERNALS__" in window)) return true;
+  const documents = attachedFiles.value.filter((file) => file.kind === "text"
+    && (/\.(pdf|docx|xlsx|pptx)$/i.test(file.name) || file.mime === "application/pdf"));
+  if (!documents.length) return true;
+  const root = activeWorkspace.value?.path;
+  if (!root) {
+    await showProjectNotice("请选择项目", "请选择或创建一个项目，以保存完整办公资料并继续读取、分析和修改。", "danger");
+    return false;
+  }
+  preparingOfficeAttachments = true;
+  try {
+    const pending = documents.filter((file) => file.workspaceRoot !== root || !file.workspacePath);
+    if (pending.length) {
+      const paths = await invoke<string[]>("stage_document_attachments", { workspace: root, paths: pending.map((file) => file.path) });
+      pending.forEach((file, index) => { file.workspacePath = paths[index]; file.workspaceRoot = root; });
+    }
+    if (activeWorkspace.value?.path !== root) {
+      await showProjectNotice("项目已切换", "请在当前项目重新发送，资料会保存到当前项目。", "danger");
+      return false;
+    }
+    return true;
+  } catch (error) {
+    await showProjectNotice("保存办公资料失败", friendlyError(error).message, "danger");
+    return false;
+  } finally { preparingOfficeAttachments = false; }
 }
 // 被跳过的附件统一汇总为一次提示，避免多文件时连续弹窗
 function notifySkippedAttachments(skipped: string[]) {
@@ -2401,7 +2475,7 @@ function addReadAttachments(results: Attachment[]) {
     if (item.mime_type?.startsWith("image/") && item.data_base64) {
       added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64 });
     } else if (item.is_text && item.text_content != null) {
-      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", textContent: item.text_content });
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content });
     } else {
       skipped.push(t("app.attachmentUnsupported", { name: item.name }));
     }
@@ -2596,8 +2670,9 @@ function handleAppearanceChange(settings: AppearanceSettings) {
 function openPage(next: Page) { page.value = next; projectMenuOpen.value = false; modeMenuOpen.value = false; closeLauncherMenus(); if (next === "chat") chatView.value = "home"; }
 function switchWorkMode(mode: WorkMode) { workMode.value = mode; modeMenuOpen.value = false; page.value = mode === "chat" ? "board" : "work"; }
 async function submitChat(content: string) {
+  if (!await prepareOfficeAttachments()) return;
   const { content: payload, images } = buildMessagePayload(content);
-  await submitTask(payload, null, images);
+  await submitTask(payload, attachedFiles.value.some((file) => file.workspacePath) ? activeWorkspace.value : null, images);
   attachedFiles.value = [];
   page.value = "chat";
   chatView.value = "home";
@@ -3300,7 +3375,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   />
                     <form v-else class="kimi-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><AppIcon name="X" :size="12" /></button></span></div>
+                      <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
                       <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed'" :placeholder="active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder')))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                       <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                     </form>
@@ -3336,7 +3411,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             <form class="kimi-composer landing-composer" @submit.prevent="submit()">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
-                <div v-if="attachedFiles.length" class="attachment-strip"><span v-for="(file, index) in attachedFiles" :key="file.path" class="attachment-chip" :class="'attachment-chip--' + file.kind"><img v-if="file.kind === 'image' && file.dataBase64" :src="'data:' + (file.mime || 'image/png') + ';base64,' + file.dataBase64" :alt="file.name" /><template v-else><b>{{ file.name }}</b><small>{{ formatSize(file.size) }}</small></template><button type="button" :aria-label="t('app.removeAttachment')" @click="removeAttachment(index)"><AppIcon name="X" :size="12" /></button></span></div>
+                <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
                 <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :placeholder="t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button>
