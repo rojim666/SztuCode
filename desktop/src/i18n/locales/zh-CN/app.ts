@@ -155,6 +155,7 @@ export const app = {
   skipConfirmations: "跳过所有操作确认",
   selectLocalProject: "选择本地项目",
   selectProject: "选择项目",
+  plugins: "插件",
   searchWorkspace: "搜索工作空间",
   noMatchingWorkspaces: "没有匹配的工作空间",
   newWorkspace: "新建工作空间",

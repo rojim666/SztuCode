@@ -1557,6 +1557,63 @@ fn browser_webview_attach_picker(_app: tauri::AppHandle, _label: String) -> Resu
     Err("元素选择器原生数据通道仅在 Windows (WebView2) 上可用".into())
 }
 
+// ── 浏览器工具栏菜单 overlay 数据桥（原生 WebMessage 通道）──
+// 三点菜单是独立透明子 webview（z-order 在浏览器 webview 之上，模拟 TRAE/Electron
+// 的 HTML 菜单浮层）。菜单页通过 chrome.webview.postMessage('__szmenu__:<action>')
+// 回传点击动作，本命令在菜单 webview 上注册 WebView2 WebMessageReceived 监听器，
+// 经 Tauri 事件 sztu:menu-action 广播给主窗口执行对应功能（数据 URL 无 IPC 权限，
+// 该桥完全绕开 IPC/ACL 限制）。
+
+#[cfg(windows)]
+#[tauri::command]
+fn browser_menu_attach(app: tauri::AppHandle, label: String) -> Result<(), String> {
+    use webview2_com::WebMessageReceivedEventHandler;
+    use windows::core::PWSTR;
+
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| format!("webview {label} 不存在"))?;
+    let handler_app = app.clone();
+    let handler_label = label;
+    webview
+        .with_webview(move |platform_webview| unsafe {
+            let Ok(core) = platform_webview.controller().CoreWebView2() else {
+                return;
+            };
+            let handler = WebMessageReceivedEventHandler::create(Box::new(
+                move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    let mut message = PWSTR::null();
+                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
+                        let text = webview2_com::take_pwstr(message);
+                        if let Some(action) = text.strip_prefix("__szmenu__:") {
+                            let _ = handler_app.emit(
+                                "sztu:menu-action",
+                                serde_json::json!({
+                                    "label": handler_label,
+                                    "action": action,
+                                }),
+                            );
+                        }
+                    }
+                    Ok(())
+                },
+            ));
+            let mut token: i64 = 0;
+            let _ = core.add_WebMessageReceived(&handler, &mut token);
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn browser_menu_attach(_app: tauri::AppHandle, _label: String) -> Result<(), String> {
+    // 非 Windows 平台没有 WebView2 原生消息桥；前端会退化为“打开菜单时隐藏网页”模式
+    Err("菜单 overlay 数据通道仅在 Windows (WebView2) 上可用".into())
+}
+
 // Windows 图标按 DPI 精确加载：
 // Tauri 默认把 icon.ico 的第一帧（256px 大图）交给系统，任务栏在 125%/150% 缩放下
 // 会把它硬拉到 30/36px 导致发糊。这里改为按当前缩放比计算物理像素尺寸，
@@ -1653,6 +1710,7 @@ fn main() {
             browser_webview_navigate,
             browser_webview_toggle_devtools,
             browser_webview_attach_picker,
+            browser_menu_attach,
             macos_toggle_work_area
         ])
         .setup(|app| {

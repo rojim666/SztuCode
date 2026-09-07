@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- SztuCode Logo: rounded square frame + 3 dots + 2 eye bars -->
+  <rect x="128" y="128" width="768" height="768" rx="160" ry="160" fill="none" stroke="currentColor" stroke-width="64" stroke-linejoin="round"/>
+  <circle cx="296" cy="296" r="36" fill="currentColor"/>
+  <circle cx="408" cy="296" r="36" fill="currentColor"/>
+  <circle cx="520" cy="296" r="36" fill="currentColor"/>
+  <rect x="320" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+  <rect x="576" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+</svg>

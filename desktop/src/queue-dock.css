@@ -7,15 +7,15 @@
   overflow: visible; /* 斜杠菜单与模型气泡需要溢出显示 */
   color: var(--text-muted);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid #e4e6e8;
   border-radius: 14px;
-  box-shadow: 0 7px 24px rgb(28 36 44 / 8%);
+  box-shadow: 0 3px 10px rgb(28 36 44 / 4%);
   font-size: 13px; /* 与输入框正文同号，队列条不再显得比输入框小一号 */
 }
 
 .queue-dock:focus-within {
-  border-color: #a9aeb5;
-  box-shadow: 0 5px 18px #18222e14;
+  border-color: #d7dade;
+  box-shadow: 0 3px 10px rgb(28 36 44 / 5%);
 }
 
 /* 待处理区只增加内容，不改变输入卡片的底色、描边或焦点反馈。 */

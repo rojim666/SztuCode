@@ -16,13 +16,9 @@
 
 ![SztuCode 桌面工作台任务界面](docs/images/image2.png)
 
-### Textual TUI（Python daemon）
+![SztuCode 桌面工作台任务界面](docs/images/image3.png)
 
-![SztuCode TUI 欢迎界面](docs/images/image3.png)
-
-![SztuCode TUI 任务执行过程](docs/images/image4.png)
-
-![SztuCode TUI 任务结果](docs/images/image5.png)
+![SztuCode 桌面工作台技能界面](docs/images/image4.png)
 
 SztuCode 面向真实代码仓库工作。桌面工作台使用 TypeScript daemon；命令行可选择 TypeScript 或 Python runtime。后台 daemon 负责运行 Agent Loop、调用工具、管理权限和保存会话，并通过 JSON-RPC 事件流持续反馈执行状态。
 

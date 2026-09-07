@@ -211,6 +211,19 @@
 :root[data-app-theme="dark"] :is(.sztu-composer textarea, .composer-input-shell textarea)::placeholder {
   color: #a1a1a1 !important;
 }
+/* 深色模式拖拽样式 */
+:root[data-app-theme="dark"] .sztu-composer.drag-over {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 20%) !important;
+}
+:root[data-app-theme="dark"] .sztu-composer.drag-over .composer-input-shell {
+  background: #1e293b !important;
+  border: 2px dashed #3b82f6 !important;
+}
+:root[data-app-theme="dark"] .drag-overlay {
+  background: rgb(30 41 59 / 92%);
+  color: #60a5fa;
+}
 
 :root[data-app-theme="dark"] .model-picker-popover {
   z-index: 300 !important;

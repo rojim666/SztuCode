@@ -41,6 +41,10 @@ const emit = defineEmits<{
   error: [message: string];
   "url-change": [url: string];
   "element-picked": [data: PickedElement];
+  /** overlay 菜单：菜单项被点击（action 为动作标识，如 edit-address） */
+  "menu-action": [action: string];
+  /** overlay 菜单请求关闭（点击遮罩 / Esc / resize / 失焦等） */
+  "menu-close": [];
 }>();
 
 const host = ref<HTMLElement | null>(null);
@@ -52,9 +56,15 @@ let generation = 0;
 let currentUrl = props.url;
 let pollTimer: number | null = null;
 let closePromise: Promise<void> | null = null;
+/** 三点菜单 overlay：透明子 webview（z-order 在浏览器 webview 之上） */
+let menuWebview: Webview | null = null;
 
 function webviewLabel() {
   return `workspace-browser-${props.tabId}`;
+}
+
+function menuLabel() {
+  return `workspace-browser-menu-${props.tabId}`;
 }
 
 /**
@@ -369,6 +379,7 @@ async function closeWebview() {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+  void hideMenuOverlay();
   const instance = webview;
   webview = null;
   if (!instance) return;
@@ -382,6 +393,125 @@ async function closeWebview() {
     }
   })();
   await closePromise;
+}
+
+// ── 三点菜单 overlay（透明子 webview，z-order 高于浏览器 webview）──
+// Tauri 原生 webview 是系统级窗口，主窗口 HTML 无法覆盖其上；此处把菜单
+// 本身做成同窗口内的另一个子 webview（后创建 → z-order 在上、transparent
+// 背景透出下方网页），视觉上等价于 TRAE/Electron 里浮在网页上的 HTML 菜单。
+// 菜单页为 data URL（无 IPC 权限），点击经 chrome.webview.postMessage →
+// Rust WebMessageReceived 桥 → sztu:menu-action 事件回传主窗口。
+
+interface MenuOverlayOptions {
+  /** 无 URL 时菜单项全部禁用（与 HTML 菜单的 :disabled 行为一致） */
+  disabled?: boolean;
+  /** 跟随主窗口暗色主题 */
+  dark?: boolean;
+}
+
+/** 菜单 overlay 页面：全区域透明遮罩（点击=关闭）+ 右上角菜单卡片 */
+function buildMenuHtml(options: MenuOverlayOptions) {
+  const disabled = options.disabled ? " disabled" : "";
+  const dark = !!options.dark;
+  const icon = (paths: string) =>
+    `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const item = (action: string, label: string, paths: string) =>
+    `<button type="button" data-action="${action}"${disabled}>${icon(paths)}${label}</button>`;
+  const body = [
+    item("edit-address", "编辑地址", '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>'),
+    item("copy-url", "复制链接", '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/>'),
+    '<div class="divider"></div>',
+    item("select-element", "选择元素", '<path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.062z"/>'),
+    item("css-inspector", "CSS检查器", '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'),
+    item("device-toolbar", "设备工具栏", '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>'),
+    item("devtools", "打开 DevTools", '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>'),
+  ].join("");
+  const theme = dark
+    ? ".menu{background:#292929;border-color:#464646;box-shadow:0 12px 28px rgb(0 0 0/38%)}.menu button{color:#d7d7d7}.menu button:hover:not(:disabled){background:#3a3a3a;color:#fff}.divider{background:#444}"
+    : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;user-select:none;cursor:default}
+.backdrop{position:fixed;inset:0}
+.menu{position:fixed;top:6px;right:9px;display:grid;min-width:156px;padding:5px;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 10px 24px rgb(20 25 30/16%)}
+.menu button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 9px;color:#444;background:transparent;border:0;border-radius:6px;font-size:12px;text-align:left;cursor:pointer}
+.menu button:hover:not(:disabled){background:#f2f3f4;color:#222}
+.menu button:disabled{color:#aaa;cursor:default}
+.divider{height:1px;margin:4px 3px;background:#eee}
+${theme}
+</style></head><body><div class="backdrop" id="backdrop"></div><div class="menu" role="menu">${body}</div>
+<script>
+function send(action){
+  try{window.chrome.webview.postMessage('__szmenu__:'+action)}catch(e){}
+}
+document.getElementById('backdrop').addEventListener('click',function(){send('close')});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')send('close')});
+var btns=document.querySelectorAll('.menu button[data-action]');
+for(var i=0;i<btns.length;i++)(function(btn){
+  btn.addEventListener('click',function(){if(btn.disabled)return;send(btn.getAttribute('data-action'))});
+})(btns[i]);
+<\/script></body></html>`;
+}
+
+/** 关闭菜单 overlay；notify=true 时向父组件抛 menu-close 同步 browserMenuOpen 状态 */
+async function hideMenuOverlay(notify = true) {
+  const instance = menuWebview;
+  menuWebview = null;
+  if (!instance) return;
+  try {
+    await instance.close();
+  } catch {
+    // ignore close errors
+  }
+  if (notify) emit("menu-close");
+}
+
+/** 打开菜单 overlay：覆盖浏览器舞台区域的透明子 webview，返回是否创建成功 */
+async function showMenuOverlay(options: MenuOverlayOptions = {}): Promise<boolean> {
+  if (!nativeRuntime) return false;
+  await hideMenuOverlay(false);
+  const rect = host.value?.getBoundingClientRect();
+  if (!rect || rect.width < 1 || rect.height < 1) return false;
+  await new Promise((r) => setTimeout(r, 30)); // 等系统完成旧实例清理
+
+  const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(buildMenuHtml(options));
+  let instance: Webview;
+  try {
+    instance = new Webview(getCurrentWindow(), menuLabel(), {
+      url: dataUrl,
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+      focus: true,
+      transparent: true,
+    });
+  } catch {
+    return false;
+  }
+  menuWebview = instance;
+  // 只有子 webview 创建成功且消息桥挂载完成后才切换到原生菜单；否则父组件
+  // 继续显示 HTML 回退菜单，避免出现“状态已打开但界面上什么都没有”。
+  const ready = await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(ok);
+    };
+    const timeout = window.setTimeout(() => finish(false), 2_000);
+    instance.once("tauri://error", () => finish(false));
+    instance.once("tauri://created", async () => {
+      try {
+        await invoke<void>("browser_menu_attach", { label: menuLabel() });
+        finish(true);
+      } catch {
+        finish(false);
+      }
+    });
+  });
+  if (!ready && menuWebview === instance) await hideMenuOverlay(false);
+  return ready;
 }
 
 /** 轮询 webview URL：同步地址栏 + 拾取元素选择器写入的 #szpk= 结果 */
@@ -625,26 +755,31 @@ function onIframeLoad() {
   }
 }
 
-const syncPosition = () => { void positionWebview(); };
+/** 视口/舞台尺寸变化：菜单 overlay 位置失效，直接关闭（父组件经 menu-close 同步状态） */
+function handleViewportShift() {
+  if (menuWebview) void hideMenuOverlay();
+  void positionWebview();
+}
 
 watch(() => props.url, (newUrl) => {
   if (newUrl && newUrl !== currentUrl) {
     void navigateTo(newUrl);
   }
 });
-watch(() => props.visible, () => {
+watch(() => props.visible, async () => {
+  if (!props.visible && menuWebview) void hideMenuOverlay();
+  await nextTick();
   void syncVisibility();
 });
 
-/** Rust 原生桥广播的事件监听句柄（sztu:element-picked） */
+/** Rust 原生桥广播的事件监听句柄（sztu:element-picked / sztu:menu-action） */
 let unlistenPick: UnlistenFn | null = null;
+let unlistenMenu: UnlistenFn | null = null;
 
 onMounted(async () => {
-  resizeObserver = new ResizeObserver(() => {
-    void positionWebview();
-  });
+  resizeObserver = new ResizeObserver(handleViewportShift);
   if (host.value) resizeObserver.observe(host.value);
-  window.addEventListener("resize", syncPosition);
+  window.addEventListener("resize", handleViewportShift);
   // 元素选择器主通道：Rust 侧 WebView2 WebMessageReceived 转发的事件
   if (nativeRuntime) {
     try {
@@ -663,6 +798,24 @@ onMounted(async () => {
     } catch {
       // 监听失败时 hash 后备通道仍可用
     }
+    // 菜单 overlay 主通道：Rust 侧 WebView2 WebMessageReceived 转发的事件
+    try {
+      unlistenMenu = await listen<{ label: string; action: string }>(
+        "sztu:menu-action",
+        (event) => {
+          if (event.payload.label !== menuLabel()) return;
+          const action = event.payload.action;
+          if (action === "close") {
+            void hideMenuOverlay(); // 抛 menu-close → 父组件复位 browserMenuOpen
+          } else {
+            void hideMenuOverlay(false); // 状态复位交给 menu-action 处理器
+            emit("menu-action", action);
+          }
+        },
+      );
+    } catch {
+      // 监听失败时菜单退化为隐藏网页模式（showMenuOverlay 返回 false 前已处理）
+    }
   }
   void renderNativePage();
 });
@@ -673,8 +826,12 @@ onBeforeUnmount(() => {
     unlistenPick();
     unlistenPick = null;
   }
+  if (unlistenMenu) {
+    unlistenMenu();
+    unlistenMenu = null;
+  }
   resizeObserver?.disconnect();
-  window.removeEventListener("resize", syncPosition);
+  window.removeEventListener("resize", handleViewportShift);
   void closeWebview();
 });
 
@@ -684,6 +841,8 @@ defineExpose({
   reload,
   navigateTo,
   startElementPicker,
+  showMenuOverlay,
+  hideMenuOverlay,
   /** 切换 DevTools，返回 true=已打开 / false=已关闭，失败时抛错 */
   openDevTools: async (): Promise<boolean> => {
     if (!nativeRuntime || !webview) {

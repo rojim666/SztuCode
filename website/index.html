@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SztuCode — Think it. Build it.</title>
+  <meta name="description" content="SztuCode 是一个本地优先、事件驱动、可审计的开源 AI Coding Agent 运行时，提供 TypeScript 与 Python 双实现。">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* ========== Reset & Base ========== */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body {
+      font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0a0a0a;
+      background: #fff;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    ::selection { background: #00dc9b; color: #000; }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; }
+    code, pre, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+    /* ========== Utilities ========== */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500;
+      color: #00a876; letter-spacing: 0.08em; text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .eyebrow::before { content: ''; width: 24px; height: 1px; background: #00a876; }
+    .section-title {
+      font-size: clamp(32px, 5vw, 52px); font-weight: 800; line-height: 1.15;
+      letter-spacing: -0.02em; margin-bottom: 20px; color: #0a0a0a;
+    }
+    .section-desc {
+      font-size: 18px; color: #52525b; max-width: 600px; line-height: 1.7;
+    }
+
+    /* ========== Navigation ========== */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 0 24px; transition: background 0.3s, backdrop-filter 0.3s, border-color 0.3s;
+      border-bottom: 1px solid transparent;
+    }
+    .nav.scrolled {
+      background: rgba(255, 255, 255, 0.88); backdrop-filter: blur(20px);
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto; height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 700; font-size: 18px; color: #0a0a0a; letter-spacing: -0.01em;
+    }
+    .nav-logo-icon {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      color: #0a0a0a;
+    }
+    .nav-logo-icon svg { width: 100%; height: 100%; }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links a {
+      font-size: 14px; font-weight: 500; color: rgba(10,10,10,0.6);
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: #0a0a0a; }
+    .nav-cta {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 20px; border-radius: 8px;
+      background: #0a0a0a; color: #fff !important; font-weight: 600; font-size: 14px;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+    }
+    .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,0,0,0.15); background: #00dc9b; color: #000 !important; }
+    .nav-cta .gh-icon { width: 18px; height: 18px; }
+
+    /* ========== Hero ========== */
+    .hero {
+      position: relative; min-height: 100vh;
+      background: #fff; color: #0a0a0a;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 120px 24px 80px; overflow: hidden;
+    }
+    .hero-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 100%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 100%);
+    }
+    .hero-glow {
+      position: absolute; top: 15%; left: 50%; transform: translateX(-50%);
+      width: 700px; height: 500px; pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0,220,155,0.07) 0%, transparent 70%);
+    }
+    .hero-content { position: relative; z-index: 2; text-align: center; max-width: 900px; margin-bottom: 60px; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 100px;
+      border: 1px solid rgba(0,168,118,0.2); background: rgba(0,220,155,0.06);
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #00a876;
+      margin-bottom: 32px;
+    }
+    .hero-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #00dc9b; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .hero h1 {
+      font-size: clamp(44px, 8vw, 80px); font-weight: 900; line-height: 1.05;
+      letter-spacing: -0.03em; margin-bottom: 24px; color: #0a0a0a;
+    }
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, #00dc9b 0%, #00b4d8 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero h1 .mono-text {
+      font-family: 'JetBrains Mono', monospace; font-weight: 500;
+      font-size: 0.45em; color: rgba(10,10,10,0.4);
+      display: block; margin-top: 16px; letter-spacing: 0;
+    }
+    .hero-sub {
+      font-size: clamp(16px, 2vw, 20px); color: rgba(10,10,10,0.55);
+      max-width: 620px; margin: 0 auto 40px; line-height: 1.7;
+    }
+    .hero-actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px; border-radius: 10px;
+      background: #0a0a0a; color: #fff; font-weight: 600; font-size: 15px;
+      transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.18); background: #00dc9b; color: #000; }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px; border-radius: 10px;
+      border: 1px solid #e4e4e7; color: #0a0a0a; font-weight: 500; font-size: 15px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .btn-secondary:hover { border-color: #0a0a0a; background: #fafafa; }
+
+    /* ========== Interactive Client Demo ========== */
+    .hero-app {
+      position: relative; z-index: 2; width: 100%; max-width: 1000px;
+      border-radius: 10px; overflow: hidden;
+      background: #f0f2f3; border: 1px solid #d5dadc;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.03);
+      display: flex; flex-direction: column;
+      height: 580px;
+      font-family: -apple-system, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+      font-size: 13px; color: #202426;
+    }
+    /* Titlebar (Windows style) */
+    .app-titlebar {
+      height: 36px; background: #f0f2f3; display: flex; align-items: center;
+      padding: 0; flex-shrink: 0; user-select: none;
+      border-bottom: 1px solid #e4e7e9;
+    }
+    .titlebar-menu { display: flex; align-items: center; padding-left: 8px; gap: 0; flex: 1; }
+    .titlebar-menu-item {
+      padding: 0 10px; font-size: 12px; color: #202426; cursor: pointer;
+      height: 36px; display: flex; align-items: center;
+    }
+    .titlebar-menu-item:hover { background: #e4e7e9; }
+    .titlebar-menu-item.titlebar-logo {
+      padding: 0 8px 0 6px; font-weight: 700; font-size: 13px; gap: 6px; display: none;
+    }
+    .titlebar-logo-icon { width: 18px; height: 18px; }
+    .titlebar-logo-icon svg { width: 100%; height: 100%; }
+    .titlebar-controls { display: flex; }
+    .titlebar-btn {
+      width: 46px; height: 36px; display: flex; align-items: center; justify-content: center;
+      color: #5a6166; font-size: 12px; cursor: pointer; transition: background 0.1s;
+      border: none; background: none;
+    }
+    .titlebar-btn:hover { background: #e4e7e9; }
+    .titlebar-btn.close:hover { background: #e81123; color: #fff; }
+    /* Work header (visible when chatting) */
+    .work-header {
+      height: 44px; background: #fff; border-bottom: 1px solid #eef0f1;
+      display: none; align-items: center; padding: 0 16px; flex-shrink: 0;
+    }
+    .work-header.visible { display: flex; }
+    .work-project {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
+      font-weight: 600; color: #202426; cursor: pointer; padding: 4px 8px;
+      border-radius: 6px; transition: background 0.12s;
+    }
+    .work-project:hover { background: #f4f6f7; }
+    .work-header-spacer { flex: 1; }
+    .work-header-actions { display: flex; gap: 2px; }
+    .work-header-btn {
+      width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #8c9498; cursor: pointer; border: none;
+      background: none; font-size: 15px; transition: all 0.12s;
+    }
+    .work-header-btn:hover { background: #f4f6f7; color: #202426; }
+    /* App body */
+    .app-body { display: flex; flex: 1; overflow: hidden; }
+    /* Sidebar */
+    .app-sidebar {
+      width: 150px; background: #f0f2f3; border-right: 1px solid #e4e7e9;
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .sidebar-top {
+      padding: 10px 10px 6px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-brand-text { font-weight: 700; font-size: 15px; color: #202426; }
+    .sidebar-search {
+      width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #8c9498; cursor: pointer; border: none;
+      background: none; font-size: 14px; transition: background 0.12s;
+    }
+    .sidebar-search:hover { background: #e4e7e9; color: #202426; }
+    .sidebar-nav { padding: 2px 6px; display: flex; flex-direction: column; gap: 0; }
+    .sidebar-nav-item {
+      padding: 7px 10px; border-radius: 6px; font-size: 13px; color: #202426;
+      cursor: pointer; display: flex; align-items: center; gap: 8px;
+      transition: all 0.1s; border: none; background: none; width: 100%; text-align: left;
+      font-family: inherit;
+    }
+    .sidebar-nav-item:hover { background: #e4e7e9; }
+    .sidebar-nav-item .nav-icon { font-size: 14px; width: 18px; text-align: center; line-height: 1; }
+    .sidebar-section { padding: 14px 6px 4px; }
+    .sidebar-section-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 0 4px 4px;
+    }
+    .sidebar-section-label {
+      font-size: 11px; color: #8c9498; font-weight: 500;
+    }
+    .sidebar-section-btn {
+      width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center;
+      justify-content: center; color: #8c9498; cursor: pointer; border: none;
+      background: none; font-size: 12px;
+    }
+    .sidebar-project {
+      padding: 5px 10px; border-radius: 6px; font-size: 13px; color: #202426;
+      cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;
+      transition: background 0.1s;
+    }
+    .sidebar-project:hover { background: #e4e7e9; }
+    .sidebar-conv {
+      padding: 5px 10px 5px 26px; border-radius: 6px; font-size: 13px; color: #5a6166;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .sidebar-conv:hover { background: #e4e7e9; }
+    .sidebar-conv.active { background: #e4e7e9; color: #202426; font-weight: 500; }
+    .sidebar-footer {
+      margin-top: auto; padding: 8px 10px; display: flex; align-items: center;
+      justify-content: space-between;
+    }
+    .sidebar-status { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #5a6166; }
+    .sidebar-status .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #48a366; flex-shrink: 0; }
+    .sidebar-status b { color: #202426; font-weight: 500; font-size: 11px; }
+    .sidebar-status small { color: #48a366; font-size: 11px; margin-left: 2px; }
+    .sidebar-settings {
+      width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #8c9498; cursor: pointer; border: none;
+      background: none; font-size: 14px; transition: background 0.12s;
+    }
+    .sidebar-settings:hover { background: #e4e7e9; color: #202426; }
+    /* Main */
+    .app-main { flex: 1; display: flex; flex-direction: column; background: #fff; overflow: hidden; min-width: 0; }
+    .app-chat { flex: 1; overflow-y: auto; position: relative; }
+    .app-chat::-webkit-scrollbar { width: 6px; }
+    .app-chat::-webkit-scrollbar-thumb { background: #d5dadc; border-radius: 3px; }
+    /* Welcome */
+    .app-welcome {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; padding: 40px 32px; gap: 0;
+    }
+    .app-welcome.hidden { display: none; }
+    .welcome-mark { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+    .welcome-logo { width: 48px; height: 48px; color: #000; flex-shrink: 0; }
+    .welcome-logo svg { width: 100%; height: 100%; }
+    .welcome-title { font-size: 42px; font-weight: 700; color: #000; letter-spacing: -0.02em; line-height: 1.1; }
+    /* Composer */
+    .app-composer { padding: 0 24px 12px; flex-shrink: 0; }
+    .composer-shell {
+      background: #fff; border: 1px solid #dfe2e4; border-radius: 14px;
+      transition: border-color 0.15s, box-shadow 0.15s; overflow: hidden;
+    }
+    .composer-shell:focus-within { border-color: #c0c6c9; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .composer-input {
+      width: 100%; border: none; outline: none; resize: none; padding: 14px 16px 0;
+      font-size: 14px; line-height: 1.6; color: #202426; background: transparent;
+      font-family: inherit; min-height: 24px; max-height: 120px;
+    }
+    .composer-input::placeholder { color: #a8adb2; }
+    .composer-toolbar { display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px; }
+    .cb-btn {
+      width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #8c9498; cursor: pointer; border: none;
+      background: none; font-size: 15px; transition: all 0.1s; flex-shrink: 0;
+    }
+    .cb-btn:hover { background: #f4f6f7; color: #202426; }
+    .cb-btn.file { color: #48a366; }
+    .cb-btn.chat { color: #3b82f6; }
+    .cb-perm {
+      display: inline-flex; align-items: center; gap: 3px; padding: 4px 8px;
+      border-radius: 6px; font-size: 12px; color: #5a6166; cursor: pointer;
+      border: none; background: none; font-family: inherit; transition: background 0.1s;
+      margin-left: 2px;
+    }
+    .cb-perm:hover { background: #f4f6f7; color: #202426; }
+    .cb-spacer { flex: 1; }
+    .cb-model {
+      display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+      color: #5a6166; cursor: pointer; padding: 4px 6px; border-radius: 6px;
+      transition: background 0.1s; border: none; background: none; font-family: inherit;
+    }
+    .cb-model:hover { background: #f4f6f7; color: #202426; }
+    .cb-model .model-dot { width: 7px; height: 7px; border-radius: 50%; background: #48a366; }
+    .cb-send {
+      width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; border: none; cursor: pointer; font-size: 14px;
+      transition: all 0.15s; flex-shrink: 0; color: #fff;
+    }
+    .cb-send:disabled { background: #e4e7e9; color: #b0b7ba; cursor: not-allowed; }
+    .cb-send.enabled { background: #c8cdd0; color: #fff; }
+    .cb-send.enabled:hover { background: #202426; }
+    .cb-send.stop { background: #c0453f; color: #fff; }
+    /* Project bar below composer */
+    .composer-project-bar {
+      display: flex; align-items: center; gap: 4px; padding: 6px 12px;
+      background: #f4f6f7; border-top: 1px solid #ebedef;
+      border-radius: 0 0 12px 12px; margin: 0 -1px -1px;
+    }
+    .cp-bar-item {
+      display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
+      border-radius: 6px; font-size: 12px; color: #5a6166; cursor: pointer;
+      border: none; background: none; font-family: inherit; transition: background 0.1s;
+    }
+    .cp-bar-item:hover { background: #e7ebed; color: #202426; }
+    .cp-bar-sep { width: 1px; height: 16px; background: #dde1e4; margin: 0 2px; }
+    /* Stats bar (visible when chatting) */
+    .chat-stats {
+      display: none; align-items: center; justify-content: center; gap: 8px;
+      padding: 4px 0 6px; font-size: 11px; color: #a8adb2; font-family: 'JetBrains Mono', monospace;
+    }
+    .chat-stats.visible { display: flex; }
+    .chat-stats .stat-sep { color: #d5dadc; }
+    .chat-stats .stat-bar {
+      width: 60px; height: 3px; background: #eef0f1; border-radius: 2px; overflow: hidden;
+    }
+    .chat-stats .stat-bar-fill { height: 100%; background: #b0b7ba; border-radius: 2px; }
+    /* Messages */
+    .chat-messages { padding: 16px 24px 8px; display: none; flex-direction: column; gap: 0; }
+    .chat-messages.visible { display: flex; }
+    .msg-user-wrap { display: flex; justify-content: flex-end; margin-bottom: 20px; }
+    .msg-user-bubble {
+      max-width: min(70%, 420px); padding: 8px 14px; background: #f4f6f7;
+      border-radius: 18px; font-size: 14px; color: #202426; line-height: 1.5;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .msg-assistant-wrap { margin-bottom: 24px; }
+    .msg-assistant-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .msg-avatar-sm {
+      width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+      background: #000; display: flex; align-items: center; justify-content: center;
+    }
+    .msg-avatar-sm svg { width: 16px; height: 16px; color: #fff; }
+    .msg-ctx-label { font-size: 13px; font-weight: 600; color: #202426; }
+    .msg-badge {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px;
+      background: #f4f6f7; font-size: 11px; color: #8c9498; font-weight: 400;
+    }
+    .msg-process-toggle {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+      color: #8c9498; cursor: pointer; padding: 4px 0; border: none;
+      background: none; font-family: inherit; margin-bottom: 8px;
+    }
+    .msg-process-toggle:hover { color: #202426; }
+    .msg-divider { height: 1px; background: #eef0f1; margin-bottom: 12px; }
+    .msg-text { font-size: 14px; color: #202426; line-height: 1.7; white-space: pre-wrap; }
+    .msg-actions { display: flex; gap: 2px; margin-top: 10px; opacity: 0; transition: opacity 0.15s; }
+    .msg-assistant-wrap:hover .msg-actions { opacity: 1; }
+    .msg-action-btn {
+      width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #a8adb2; cursor: pointer; border: none;
+      background: none; font-size: 14px; transition: all 0.1s;
+    }
+    .msg-action-btn:hover { background: #f4f6f7; color: #202426; }
+    /* Thinking state */
+    .thinking-indicator {
+      display: flex; align-items: center; gap: 6px; padding: 8px 0; font-size: 12px; color: #8c9498;
+    }
+    .thinking-dots { display: flex; gap: 3px; }
+    .thinking-dots span {
+      width: 5px; height: 5px; border-radius: 50%; background: #b0b7ba;
+      animation: thinkBounce 1.4s infinite ease-in-out both;
+    }
+    .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes thinkBounce {
+      0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+      40% { transform: scale(1); opacity: 1; }
+    }
+    /* Process details (collapsible) */
+    .process-detail {
+      display: none; padding: 8px 0; margin-bottom: 8px; font-size: 12px;
+      color: #8c9498; border-left: 2px solid #eef0f1; padding-left: 12px;
+      font-family: 'JetBrains Mono', monospace; line-height: 1.8;
+    }
+    .process-detail.open { display: block; }
+    .process-detail .step { display: flex; gap: 8px; align-items: flex-start; }
+    .process-detail .step-icon { flex-shrink: 0; font-size: 11px; margin-top: 2px; }
+    .process-detail .step-text { color: #5a6166; }
+    /* Scroll indicator */
+    .scroll-hint {
+      position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 2;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; color: rgba(10,10,10,0.3);
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .scroll-line { width: 1px; height: 40px; background: linear-gradient(to bottom, rgba(10,10,10,0.2), transparent); }
+
+    /* ========== Social Proof Band ========== */
+    .proof-band {
+      padding: 48px 0; border-bottom: 1px solid #f0f0f0; background: #fff;
+    }
+    .proof-band .container {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 32px;
+    }
+    .proof-label { font-size: 13px; color: #a1a1aa; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; }
+    .proof-stats { display: flex; gap: 48px; flex-wrap: wrap; }
+    .proof-stat { text-align: center; }
+    .proof-num { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: #0a0a0a; }
+    .proof-num .mono { font-family: 'JetBrains Mono', monospace; color: #00a876; }
+    .proof-label-sm { font-size: 13px; color: #71717a; margin-top: 4px; }
+
+    /* ========== Features ========== */
+    .features { padding: 120px 0; background: #fff; }
+    .features-header { max-width: 700px; margin-bottom: 64px; }
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    }
+    .feature-card {
+      padding: 32px; border-radius: 16px; border: 1px solid #f0f0f0;
+      transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+      position: relative; overflow: hidden; background: #fff;
+    }
+    .feature-card:hover {
+      border-color: #d4d4d8; transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.06);
+    }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: #f4f4f5; display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; color: #0a0a0a; }
+    .feature-card p { font-size: 14px; color: #71717a; line-height: 1.7; }
+    .feature-tag {
+      display: inline-block; margin-top: 16px;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      padding: 3px 8px; border-radius: 4px; background: #f4f4f5; color: #52525b;
+    }
+
+    /* ========== Architecture Section ========== */
+    .arch {
+      padding: 120px 0; background: #fafafa; color: #0a0a0a; position: relative; overflow: hidden;
+    }
+    .arch-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .arch .container { position: relative; z-index: 2; }
+    .arch-header { margin-bottom: 56px; }
+    .arch-header .section-desc { color: #71717a; }
+    .arch-diagram {
+      display: grid; grid-template-columns: 1fr auto 1fr; gap: 32px; align-items: center;
+      margin-bottom: 48px;
+    }
+    .arch-col {
+      background: #fff; border: 1px solid #e4e4e7;
+      border-radius: 16px; padding: 28px;
+    }
+    .arch-col h4 {
+      font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      color: #00a876; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px;
+    }
+    .arch-node {
+      padding: 12px 16px; border-radius: 8px; background: #fafafa;
+      border: 1px solid #f0f0f0; margin-bottom: 8px;
+      font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 10px;
+      color: #27272a;
+    }
+    .arch-node:last-child { margin-bottom: 0; }
+    .arch-node-icon { width: 20px; height: 20px; border-radius: 4px; background: rgba(0,220,155,0.1); display: flex; align-items: center; justify-content: center; font-size: 10px; color: #00a876; flex-shrink: 0; font-weight: 700; }
+    .arch-center {
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+    .arch-center-badge {
+      padding: 12px 24px; border-radius: 12px;
+      background: #0a0a0a; color: #fff;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+      white-space: nowrap;
+    }
+    .arch-arrow { color: #d4d4d8; font-size: 24px; }
+    .arch-protocol {
+      text-align: center; padding: 20px; border-radius: 12px;
+      background: rgba(0,220,155,0.04); border: 1px dashed rgba(0,168,118,0.2);
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #52525b;
+    }
+    .arch-protocol strong { color: #00a876; }
+
+    /* ========== Dual Runtime ========== */
+    .runtime { padding: 120px 0; background: #fff; }
+    .runtime-header { max-width: 700px; margin-bottom: 56px; }
+    .runtime-tabs {
+      display: flex; gap: 4px; padding: 4px; border-radius: 10px;
+      background: #f4f4f5; width: fit-content; margin-bottom: 32px;
+    }
+    .runtime-tab {
+      padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 500;
+      color: #71717a; transition: all 0.2s;
+    }
+    .runtime-tab.active { background: #fff; color: #0a0a0a; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .runtime-panel { display: none; }
+    .runtime-panel.active { display: block; }
+    .runtime-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+    .code-block {
+      background: #0d0d0d; border-radius: 12px; overflow: hidden;
+      border: 1px solid #1a1a1a;
+    }
+    .code-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; background: #151515; border-bottom: 1px solid #1f1f1f;
+    }
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: rgba(255,255,255,0.35); padding: 2px 8px; border-radius: 4px; background: rgba(255,255,255,0.05);
+    }
+    .code-body {
+      padding: 20px; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      line-height: 1.8; color: rgba(255,255,255,0.65); overflow-x: auto;
+    }
+    .code-body .comment { color: rgba(255,255,255,0.28); }
+    .code-body .cmd { color: #00dc9b; }
+    .code-body .flag { color: #7dd3fc; }
+    .code-body .str { color: #fbbf24; }
+    .code-body .prompt { color: rgba(255,255,255,0.28); }
+    .runtime-info h3 { font-size: 24px; font-weight: 700; margin-bottom: 16px; letter-spacing: -0.01em; color: #0a0a0a; }
+    .runtime-info p { font-size: 15px; color: #52525b; line-height: 1.8; margin-bottom: 24px; }
+    .runtime-specs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .runtime-spec {
+      padding: 14px; border-radius: 10px; background: #fafafa; border: 1px solid #f0f0f0;
+    }
+    .runtime-spec-label {
+      font-family: 'JetBrains Mono', monospace; font-size: 11px;
+      color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;
+    }
+    .runtime-spec-value { font-size: 14px; font-weight: 600; color: #0a0a0a; }
+
+    /* ========== Philosophy ========== */
+    .philosophy {
+      padding: 120px 0; background: #fafafa; position: relative; overflow: hidden;
+    }
+    .philosophy-bg {
+      position: absolute; right: -100px; top: 50%; transform: translateY(-50%);
+      font-size: 300px; font-weight: 900; color: rgba(0,0,0,0.025);
+      line-height: 1; pointer-events: none; user-select: none;
+      font-family: 'Inter', sans-serif; letter-spacing: -0.05em;
+    }
+    .philosophy .container { position: relative; z-index: 2; }
+    .philosophy-header { max-width: 700px; margin-bottom: 56px; }
+    .philosophy-pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .pillar {
+      padding: 36px 28px; border-radius: 16px; background: #fff;
+      border: 1px solid #f0f0f0; position: relative;
+    }
+    .pillar-num {
+      font-family: 'JetBrains Mono', monospace; font-size: 48px; font-weight: 800;
+      color: #00a876; line-height: 1; margin-bottom: 20px; opacity: 0.5;
+    }
+    .pillar h3 { font-size: 20px; font-weight: 700; margin-bottom: 12px; color: #0a0a0a; }
+    .pillar p { font-size: 14px; color: #71717a; line-height: 1.8; }
+
+    /* ========== Desktop Showcase ========== */
+    .showcase { padding: 120px 0; background: #fff; }
+    .showcase-header { text-align: center; max-width: 700px; margin: 0 auto 56px; }
+    .showcase-header .eyebrow { justify-content: center; }
+    .showcase-header .section-desc { margin: 0 auto; }
+    .showcase-mockup {
+      border-radius: 16px; overflow: hidden;
+      border: 1px solid #e4e4e7;
+      box-shadow: 0 32px 64px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.02);
+      background: #fff;
+    }
+    .mockup-titlebar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; background: #fafafa; border-bottom: 1px solid #f0f0f0;
+    }
+    .mockup-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .mockup-dot.red { background: #ff5f57; }
+    .mockup-dot.yellow { background: #febc2e; }
+    .mockup-dot.green { background: #28c840; }
+    .mockup-content { display: grid; grid-template-columns: 200px 1fr; min-height: 400px; }
+    .mockup-sidebar {
+      background: #fafafa; border-right: 1px solid #f0f0f0; padding: 16px;
+    }
+    .mockup-sidebar-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 8px; font-size: 13px;
+      color: #52525b; margin-bottom: 2px;
+    }
+    .mockup-sidebar-item.active { background: #fff; color: #0a0a0a; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .mockup-sidebar-icon { width: 16px; height: 16px; border-radius: 3px; background: #e4e4e7; flex-shrink: 0; }
+    .mockup-main { padding: 60px 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .mockup-logo {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 32px;
+    }
+    .mockup-logo-icon {
+      width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+      color: #0a0a0a;
+    }
+    .mockup-logo-icon svg { width: 100%; height: 100%; }
+    .mockup-logo-text { font-size: 36px; font-weight: 800; letter-spacing: -0.02em; color: #0a0a0a; }
+    .mockup-input {
+      width: 100%; max-width: 500px; padding: 16px 20px;
+      border-radius: 12px; border: 2px solid #f0f0f0;
+      font-size: 15px; color: #a1a1aa; background: #fafafa;
+    }
+    .mockup-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      width: 100%; max-width: 500px; margin-top: 8px; padding: 0 4px;
+    }
+    .mockup-toolbar-left, .mockup-toolbar-right {
+      display: flex; align-items: center; gap: 8px; font-size: 12px; color: #a1a1aa;
+    }
+    .mockup-badge {
+      padding: 4px 10px; border-radius: 6px; background: #fff7ed; color: #ea580c;
+      font-size: 11px; font-weight: 500; border: 1px solid #fed7aa;
+    }
+
+    /* ========== CTA ========== */
+    .cta {
+      padding: 120px 0; background: #fff; color: #0a0a0a; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .cta-glow {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 600px; height: 400px; pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0,220,155,0.06) 0%, transparent 70%);
+    }
+    .cta .container { position: relative; z-index: 2; }
+    .cta h2 {
+      font-size: clamp(36px, 5vw, 56px); font-weight: 900; letter-spacing: -0.03em;
+      margin-bottom: 20px; line-height: 1.1; color: #0a0a0a;
+    }
+    .cta p { font-size: 18px; color: #71717a; margin-bottom: 40px; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .cta-install {
+      max-width: 560px; margin: 0 auto 32px;
+      background: #f4f4f5; border: 1px solid #e4e4e7;
+      border-radius: 12px; padding: 16px 20px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .cta-install-prompt {
+      font-family: 'JetBrains Mono', monospace; color: #00a876; font-size: 14px; flex-shrink: 0;
+    }
+    .cta-install-cmd {
+      font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #27272a; flex: 1;
+      text-align: left;
+    }
+    .cta-copy {
+      padding: 6px 12px; border-radius: 6px; background: #fff;
+      font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #71717a;
+      transition: background 0.2s, color 0.2s; border: 1px solid #e4e4e7;
+    }
+    .cta-copy:hover { background: #0a0a0a; color: #fff; border-color: #0a0a0a; }
+    .cta-links {
+      display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;
+      font-size: 14px; color: #a1a1aa;
+    }
+    .cta-links a { transition: color 0.2s; }
+    .cta-links a:hover { color: #00a876; }
+
+    /* ========== Footer ========== */
+    .footer {
+      padding: 48px 0; background: #fafafa; color: #71717a;
+      border-top: 1px solid #f0f0f0;
+    }
+    .footer-inner {
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px;
+    }
+    .footer-brand { display: flex; align-items: center; gap: 10px; }
+    .footer-brand-icon {
+      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+      color: #0a0a0a;
+    }
+    .footer-brand-icon svg { width: 100%; height: 100%; }
+    .footer-brand-name { font-weight: 600; font-size: 14px; color: #27272a; }
+    .footer-copy { font-size: 13px; color: #a1a1aa; }
+    .footer-links { display: flex; gap: 24px; }
+    .footer-links a { font-size: 13px; color: #71717a; transition: color 0.2s; }
+    .footer-links a:hover { color: #0a0a0a; }
+
+    /* ========== Responsive ========== */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .arch-diagram { grid-template-columns: 1fr; }
+      .arch-arrow { transform: rotate(90deg); }
+      .runtime-grid { grid-template-columns: 1fr; }
+      .philosophy-pillars { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .mockup-content { grid-template-columns: 1fr; }
+      .mockup-sidebar { display: none; }
+      .hero-app { height: 520px; }
+      .app-sidebar { width: 130px; }
+      .titlebar-menu-item { padding: 0 7px; font-size: 11px; }
+      .welcome-title { font-size: 32px; }
+    }
+    @media (max-width: 600px) {
+      .proof-stats { gap: 24px; }
+      .runtime-specs { grid-template-columns: 1fr; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .app-sidebar { display: none; }
+      .hero-app { height: 500px; border-radius: 8px; }
+      .titlebar-menu { display: none; }
+      .welcome-title { font-size: 26px; }
+      .welcome-mark { gap: 10px; }
+      .welcome-logo { width: 36px; height: 36px; }
+      .app-composer { padding: 0 12px 10px; }
+      .chat-messages { padding: 12px 14px 8px; }
+    }
+
+    /* ========== Reveal Animations ========== */
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav" id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <span class="nav-logo-icon">
+        <svg viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="128" y="128" width="768" height="768" rx="160" ry="160" stroke="currentColor" stroke-width="64" stroke-linejoin="round"/>
+          <circle cx="296" cy="296" r="36" fill="currentColor"/>
+          <circle cx="408" cy="296" r="36" fill="currentColor"/>
+          <circle cx="520" cy="296" r="36" fill="currentColor"/>
+          <rect x="320" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+          <rect x="576" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+        </svg>
+      </span>
+      SztuCode
+    </a>
+    <div class="nav-links">
+      <a href="#features">特性</a>
+      <a href="#arch">架构</a>
+      <a href="#runtime">运行时</a>
+      <a href="#philosophy">理念</a>
+      <a href="https://github.com/rojim666/SztuCode" target="_blank" class="nav-cta">
+        <svg class="gh-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero" id="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      v0.2.0 — OPEN SOURCE
+    </div>
+    <h1>
+      Think it.<br><span class="gradient">Build it.</span>
+      <span class="mono-text">// 汝之所想，皆以言成</span>
+    </h1>
+    <p class="hero-sub">
+      SztuCode 是一个本地优先、事件驱动、可审计的开源 AI Coding Agent 运行时。
+      说你想做什么，它会规划、执行、测试，交付完整成果。
+    </p>
+    <div class="hero-actions">
+      <a href="#cta" class="btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        立即开始
+      </a>
+      <a href="https://github.com/rojim666/SztuCode" target="_blank" class="btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        查看源码
+      </a>
+    </div>
+  </div>
+
+  <!-- Interactive Client Demo -->
+  <div class="hero-app reveal" id="heroApp">
+    <!-- Windows-style Titlebar -->
+    <div class="app-titlebar">
+      <div class="titlebar-menu">
+        <span class="titlebar-menu-item">文件</span>
+        <span class="titlebar-menu-item">编辑</span>
+        <span class="titlebar-menu-item">视图</span>
+        <span class="titlebar-menu-item">帮助</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="titlebar-btn" title="最小化">—</button>
+        <button class="titlebar-btn" title="最大化">▢</button>
+        <button class="titlebar-btn close" title="关闭">✕</button>
+      </div>
+    </div>
+
+    <!-- Work header (visible in chat mode) -->
+    <div class="work-header" id="workHeader">
+      <button class="work-project">
+        <span>📂</span> SztuCode <span style="font-size:10px;color:#8c9498;">▾</span>
+      </button>
+      <div class="work-header-spacer"></div>
+      <div class="work-header-actions">
+        <button class="work-header-btn" title="清空">🗑</button>
+        <button class="work-header-btn" title="密钥">🔑</button>
+        <button class="work-header-btn" title="文件夹">📁</button>
+      </div>
+    </div>
+
+    <div class="app-body">
+      <!-- Sidebar -->
+      <aside class="app-sidebar">
+        <div class="sidebar-top">
+          <span class="sidebar-brand-text">SztuCode</span>
+          <button class="sidebar-search" title="搜索" onclick="focusComposer()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </button>
+        </div>
+        <nav class="sidebar-nav">
+          <button class="sidebar-nav-item" onclick="focusComposer()"><span class="nav-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </span>新建任务</button>
+          <button class="sidebar-nav-item"><span class="nav-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </span>全部任务</button>
+          <button class="sidebar-nav-item"><span class="nav-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </span>自动化</button>
+          <button class="sidebar-nav-item"><span class="nav-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          </span>技能</button>
+          <button class="sidebar-nav-item"><span class="nav-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          </span>浏览器连接</button>
+        </nav>
+        <div class="sidebar-section">
+          <div class="sidebar-section-header">
+            <span class="sidebar-section-label">项目</span>
+            <button class="sidebar-section-btn" title="打开项目">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            </button>
+          </div>
+          <div class="sidebar-project">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            SztuCode
+          </div>
+          <div class="sidebar-conv" id="sidebarConv">你好</div>
+        </div>
+        <div class="sidebar-footer">
+          <div class="sidebar-status">
+            <span class="status-dot"></span>
+            <div><b>本地服务</b><small>已连接</small></div>
+          </div>
+          <button class="sidebar-settings" title="设置">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Area -->
+      <div class="app-main">
+        <div class="app-chat" id="appChat">
+          <!-- Welcome State -->
+          <div class="app-welcome" id="appWelcome">
+            <div class="welcome-mark">
+              <div class="welcome-logo">
+                <svg viewBox="0 0 1024 1024" fill="none"><rect x="128" y="128" width="768" height="768" rx="160" ry="160" fill="currentColor"/><circle cx="296" cy="320" r="32" fill="#fff"/><circle cx="408" cy="320" r="32" fill="#fff"/><circle cx="520" cy="320" r="32" fill="#fff"/><rect x="328" y="440" width="112" height="220" rx="50" ry="50" fill="#fff"/><rect x="584" y="440" width="112" height="220" rx="50" ry="50" fill="#fff"/></svg>
+              </div>
+              <div class="welcome-title">Think it. Build it.</div>
+            </div>
+            <div class="app-composer" style="width:100%;max-width:560px;">
+              <div class="composer-shell">
+                <textarea class="composer-input" id="composerInput" rows="1" placeholder="汝之所想，皆以言成"></textarea>
+                <div class="composer-toolbar">
+                  <button class="cb-btn" title="添加" onclick="return false">+</button>
+                  <button class="cb-perm" id="permToggle">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <span id="permLabel">标准审批</span> ▾
+                  </button>
+                  <div class="cb-spacer"></div>
+                  <button class="cb-model">
+                    <span class="model-dot"></span> DeepSeek ▾
+                  </button>
+                  <button class="cb-send" id="sendBtn" disabled onclick="sendMessage()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="composer-project-bar">
+                <button class="cp-bar-item">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                  SztuCode ▾
+                </button>
+                <div class="cp-bar-sep"></div>
+                <button class="cp-bar-item" style="color:#48a366;" title="文件">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </button>
+                <button class="cp-bar-item" style="color:#3b82f6;" title="对话">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                </button>
+                <button class="cp-bar-item" title="刷新">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                </button>
+                <button class="cp-bar-item" title="更多">▾</button>
+              </div>
+            </div>
+          </div>
+          <!-- Chat Messages -->
+          <div class="chat-messages" id="chatMessages"></div>
+        </div>
+
+        <!-- Chat Stats (visible during/after response) -->
+        <div class="chat-stats" id="chatStats">
+          <span id="statsRounds">1 轮 · 1 步</span>
+          <span class="stat-sep">|</span>
+          <span>缓存命中 <span id="statsCache">4.6%</span></span>
+          <span class="stat-sep">|</span>
+          <span>输入 <span id="statsIn">15.8K</span> tok · 输出 <span id="statsOut">116</span> tok</span>
+          <span class="stat-sep">|</span>
+          <span>上下文 <span id="statsCtx">1.58%</span></span>
+          <div class="stat-bar"><div class="stat-bar-fill" id="statsBarFill" style="width:1.58%"></div></div>
+        </div>
+
+        <!-- Composer (chat mode, hidden initially) -->
+        <div class="app-composer" id="chatComposer" style="display:none;">
+          <div class="composer-shell">
+            <textarea class="composer-input" id="composerInputChat" rows="1" placeholder="汝之所想，皆以言成"></textarea>
+            <div class="composer-toolbar">
+              <button class="cb-btn" title="添加">+</button>
+              <button class="cb-btn file" title="文件">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </button>
+              <button class="cb-btn chat" title="对话">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+              </button>
+              <button class="cb-btn" title="Agent">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a9 9 0 0118 0v6"/><path d="M21 19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3zM3 19a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H3z"/></svg>
+              </button>
+              <button class="cb-perm" id="permToggleChat">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span id="permLabelChat">逐项审批</span> ▾
+              </button>
+              <div class="cb-spacer"></div>
+              <button class="cb-model">
+                <span class="model-dot"></span> DeepSeek ▾
+              </button>
+              <button class="cb-send" id="sendBtnChat" disabled onclick="sendMessage()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-hint">
+    <span>Scroll</span>
+    <div class="scroll-line"></div>
+  </div>
+</section>
+
+<!-- Proof Band -->
+<section class="proof-band">
+  <div class="container">
+    <span class="proof-label">Built for engineers, by engineers</span>
+    <div class="proof-stats">
+      <div class="proof-stat">
+        <div class="proof-num"><span class="mono">2</span> Runtimes</div>
+        <div class="proof-label-sm">TypeScript + Python 双实现</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-num"><span class="mono">4</span> Permission Modes</div>
+        <div class="proof-label-sm">normal / plan / accept_edits / auto</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-num"><span class="mono">MIT</span> Licensed</div>
+        <div class="proof-label-sm">完全开源，自由使用</div>
+      </div>
+      <div class="proof-stat">
+        <div class="proof-num"><span class="mono">∞</span> Extensible</div>
+        <div class="proof-label-sm">Skills / MCP / Subagents</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="features-header reveal">
+      <div class="eyebrow">Core Capabilities</div>
+      <h2 class="section-title">不只是聊天，<br>是真正的代码执行者</h2>
+      <p class="section-desc">从需求理解到代码交付，SztuCode 完整复现了 AI Coding Agent 的工程链路。</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <h3>Agent Runtime</h3>
+        <p>基于 ReAct 的多步推理、工具调用、结果回填和终止控制。Python 版支持工具并发执行。</p>
+        <span class="feature-tag">agent-loop</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <h3>桌面工作台</h3>
+        <p>Tauri 2 + Vue 3 构建的图形客户端，提供项目管理、时间线、Diff 审阅和权限审批。</p>
+        <span class="feature-tag">tauri + vue</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h3>终端 TUI</h3>
+        <p>Node CLI 与 Python Textual TUI 双终端入口，支持交互会话、任务执行和 Trace 回放。</p>
+        <span class="feature-tag">cli + tui</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3>四级权限系统</h3>
+        <p>normal / plan / accept_edits / auto 四种模式，持久化策略与 denial 追踪，范围升级留痕。</p>
+        <span class="feature-tag">permission</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <h3>可观测 Trace</h3>
+        <p>IPC、EventBus、LLM 三层 Trace，支持事件跟踪、过滤和回放，Agent 行为完全透明。</p>
+        <span class="feature-tag">observability</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <h3>多 Agent 协作</h3>
+        <p>Planner → Coder / Tester / Reviewer 结构化 DAG 编排，支持 Subagents 并行任务分发。</p>
+        <span class="feature-tag">multi-agent</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </div>
+        <h3>变更审阅</h3>
+        <p>桌面端展示文件变化和 Diff，支持接受、暂存与回退，每一次修改都由你掌控。</p>
+        <span class="feature-tag">diff-review</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h3>Skills & MCP</h3>
+        <p>Skills、Subagents 与 MCP 外部工具统一接入，生态可扩展，兼容现有工具链。</p>
+        <span class="feature-tag">extensible</span>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8l3 3-3 3M13 14h4"/></svg>
+        </div>
+        <h3>内置免费模型</h3>
+        <p>内置 opencode Zen 免费 profile，零配置即可使用 deepseek-v4-flash、mimo-v2.5 等模型。</p>
+        <span class="feature-tag">free-models</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture -->
+<section class="arch" id="arch">
+  <div class="arch-grid"></div>
+  <div class="container">
+    <div class="arch-header reveal">
+      <div class="eyebrow">Architecture</div>
+      <h2 class="section-title">Daemon/Client 分离架构</h2>
+      <p class="section-desc">长任务不依赖界面窗口生命周期，不同客户端共享一致的会话、权限和执行状态。</p>
+    </div>
+    <div class="arch-diagram reveal">
+      <div class="arch-col">
+        <h4>Clients</h4>
+        <div class="arch-node"><div class="arch-node-icon">D</div>Tauri + Vue 3 Desktop</div>
+        <div class="arch-node"><div class="arch-node-icon">></div>Node CLI (sztu-ts)</div>
+        <div class="arch-node"><div class="arch-node-icon">T</div>Textual TUI (sztu-tui)</div>
+        <div class="arch-node"><div class="arch-node-icon">Py</div>Python CLI (sztu-py)</div>
+        <div class="arch-node"><div class="arch-node-icon">E</div>Eval Runner</div>
+      </div>
+      <div class="arch-center">
+        <div class="arch-arrow">→</div>
+        <div class="arch-center-badge">JSON-RPC 2.0 / NDJSON</div>
+        <div class="arch-arrow">→</div>
+      </div>
+      <div class="arch-col">
+        <h4>Daemon Runtime</h4>
+        <div class="arch-node"><div class="arch-node-icon">A</div>Agent Loop / ReAct</div>
+        <div class="arch-node"><div class="arch-node-icon">W</div>Workspace & Permission</div>
+        <div class="arch-node"><div class="arch-node-icon">M</div>MCP / Skills / Git</div>
+        <div class="arch-node"><div class="arch-node-icon">S</div>Session & Memory</div>
+        <div class="arch-node"><div class="arch-node-icon">T</div>Trace & Telemetry</div>
+      </div>
+    </div>
+    <div class="arch-protocol reveal">
+      <strong>127.0.0.1:7438</strong> (TS) &nbsp;·&nbsp; <strong>127.0.0.1:7437</strong> (Py) &nbsp;·&nbsp; TCP / NDJSON / 双运行时可并行
+    </div>
+  </div>
+</section>
+
+<!-- Dual Runtime -->
+<section class="runtime" id="runtime">
+  <div class="container">
+    <div class="runtime-header reveal">
+      <div class="eyebrow">Dual Runtime</div>
+      <h2 class="section-title">TypeScript 与 Python<br>双语言镜像实现</h2>
+      <p class="section-desc">不是两套独立产品，而是同一套 daemon/client 架构的双语言实现。功能与契约镜像对齐，生态与入口彼此独立。</p>
+    </div>
+    <div class="runtime-tabs reveal">
+      <button class="runtime-tab active" data-tab="ts">TypeScript</button>
+      <button class="runtime-tab" data-tab="py">Python</button>
+    </div>
+    <div class="runtime-panel active" id="panel-ts">
+      <div class="runtime-grid">
+        <div class="code-block reveal">
+          <div class="code-header">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <div class="code-body">
+            <span class="comment"># 安装依赖</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm install</span><br>
+            <br>
+            <span class="comment"># 构建所有子包</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run build</span><br>
+            <br>
+            <span class="comment"># 启动桌面工作台（自动拉起 daemon）</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run tauri dev</span> <span class="flag">--prefix</span> desktop<br>
+            <span class="comment">// → Tauri 2 窗口启动，自动连接 127.0.0.1:7438</span><br>
+            <br>
+            <span class="comment"># 或先启动前端 dev server，再启动 Tauri</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run dev</span> <span class="flag">--prefix</span> desktop<br>
+            <span class="comment">// → Vite dev server 运行中</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run tauri dev</span> <span class="flag">--prefix</span> desktop
+          </div>
+        </div>
+        <div class="runtime-info reveal">
+          <h3>TypeScript 主线 · 桌面工作台</h3>
+          <p>当前产品主线。Tauri 2 + Vue 3 构建原生桌面应用，启动时自动拉起 daemon，开箱即用。同时提供 CLI 供终端用户与脚本集成。</p>
+          <div class="runtime-specs">
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">Daemon 端口</div>
+              <div class="runtime-spec-value mono">127.0.0.1:7438</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">桌面端</div>
+              <div class="runtime-spec-value">Tauri 2 + Vue 3</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">CLI 命令</div>
+              <div class="runtime-spec-value mono">npm run cli:ts</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">包管理</div>
+              <div class="runtime-spec-value">npm workspaces</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">质量工具</div>
+              <div class="runtime-spec-value">tsc / tsx --test</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">契约方式</div>
+              <div class="runtime-spec-value">TS 类型包</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="runtime-panel" id="panel-py">
+      <div class="runtime-grid">
+        <div class="code-block reveal">
+          <div class="code-header">
+            <div class="terminal-dot red"></div>
+            <div class="terminal-dot yellow"></div>
+            <div class="terminal-dot green"></div>
+            <span class="code-lang">bash</span>
+          </div>
+          <div class="code-body">
+            <span class="comment"># 安装 Python 依赖</span><br>
+            <span class="prompt">$</span> <span class="cmd">uv pip install -e .</span><br>
+            <br>
+            <span class="comment"># 启动 Python daemon (端口 7437)</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run daemon</span><br>
+            <br>
+            <span class="comment"># 连通性检查</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run cli:py</span> <span class="flag">--</span> ping<br>
+            <span class="comment">// pong from 127.0.0.1:7437</span><br>
+            <br>
+            <span class="comment"># 执行任务</span><br>
+            <span class="prompt">$</span> <span class="cmd">npm run cli:py</span> <span class="flag">--</span> run <span class="flag">--goal</span> <span class="str">"分析项目结构"</span><br>
+            <br>
+            <span class="comment"># Textual TUI 回放</span><br>
+            <span class="prompt">$</span> <span class="cmd">python -m sztu_code.tui</span> <span class="flag">--replay</span> &lt;run_id&gt;
+          </div>
+        </div>
+        <div class="runtime-info reveal">
+          <h3>Python 镜像实现</h3>
+          <p>默认内核，功能与 TS 版镜像对齐。基于 uv + hatchling 管理，提供 Textual TUI 终端界面，支持工具并发执行。</p>
+          <div class="runtime-specs">
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">Daemon 端口</div>
+              <div class="runtime-spec-value mono">127.0.0.1:7437</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">CLI 命令</div>
+              <div class="runtime-spec-value mono">sztu-py</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">依赖管理</div>
+              <div class="runtime-spec-value">uv + hatchling</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">质量工具</div>
+              <div class="runtime-spec-value">ruff / mypy / pytest</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">契约方式</div>
+              <div class="runtime-spec-value">pydantic 模型</div>
+            </div>
+            <div class="runtime-spec">
+              <div class="runtime-spec-label">终端界面</div>
+              <div class="runtime-spec-value">Textual TUI</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Philosophy -->
+<section class="philosophy" id="philosophy">
+  <div class="philosophy-bg">CODE</div>
+  <div class="container">
+    <div class="philosophy-header reveal">
+      <div class="eyebrow">Manifesto</div>
+      <h2 class="section-title">技术民主化</h2>
+      <p class="section-desc">这是一个为高校学生营造的实验性场地。任何人都可以来这里实现自己的想法，我们来者不拒。这就是我们理解的技术民主化。</p>
+    </div>
+    <div class="philosophy-pillars">
+      <div class="pillar reveal">
+        <div class="pillar-num">01</div>
+        <h3>开放参与</h3>
+        <p>无论你是哪个学校、什么专业、有没有编程经验，只要你有想法，这里就欢迎你。零配置启动，内置免费模型，打开就能用。</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="pillar-num">02</div>
+        <h3>透明可理解</h3>
+        <p>不是让人"用黑箱"，而是让人"理解它如何运作"。Agent Loop、工具调用、权限系统全部开源摊开，你不仅能用，还能读懂、能修改。</p>
+      </div>
+      <div class="pillar reveal">
+        <div class="pillar-num">03</div>
+        <h3>从想法到创造</h3>
+        <p>从使用者到创造者。通过真实的 Issue → PR → Review 流程参与工程协作，在实验中学习，在实践中成长，而不是永远停留在"调用 API"的层面。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta" id="cta">
+  <div class="cta-glow"></div>
+  <div class="container">
+    <h2 class="reveal">开始构建<br>你的 Agent。</h2>
+    <p class="reveal">克隆仓库，零配置启动，内置免费模型，立刻开始你的 AI Coding 之旅。</p>
+    <div class="cta-install reveal">
+      <span class="cta-install-prompt">$</span>
+      <span class="cta-install-cmd">git clone https://github.com/rojim666/SztuCode.git && cd SztuCode && npm install</span>
+      <button class="cta-copy" onclick="navigator.clipboard.writeText('git clone https://github.com/rojim666/SztuCode.git && cd SztuCode && npm install')">Copy</button>
+    </div>
+    <div class="cta-links reveal">
+      <a href="https://github.com/rojim666/SztuCode" target="_blank">GitHub</a>
+      <a href="https://github.com/rojim666/SztuCode/blob/main/docs/README.md" target="_blank">文档</a>
+      <a href="https://github.com/rojim666/SztuCode/issues" target="_blank">Issues</a>
+      <a href="https://github.com/rojim666/SztuCode/blob/main/CONTRIBUTING.md" target="_blank">贡献指南</a>
+      <a href="https://github.com/rojim666/SztuCode/blob/main/LICENSE" target="_blank">MIT License</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="footer-brand-icon">
+          <svg viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="128" y="128" width="768" height="768" rx="160" ry="160" stroke="currentColor" stroke-width="64" stroke-linejoin="round"/>
+            <circle cx="296" cy="296" r="36" fill="currentColor"/>
+            <circle cx="408" cy="296" r="36" fill="currentColor"/>
+            <circle cx="520" cy="296" r="36" fill="currentColor"/>
+            <rect x="320" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+            <rect x="576" y="432" width="128" height="256" rx="56" ry="56" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="footer-brand-name">SztuCode</span>
+      </div>
+      <div class="footer-copy">© 2026 SztuCode Contributors. MIT License.</div>
+      <div class="footer-links">
+        <a href="https://github.com/rojim666/SztuCode" target="_blank">GitHub</a>
+        <a href="https://github.com/rojim666/SztuCode/blob/main/docs/README.md" target="_blank">Docs</a>
+        <a href="https://github.com/rojim666/SztuCode/issues" target="_blank">Issues</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Nav scroll effect
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 20);
+});
+
+// Runtime tabs
+document.querySelectorAll('.runtime-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.runtime-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.runtime-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ========== Interactive Chat Demo ==========
+const welcomeInput = document.getElementById('composerInput');
+const chatInput = document.getElementById('composerInputChat');
+const sendBtnWelcome = document.getElementById('sendBtn');
+const sendBtnChat = document.getElementById('sendBtnChat');
+const chatMessages = document.getElementById('chatMessages');
+const appWelcome = document.getElementById('appWelcome');
+const appChat = document.getElementById('appChat');
+const chatComposer = document.getElementById('chatComposer');
+const workHeader = document.getElementById('workHeader');
+const chatStats = document.getElementById('chatStats');
+const permToggle = document.getElementById('permToggle');
+const permToggleChat = document.getElementById('permToggleChat');
+const permLabel = document.getElementById('permLabel');
+const permLabelChat = document.getElementById('permLabelChat');
+const sidebarConv = document.getElementById('sidebarConv');
+
+let isRunning = false;
+let permMode = 'standard'; // 'standard' | 'auto' | 'step'
+let activeInput = welcomeInput;
+let activeSendBtn = sendBtnWelcome;
+let turnCount = 0;
+
+const avatarSvg = '<svg viewBox="0 0 1024 1024" fill="none"><rect x="128" y="128" width="768" height="768" rx="160" ry="160" fill="currentColor"/><circle cx="296" cy="320" r="32" fill="#000"/><circle cx="408" cy="320" r="32" fill="#000"/><circle cx="520" cy="320" r="32" fill="#000"/><rect x="328" y="440" width="112" height="220" rx="50" ry="50" fill="#000"/><rect x="584" y="440" width="112" height="220" rx="50" ry="50" fill="#000"/></svg>';
+
+function setupInput(input, sendBtn) {
+  if (!input) return;
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+    updateSendBtn();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (input.value.trim() && !isRunning) sendMessage();
+    }
+  });
+}
+
+function updateSendBtn() {
+  const hasText = activeInput && activeInput.value.trim();
+  [sendBtnWelcome, sendBtnChat].forEach(btn => {
+    if (!btn) return;
+    if (isRunning) {
+      btn.className = 'cb-send stop';
+      btn.innerHTML = '■';
+      btn.disabled = false;
+    } else if (hasText) {
+      btn.className = 'cb-send enabled';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+      btn.disabled = false;
+    } else {
+      btn.className = 'cb-send';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+      btn.disabled = true;
+    }
+  });
+}
+
+setupInput(welcomeInput, sendBtnWelcome);
+setupInput(chatInput, sendBtnChat);
+
+function setActiveInput(input) {
+  activeInput = input;
+  updateSendBtn();
+}
+
+welcomeInput.addEventListener('focus', () => setActiveInput(welcomeInput));
+if (chatInput) chatInput.addEventListener('focus', () => setActiveInput(chatInput));
+
+// Permission toggle
+function setupPermToggle(btn, label) {
+  if (!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const modes = ['standard', 'auto', 'step'];
+    const labels = { standard: '标准审批', auto: '全部允许', step: '逐项审批' };
+    const idx = modes.indexOf(permMode);
+    permMode = modes[(idx + 1) % modes.length];
+    label.textContent = labels[permMode];
+    permLabel.textContent = labels[permMode];
+    if (permLabelChat) permLabelChat.textContent = labels[permMode];
+  });
+}
+setupPermToggle(permToggle, permLabel);
+setupPermToggle(permToggleChat, permLabelChat);
+
+// Send button click handlers
+sendBtnWelcome.addEventListener('click', () => { if (!isRunning) sendMessage(); });
+if (sendBtnChat) sendBtnChat.addEventListener('click', () => { if (!isRunning) sendMessage(); });
+
+// Stop buttons (delegated)
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.cb-send.stop')) {
+    stopGeneration();
+  }
+});
+
+function focusComposer() {
+  if (!appWelcome.classList.contains('hidden')) {
+    welcomeInput.focus();
+  } else if (chatInput) {
+    chatInput.focus();
+  }
+}
+
+function scrollChat() {
+  appChat.scrollTop = appChat.scrollHeight;
+}
+
+function switchToChatMode() {
+  appWelcome.classList.add('hidden');
+  chatMessages.classList.add('visible');
+  workHeader.classList.add('visible');
+  chatComposer.style.display = '';
+  setActiveInput(chatInput);
+  setTimeout(() => chatInput && chatInput.focus(), 100);
+}
+
+function addUserMsg(text) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-user-wrap';
+  wrap.innerHTML = `<div class="msg-user-bubble"></div>`;
+  wrap.querySelector('.msg-user-bubble').textContent = text;
+  chatMessages.appendChild(wrap);
+  scrollChat();
+}
+
+function createAssistantTurn() {
+  turnCount++;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-assistant-wrap';
+  wrap.innerHTML = `
+    <div class="msg-assistant-header">
+      <div class="msg-avatar-sm">${avatarSvg}</div>
+      <span class="msg-ctx-label">上下文注入</span>
+      <span class="msg-badge">17.0k字符</span>
+      <span class="msg-badge">3个文件</span>
+    </div>
+    <button class="msg-process-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.querySelector('.arrow').textContent=this.nextElementSibling.classList.contains('open')?'▴':'▾'">
+      <span class="proc-text">正在处理…</span> <span class="arrow">▾</span>
+    </button>
+    <div class="process-detail">
+      <div class="step"><span class="step-icon">📋</span><span class="step-text">分析需求，制定执行计划</span></div>
+      <div class="step"><span class="step-icon">📄</span><span class="step-text">读取相关源文件</span></div>
+      <div class="step"><span class="step-icon">🔍</span><span class="step-text">搜索代码定位问题</span></div>
+      <div class="step"><span class="step-icon">✏️</span><span class="step-text">执行代码修改</span></div>
+      <div class="step"><span class="step-icon">🧪</span><span class="step-text">运行测试验证</span></div>
+    </div>
+    <div class="msg-divider" style="display:none;"></div>
+    <div class="msg-response" style="display:none;"></div>
+    <div class="msg-actions" style="display:none;">
+      <button class="msg-action-btn" title="复制">📋</button>
+      <button class="msg-action-btn" title="分支">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="3" r="2"/><circle cx="6" cy="21" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 5v14M18 14c0-2.2-1.8-4-4-4H8"/></svg>
+      </button>
+      <button class="msg-action-btn" title="重试" onclick="retryMsg(this)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+      </button>
+    </div>`;
+  chatMessages.appendChild(wrap);
+  scrollChat();
+  return wrap;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function sendMessage() {
+  const text = (activeInput || welcomeInput).value.trim();
+  if (!text || isRunning) return;
+  isRunning = true;
+  (activeInput || welcomeInput).value = '';
+  if (activeInput) { activeInput.style.height = 'auto'; }
+  welcomeInput.value = '';
+  welcomeInput.style.height = 'auto';
+  updateSendBtn();
+
+  // Switch to chat mode on first message
+  if (!appWelcome.classList.contains('hidden') === false) {
+    // already in chat mode
+  } else {
+    switchToChatMode();
+    sidebarConv.classList.add('active');
+    sidebarConv.textContent = text.length > 8 ? text.slice(0, 8) + '…' : text;
+  }
+
+  addUserMsg(text);
+  await sleep(200);
+
+  const turn = createAssistantTurn();
+  const procText = turn.querySelector('.proc-text');
+  const procDetail = turn.querySelector('.process-detail');
+  const divider = turn.querySelector('.msg-divider');
+  const responseEl = turn.querySelector('.msg-response');
+  const actionsEl = turn.querySelector('.msg-actions');
+
+  // Show thinking
+  const thinking = document.createElement('div');
+  thinking.className = 'thinking-indicator';
+  thinking.innerHTML = '<div class="thinking-dots"><span></span><span></span><span></span></div><span>正在思考…</span>';
+  turn.insertBefore(thinking, turn.querySelector('.msg-process-toggle').nextSibling.nextSibling);
+  scrollChat();
+  await sleep(1200);
+  thinking.remove();
+
+  // Show process steps one by one
+  procDetail.classList.add('open');
+  procText.textContent = '查看过程 · 处理中…';
+  const steps = procDetail.querySelectorAll('.step');
+  steps.forEach((s, i) => { s.style.opacity = '0.3'; });
+  for (let i = 0; i < steps.length; i++) {
+    steps[i].style.opacity = '1';
+    steps[i].style.transition = 'opacity 0.3s';
+    await sleep(400 + Math.random() * 400);
+  }
+  await sleep(200);
+
+  // Update stats
+  chatStats.classList.add('visible');
+  const elapsed = (3 + Math.random() * 4).toFixed(1);
+  const inTok = (12 + Math.random() * 8).toFixed(1);
+  const outTok = Math.floor(80 + Math.random() * 200);
+  const ctxPct = (1 + Math.random() * 2).toFixed(2);
+  document.getElementById('statsRounds').textContent = `${turnCount} 轮 · 1 步`;
+  document.getElementById('statsCache').textContent = (3 + Math.random() * 5).toFixed(1) + '%';
+  document.getElementById('statsIn').textContent = inTok + 'K';
+  document.getElementById('statsOut').textContent = outTok;
+  document.getElementById('statsCtx').textContent = ctxPct + '%';
+  document.getElementById('statsBarFill').style.width = ctxPct + '%';
+
+  // Collapse process, show response
+  procDetail.classList.remove('open');
+  procText.textContent = `查看过程 · 耗时 ${elapsed} 秒`;
+  divider.style.display = '';
+
+  // Type response text
+  responseEl.style.display = '';
+  responseEl.className = 'msg-text';
+  let response = getResponse(text);
+  let displayedText = '';
+  for (let i = 0; i < response.length; i++) {
+    displayedText += response[i];
+    responseEl.textContent = displayedText;
+    scrollChat();
+    await sleep(15 + Math.random() * 20);
+  }
+
+  actionsEl.style.display = '';
+  scrollChat();
+
+  isRunning = false;
+  updateSendBtn();
+  if (chatInput) chatInput.focus();
+}
+
+function getResponse(text) {
+  const isBug = /bug|错误|失败|修复|fix|error|报错/i.test(text);
+  const isComponent = /组件|component|写|创建|create|todo|待办|按钮/i.test(text);
+  const isAnalyze = /分析|结构|analyze|看看|了解/i.test(text);
+  const isFeature = /暗色|dark|主题|theme|功能|feature|添加|支持/i.test(text);
+  const isHello = /你好|hi|hello|在吗|hey/i.test(text);
+
+  if (isHello) {
+    return `你好！我是 SztuCode。我看到工作区有一些未提交的改动（desktop 的 App.vue、i18n 文案、workbench.css 改动，以及未跟踪的 website/ 目录）。\n\n需要我帮你做什么？比如继续完善桌面端改动、审查 website/ 目录内容，或其他任务。`;
+  }
+  if (isBug) {
+    return `已定位并修复问题：\n\n1. 在相关组件中添加了输入校验逻辑，防止空值提交\n2. 补充了错误边界（ErrorBoundary）处理\n3. 修复了异步操作中的竞态条件\n\n所有测试用例已通过 ✓（12 passed, 0 failed）。`;
+  }
+  if (isComponent) {
+    return `已为你创建组件，包含以下内容：\n\n- 响应式数据状态管理\n- 增删改查基础操作\n- CSS 过渡动画\n- TypeScript 类型定义\n\n组件已放置在 src/components/ 目录下，你可以直接在页面中引入使用。`;
+  }
+  if (isAnalyze) {
+    return `项目结构分析完成：\n\n- 前端：Tauri 2 + Vue 3 桌面工作台\n- 运行时：TypeScript（端口 7438）/ Python（端口 7437）双实现\n- 通信协议：JSON-RPC 2.0 / NDJSON\n- 架构：Daemon/Client 分离，长任务不依赖 UI 生命周期\n\n共发现 3 处可优化点，已在时间线中标注。`;
+  }
+  if (isFeature) {
+    return `已添加功能支持：\n\n- 新增主题切换状态管理\n- 所有核心组件完成暗色/亮色适配\n- 支持系统主题自动跟随\n- 添加了切换快捷键（Ctrl/Cmd+Shift+L）\n\n已在桌面端验证所有主要界面，无视觉回归。`;
+  }
+  return `任务已完成：\n\n- 分析了项目结构和相关文件\n- 执行了必要的代码修改\n- 运行测试全部通过 ✓\n\n你可以在左侧工作区面板查看详细变更，或继续告诉我下一步要做什么。`;
+}
+
+function stopGeneration() {
+  isRunning = false;
+  updateSendBtn();
+}
+
+function retryMsg(btn) {
+  const turn = btn.closest('.msg-assistant-wrap');
+  if (turn) turn.remove();
+  // Simple: focus input to retry
+  if (chatInput) chatInput.focus();
+}
+
+// Sidebar nav clicks
+document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.sidebar-nav-item').forEach(i => i.style.background = '');
+  });
+});
+
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// Smooth scroll for anchor links
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+});
+</script>
+
+</body>
+</html>

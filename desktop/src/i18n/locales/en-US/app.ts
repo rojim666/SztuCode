@@ -155,6 +155,7 @@ export const app = {
   skipConfirmations: "Skip all action confirmations",
   selectLocalProject: "Select a local project",
   selectProject: "Select project",
+  plugins: "Plugins",
   searchWorkspace: "Search workspaces",
   noMatchingWorkspaces: "No matching workspaces",
   newWorkspace: "New Workspace",

@@ -13,6 +13,7 @@ import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
+import PluginIcon from "./components/Skills/PluginIcon.vue";
 import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
 import AttachmentChip from "./components/Composer/AttachmentChip.vue";
@@ -31,10 +32,10 @@ import { detectVisionSupport } from "./utils/modelVision";
 import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
-  archiveSession, cancelRun, connectRuntime, createSession, forkSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listArtifacts, listChanges, listOperations, listPendingUserQuestions, listSessions,
-  listWorkspaces, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
+  archiveSession, cancelRun, connectRuntime, createSession, forkSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listOperations, listPendingUserQuestions, listSessions,
+  listWorkspaces, listPlugins, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
-  type Artifact, type Attachment, type DurableOperation, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace,
+  type Attachment, type DurableOperation, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace, type PluginSummary,
 } from "./services/sztu-runtime";
 
 const { t } = useI18n({ useScope: "global" });
@@ -390,6 +391,10 @@ const ocrProgress = ref<{ current: number; total: number; status: string } | nul
 const projectMenuOpen = ref(false);
 const launcherProjectMenuOpen = ref(false);
 const launcherProjectQuery = ref("");
+const launcherPluginMenuOpen = ref(false);
+const activePluginMenuOpen = ref(false);
+const launcherPlugins = ref<PluginSummary[]>([]);
+const insertedPlugins = ref<PluginSummary[]>([]);
 const launcherPermissionMenuOpen = ref(false);
 const permissionConfirmOpen = ref(false);
 const permissionSaving = ref(false);
@@ -440,6 +445,7 @@ type PendingAttachment = {
 };
 const attachedFiles = ref<PendingAttachment[]>([]);
 const isDragOver = ref(false);
+let dragCounter = 0;
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const settingsOpen = ref(false);
@@ -489,9 +495,7 @@ const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
-const artifacts = ref<Artifact[]>([]);
 const operations = ref<DurableOperation[]>([]);
-const officeSupported = ref(true);
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
 // 历史会话的标题可能为空（例如旧版本创建的临时会话）；搜索弹窗首次打开时
@@ -1712,7 +1716,7 @@ async function refreshIndex(loadHistory = false) {
     listWorkspaces(), listSessions(), getRuntimeSettings(), getProviderStatus(), listPendingUserQuestions(),
   ]);
   workspaces.value = nextWorkspaces; sessions.value = nextSessions; runtimeSettings.value = nextSettings; providerStatus.value = nextProvider;
-  try { operations.value = await listOperations(); artifacts.value = activeWorkspace.value ? await listArtifacts(activeWorkspace.value.workspace_id) : []; officeSupported.value = true; } catch { officeSupported.value = false; artifacts.value = []; operations.value = []; }
+  try { operations.value = await listOperations(); } catch { operations.value = []; }
   const snapshot = questionSnapshot.filter((item) => !resolvedQuestionIds.has(item.rpc_id));
   if (questionVersion === questionEventVersion) {
     pendingUserQuestions.value = snapshot;
@@ -1868,6 +1872,7 @@ async function submitTask(
     page.value = "work";
     saveComposerDraft(project?.workspace_id ?? null, "");
     prompt.value = "";
+    insertedPlugins.value = [];
     sending.value = false;
     const sent = await startSessionRun(sessionId, displayText, trimmed, images, attachments);
     if (sent) void refreshIndex(false);
@@ -2078,12 +2083,14 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
       enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
       prompt.value = "";
       attachedFiles.value = [];
+      insertedPlugins.value = [];
     } else {
       steering.value = true;
       try {
         await steerPrompt(sessionId, payload, images);
         prompt.value = "";
         attachedFiles.value = [];
+        insertedPlugins.value = [];
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         // run 刚好结束时 steer 会被服务拒绝，此时转入队列；其它错误不能静默吞掉草稿。
@@ -2095,11 +2102,13 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
           if (sent) {
             prompt.value = "";
             attachedFiles.value = [];
+            insertedPlugins.value = [];
           }
         } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
           enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
           prompt.value = "";
           attachedFiles.value = [];
+          insertedPlugins.value = [];
         } else {
           void showProjectNotice(t("app.sendFailed"), friendlyError(error).message, "danger");
         }
@@ -2112,7 +2121,10 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     return;
   }
   const sent = await submitTask(displayText, payload, workspace.value, images, timelineAttachments);
-  if (sent) attachedFiles.value = [];
+  if (sent) {
+    attachedFiles.value = [];
+    insertedPlugins.value = [];
+  }
 }
 // Shift+Enter 换行；运行中 Enter 排队，Ctrl/Cmd+Enter 转入当前轮，并忽略输入法候选确认
 function onComposerKeydown(event: KeyboardEvent) {
@@ -2357,12 +2369,59 @@ async function openLocalProject() {
 function closeLauncherMenus() {
   launcherProjectMenuOpen.value = false;
   launcherPermissionMenuOpen.value = false;
+  launcherPluginMenuOpen.value = false;
+  activePluginMenuOpen.value = false;
 }
 function toggleLauncherProjectMenu() {
   launcherProjectMenuOpen.value = !launcherProjectMenuOpen.value;
   launcherPermissionMenuOpen.value = false;
+  launcherPluginMenuOpen.value = false;
+  activePluginMenuOpen.value = false;
   if (!launcherProjectMenuOpen.value) launcherProjectQuery.value = "";
 }
+let launcherPluginsScope: string | null | undefined = undefined;
+async function loadLauncherPlugins() {
+  const wsId = workspace.value?.workspace_id ?? null;
+  if (launcherPluginsScope === wsId) return;
+  try {
+    const plugins = await listPlugins(wsId);
+    launcherPlugins.value = plugins.filter(p => p.enabled);
+    launcherPluginsScope = wsId;
+  } catch { /* ignore */ }
+}
+watch(() => [connected.value, workspace.value?.workspace_id] as const, () => {
+  if (connected.value) void loadLauncherPlugins();
+}, { immediate: true });
+watch(page, (next) => { if (next !== "skills") launcherPluginsScope = undefined; });
+function toggleLauncherPluginMenu() {
+  launcherPluginMenuOpen.value = !launcherPluginMenuOpen.value;
+  launcherProjectMenuOpen.value = false;
+  launcherPermissionMenuOpen.value = false;
+  activePluginMenuOpen.value = false;
+  if (launcherPluginMenuOpen.value) void loadLauncherPlugins();
+}
+function toggleActivePluginMenu() {
+  activePluginMenuOpen.value = !activePluginMenuOpen.value;
+  launcherProjectMenuOpen.value = false;
+  launcherPermissionMenuOpen.value = false;
+  launcherPluginMenuOpen.value = false;
+  if (activePluginMenuOpen.value) void loadLauncherPlugins();
+}
+function insertPluginToPrompt(plugin: PluginSummary) {
+  if (!insertedPlugins.value.find(p => p.id === plugin.id)) {
+    insertedPlugins.value = [...insertedPlugins.value, plugin];
+  }
+  launcherPluginMenuOpen.value = false;
+  activePluginMenuOpen.value = false;
+}
+function removeInsertedPlugin(pluginId: string) {
+  insertedPlugins.value = insertedPlugins.value.filter(p => p.id !== pluginId);
+}
+const launcherPluginIcons = computed(() => {
+  const selectedIds = new Set(insertedPlugins.value.map(p => p.id));
+  const selected = launcherPlugins.value.filter(p => selectedIds.has(p.id));
+  return (selected.length ? selected : launcherPlugins.value).slice(0, 3);
+});
 function toggleLauncherPermissionMenu() {
   launcherPermissionMenuOpen.value = !launcherPermissionMenuOpen.value;
   launcherProjectMenuOpen.value = false;
@@ -2460,6 +2519,12 @@ async function buildMessagePayload(baseText: string): Promise<{
       }
     }
     ocrProgress.value = null;
+  }
+
+  // 静默注入已选择的插件标签，用户无感知
+  if (insertedPlugins.value.length) {
+    const pluginTags = insertedPlugins.value.map(p => `@${p.name}`).join(' ');
+    sections.push(pluginTags);
   }
 
   return {
@@ -2603,24 +2668,30 @@ function onPasteImage(event: ClipboardEvent) {
   }
 }
 
-// 拖拽事件处理
+// 拖拽事件处理 - 使用计数器方式处理子元素间移动的问题
+function onDragEnter(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  dragCounter++;
+  // 检查是否包含文件
+  if (event.dataTransfer?.types.includes("Files")) {
+    isDragOver.value = true;
+  }
+}
+
 function onDragOver(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = "copy";
   }
-  isDragOver.value = true;
 }
 
 function onDragLeave(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
-  // 只在鼠标真正离开拖拽区域时才隐藏样式
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  const x = event.clientX;
-  const y = event.clientY;
-  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+  dragCounter--;
+  if (dragCounter === 0) {
     isDragOver.value = false;
   }
 }
@@ -2628,40 +2699,20 @@ function onDragLeave(event: DragEvent) {
 function onDrop(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
+  dragCounter = 0;
   isDragOver.value = false;
 
   const files = event.dataTransfer?.files;
   if (!files || files.length === 0) return;
 
   void (async () => {
-    if ("__TAURI_INTERNALS__" in window) {
-      // Tauri 环境：尝试从文件路径读取
-      const paths: string[] = [];
-      for (const file of Array.from(files)) {
-        // 在 Tauri 中，拖拽的文件会有 path 属性
-        const filePath = (file as File & { path?: string }).path;
-        if (filePath) {
-          paths.push(filePath);
-        } else {
-          // 回退到浏览器方式读取
-          const reason = await addBrowserFile(file);
-          if (reason) {
-            notifySkippedAttachments([reason]);
-          }
-        }
-      }
-      if (paths.length > 0) {
-        addReadAttachments(await readAttachments(paths));
-      }
-    } else {
-      // 浏览器环境
-      const skipped: string[] = [];
-      for (const file of Array.from(files)) {
-        const reason = await addBrowserFile(file);
-        if (reason) skipped.push(reason);
-      }
-      notifySkippedAttachments(skipped);
+    // 使用统一的浏览器文件读取方式处理（支持图片和文本文件）
+    const skipped: string[] = [];
+    for (const file of Array.from(files)) {
+      const reason = await addBrowserFile(file);
+      if (reason) skipped.push(reason);
     }
+    notifySkippedAttachments(skipped);
   })();
 }
 function chooseSkill(name: string) {
@@ -2986,6 +3037,7 @@ function handleDocumentPointerDown(event: PointerEvent) {
   if (!target?.closest(".task-search-popover, .task-search-toggle")) clearTaskSearch();
   if (!target?.closest(".project-row-shell")) projectActionsOpen.value = null;
   if (!target?.closest(".launcher-project-control")) launcherProjectMenuOpen.value = false;
+  if (!target?.closest(".launcher-plugin-control, .active-plugin-control")) { launcherPluginMenuOpen.value = false; activePluginMenuOpen.value = false; }
   if (!target?.closest(".launcher-permission-control")) launcherPermissionMenuOpen.value = false;
   if (!target?.closest(".mode-switch-wrap")) modeMenuOpen.value = false;
 }
@@ -3097,6 +3149,21 @@ onMounted(() => {
   window.addEventListener("sztu:open-file", onOpenFileLink);
   window.addEventListener("sztu:inject-element", onInjectElement);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
+  // 阻止全局默认拖拽行为，防止浏览器直接打开文件（但允许在 composer 上正常处理）
+  const preventDefaultDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+  };
+  const preventDefaultDrop = (e: DragEvent) => {
+    // 只在拖拽目标不在 composer 区域内时阻止默认行为
+    const target = e.target as HTMLElement;
+    if (!target.closest(".sztu-composer")) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+  document.addEventListener("dragover", preventDefaultDragOver);
+  document.addEventListener("drop", preventDefaultDrop);
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
     scheduleRuntimeReconnect();
@@ -3469,10 +3536,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     @submit="submitUserQuestion(activeUserQuestion, $event)"
                     @stop="stopActiveRun"
                   />
-                    <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending, 'drag-over': isDragOver }" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+                    <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending, 'drag-over': isDragOver }" @submit.prevent="submit" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div class="composer-input-shell">
+                      <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
                         <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
+                        <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="14" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                         <div v-if="ocrProgress" class="ocr-progress-bar">
                           <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
                           <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
@@ -3482,7 +3550,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                           <AppIcon name="Upload" :size="32" />
                           <span>{{ t('app.dropFilesHere') }}</span>
                         </div>
-                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
+                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                       </div>
                     </form>
                 </QueueDock>
@@ -3514,10 +3582,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </header>
 
-            <form class="sztu-composer landing-composer" :class="{ 'drag-over': isDragOver }" @submit.prevent="submit()" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+            <form class="sztu-composer landing-composer" :class="{ 'drag-over': isDragOver }" @submit.prevent="submit()" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-              <div class="composer-input-shell">
+              <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
+                <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="16" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                 <div v-if="ocrProgress" class="ocr-progress-bar">
                   <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
                   <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
@@ -3541,18 +3610,36 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim()"><AppIcon name="ArrowUp" :size="15" /></button>
                 </div>
               </div>
-              <div class="launcher-project-control">
-                <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><AppIcon name="FolderOpen" :size="15" /><span>{{ workspace?.name || t('app.selectLocalProject') }}</span><AppIcon name="ChevronDown" :size="13" /></button>
-                <div v-if="launcherProjectMenuOpen" class="launcher-popover project-picker-popover" role="menu" :aria-label="t('app.selectProject')">
-                  <label class="project-picker-search"><AppIcon name="Search" :size="15" /><input v-model="launcherProjectQuery" type="search" :placeholder="t('app.searchWorkspace')" :aria-label="t('app.searchWorkspace')" /></label>
-                  <div v-if="filteredLauncherWorkspaces.length" class="project-picker-list">
-                    <button v-for="item in filteredLauncherWorkspaces" :key="item.workspace_id" type="button" role="menuitemradio" :aria-checked="workspace?.workspace_id === item.workspace_id" @click="chooseLauncherWorkspace(item)"><AppIcon name="Folder" :size="16" /><span><b>{{ item.name }}</b><small>{{ item.path }}</small></span><AppIcon v-if="workspace?.workspace_id === item.workspace_id" name="Check" :size="15" /></button>
+              <div class="launcher-bottom-controls">
+                <div class="launcher-project-control">
+                  <button type="button" class="composer-project" aria-haspopup="menu" :aria-expanded="launcherProjectMenuOpen" @click.stop="toggleLauncherProjectMenu"><AppIcon name="FolderOpen" :size="15" /><span>{{ workspace?.name || t('app.selectLocalProject') }}</span><AppIcon name="ChevronDown" :size="13" /></button>
+                  <div v-if="launcherProjectMenuOpen" class="launcher-popover project-picker-popover" role="menu" :aria-label="t('app.selectProject')">
+                    <label class="project-picker-search"><AppIcon name="Search" :size="15" /><input v-model="launcherProjectQuery" type="search" :placeholder="t('app.searchWorkspace')" :aria-label="t('app.searchWorkspace')" /></label>
+                    <div v-if="filteredLauncherWorkspaces.length" class="project-picker-list">
+                      <button v-for="item in filteredLauncherWorkspaces" :key="item.workspace_id" type="button" role="menuitemradio" :aria-checked="workspace?.workspace_id === item.workspace_id" @click="chooseLauncherWorkspace(item)"><AppIcon name="Folder" :size="16" /><span><b>{{ item.name }}</b><small>{{ item.path }}</small></span><AppIcon v-if="workspace?.workspace_id === item.workspace_id" name="Check" :size="15" /></button>
+                    </div>
+                    <p v-else class="project-picker-empty">{{ t('app.noMatchingWorkspaces') }}</p>
+                    <div class="project-picker-actions">
+                      <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><AppIcon name="CirclePlus" :size="16" /><span>{{ t('app.temporaryTasks') }}</span></button>
+                      <button type="button" role="menuitem" @click="createLocalWorkspace"><AppIcon name="FolderPlus" :size="16" /><span>{{ t('app.newWorkspace') }}</span></button>
+                      <button type="button" role="menuitem" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /><span>{{ t('app.openLocalFolder') }}</span></button>
+                    </div>
                   </div>
-                  <p v-else class="project-picker-empty">{{ t('app.noMatchingWorkspaces') }}</p>
-                  <div class="project-picker-actions">
-                    <button v-if="workspace" type="button" role="menuitem" @click="clearLauncherWorkspace"><AppIcon name="CirclePlus" :size="16" /><span>{{ t('app.temporaryTasks') }}</span></button>
-                    <button type="button" role="menuitem" @click="createLocalWorkspace"><AppIcon name="FolderPlus" :size="16" /><span>{{ t('app.newWorkspace') }}</span></button>
-                    <button type="button" role="menuitem" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /><span>{{ t('app.openLocalFolder') }}</span></button>
+                </div>
+                <div class="launcher-plugin-control">
+                  <button type="button" class="composer-plugin" aria-haspopup="menu" :aria-expanded="launcherPluginMenuOpen" @click.stop="toggleLauncherPluginMenu">
+                    <span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span>
+                    <AppIcon v-else name="Puzzle" :size="15" />
+                    <AppIcon name="ChevronDown" :size="13" />
+                  </button>
+                  <div v-if="launcherPluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件">
+                    <div v-if="launcherPlugins.length" class="plugin-picker-list">
+                      <button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)">
+                        <PluginIcon :name="p.name" :size="22" />
+                        <span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span>
+                      </button>
+                    </div>
+                    <p v-else class="project-picker-empty">暂无已启用的插件</p>
                   </div>
                 </div>
               </div>
@@ -3572,13 +3659,6 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
           <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
         </div>
-        <p v-if="!officeSupported" class="status-pill">当前 daemon 不支持成果与操作查询，请升级服务后重试。</p>
-        <template v-else>
-          <h2>成果</h2>
-          <div class="session-board"><article v-for="artifact in artifacts" :key="artifact.artifact_id"><div><b>{{ artifact.path }}</b><p>{{ artifact.summary || artifact.preview?.text }}</p><span>版本 {{ artifact.version }} · 验证 {{ artifact.verification_status }} · {{ artifact.delivery_ids.length ? '已关联交付记录' : '未交付' }}</span><p v-for="source in artifact.input_sources" :key="source.path">资料：{{ source.path }} · {{ source.version || source.hash || '版本未记录' }}</p></div><button v-if="activeWorkspace" class="outline-button" @click="invoke('open_path_with_app', { path: activeWorkspace.path + '/' + artifact.path, appId: 'explorer' })">打开文件</button></article><p v-if="!artifacts.length">此工作区暂无成果。</p></div>
-          <h2>操作审阅</h2>
-          <div class="session-board"><article v-for="operation in operations" :key="operation.operation_id"><div><b>{{ operation.params_summary }}</b><p>{{ operation.status }} · {{ operation.external_object_id || '本地操作' }}</p><small>{{ operation.updated_at }}</small></div></article><p v-if="!operations.length">暂无操作记录。</p></div>
-        </template>
       </section>
       <section v-if="page === 'automations'" class="simple-page"><header><div><h1>{{ t('app.automations') }}</h1><p>自动化任务管理</p></div></header><div class="bridge-card"><AppIcon name="CalendarClock" :size="24" /><div><h2>功能开发中</h2><p>定时自动化任务功能即将上线</p></div></div></section>
 

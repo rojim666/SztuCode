@@ -272,7 +272,7 @@ function isFirstToolEvent(turn: TurnView, event: TimelineEvent): boolean {
 
 type InlineSegment =
   | { type: "text"; text: string; isFinal?: boolean }
-  | { type: "activity"; thinking: string; calls: ToolCallEntry[]; isRunning: boolean; stepIndex?: number; stepTitle?: string };
+  | { type: "activity"; thinking: string; calls: ToolCallEntry[]; isRunning: boolean; isFinished?: boolean; stepIndex?: number; stepTitle?: string };
 
 function inlineSegments(turn: TurnView): InlineSegment[] {
   const segments: InlineSegment[] = [];
@@ -332,6 +332,16 @@ function inlineSegments(turn: TurnView): InlineSegment[] {
 
   flushText();
   flushActivity();
+
+  // 思考块之后已有正文输出时，说明该阶段已结束：不再转圈，直接显示完成打勾。
+  // 只有末尾的activity块（思考/工具仍在进行）在轮次运行中保持转圈。
+  const lastIdx = segments.length - 1;
+  for (let i = 0; i < lastIdx; i++) {
+    const seg = segments[i];
+    if (seg.type !== "activity") continue;
+    seg.isRunning = false;
+    seg.isFinished = true;
+  }
 
   return segments;
 }
@@ -573,7 +583,7 @@ watch(
                 :thinking="segment.thinking"
                 :calls="segment.calls"
                 :running="segment.isRunning && (turn.state === 'running' || turn.state === 'waiting')"
-                :completed="turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
+                :completed="segment.isFinished || turn.state === 'done' || turn.state === 'failed' || turn.state === 'interrupted'"
                 :step-index="segment.stepIndex"
                 :step-title="segment.stepTitle"
               />

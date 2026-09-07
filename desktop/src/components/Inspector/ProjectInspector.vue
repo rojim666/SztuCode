@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { isTauri } from "@tauri-apps/api/core";
 import AppIcon from "../icons/AppIcon.vue";
 import {
   changeDiff, listChanges, readFile,
@@ -89,6 +90,15 @@ function closePreviewOnOutside(event: PointerEvent) {
 const expandedPanel = ref(false);
 const toolMenuOpen = ref(false);
 const toolMenuRoot = ref<HTMLElement | null>(null);
+const browserMenuOpen = ref(false);
+const browserMenuRoot = ref<HTMLElement | null>(null);
+const browserMenuNativeActive = ref(false);
+// 三点菜单 overlay 模式：Tauri 下菜单本身做成透明子 webview（z-order 在浏览器
+// webview 之上），浮在网页上而不遮挡/隐藏网页——等价于 TRAE/Electron 的 HTML
+// 菜单浮层。仅 Windows(WebView2) 有原生消息桥；其余环境退化为“打开菜单时
+// 暂隐网页 + HTML 菜单”模式。
+const menuOverlayNative = isTauri() && navigator.userAgent.includes("Windows NT");
+let browserMenuOwner: BrowserTab | null = null;
 const projectProfileController = createProjectProfileController(getWorkspaceProfile);
 const profileState = ref<ProjectProfileState>(projectProfileController.state);
 const stopProjectProfileSubscription = projectProfileController.subscribe((next) => { profileState.value = next; });
@@ -215,12 +225,14 @@ function openSummary() {
   activeTab.value = "summary";
   selectedPath.value = "";
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
 }
 
 function goHome() {
   activeTab.value = "home";
   selectedPath.value = "";
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
 }
 
 function projectTechnologies(project: ProjectComponent): Array<{ label: string; findings: TechnologyFinding[] }> {
@@ -276,6 +288,7 @@ function createBrowserTab() {
   workspaceTabs.value.push({ key, kind: "browser" });
   activateBrowser(id);
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
 }
 
 function closeWorkspaceTab(key: ActiveTab) {
@@ -302,6 +315,7 @@ function openFiles() {
   activeTab.value = "files";
   selectedPath.value = "";
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
 }
 
 // 在右侧「文件」标签页中预览指定路径的文件（供 AI 输出中的文件链接调用）
@@ -311,6 +325,7 @@ async function previewFile(filePath: string) {
   if (!workspaceTabs.value.some((tab) => tab.kind === "files")) workspaceTabs.value.push({ key: "files", kind: "files" });
   activeTab.value = "files";
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
   // FileTree 组件使用 v-show 始终挂载，等待一个 nextTick 确保 DOM 切换完成后再调用
   await nextTick();
   fileTreeRef.value?.previewFileAtPath(filePath);
@@ -340,6 +355,7 @@ function openBrowser() {
   if (tab) {
     activateBrowser(tab.id);
     toolMenuOpen.value = false;
+    browserMenuOpen.value = false;
   } else createBrowserTab();
 }
 
@@ -350,6 +366,7 @@ function openTerminal() {
   activeTab.value = key;
   selectedPath.value = "";
   toolMenuOpen.value = false;
+  browserMenuOpen.value = false;
 }
 
 function sandboxLabel(key: ActiveTab) {
@@ -546,6 +563,7 @@ function openUrlInAppBrowser(url: string) {
     navigateBrowser(tab);
     activateBrowser(tab.id);
     toolMenuOpen.value = false;
+    browserMenuOpen.value = false;
   }
 }
 
@@ -620,6 +638,7 @@ function onSelectFile() {
 
 function closeToolMenu(event: PointerEvent) {
   if (toolMenuOpen.value && !toolMenuRoot.value?.contains(event.target as Node)) toolMenuOpen.value = false;
+  if (browserMenuOpen.value && !browserMenuRoot.value?.contains(event.target as Node)) browserMenuOpen.value = false;
 }
 
 // 关闭代码预览浮窗（点击遮罩或 Escape 触发），同时清空选中态
@@ -631,8 +650,52 @@ function closePreview() {
 function closeToolMenuOnEscape(event: KeyboardEvent) {
   if (event.key === "Escape") {
     toolMenuOpen.value = false;
+    browserMenuOpen.value = false;
     closePreview();
     if (expandedPanel.value) expandedPanel.value = false; // 全屏态按 Esc 退出全屏
+  }
+}
+
+// ── 三点菜单 overlay 联动（Windows 原生模式）──
+// browserMenuOpen 开 → 在浏览器舞台上方创建透明菜单子 webview；关 → 销毁。
+// 菜单点击经 Rust 桥回传 menu-action；遮罩/Esc/resize 经 menu-close 复位状态。
+watch(browserMenuOpen, async (open) => {
+  const browser = currentBrowser.value;
+  const ref = browser?.webviewRef;
+  if (!open) {
+    browserMenuNativeActive.value = false;
+    browserMenuOwner?.webviewRef?.hideMenuOverlay();
+    browserMenuOwner = null;
+    return;
+  }
+  browserMenuNativeActive.value = false;
+  if (!menuOverlayNative || !ref || !browser?.url) return;
+  const ok = await ref.showMenuOverlay({
+    disabled: false,
+    dark: document.documentElement.dataset.appTheme === "dark",
+  });
+  // 创建浮层期间用户可能已经关闭菜单，不能留下失控的原生 Webview。
+  if (!browserMenuOpen.value || currentBrowser.value?.id !== browser.id) {
+    if (ok) ref.hideMenuOverlay();
+    return;
+  }
+  browserMenuNativeActive.value = ok;
+  browserMenuOwner = ok ? browser : null;
+});
+
+/** overlay 菜单项点击：分发给原有动作函数（与 HTML 菜单一一对应） */
+function handleBrowserMenuAction(action: string) {
+  browserMenuOpen.value = false;
+  browserMenuNativeActive.value = false;
+  const browser = currentBrowser.value;
+  if (!browser?.url) return;
+  switch (action) {
+    case "edit-address": editBrowserAddress(); break;
+    case "copy-url": copyBrowserUrl(browser); break;
+    case "select-element": selectElement(browser); break;
+    case "css-inspector": cssInspector(); break;
+    case "device-toolbar": deviceToolbar(); break;
+    case "devtools": toggleDevTools(browser); break;
   }
 }
 
@@ -914,18 +977,19 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
           <AppIcon name="ChevronDown" :size="16" class="browser-address-chev" />
         </div>
 
-        <div class="browser-toolbar-actions">
-          <button type="button" class="browser-action-btn" title="更多功能" aria-label="更多功能" :aria-expanded="toolMenuOpen" @click.stop="toolMenuOpen = !toolMenuOpen">
+        <div class="browser-toolbar-actions" ref="browserMenuRoot">
+          <button type="button" class="browser-action-btn" title="更多功能" aria-label="更多功能" :aria-expanded="browserMenuOpen" @click.stop="browserMenuOpen = !browserMenuOpen">
             <AppIcon name="Ellipsis" :size="18" />
           </button>
-          <div v-if="toolMenuOpen" class="browser-toolbar-menu" role="menu">
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="editBrowserAddress(); toolMenuOpen = false"><AppIcon name="Pencil" :size="15" />编辑地址</button>
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser); toolMenuOpen = false"><AppIcon name="Share2" :size="15" />复制链接</button>
+          <!-- 原生 overlay 模式下菜单是独立子 webview，此处仅 iframe/空态/降级模式渲染 HTML 菜单 -->
+          <div v-if="browserMenuOpen && !browserMenuNativeActive" class="browser-toolbar-menu" role="menu">
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="editBrowserAddress(); browserMenuOpen = false"><AppIcon name="Pencil" :size="15" />编辑地址</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="copyBrowserUrl(currentBrowser); browserMenuOpen = false"><AppIcon name="Share2" :size="15" />复制链接</button>
             <div class="browser-toolbar-menu-divider" />
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser); toolMenuOpen = false"><AppIcon name="MousePointer2" :size="15" />选择元素</button>
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="cssInspector(); toolMenuOpen = false"><AppIcon name="Code" :size="15" />CSS检查器</button>
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="deviceToolbar(); toolMenuOpen = false"><AppIcon name="Monitor" :size="15" />设备工具栏</button>
-            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser); toolMenuOpen = false"><AppIcon name="DevTools" :size="15" />打开 DevTools</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="selectElement(currentBrowser); browserMenuOpen = false"><AppIcon name="MousePointer2" :size="15" />选择元素</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="cssInspector(); browserMenuOpen = false"><AppIcon name="Code" :size="15" />CSS检查器</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="deviceToolbar(); browserMenuOpen = false"><AppIcon name="Monitor" :size="15" />设备工具栏</button>
+            <button type="button" role="menuitem" :disabled="!currentBrowser.url" @click="toggleDevTools(currentBrowser); browserMenuOpen = false"><AppIcon name="DevTools" :size="15" />打开 DevTools</button>
           </div>
         </div>
       </form>
@@ -934,20 +998,24 @@ defineExpose({ openUrlInAppBrowser, openFiles, openBrowser, openTerminal, previe
         <button type="button" aria-label="关闭提示" @click="browserNotice = ''"><AppIcon name="X" :size="13" /></button>
       </div>
       <div class="browser-stage">
-        <BrowserWebview
-          v-if="currentBrowser.url"
-          :ref="(el) => setWebviewRef(currentBrowser, el)"
-          :key="currentBrowser.id"
-          :tab-id="currentBrowser.id"
-          :url="currentBrowser.url"
-          :visible="activeTab === `browser-${currentBrowser.id}` && !toolMenuOpen && !obscured"
-          @load-start="browserLoadStart(currentBrowser)"
-          @loaded="browserLoaded(currentBrowser, $event)"
-          @url-change="browserUrlChange(currentBrowser, $event)"
-          @error="browserLoadError(currentBrowser, $event)"
-          @element-picked="onElementPicked"
-        />
-        <div v-else class="browser-empty">
+        <template v-for="tab in browserTabs" :key="tab.id">
+          <BrowserWebview
+            v-if="tab.url"
+            v-show="currentBrowser.id === tab.id"
+            :ref="(el) => setWebviewRef(tab, el)"
+            :tab-id="tab.id"
+            :url="tab.url"
+            :visible="activeTab === `browser-${tab.id}` && !toolMenuOpen && (menuOverlayNative || !browserMenuOpen) && !obscured"
+            @load-start="browserLoadStart(tab)"
+            @loaded="browserLoaded(tab, $event)"
+            @url-change="browserUrlChange(tab, $event)"
+            @error="browserLoadError(tab, $event)"
+            @element-picked="onElementPicked"
+            @menu-action="handleBrowserMenuAction"
+            @menu-close="browserMenuOpen = false"
+          />
+        </template>
+        <div v-if="!currentBrowser.url" class="browser-empty">
           <div class="browser-empty-inner">
             <AgentLogo size="large" class="browser-empty-logo" />
             <p class="browser-empty-title">内置浏览器</p>
