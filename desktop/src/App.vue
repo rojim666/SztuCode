@@ -439,6 +439,7 @@ type PendingAttachment = {
   workspaceRoot?: string;
 };
 const attachedFiles = ref<PendingAttachment[]>([]);
+const isDragOver = ref(false);
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const settingsOpen = ref(false);
@@ -2578,20 +2579,90 @@ async function addBrowserFile(file: File): Promise<string | null> {
   attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
   return null;
 }
-// 处理输入框粘贴：剪贴板含图片时读取为附件并阻止默认行为，纯文本粘贴正常放行
+// 处理输入框粘贴：剪贴板含文件时读取为附件并阻止默认行为，纯文本粘贴正常放行
 function onPasteImage(event: ClipboardEvent) {
   const items = event.clipboardData?.items;
   if (!items) return;
+  const files: File[] = [];
   for (const item of Array.from(items)) {
-    if (item.kind === "file" && item.type.startsWith("image/")) {
+    if (item.kind === "file") {
       const file = item.getAsFile();
-      if (file) {
-        event.preventDefault();
-        void addBrowserFile(file);
-      }
-      break;
+      if (file) files.push(file);
     }
   }
+  if (files.length > 0) {
+    event.preventDefault();
+    void (async () => {
+      const skipped: string[] = [];
+      for (const file of files) {
+        const reason = await addBrowserFile(file);
+        if (reason) skipped.push(reason);
+      }
+      notifySkippedAttachments(skipped);
+    })();
+  }
+}
+
+// 拖拽事件处理
+function onDragOver(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy";
+  }
+  isDragOver.value = true;
+}
+
+function onDragLeave(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  // 只在鼠标真正离开拖拽区域时才隐藏样式
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX;
+  const y = event.clientY;
+  if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+    isDragOver.value = false;
+  }
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  isDragOver.value = false;
+
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+
+  void (async () => {
+    if ("__TAURI_INTERNALS__" in window) {
+      // Tauri 环境：尝试从文件路径读取
+      const paths: string[] = [];
+      for (const file of Array.from(files)) {
+        // 在 Tauri 中，拖拽的文件会有 path 属性
+        const filePath = (file as File & { path?: string }).path;
+        if (filePath) {
+          paths.push(filePath);
+        } else {
+          // 回退到浏览器方式读取
+          const reason = await addBrowserFile(file);
+          if (reason) {
+            notifySkippedAttachments([reason]);
+          }
+        }
+      }
+      if (paths.length > 0) {
+        addReadAttachments(await readAttachments(paths));
+      }
+    } else {
+      // 浏览器环境
+      const skipped: string[] = [];
+      for (const file of Array.from(files)) {
+        const reason = await addBrowserFile(file);
+        if (reason) skipped.push(reason);
+      }
+      notifySkippedAttachments(skipped);
+    }
+  })();
 }
 function chooseSkill(name: string) {
   prompt.value = "/" + name + " ";
@@ -2871,7 +2942,18 @@ function handleWindowResize() {
   }, 120);
 }
 function handleGlobalShortcut(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null;
+  const isEditing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable);
   const mod = event.ctrlKey || event.metaKey;
+
+  // 在编辑输入框时，放行系统编辑快捷键：复制/粘贴/剪切/撤销/重做/全选
+  if (isEditing && mod) {
+    const key = event.key.toLowerCase();
+    if (["c", "v", "x", "z", "y", "a", "d"].includes(key)) {
+      return;
+    }
+  }
+
   // Ctrl/Cmd+Escape 是运行中的紧急停止快捷键，不受输入框焦点影响。
   if (mod && event.key === "Escape" && isRunActive.value) {
     event.preventDefault();
@@ -3387,15 +3469,21 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     @submit="submitUserQuestion(activeUserQuestion, $event)"
                     @stop="stopActiveRun"
                   />
-                    <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending }" @submit.prevent="submit">
+                    <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending, 'drag-over': isDragOver }" @submit.prevent="submit" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
-                      <div v-if="ocrProgress" class="ocr-progress-bar">
-                        <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
-                        <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
+                      <div class="composer-input-shell">
+                        <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
+                        <div v-if="ocrProgress" class="ocr-progress-bar">
+                          <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
+                          <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
+                        </div>
+                        <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed' || !!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : (active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder'))))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                        <div v-if="isDragOver" class="drag-overlay">
+                          <AppIcon name="Upload" :size="32" />
+                          <span>{{ t('app.dropFilesHere') }}</span>
+                        </div>
+                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                       </div>
-                      <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed' || !!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : (active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder'))))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
-                      <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                     </form>
                 </QueueDock>
               </div>
@@ -3426,7 +3514,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               </div>
             </header>
 
-            <form class="sztu-composer landing-composer" @submit.prevent="submit()">
+            <form class="sztu-composer landing-composer" :class="{ 'drag-over': isDragOver }" @submit.prevent="submit()" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
@@ -3435,6 +3523,10 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                   <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
                 </div>
                 <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="!!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                <div v-if="isDragOver" class="drag-overlay">
+                  <AppIcon name="Upload" :size="32" />
+                  <span>{{ t('app.dropFilesHere') }}</span>
+                </div>
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button>
                   <div class="launcher-permission-control">

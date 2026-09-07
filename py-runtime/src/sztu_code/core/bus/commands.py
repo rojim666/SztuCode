@@ -689,6 +689,18 @@ class SkillSetEnabledResult(BaseModel):
     skill: SkillSummary
 
 
+class SkillUninstallCommand(BaseModel):
+    type: Literal["skill.uninstall"] = "skill.uninstall"
+    skill_id: str = Field(min_length=1, max_length=500)
+    workspace_id: str | None = None
+    confirm: Literal["uninstall"]
+
+
+class SkillUninstallResult(BaseModel):
+    skill_id: str
+    uninstalled: bool = True
+
+
 class PluginListCommand(BaseModel):
     type: Literal["plugin.list"] = "plugin.list"
     workspace_id: str | None = None
@@ -981,6 +993,7 @@ Command = Annotated[
     | SkillListCommand
     | SkillInstallCommand
     | SkillSetEnabledCommand
+    | SkillUninstallCommand
     | PluginListCommand
     | PluginInstallCommand
     | PluginSetEnabledCommand

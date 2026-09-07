@@ -151,8 +151,12 @@
   background: var(--surface) !important;
 }
 
-.settings-link { color: var(--text-muted) !important; }
-.settings-link:hover { color: var(--text) !important; background: var(--accent-soft) !important; }
+.settings-link,
+.model-picker-settings { color: var(--text-muted) !important; opacity: 0.7; }
+.settings-link:hover,
+.model-picker-settings:hover:not(:disabled) { color: var(--text) !important; background: var(--surface-soft) !important; opacity: 1; }
+.settings-link:hover svg,
+.model-picker-settings:hover:not(:disabled) svg { transform: rotate(45deg); }
 .sidebar-footer { border: 0 !important; }
 .permission-confirm-backdrop { z-index: 920 !important; }
 .model-manager-backdrop { z-index: 940 !important; }

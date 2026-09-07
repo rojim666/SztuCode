@@ -147,6 +147,7 @@ export const app = {
   sendAppend: "Send follow-up task",
   sendTask: "Send Task",
   addAttachment: "Add Attachment",
+  dropFilesHere: "Drop files here to add attachments",
 
   // Task launcher
   permissionModeAria: "Permission mode",

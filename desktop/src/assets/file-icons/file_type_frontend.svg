@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="folderGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A9EFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1683EF;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="docGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F0F7FF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Folder back -->
+  <path d="M6 14C6 11.7909 7.79086 10 10 10H19.1716C20.2325 10 21.2529 10.4214 22 11.1716L24.8284 14H38C40.2091 14 42 15.7909 42 18V34C42 36.2091 40.2091 38 38 38H10C7.79086 38 6 36.2091 6 34V14Z" fill="url(#folderGrad)"/>
+  <!-- Folder tab highlight -->
+  <path d="M10 10H19.1716C20.2325 10 21.2529 10.4214 22 11.1716L24.8284 14H12L10 12V10Z" fill="#6BB3FF" opacity="0.6"/>
+  <!-- Document -->
+  <rect x="14" y="18" width="20" height="24" rx="2" fill="url(#docGrad)" stroke="#1683EF" stroke-width="1.5"/>
+  <!-- Document fold corner -->
+  <path d="M28 18V24H34L28 18Z" fill="#D6E8FF"/>
+  <path d="M28 18L34 24H28V18Z" fill="#B3D4FF"/>
+  <!-- Code brackets -->
+  <path d="M19 27L16 30L19 33" stroke="#1683EF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M29 27L32 30L29 33" stroke="#1683EF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Code line -->
+  <path d="M25 26L23 34" stroke="#4A9EFF" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- Doc lines -->
+  <line x1="18" y1="37" x2="30" y2="37" stroke="#8BC4FF" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="18" y1="40" x2="26" y2="40" stroke="#8BC4FF" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

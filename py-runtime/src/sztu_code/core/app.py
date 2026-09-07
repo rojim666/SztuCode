@@ -137,6 +137,8 @@ from sztu_code.core.bus.commands import (
     SkillListResult,
     SkillSetEnabledCommand,
     SkillSetEnabledResult,
+    SkillUninstallCommand,
+    SkillUninstallResult,
     SkillSummary,
     UserQuestionPendingCommand,
     UserQuestionPendingResult,
@@ -1405,6 +1407,15 @@ class CoreApp:
             raise HandlerError(-32602, str(error)) from error
         return SkillSetEnabledResult(skill=self._skill_summary(skill))
 
+    async def _skill_uninstall_handler(self, params: dict[str, Any]) -> SkillUninstallResult:
+        cmd = SkillUninstallCommand.model_validate(params)
+        try:
+            loader = self._skill_loader_for_workspace(cmd.workspace_id)
+            loader.uninstall_skill(cmd.skill_id)
+        except (OSError, ValueError) as error:
+            raise HandlerError(-32602, str(error)) from error
+        return SkillUninstallResult(skill_id=cmd.skill_id)
+
     # 返回个人和当前工作区已安装的插件及其所含技能
     async def _plugin_list_handler(self, params: dict[str, Any]) -> PluginListResult:
         cmd = PluginListCommand.model_validate(params)
@@ -1963,6 +1974,7 @@ class CoreApp:
         server.register("skill.list", self._skill_list_handler)
         server.register("skill.install", self._skill_install_handler)
         server.register("skill.set_enabled", self._skill_set_enabled_handler)
+        server.register("skill.uninstall", self._skill_uninstall_handler)
         server.register("plugin.list", self._plugin_list_handler)
         server.register("plugin.install", self._plugin_install_handler)
         server.register("plugin.set_enabled", self._plugin_set_enabled_handler)

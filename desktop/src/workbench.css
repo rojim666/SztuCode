@@ -479,6 +479,12 @@
 .task-intro b { display: block; margin: 1px 0 6px; color: #292d31; font-size: 16px; }
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
 .task-conversation .sztu-composer { border-radius: 12px; border-color: #d9dcdf; box-shadow: 0 5px 18px rgb(28 36 44 / 8%); }
+.task-conversation .sztu-composer .composer-input-shell { position: relative; display: flex; overflow: hidden; flex-direction: column; background: #fff; border: 1px solid #d9dcdf; border-radius: 12px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.task-conversation .sztu-composer:focus-within .composer-input-shell { border-color: #aeb3ba; box-shadow: 0 5px 18px rgb(28 36 44 / 10%); }
+/* 拖拽状态样式 */
+.sztu-composer.drag-over .composer-input-shell { border-color: #1a70cf; background: #f0f7ff; box-shadow: 0 0 0 3px rgb(26 112 207 / 12%); }
+.drag-overlay { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgb(255 255 255 / 92%); backdrop-filter: blur(2px); color: #1a70cf; font-size: 14px; font-weight: 500; pointer-events: none; }
+.drag-overlay svg { opacity: 0.8; }
 /* 运行态（追加模式）不再单独定尺寸：宽度、圆角、内外边距、字号、按钮尺寸全部沿用未运行态，
    避免 run 起停时输入框尺寸跳动。这里只保留权限入口的橙色作为「本轮正在运行」的状态提示。 */
 .task-conversation .sztu-composer .permission.permission--full-access { color: #e65d18; }
@@ -486,7 +492,7 @@
 .task-launcher .permission.permission--full-access { color: #e65d18; }
 .task-launcher .permission.permission--per-item { color: #24262b; }
 .task-conversation .sztu-composer .attachment-strip { padding-top: 6px; }
-.task-conversation .sztu-composer textarea { min-height: 44px; padding: 8px 10px 4px; }
+.task-conversation .sztu-composer textarea { min-height: 44px; padding: 8px 10px 4px; width: 100%; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; outline: none; }
 .task-conversation .sztu-composer textarea { font-size: 12px; line-height: 1.4; }
 .task-conversation .sztu-composer .round,
 .task-conversation .sztu-composer .permission { border: 0; background: transparent; border-radius: 8px; }
@@ -497,7 +503,8 @@
 .task-conversation .sztu-composer .permission:focus-visible { background: #f3f5f5; }
 .task-conversation .sztu-composer .send { width: 28px; height: 28px; border-radius: 50%; font-size: 16px; font-weight: 600; }
 .task-conversation .sztu-composer .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
-.task-conversation .sztu-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; }
+.task-conversation .sztu-composer .composer-toolbar { gap: 4px; padding: 0 7px 5px; display: flex; align-items: center; }
+.task-conversation .sztu-composer .composer-toolbar > span { flex: 1; }
 .task-conversation .sztu-composer .permission { padding: 6px 8px; font-size: 13px; }
 
 @media (max-width: 620px) {
@@ -1184,7 +1191,7 @@
 .launcher-menu-error { margin: 2px 8px 6px; color: #a74343; font-size: 10px; }
 .task-launcher .model-label { min-width: 0; max-width: 210px; overflow: hidden; color: #5c626b; text-overflow: ellipsis; white-space: nowrap; }
 .model-config-control { position: relative; flex: 0 1 auto; min-width: 0; }
-.model-config-trigger { display: flex; min-width: 0; max-width: 250px; height: 36px; align-items: center; gap: 8px; padding: 0 10px; color: #51575f; background: transparent; border: 1px solid transparent; border-radius: 9px; font-size: 13px; font-weight: 560; transition: color 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
+.model-config-trigger { display: flex; min-width: 0; max-width: 250px; height: 36px; align-items: center; gap: 8px; padding: 0 10px; color: #51575f; background: transparent; border: 1px solid transparent; border-radius: 9px; font-size: 13px; font-weight: 400; transition: color 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }
 .model-config-trigger:hover, .model-config-trigger[aria-expanded="true"] { color: #25292e; background: #f3f5f7; border-color: #e4e7ea; box-shadow: 0 1px 2px #20252d0a; }
 .model-config-trigger > i { width: 7px; height: 7px; flex: 0 0 auto; background: #a5aab0; border-radius: 50%; }
 .model-config-trigger > i.online { background: #48a366; box-shadow: 0 0 0 3px #48a36617; }

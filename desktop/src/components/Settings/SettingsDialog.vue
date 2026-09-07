@@ -507,7 +507,7 @@ function selectLocale(value: AppLocale) {
                 <h2>{{ t('settings.general.title') }}</h2>
                 <p>{{ t('settings.general.subtitle') }}</p>
               </div>
-              <AppIcon name="Settings2" :size="18" />
+              <AppIcon name="Settings" :size="18" />
             </header>
             <section class="settings-card">
               <div class="settings-card__heading">

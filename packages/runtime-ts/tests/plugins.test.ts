@@ -80,6 +80,15 @@ test("SkillLoader exposes builtin plugin skills with system scope and priority o
     assert.equal(hellos[0].plugin, "demo");
     assert.equal(hellos[0].system_prompt_template, "Plugin body.");
 
+    const manager = new PluginManager(projectRoot, configRoot, builtinPluginsRoot);
+    await manager.setEnabled("builtin:demo", false);
+    const disabled = (await loader.list()).find((skill) => skill.name === "hello");
+    assert.equal(disabled?.plugin, "demo");
+    assert.equal(disabled?.enabled, false);
+    await assert.rejects(loader.get("hello"), /disabled skill/);
+    await manager.setEnabled("builtin:demo", true);
+    assert.equal((await loader.get("hello")).enabled, true);
+
     // 用户技能目录中的同名技能优先级高于内置插件
     await mkdir(path.join(configRoot, "skills", "hello"), { recursive: true });
     await writeFile(path.join(configRoot, "skills", "hello", "SKILL.md"), "---\nname: hello\ndescription: user override\n---\nUser body.\n", "utf8");

@@ -449,6 +449,10 @@ export async function setSkillEnabled(skillId: string, enabled: boolean, workspa
   return result.skill as SkillSummary;
 }
 
+export async function uninstallSkill(skillId: string, workspaceId?: string | null): Promise<void> {
+  await client.request("skill.uninstall", { skill_id: skillId, workspace_id: workspaceId ?? null, confirm: "uninstall" });
+}
+
 export async function listPlugins(workspaceId?: string | null): Promise<PluginSummary[]> {
   const result = await client.request("plugin.list", { workspace_id: workspaceId ?? null });
   return (result.plugins as PluginSummary[] | undefined) ?? [];

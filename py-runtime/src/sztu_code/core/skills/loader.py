@@ -536,6 +536,37 @@ class SkillLoader:
         self.invalidate()
         return _parse_skill_file(copied_skill, source=installed_source, include_body=False)
 
+    # 仅删除直接安装的个人/工作区技能，系统与插件技能由各自的安装源管理
+    def uninstall_skill(self, skill_id: str) -> None:
+        skill = next(
+            (item for item in self.list_all_skills(include_disabled=True) if item.id == skill_id),
+            None,
+        )
+        if skill is None:
+            raise ValueError(f"skill not found: {skill_id}")
+        if skill.plugin or skill.source not in {"user", "project"} or skill.path is None:
+            raise ValueError(
+                "only directly installed personal or workspace skills can be uninstalled"
+            )
+        root = (
+            self._config_root / "skills"
+            if skill.source == "user"
+            else self._project_root / ".sztu" / "skills"
+        ).resolve()
+        skill_path = skill.path.resolve()
+        target = skill_path.parent if skill_path.name.lower() == "skill.md" else skill_path
+        try:
+            target.relative_to(root)
+        except ValueError as error:
+            raise ValueError("refusing to uninstall a skill outside its installation root") from error
+        if target == root:
+            raise ValueError("refusing to uninstall the skill installation root")
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+        self.invalidate()
+
     # 从本地插件目录安装兼容清单到个人或工作区插件目录，且不覆盖已有内容
     def install_plugin(
         self,

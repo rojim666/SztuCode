@@ -60,3 +60,5 @@ If you need a true Word TOC with page numbers, use `tasks/toc_workflow.md`.
 ## Deliverables
 - Internal navigation is part of the final DOCX.
 - Rendered PNGs (and optional PDFs) are **internal QA only** unless the user explicitly asks for them.
+
+

@@ -71,3 +71,23 @@ test("SkillLoader.list keeps full shape and enabled overrides while staying lazy
     assert.equal(skillReads(calls).length, 0); // setEnabled 路径也不需要读正文
   } finally { restore(); await rm(projectRoot, { recursive: true, force: true }); await rm(configRoot, { recursive: true, force: true }); await rm(builtinRoot, { recursive: true, force: true }); }
 });
+
+test("SkillLoader.uninstall removes direct skills and protects bundled skills", async () => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "sztu-skill-remove-project-"));
+  const configRoot = await mkdtemp(path.join(os.tmpdir(), "sztu-skill-remove-config-"));
+  const builtinRoot = await mkdtemp(path.join(os.tmpdir(), "sztu-skill-remove-builtin-"));
+  const skillDir = path.join(projectRoot, ".sztu", "skills", "removable");
+  const builtinDir = path.join(builtinRoot, "protected");
+  await mkdir(skillDir, { recursive: true });
+  await mkdir(builtinDir, { recursive: true });
+  await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: removable\ndescription: Remove me\n---\nBody\n", "utf8");
+  await writeFile(path.join(builtinDir, "SKILL.md"), "---\nname: protected\ndescription: Keep me\n---\nBody\n", "utf8");
+  const loader = new SkillLoader(projectRoot, configRoot, builtinRoot);
+  try {
+    await loader.uninstall("project:removable");
+    assert.equal(fsSync.existsSync(skillDir), false);
+    assert.equal((await loader.list()).some((item) => item.name === "removable"), false);
+    await assert.rejects(loader.uninstall("builtin:protected"), /Only directly installed/);
+    assert.equal(fsSync.existsSync(builtinDir), true);
+  } finally { await rm(projectRoot, { recursive: true, force: true }); await rm(configRoot, { recursive: true, force: true }); await rm(builtinRoot, { recursive: true, force: true }); }
+});

@@ -147,6 +147,7 @@ export const app = {
   sendAppend: "发送追加任务",
   sendTask: "发送任务",
   addAttachment: "添加附件",
+  dropFilesHere: "释放文件以添加附件",
 
   // 任务启动器
   permissionModeAria: "权限模式",

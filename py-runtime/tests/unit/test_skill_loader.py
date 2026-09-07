@@ -220,6 +220,23 @@ def test_install_local_skill_directory(tmp_path: Path) -> None:
         loader.install_skill(source, "personal")
 
 
+def test_uninstall_skill_removes_direct_skill_and_protects_builtin(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    skill_dir = workspace / ".sztu" / "skills" / "removable"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: removable\ndescription: Remove me\n---\nBody\n",
+        encoding="utf-8",
+    )
+    loader = SkillLoader(project_root=workspace, config_root=tmp_path / "profile")
+    loader.uninstall_skill("project:removable")
+    assert not skill_dir.exists()
+    assert all(item.name != "removable" for item in loader.list_all_skills())
+    builtin = next(item for item in loader.list_all_skills() if item.source == "builtin")
+    with pytest.raises(ValueError, match="only directly installed"):
+        loader.uninstall_skill(builtin.id)
+
+
 # 功能：Codex 的 .codex-plugin/plugin.json 目录约定应可发现插件及其技能
 # 设计：创建最小兼容插件，断言插件摘要和插件技能来源保持关联。
 def test_codex_plugin_manifest_is_supported(tmp_path: Path) -> None:

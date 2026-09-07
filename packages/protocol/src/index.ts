@@ -37,7 +37,7 @@ export const PROTOCOL_METHODS = [
   "schedule.create", "schedule.list", "schedule.update", "schedule.pause", "schedule.delete",
   "plugin.catalog", "plugin.catalog_install", "plugin.install", "plugin.list", "plugin.marketplace_add", "plugin.marketplace_refresh", "plugin.marketplace_remove", "plugin.set_enabled", "plugin.uninstall",
   "provider.ccswitch_apply", "provider.ccswitch_list", "provider.model_benchmark", "provider.model_delete", "provider.model_list", "provider.model_save", "provider.model_select", "provider.model_test", "provider.status",
-  "question.pending", "question.respond", "settings.get", "settings.update", "skill.install", "skill.list", "skill.set_enabled", "workflow.run",
+  "question.pending", "question.respond", "settings.get", "settings.update", "skill.install", "skill.list", "skill.set_enabled", "skill.uninstall", "workflow.run",
   "workspace.archive", "workspace.delete", "workspace.list", "workspace.open", "workspace.pin", "workspace.profile", "workspace.rename", "workspace.resume", "workspace.status", "workspace.tree",
 ] as const;
 export type ProtocolMethod = (typeof PROTOCOL_METHODS)[number];
