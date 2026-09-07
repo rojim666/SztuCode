@@ -1,6 +1,7 @@
 # SztuCode
 
-> 一个本地优先、事件驱动、可审计的 AI Coding Agent 运行时，同时提供 TypeScript 与 Python 双实现。
+> 面向高校的开源全场景办公智能体实验性场地：代码、文档、表格、幻灯片、浏览器，都是智能体的工作台。
+> 本地优先、事件驱动、可审计，提供 TypeScript 与 Python 双实现。
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -20,13 +21,11 @@
 
 ![SztuCode 桌面工作台技能界面](docs/images/image4.png)
 
-SztuCode 面向真实代码仓库工作。桌面工作台使用 TypeScript daemon；命令行可选择 TypeScript 或 Python runtime。后台 daemon 负责运行 Agent Loop、调用工具、管理权限和保存会话，并通过 JSON-RPC 事件流持续反馈执行状态。
+SztuCode 不只面向代码仓库。作为**全场景办公智能体**，它的工作台覆盖高校学习与日常办公的完整链路：撰写与审阅 Word 文档、处理 Excel 表格与公式、生成汇报 PPT、解析 PDF 资料、操控浏览器检索信息、生成图片，以及软件工程任务本身。桌面工作台连接 TypeScript daemon；命令行可选择 TypeScript 或 Python runtime。后台 daemon 负责运行 Agent Loop、调用工具、管理权限和保存会话，并通过 JSON-RPC 事件流持续反馈执行状态。
 
-它既是一个持续完善的本地 AI 编程工具，也是一个用于学习 Agent 工程、软件协作与可信 AI Coding 的开放项目。
+但它首先是一个**面向高校的实验性场地**。Agent 岗位层出不穷，Agent harness 的设计直接决定智能体的能力上限；可无论是 codex、Claude Code 这类产品，还是 opencode 等开源实现，上手难、理解慢，学生很难真正通过 issue → PR 参与进去。所以我们搭了这么一个校园里触手可及的开源项目，并内置了免费模型——clone 下来就能用 deepseek-v4-flash 和 mimo-v2.5 跑起你的第一个智能体任务。欢迎大家尝试并点个 star。
 
-那有同学就要问了，为什么都有了codex和Claude code，甚至是其他agent产品如workbuddy，tare work等，我们还是要搭建一个自己的Agent呢，原因就是现阶段Agent岗层出不穷，梁圣自己也说了Agent harness很重要，所以希望有这么一个学习的平台，来让大家接触一些前沿的Agent知识，但贡献知名的coding agent项目还是太难了，opencode和herms agent这些，上手难，理解慢，也不好去根据issue去做相应的pr，所以我就想着做一个学校里大家最方便接触的开源项目，所以我们搞了这么一个项目，而且还尝试接入了一些内置模型，大家能直接通过项目使用免费的deepseek-v4-flash和mimo-v2.5，欢迎大家尝试并点个star。
-
-并不是说要重复造轮子，做一个超越codex和claude code的产品，而是理解与学习，带着批判的目光去看清现有的agent真正的运作方式，知己知彼方能百战不殆。
+并不是说要重复造轮子，做一个超越 codex 和 claude code 的产品，而是理解与学习——带着批判的目光去看清现有 agent 真正的运作方式，知己知彼方能百战不殆。
 
 ## 项目宣言：技术民主化
 
@@ -34,11 +33,11 @@ SztuCode 面向真实代码仓库工作。桌面工作台使用 TypeScript daemo
 
 技术民主化有三层内涵：
 
-- **访问的民主**：降低门槛，让普通人不需要昂贵的资源、复杂的配置就能接触到前沿技术。我们内置免费模型、提供零配置启动，就是为此。
+- **访问的民主**：降低门槛，让高校学生和初学者不需要昂贵的资源、复杂的配置就能接触到前沿技术。我们内置免费模型、提供零配置启动，就是为此。
 - **理解的民主**：真正的民主不是让人"用魔法"，而是让人"理解魔法如何运作"。我们把 Agent Loop、工具调用、权限系统、上下文压缩这些工程细节全部摊开，用双语言实现、详尽的架构文档，让你不仅能用，还能读懂、能修改、能批判。
 - **创造的民主**：从使用者到创造者。我们降低参与开源的门槛，让学生和初学者能通过 Issue → PR → Review 完整参与真实的工程协作，而不是永远停留在"调用 API"的层面。
 
-当前 AI Coding Agent 赛道呈现"大厂闭源竞速"的格局，但这不应该是唯一的形态。SztuCode 的存在本身就是一个宣言：**我们要做 Agent 时代的教学操作系统**——不是给你一个黑盒工具让你依赖它，而是给你一套完整的、可触摸的、可拆解的工程实现，让你真正理解智能体的运作原理，从而有能力去构建、去改进、去创造属于你自己的东西。
+当前 AI Agent 赛道呈现"大厂闭源竞速"的格局，办公智能体正在成为下一代生产力工具，但这不应该是唯一的形态。SztuCode 的存在本身就是一个宣言：**我们要在高校里建一个全场景办公智能体的开源实验性场地**——不是给你一个黑盒工具让你依赖它，而是给你一套完整的、可触摸的、可拆解的工程实现，让你真正理解智能体的运作原理，从而有能力去构建、去改进、去创造属于你自己的东西。
 
 负责任的开放是我们的底线：四级权限模式、范围升级留痕、工作区边界保护——给你能力，也给你缰绳；让你探索，也保护你不受伤。
 
@@ -50,23 +49,24 @@ SztuCode 面向真实代码仓库工作。桌面工作台使用 TypeScript daemo
 
 ## 为什么是 SztuCode
 
-项目不止封装模型 API，而是尝试复现当前 AI Coding Agent 的完整工程链路：
+项目不止封装模型 API，而是尝试复现当前办公与编程智能体的完整工程链路：
 
 ```text
 用户目标
   → 项目与会话上下文
   → Agent 规划和模型推理
   → 工具调用与权限审批
-  → 文件修改、测试和结果回填
+  → 文件/文档修改、测试和结果回填
   → Diff 审阅、Trace 与会话恢复
 ```
 
-当前项目适合：
+在这片实验场上，你可以：
 
-- 学习 Agent Loop、工具调用、上下文治理和多智能体协作；
-- 构建本地优先、可观察、可扩展的 Coding Agent；
+- 学习 Agent Loop、工具调用、上下文治理和多智能体协作——教材是真实代码，不是幻灯片；
+- 把智能体接入真实办公场景：Word 文档、Excel 表格、汇报 PPT、PDF 解析、浏览器操控与图片生成；
+- 构建本地优先、可观察、可扩展的办公/编程智能体；
 - 研究项目级代码理解、权限安全、RAG 与执行轨迹评测；
-- 通过 Issue、Pull Request、Review 和 Release 参与真实开源协作。
+- 通过 Issue、Pull Request、Review 和 Release 参与真实开源协作，完成从课堂到工程现场的衔接。
 
 ## 双运行时（TypeScript 与 Python）
 
@@ -74,10 +74,6 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 
 ```text
 ┌─ TypeScript 主线 ───────────────────────────────┐   ┌─ Python 镜像 ──────────────────────────────┐
-│ desktop/    Tauri 2 + Vue 3 桌面工作台           │   │ py-runtime/src/sztu_code/tui   Textual 终端 TUI        │
-│ packages/cli        Node CLI（sztu-ts）          │   │ py-runtime/src/sztu_code/cli   Python CLI（sztu-py）    │
-│ packages/runtime-ts Node daemon ── 127.0.0.1:7438 │   │ py-runtime/src/sztu_code/core  Python daemon ── 7437  │
-│ packages/protocol   共享契约（类型包）             │   │ py-runtime/src/sztu_code/core/bus pydantic 契约模型    │
 │ desktop/    Tauri 2 + Vue 3 桌面工作台           │   │ py-runtime/src/sztu_code/tui   Textual 终端 TUI        │
 │ packages/cli        Node CLI（sztu-ts）          │   │ py-runtime/src/sztu_code/cli   Python CLI（sztu-py）    │
 │ packages/runtime-ts Node daemon ── 127.0.0.1:7438 │   │ py-runtime/src/sztu_code/core  Python daemon ── 7437  │
@@ -143,6 +139,7 @@ desktop / packages/cli
 | Agent Runtime | 基于 ReAct 的多步推理、工具调用、结果回填和终止控制；Python 版支持工具并发执行（默认 4），TS 版为串行 |
 | 多种客户端 | Tauri 2 + Vue 3 桌面工作台、Node 终端 chat（TS）；Textual TUI 与脚本化 CLI（Python） |
 | 模型接入 | Anthropic 与 OpenAI-compatible 双协议，可连接兼容服务商；内置 opencode Zen 免费 profile（如 deepseek-v4-flash、mimo-v2.5） |
+| 办公场景 | 桌面端内置 Word / Excel / PPT / PDF 办公插件与 Skills（TS 链）：docx 读写与审阅、表格公式与图表、汇报幻灯片生成、PDF 解析（文本 / OCR / 页面渲染），并可扩展浏览器操控、图片生成、前端设计等场景 |
 | 工作区工具 | 文件读取、目录浏览、搜索、写入、精确编辑和受控 Shell 执行 |
 | 权限系统 | `normal`、`plan`、`accept_edits`、`auto` 四种运行模式，持久化策略与 denial 追踪 |
 | 会话与记忆 | 持久化会话、分层上下文、Notes、历史恢复和上下文压缩（TS 用 js-tiktoken，Python 用 tiktoken，均带 CJK 感知回退） |
@@ -307,7 +304,7 @@ python -m sztu_code.tui --replay <run_id>  # Textual TUI，可回放历史 run
 
 ## 桌面工作台
 
-`desktop/` 是基于 Tauri 2、Vue 3 和 TypeScript 的图形客户端（仅连接 TypeScript daemon），提供项目与会话管理、执行时间线、权限审批、文件浏览、代码预览和 Git 变更审阅。
+`desktop/` 是基于 Tauri 2、Vue 3 和 TypeScript 的图形客户端（仅连接 TypeScript daemon），提供项目与会话管理、执行时间线、权限审批、文件浏览、代码预览和 Git 变更审阅，并内置 Word / Excel / PPT / PDF 等办公插件与技能，是全场景办公体验的主要入口。
 
 ```bash
 # 终端 1：仓库根目录（桌面端连接的是 TS daemon）
@@ -430,70 +427,43 @@ Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / mode
 
 感谢所有参与代码、测试、文档和工程建设的贡献者。以下名单依据仓库可验证的 Git 历史整理，本地同邮箱别名已合并；完整记录以 [GitHub Contributors](https://github.com/rojim666/SztuCode/graphs/contributors) 为准。
 
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/rojim666">
-        <img src="https://github.com/rojim666.png?size=100" width="80" alt="rojim666" /><br />
-        <sub><b>rojim666</b></sub>
-      </a><br />
-      <sub>发起人与维护者</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/charon2121">
-        <img src="https://github.com/charon2121.png?size=100" width="80" alt="charon2121" /><br />
-        <sub><b>charon2121</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/szzhangkkk">
-        <img src="https://github.com/szzhangkkk.png?size=100" width="80" alt="szzhangkkk" /><br />
-        <sub><b>szzhangkkk</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/GuanG-1008">
-        <img src="https://github.com/GuanG-1008.png?size=100" width="80" alt="GuanG-1008" /><br />
-        <sub><b>GuanG-1008</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/neutronstar238">
-        <img src="https://github.com/neutronstar238.png?size=100" width="80" alt="neutronstar238" /><br />
-        <sub><b>neutronstar238</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Shuang-su">
-        <img src="https://github.com/Shuang-su.png?size=100" width="80" alt="Shuang-su" /><br />
-        <sub><b>Shuang-su</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/crazy19-69">
-        <img src="https://github.com/crazy19-69.png?size=100" width="80" alt="crazy19-69" /><br />
-        <sub><b>crazy19-69</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/electrojay27">
-        <img src="https://github.com/electrojay27.png?size=100" width="80" alt="electrojay27" /><br />
-        <sub><b>electrojay27</b></sub>
-      </a><br />
-      <sub>Contributor</sub>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <a href="https://github.com/rojim666" title="rojim666 · 发起人与维护者">
+    <img src="docs/images/contributors/rojim666.png" width="72" height="72" alt="rojim666" />
+  </a>
+  <a href="https://github.com/charon2121" title="charon2121">
+    <img src="docs/images/contributors/charon2121.png" width="72" height="72" alt="charon2121" />
+  </a>
+  <a href="https://github.com/szzhangkkk" title="szzhangkkk">
+    <img src="docs/images/contributors/szzhangkkk.png" width="72" height="72" alt="szzhangkkk" />
+  </a>
+  <a href="https://github.com/GuanG-1008" title="GuanG-1008">
+    <img src="docs/images/contributors/GuanG-1008.png" width="72" height="72" alt="GuanG-1008" />
+  </a>
+  <a href="https://github.com/neutronstar238" title="neutronstar238">
+    <img src="docs/images/contributors/neutronstar238.png" width="72" height="72" alt="neutronstar238" />
+  </a>
+  <a href="https://github.com/Shuang-su" title="Shuang-su">
+    <img src="docs/images/contributors/Shuang-su.png" width="72" height="72" alt="Shuang-su" />
+  </a>
+  <a href="https://github.com/crazy19-69" title="crazy19-69">
+    <img src="docs/images/contributors/crazy19-69.png" width="72" height="72" alt="crazy19-69" />
+  </a>
+  <a href="https://github.com/electrojay27" title="electrojay27">
+    <img src="docs/images/contributors/electrojay27.png" width="72" height="72" alt="electrojay27" />
+  </a>
+  <a href="https://github.com/greykoi" title="greykoi">
+    <img src="docs/images/contributors/greykoi.png" width="72" height="72" alt="greykoi" />
+  </a>
+  <a href="https://github.com/JJ704sd" title="JJ704sd">
+    <img src="docs/images/contributors/JJ704sd.png" width="72" height="72" alt="JJ704sd" />
+  </a>
+  <a href="https://github.com/161142272" title="161142272">
+    <img src="docs/images/contributors/161142272.png" width="72" height="72" alt="161142272" />
+  </a>
+</p>
+
+同样感谢在 Git 历史中留下可验证贡献、尚未关联 GitHub 头像的同学：47y47、jasiitay7、Miqi9880、xngyan、Zixuan、郑中南。
 
 贡献以公开 Issue、Commit、Pull Request、Review 和 Release 为准；持续贡献者可以逐步承担模块 Review 和维护职责。
 
