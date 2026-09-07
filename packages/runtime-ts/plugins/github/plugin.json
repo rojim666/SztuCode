@@ -1,0 +1,13 @@
+{
+  "name": "github",
+  "description": "代码仓库与开发协作：仓库管理、PR 审查评论处理与 CI 失败修复。",
+  "version": "1.0.0",
+  "skills": "bundled-skills",
+  "interface": {
+    "displayName": "GitHub",
+    "brandColor": "#24282e"
+  },
+  "publisher": "OpenAI / SztuCode",
+  "homepage": "https://cli.github.com/",
+  "license": "Apache-2.0 / MIT"
+}

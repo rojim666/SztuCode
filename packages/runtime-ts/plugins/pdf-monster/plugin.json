@@ -1,0 +1,13 @@
+{
+  "name": "pdf-monster",
+  "description": "以适合 Agent 读取的文本、OCR 文本、页面渲染图像和嵌入图片文件等形式分析 PDF，同时避免污染工作目录。",
+  "version": "1.0.0",
+  "skills": "skills",
+  "interface": {
+    "displayName": "PDF Monster",
+    "brandColor": "#d36b44"
+  },
+  "publisher": "PDF Monster 社区快照 · 上游暂不可用",
+  "homepage": "https://hol.org/registry/plugins/johnny-bae%2Fpdf-monster",
+  "license": "MIT（随附许可）"
+}

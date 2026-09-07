@@ -1,0 +1,3 @@
+# PDF Monster provenance
+
+Preserves the project's existing snapshot and included MIT license. Registry: https://hol.org/registry/plugins/johnny-bae%2Fpdf-monster . The listed upstream https://github.com/jbaehova/pdf-monster returned 404 on 2026-09-07; no claim of latest-version or independently verified upstream commit is made. Local modification: PowerShell cleanup command on Windows. Requires Python with PyMuPDF OR Poppler. OCR requires Tesseract and language data (chi_sim+eng for simplified Chinese/English). These external engines have their own licenses and are not bundled by this plugin. Artifacts default to OS temporary storage; --save-to is explicit persistence.

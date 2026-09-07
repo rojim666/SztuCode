@@ -12,7 +12,7 @@ const { t } = useI18n({ useScope: "global" });
 
 const win = getCurrentWindow();
 const menuEl = ref<HTMLElement | null>(null);
-const MENU_WIDTH = 252;
+const MENU_WIDTH = 216;
 
 // 主窗口切换语言/主题后，通过共享 localStorage 的 storage 事件同步到托盘窗口
 function syncSharedState(event: StorageEvent) {
@@ -40,9 +40,7 @@ async function fitWindow() {
   if (height > 0) await win.setSize(new LogicalSize(MENU_WIDTH, height));
 }
 
-function closeOnBlur() { void win.hide(); }
-// 仅在页面真正不可见时关闭；visibilitychange 在窗口显示时也会触发，直接隐藏会导致菜单闪现即消失
-function closeOnHidden() { if (document.visibilityState === "hidden") void win.hide(); }
+// 原生 Focused(false) 统一处理失焦关闭，避免 WebView 焦点切换抢先吞掉点击。
 function closeOutside(event: PointerEvent) {
   if (!(event.target as Element | null)?.closest(".tray-menu")) void win.hide();
 }
@@ -63,8 +61,6 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => {
   document.body.classList.add("tray-menu-host");
   applyTheme();
-  window.addEventListener("blur", closeOnBlur);
-  document.addEventListener("visibilitychange", closeOnHidden);
   document.addEventListener("pointerdown", closeOutside, true);
   window.addEventListener("storage", syncSharedState);
   observer = new ResizeObserver(() => { void fitWindow(); });
@@ -74,8 +70,6 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   document.body.classList.remove("tray-menu-host");
-  window.removeEventListener("blur", closeOnBlur);
-  document.removeEventListener("visibilitychange", closeOnHidden);
   document.removeEventListener("pointerdown", closeOutside, true);
   window.removeEventListener("storage", syncSharedState);
   observer?.disconnect();
@@ -103,91 +97,60 @@ async function action(name: string) {
 
 <template>
 <main ref="menuEl" class="tray-menu" tabindex="-1" role="menu" @keydown="onKeydown" @keydown.esc="win.hide()" @mousedown.stop>
-    <header><span class="mark">S</span><div><strong>SztuCode</strong><small>{{ t('tray.subtitle') }}</small></div></header>
-    <button class="primary" role="menuitem" @click="action('new_chat')"><AppIcon name="MessageSquarePlus" :size="16" />{{ t('tray.newChat') }}</button>
-    <div class="section-label">{{ t('tray.quickAccess') }}</div>
+    <button role="menuitem" @click="action('new_chat')"><AppIcon name="MessageSquarePlus" :size="16" />{{ t('tray.newChat') }}</button>
     <button role="menuitem" @click="action('show')"><AppIcon name="AppWindow" :size="16" />{{ t('tray.showMainWindow') }}</button>
     <button role="menuitem" @click="action('workspaces')"><AppIcon name="FolderOpen" :size="16" />{{ t('tray.workspaces') }}</button>
     <button role="menuitem" @click="action('settings')"><AppIcon name="Settings" :size="16" />{{ t('tray.settings') }}</button>
-    <div class="divider" />
-    <button class="quit" role="menuitem" @click="action('quit')"><AppIcon name="Power" :size="16" />{{ t('tray.quit') }}</button>
+    <div class="divider" role="separator" />
+    <button role="menuitem" @click="action('quit')"><AppIcon name="Power" :size="16" />{{ t('tray.quit') }}</button>
   </main>
 </template>
 
 <style scoped>
 .tray-menu, .tray-menu *, .tray-menu *::before, .tray-menu *::after { box-sizing: border-box; }
-:global(html), :global(body.tray-menu-host), :global(body.tray-menu-host #app) { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
+:global(body.tray-menu-host), :global(body.tray-menu-host #app) { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; }
 :global(body.tray-menu-host) { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
-
 .tray-menu {
-  width: 252px;
-  padding: 6px;
-  color: #1f2329;
-  background: #fff;
-  border: 1px solid #e3e6ea;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgb(28 35 48 / 18%), 0 2px 8px rgb(28 35 48 / 8%);
+  --menu-text: #262626;
+  --menu-muted: #737373;
+  --menu-hover: #f0f0f0;
+  --menu-border: #e5e5e5;
+  width: 216px;
+  padding: 5px;
+  color: var(--menu-text);
+  background: #fcfcfc;
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
   outline: none;
   user-select: none;
 }
-
-header { display: flex; align-items: center; gap: 10px; padding: 8px 10px 10px; }
-.mark { display: grid; width: 30px; height: 30px; place-items: center; flex: none; color: #fff; background: #1f2329; border-radius: 9px; font-size: 14px; font-weight: 700; }
-header strong, header small { display: block; }
-header strong { font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
-header small { margin-top: 1px; color: #8a919c; font-size: 11px; }
-
 button {
   display: flex;
   width: 100%;
+  height: 32px;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  color: #2b313a;
+  gap: 9px;
+  padding: 0 9px;
+  color: var(--menu-text);
   background: transparent;
   border: 0;
-  border-radius: 8px;
+  border-radius: 4px;
   font: inherit;
   font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
   text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
+  cursor: default;
 }
-button:hover { background: #f2f3f5; }
-button:focus-visible { background: #f2f3f5; outline: none; }
-button .app-icon { color: #646b76; }
-
-.primary { margin: 2px 0 6px; color: #fff; background: #1f2329; font-weight: 600; }
-.primary:hover, .primary:focus-visible { background: #33383f; }
-.primary .app-icon { color: #fff; }
-
-.section-label { padding: 4px 10px 2px; color: #9aa1ab; font-size: 11px; }
-.divider { height: 1px; margin: 6px 10px; background: #eceef1; }
-
-.quit { color: #c8544a; }
-.quit .app-icon { color: #c8544a; }
-.quit:hover, .quit:focus-visible { background: #fdf1f0; }
-
-/* 暗色主题（托盘是独立窗口，主题通过 sztu.appearance 同步到 data-app-theme） */
-:global([data-app-theme="dark"] .tray-menu){ color: #e8eaed; background: #2b2d31; border-color: #43464c; box-shadow: 0 12px 32px rgb(0 0 0 / 45%), 0 2px 8px rgb(0 0 0 / 30%); }
-:global([data-app-theme="dark"] .mark){ color: #1f2329; background: #e8eaed; }
-:global([data-app-theme="dark"] header small){ color: #9aa1ab; }
-:global([data-app-theme="dark"] button){ color: #d6d9de; }
-:global([data-app-theme="dark"] button:hover),
-:global([data-app-theme="dark"] button:focus-visible){ background: rgb(255 255 255 / 7%); }
-:global([data-app-theme="dark"] button .app-icon){ color: #9aa1ab; }
-:global([data-app-theme="dark"] .primary){ color: #1f2329; background: #e8eaed; }
-:global([data-app-theme="dark"] .primary:hover),
-:global([data-app-theme="dark"] .primary:focus-visible){ background: #ffffff; }
-:global([data-app-theme="dark"] .primary .app-icon){ color: #1f2329; }
-:global([data-app-theme="dark"] .section-label){ color: #7d848e; }
-:global([data-app-theme="dark"] .divider){ background: #3f4248; }
-:global([data-app-theme="dark"] .quit),
-:global([data-app-theme="dark"] .quit .app-icon){ color: #e8a19b; }
-:global([data-app-theme="dark"] .quit:hover),
-:global([data-app-theme="dark"] .quit:focus-visible){ background: rgb(232 161 155 / 12%); }
-
-@media (prefers-reduced-motion: reduce) {
-  button { transition: none; }
+button:hover, button:focus-visible { background: var(--menu-hover); outline: none; }
+button:focus-visible { box-shadow: inset 0 0 0 1px var(--menu-muted); }
+button .app-icon { color: var(--menu-muted); flex: none; }
+.divider { height: 1px; margin: 4px 8px; background: var(--menu-border); }
+:global([data-app-theme="dark"]) .tray-menu {
+  --menu-text: #ededed;
+  --menu-muted: #a3a3a3;
+  --menu-hover: #383838;
+  --menu-border: #404040;
+  background: #262626;
 }
 </style>

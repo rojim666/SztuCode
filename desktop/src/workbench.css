@@ -1145,11 +1145,11 @@
 /* New-task launcher: project context, execution controls, then starter tasks. */
 .task-launcher { display: flex; min-height: 100%; padding: 40px 28px; align-items: center; justify-content: center; }
 .launcher-content { width: min(940px, 100%); min-width: 0; flex: 0 1 940px; transform: translateY(-3vh); }
-.launcher-heading { display: flex; align-items: center; gap: 19px; min-height: 58px; margin: 0 0 24px 3px; }
-.launcher-mark { display: grid; width: 48px; height: 48px; flex: 0 0 auto; place-items: center; color: #202225; }
+.launcher-heading { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 16px; min-height: 58px; margin: 0 auto 28px; text-align: center; }
+.launcher-mark { display: grid; width: 52px; height: 52px; flex: 0 0 auto; place-items: center; color: #202225; }
 .launcher-mark svg { display: block; }
-.launcher-heading__copy { min-width: 0; }
-.task-launcher .launcher-heading h1 { display: inline-grid; margin: 0; color: #1e2023; font-family: "Aptos Display", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif; font-size: 42px; font-weight: 560; line-height: 1.16; letter-spacing: 0; }
+.launcher-heading__copy { min-width: 0; display: flex; align-items: center; }
+.task-launcher .launcher-heading h1 { display: inline-grid; margin: 0; color: #1e2023; font-family: "Aptos Display", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif; font-size: 40px; font-weight: 560; line-height: 1.16; letter-spacing: 0; text-align: center; }
 .launcher-heading h1::before, .launcher-heading h1 > span { grid-area: 1 / 1; white-space: nowrap; }
 .launcher-heading h1::before { visibility: hidden; content: "Think it. Build it."; }
 .launcher-heading h1 > span { width: 0; overflow: hidden; border-right: 2px solid #25282c; animation: launcher-title-type 1.35s steps(18, end) 180ms forwards, launcher-title-caret 450ms step-end 3 180ms forwards; }

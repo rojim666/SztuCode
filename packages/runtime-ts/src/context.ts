@@ -252,7 +252,9 @@ export class ContextManager {
     return { system, conversation, tool };
   }
 
-  tokenEstimate(): number { return Math.ceil(this.usageSnapshot().conversation * this.calibrationFactor); }
+  /** Return the conversation estimate, counting only appended messages when possible. */
+  incrementalTokenEstimate(): number { return this.usageSnapshot().conversation; }
+  tokenEstimate(): number { return Math.ceil(this.incrementalTokenEstimate() * this.calibrationFactor); }
   // 用服务端返回的真实输入 token 校准本地估算：系数钳制在 [0.5, 2]，滑动平均（0.7 旧 + 0.3 新），首次直接采用
   calibrate(serverInputTokens: number): void {
     if (!(serverInputTokens > 0)) return;

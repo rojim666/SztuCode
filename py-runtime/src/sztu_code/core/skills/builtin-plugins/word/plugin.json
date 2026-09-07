@@ -1,0 +1,13 @@
+{
+  "name": "word",
+  "description": "Word 文档处理工具：创建、编辑与审阅 docx，覆盖批注、修订、目录、模板样式与无障碍检查。",
+  "version": "1.0.0",
+  "skills": "bundled-skills",
+  "interface": {
+    "displayName": "Word",
+    "brandColor": "#307bc4"
+  },
+  "publisher": "OpenAI · SztuCode 适配",
+  "homepage": "https://github.com/JetBrains/skills/tree/e0f258b5cfed145015cb3e48da9a97947f7c4ed7/doc",
+  "license": "Apache-2.0"
+}

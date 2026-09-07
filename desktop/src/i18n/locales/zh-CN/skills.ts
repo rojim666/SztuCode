@@ -1,4 +1,9 @@
 export const skills = {
+  fromPlugin: "来自插件：{name}",
+  bundledPlugin: "内置插件",
+  viewPluginSkills: "查看 {n} 个技能",
+  pluginSource: "来源",
+  enableParentPlugin: "请先启用所属插件",
   sectionAria: "插件与技能",
   navAria: "能力目录",
   pluginsTab: "插件",

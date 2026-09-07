@@ -4,6 +4,7 @@ import { chmod, cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareSkillAssets } from "../../scripts/prepare-skill-assets.js";
+import { preparePluginAssets } from "../../scripts/prepare-plugin-assets.js";
 import { prepareDocumentParser } from "./prepare-document-parser.js";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -93,6 +94,8 @@ if (process.platform === "linux") {
 // "Cannot use import statement outside a module"（issue #152）
 await writeFile(path.join(runtimeRoot, "package.json"), `${JSON.stringify({ type: "module" }, null, 2)}\n`);
 await prepareSkillAssets(path.join(repositoryRoot, "packages", "runtime-ts", "skills"), path.join(runtimeRoot, "skills"), repositoryRoot);
+// 内置插件与技能一样随运行时打包：plugin.json + skills/ 目录，scripts 内的 .ts 会被编译为 .mjs
+await preparePluginAssets(path.join(repositoryRoot, "packages", "runtime-ts", "plugins"), path.join(runtimeRoot, "plugins"), repositoryRoot);
 for (const directory of ["prompts", "agents"]) await cp(path.join(repositoryRoot, "packages", "runtime-ts", directory), path.join(runtimeRoot, directory), { recursive: true });
 await prepareDocumentParser(runtimeRoot);
 } finally {

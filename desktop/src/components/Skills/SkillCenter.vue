@@ -26,6 +26,7 @@ type InstallScope = "personal" | "workspace";
 type SourceOption = { key: string; label: string; scope: SkillSummary["scope"] };
 
 const activeArea = ref<Area>("plugins");
+const rootEl = ref<HTMLElement | null>(null);
 const query = ref("");
 const loading = ref(false);
 const error = ref("");
@@ -62,11 +63,28 @@ const subtitle = computed(() => activeArea.value === "plugins"
   : "通过任务专用技能扩展 SztuCode 的能力");
 const normalizedQuery = computed(() => query.value.trim().toLocaleLowerCase());
 
+function owningPlugin(skill: SkillSummary): PluginSummary | undefined {
+  const scope = skill.scope === "system" ? "builtin" : skill.scope;
+  return plugins.value.find((plugin) => plugin.name === skill.plugin && plugin.source === scope);
+}
+function pluginLabel(skill: SkillSummary): string {
+  return owningPlugin(skill)?.display_name || skill.plugin || "";
+}
+function showPluginSkills(plugin: PluginSummary): void {
+  query.value = "";
+  activeSkillSource.value = `${plugin.source === "builtin" ? "builtin" : plugin.source === "personal" ? "user" : "project"}-plugin:${plugin.name}`;
+  activeArea.value = "skills";
+}
+function safeHomepage(plugin: PluginSummary): string | undefined {
+  try { const url = new URL(plugin.homepage || ""); return url.protocol === "https:" ? url.href : undefined; }
+  catch { return undefined; }
+}
+
 const sourceOptions = computed<SourceOption[]>(() => {
   const options = new Map<string, SourceOption>();
   for (const skill of skills.value) {
     let label = skill.source;
-    if (skill.plugin) label = skill.plugin;
+    if (skill.plugin) label = t("skills.fromPlugin", { name: pluginLabel(skill) });
     else if (skill.source === "project") label = props.workspaceName || t("skills.currentProject");
     else if (skill.source === "user") label = t("skills.personal");
     else if (skill.source === "builtin") label = t("skills.systemSource");
@@ -78,7 +96,7 @@ const sourceOptions = computed<SourceOption[]>(() => {
 
 const matchingSkills = computed(() => {
   const value = normalizedQuery.value;
-  return skills.value.filter((skill) => !value || `${skill.display_name} ${skill.name} ${skill.short_description} ${skill.description} ${skill.plugin ?? ""}`.toLocaleLowerCase().includes(value));
+  return skills.value.filter((skill) => !value || `${skill.display_name} ${skill.name} ${skill.short_description} ${skill.description} ${pluginLabel(skill)}`.toLocaleLowerCase().includes(value));
 });
 const installedSkills = computed(() => matchingSkills.value.filter((skill) => skill.enabled));
 const visibleInstalledSkills = computed(() => installedSkills.value.slice(0, 6));
@@ -340,12 +358,12 @@ async function submitInstall(): Promise<void> {
 }
 
 watch(() => [props.workspaceId, props.connected], () => void refreshCatalog());
-watch(activeArea, () => { query.value = ""; addMenuOpen.value = false; });
+watch(activeArea, () => { query.value = ""; addMenuOpen.value = false; rootEl.value?.scrollTo({ top: 0 }); });
 onMounted(() => void refreshCatalog());
 </script>
 
 <template>
-  <section class="skill-center" :aria-label="t('skills.sectionAria')">
+  <section ref="rootEl" class="skill-center" :aria-label="t('skills.sectionAria')">
     <header class="skill-center__topbar">
       <nav :aria-label="t('skills.navAria')">
         <button :class="{ active: activeArea === 'plugins' }" @click="activeArea = 'plugins'">{{ t("skills.pluginsTab") }}</button>
@@ -384,7 +402,7 @@ onMounted(() => void refreshCatalog());
           <div v-if="visibleInstalledSkills.length" class="capability-list capability-list--installed">
             <article v-for="skill in visibleInstalledSkills" :key="skill.id" class="capability-row">
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
-              <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small></span>
+              <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small><em v-if="skill.plugin">{{ t('skills.fromPlugin', { name: pluginLabel(skill) }) }}</em></span>
               <AppIcon name="Check" :size="18" class="installed-check" />
             </article>
           </div>
@@ -400,8 +418,8 @@ onMounted(() => void refreshCatalog());
           <div v-if="catalogSkills.length" class="capability-list">
             <article v-for="skill in catalogSkills" :key="skill.id" class="capability-row" :class="{ disabled: !skill.enabled }">
               <span class="capability-icon" :style="skillStyle(skill)">{{ initials(skill.display_name) }}</span>
-              <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small><em v-if="skill.plugin">{{ skill.plugin }}</em></span>
-              <button class="skill-state" :class="{ enabled: skill.enabled }" :disabled="updatingSkill === skill.id" :title="skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')" @click="toggleSkill(skill)">
+              <span class="capability-copy"><b>{{ skill.display_name }}</b><small>{{ skillDescription(skill) }}</small><em v-if="skill.plugin">{{ t('skills.fromPlugin', { name: pluginLabel(skill) }) }}</em></span>
+              <button class="skill-state" :class="{ enabled: skill.enabled }" :disabled="updatingSkill === skill.id || owningPlugin(skill)?.enabled === false" :title="owningPlugin(skill)?.enabled === false ? t('skills.enableParentPlugin') : skill.enabled ? t('skills.disableSkill') : t('skills.enableSkill')" @click="toggleSkill(skill)">
                 <AppIcon v-if="updatingSkill === skill.id" name="RefreshCw" :size="16" class="spin" />
                 <AppIcon v-else-if="skill.enabled" name="Check" :size="18" />
                 <AppIcon v-else name="Power" :size="16" />
@@ -415,8 +433,17 @@ onMounted(() => void refreshCatalog());
       <template v-else>
         <section class="plugin-installed-strip" aria-labelledby="installed-plugins-title">
           <header><h2 id="installed-plugins-title">{{ t("skills.installed") }}</h2><button class="plugin-manage-trigger" @click="pluginManageOpen = true"><AppIcon name="Settings2" :size="16" />{{ t("skills.manage") }}</button></header>
-          <div v-if="plugins.length" class="plugin-icons">
-            <button v-for="plugin in plugins.slice(0, 9)" :key="plugin.id" :title="t('skills.pluginState', { name: plugin.display_name, state: plugin.enabled ? t('skills.enabledState') : t('skills.disabledState') })" :class="{ disabled: !plugin.enabled }" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }" @click="pluginManageOpen = true"><AppIcon name="Plug" :size="19" /></button>
+          <div v-if="visibleInstalledPlugins.length" class="bundled-plugin-list">
+            <article v-for="plugin in visibleInstalledPlugins" :key="plugin.id" class="bundled-plugin" :class="{ disabled: !plugin.enabled }">
+              <span class="capability-icon" :style="{ '--skill-color': plugin.brand_color || fallbackColor(plugin.name) }">{{ initials(plugin.display_name) }}</span>
+              <div class="bundled-plugin-copy">
+                <b>{{ plugin.display_name }}</b><span class="plugin-origin">{{ plugin.source === 'builtin' ? t('skills.bundledPlugin') : t('skills.installed') }}</span>
+                <p>{{ pluginDescription(plugin) }}</p>
+                <small v-if="plugin.publisher">{{ plugin.publisher }}<template v-if="plugin.license"> · {{ plugin.license }}</template></small>
+                <div class="bundled-plugin-actions"><button @click="showPluginSkills(plugin)">{{ t('skills.viewPluginSkills', { n: plugin.skills.length }) }}</button><a v-if="safeHomepage(plugin)" :href="safeHomepage(plugin)" target="_blank" rel="noopener noreferrer">{{ t('skills.pluginSource') }}</a></div>
+              </div>
+              <button class="plugin-toggle" role="switch" :aria-checked="plugin.enabled" :aria-label="t('skills.pluginState', { name: plugin.display_name, state: plugin.enabled ? t('skills.enabledState') : t('skills.disabledState') })" :class="{ enabled: plugin.enabled }" :disabled="!connected || updatingPlugin === plugin.id" @click="togglePlugin(plugin)"><span /></button>
+            </article>
           </div>
           <p v-else-if="!loading" class="section-empty">{{ t("skills.noLocalPlugins") }}</p>
         </section>
@@ -477,9 +504,10 @@ onMounted(() => void refreshCatalog());
         <div v-if="visibleInstalledPlugins.length" class="plugin-manage-list">
           <article v-for="plugin in visibleInstalledPlugins" :key="plugin.id" :class="{ disabled: !plugin.enabled }">
             <span class="plugin-manage-icon" :style="{ '--plugin-color': plugin.brand_color || fallbackColor(plugin.name) }"><AppIcon name="Plug" :size="17" /></span>
-            <span><b>{{ plugin.display_name }}</b><small>{{ pluginDescription(plugin) }}</small><em>{{ plugin.source === 'workspace' ? t('skills.workspaceScope') : t('skills.personal') }}<template v-if="plugin.version"> · {{ plugin.version }}</template></em></span>
+            <span><b>{{ plugin.display_name }}</b><small>{{ pluginDescription(plugin) }}</small><em>{{ plugin.source === 'workspace' ? t('skills.workspaceScope') : plugin.source === 'builtin' ? t('skills.systemSource') : t('skills.personal') }}<template v-if="plugin.version"> · {{ plugin.version }}</template></em></span>
             <button class="plugin-toggle" :class="{ enabled: plugin.enabled }" :disabled="updatingPlugin === plugin.id" :title="plugin.enabled ? t('skills.disablePlugin') : t('skills.enablePlugin')" @click="togglePlugin(plugin)"><AppIcon v-if="updatingPlugin === plugin.id" name="RefreshCw" :size="14" class="spin" /><span v-else /></button>
-            <button class="plugin-remove" :disabled="updatingPlugin === plugin.id" :title="t('skills.uninstallPlugin')" @click="removeInstalledPlugin(plugin)"><AppIcon name="Trash2" :size="15" /></button>
+            <button v-if="plugin.source !== 'builtin'" class="plugin-remove" :disabled="updatingPlugin === plugin.id" :title="t('skills.uninstallPlugin')" @click="removeInstalledPlugin(plugin)"><AppIcon name="Trash2" :size="15" /></button>
+            <span v-else class="plugin-remove plugin-remove--builtin" :title="t('skills.systemSource')"><AppIcon name="ShieldCheck" :size="15" /></span>
           </article>
         </div>
         <p v-else class="section-empty">{{ t("skills.noMatchPlugins") }}</p>
@@ -489,6 +517,17 @@ onMounted(() => void refreshCatalog());
 </template>
 
 <style scoped>
+.bundled-plugin-list { display: grid; gap: 8px; margin-top: 14px; }
+.bundled-plugin { display: grid; grid-template-columns: 42px minmax(0, 1fr) 34px; align-items: start; gap: 14px; padding: 16px 12px; border: 1px solid var(--border-color, #e7e7e7); border-radius: 10px; }
+.bundled-plugin.disabled > .capability-icon { filter: grayscale(1); opacity: .5; }
+.bundled-plugin-copy { min-width: 0; }
+.bundled-plugin-copy b { font-size: 14px; }
+.plugin-origin { margin-left: 8px; color: #858585; font-size: 10px; }
+.bundled-plugin-copy p { margin: 6px 0; color: #777; font-size: 12px; line-height: 1.65; }
+.bundled-plugin-copy small { color: #888; font-size: 11px; }
+.bundled-plugin-actions { display: flex; gap: 16px; margin-top: 9px; align-items: center; }
+.bundled-plugin-actions button, .bundled-plugin-actions a { padding: 0; background: transparent; border: 0; color: inherit; font: inherit; font-size: 11px; text-decoration: none; cursor: pointer; }
+.bundled-plugin-actions button:hover, .bundled-plugin-actions a:hover { text-decoration: underline; }
 .skill-center button:focus { outline: 0; }
 .skill-center button:focus-visible { box-shadow: inset 0 0 0 1px #8e9297; }
 .plugin-manage-trigger { display: flex; align-items: center; gap: 5px; padding: 4px 7px; color: #777a7e; background: transparent; border: 0; border-radius: 6px; font-size: 11px; }
@@ -541,5 +580,7 @@ onMounted(() => void refreshCatalog());
 .plugin-toggle.enabled > span { transform: translateX(14px); }
 .plugin-remove { display: grid; width: 30px; height: 30px; padding: 0; place-items: center; color: #9a7773; background: transparent; border: 0; border-radius: 7px; }
 .plugin-remove:hover { color: #a33d32; background: #fff0ee; }
+.plugin-remove--builtin { color: #8e9195; cursor: default; }
+.plugin-remove--builtin:hover { color: #8e9195; background: transparent; }
 @media (max-width: 620px) { .marketplace-toolbar { align-items: stretch; flex-direction: column; } .marketplace-toolbar__actions { justify-content: flex-end; } .marketplace-plugin-row { grid-template-columns: 44px minmax(0, 1fr) auto; } .catalog-install { width: 31px; padding: 0; justify-content: center; font-size: 0; } .marketplace-dialog { padding: 23px 20px 22px; } }
 </style>

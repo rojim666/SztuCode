@@ -245,8 +245,11 @@ def test_codex_plugin_manifest_is_supported(tmp_path: Path) -> None:
 
 
 # 功能：插件启停状态应同时控制其捆绑技能是否可被运行时解析
-# 设计：在隔离个人插件目录切换状态，验证插件仍保留但技能解析随之变化。
-def test_plugin_enabled_state_controls_bundled_skills(tmp_path: Path) -> None:
+# 设计：在隔离个人插件目录切换状态，验证插件仍保留但技能解析随之变化；
+#      内置插件目录也被重定向到临时空目录，保证目录仅含本用例插件。
+def test_plugin_enabled_state_controls_bundled_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config_root = tmp_path / "profile"
     plugin = config_root / "plugins" / "quality-suite"
     (plugin / ".codex-plugin").mkdir(parents=True)
@@ -258,6 +261,9 @@ def test_plugin_enabled_state_controls_bundled_skills(tmp_path: Path) -> None:
     (skill_dir / "SKILL.md").write_text(
         "---\nname: audit\ndescription: Audit\n---\nAudit $ARGUMENTS\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        SkillLoader, "_BUILTIN_PLUGINS_DIR", tmp_path / "isolated-builtin-plugins"
     )
     loader = SkillLoader(project_root=tmp_path / "workspace", config_root=config_root)
     installed = next(item for item in loader.list_plugins() if item.name == "quality-suite")
@@ -273,13 +279,19 @@ def test_plugin_enabled_state_controls_bundled_skills(tmp_path: Path) -> None:
 
 
 # 功能：卸载插件仅删除受控插件目录并立即移出插件目录
-# 设计：安装隔离插件后调用 uninstall_plugin，断言目标消失且配置根仍完整存在。
-def test_uninstall_plugin_removes_only_managed_plugin_directory(tmp_path: Path) -> None:
+# 设计：安装隔离插件后调用 uninstall_plugin，断言目标消失且配置根仍完整存在；
+#      内置插件目录同样被隔离，避免真实内置插件干扰空目录断言。
+def test_uninstall_plugin_removes_only_managed_plugin_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config_root = tmp_path / "profile"
     plugin = config_root / "plugins" / "removable"
     (plugin / ".codex-plugin").mkdir(parents=True)
     (plugin / ".codex-plugin" / "plugin.json").write_text(
         '{"name":"removable","version":"1.0.0"}', encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        SkillLoader, "_BUILTIN_PLUGINS_DIR", tmp_path / "isolated-builtin-plugins"
     )
     loader = SkillLoader(project_root=tmp_path / "workspace", config_root=config_root)
     installed = next(item for item in loader.list_plugins() if item.name == "removable")
@@ -289,3 +301,50 @@ def test_uninstall_plugin_removes_only_managed_plugin_directory(tmp_path: Path) 
     assert not plugin.exists()
     assert (config_root / "plugins").is_dir()
     assert loader.list_plugins() == []
+
+
+# 功能：内置插件应与个人/工作区插件一起出现在插件目录中且不可卸载
+# 设计：构造仅含一个技能的内置插件目录，断言来源为 builtin、技能携带
+#      builtin-plugin 来源与 system 作用域，且卸载被拒绝。
+def test_builtin_plugin_discovery_and_protection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    builtin_root = tmp_path / "builtin-plugins"
+    plugin = builtin_root / "demo"
+    skill_dir = plugin / "skills" / "hello"
+    skill_dir.mkdir(parents=True)
+    (plugin / "plugin.json").write_text(
+        '{"name":"demo","description":"Demo plugin","version":"0.9.0",'
+        '"interface":{"displayName":"Demo","brandColor":"#123456"}}',
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: hello\ndescription: Hello skill\n---\nHello $ARGUMENTS\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(SkillLoader, "_BUILTIN_PLUGINS_DIR", builtin_root)
+    loader = SkillLoader(project_root=tmp_path / "workspace", config_root=tmp_path / "profile")
+
+    summary = next(item for item in loader.list_plugins() if item.name == "demo")
+    assert summary.id == "builtin:demo"
+    assert summary.source == "builtin"
+    assert summary.display_name == "Demo"
+    assert summary.brand_color == "#123456"
+    assert summary.skills == ("hello",)
+    assert summary.enabled is True
+
+    skill = loader.resolve("hello")
+    assert skill is not None
+    assert skill.source == "builtin-plugin:demo"
+    assert skill.scope == "system"
+    assert skill.plugin == "demo"
+
+    disabled = loader.set_plugin_enabled("builtin:demo", False)
+    assert disabled.enabled is False
+    assert loader.resolve("hello") is None
+    with pytest.raises(ValueError, match="builtin plugins cannot be uninstalled"):
+        loader.uninstall_plugin("builtin:demo")
+
+    enabled = loader.set_plugin_enabled("builtin:demo", True)
+    assert enabled.enabled is True
+    assert loader.resolve("hello") is not None

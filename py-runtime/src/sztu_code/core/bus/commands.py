@@ -615,13 +615,16 @@ class PluginSummary(BaseModel):
     name: str
     description: str
     version: str
-    source: Literal["personal", "workspace"]
+    source: Literal["personal", "workspace", "builtin"]
     path: str
     skills: list[str]
     installed: bool = True
     display_name: str
     brand_color: str | None = None
     enabled: bool = True
+    publisher: str = ""
+    homepage: str = ""
+    license: str = ""
 
 
 class MarketplaceSummary(BaseModel):

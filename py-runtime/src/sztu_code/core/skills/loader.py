@@ -40,13 +40,16 @@ class Plugin:
     name: str
     description: str
     version: str
-    source: Literal["personal", "workspace"]
+    source: Literal["personal", "workspace", "builtin"]
     path: Path
     manifest_path: Path
     skills: tuple[str, ...] = ()
     display_name: str = ""
     brand_color: str | None = None
     enabled: bool = True
+    publisher: str = ""
+    homepage: str = ""
+    license: str = ""
 
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -123,6 +126,8 @@ def _source_metadata(source: str) -> tuple[SkillScope, str | None]:
         return "personal", source.split(":", 1)[1]
     if source.startswith("project-plugin:"):
         return "workspace", source.split(":", 1)[1]
+    if source.startswith("builtin-plugin:"):
+        return "system", source.split(":", 1)[1]
     return "system", None
 
 
@@ -200,6 +205,7 @@ def _parse_skill_file(
 
 class SkillLoader:
     _BUILTIN_DIR = Path(__file__).parent / "builtin"
+    _BUILTIN_PLUGINS_DIR = Path(__file__).parent / "builtin-plugins"
     _CACHE_TTL = 5.0
 
     # 初始化绑定工作区和个人配置根目录的技能目录加载器
@@ -213,12 +219,15 @@ class SkillLoader:
         self._cache: list[Skill] | None = None
         self._cache_ts = 0.0
 
-    # 按内建、个人、个人插件、工作区、工作区插件顺序返回技能根目录
+    # 按内建、内建插件、个人、个人插件、工作区、工作区插件顺序返回技能根目录
     def _roots(self) -> list[tuple[Path, str]]:
         roots = [
             (self._BUILTIN_DIR, "builtin"),
-            (self._config_root / "skills", "user"),
         ]
+        roots.extend(
+            self._plugin_skill_roots(self._BUILTIN_PLUGINS_DIR, "builtin-plugin")
+        )
+        roots.append((self._config_root / "skills", "user"))
         roots.extend(self._plugin_skill_roots(self._config_root / "plugins", "user-plugin"))
         roots.append((self._project_root / ".sztu" / "skills", "project"))
         roots.extend(
@@ -275,7 +284,10 @@ class SkillLoader:
                 skills_by_plugin.setdefault((skill.scope, skill.plugin), []).append(skill.name)
         result: list[Plugin] = []
         enabled_overrides = self._plugin_enabled_overrides()
-        locations: list[tuple[Path, Literal["personal", "workspace"]]] = [
+        locations: list[
+            tuple[Path, Literal["personal", "workspace", "builtin"]]
+        ] = [
+            (self._BUILTIN_PLUGINS_DIR, "builtin"),
             (self._config_root / "plugins", "personal"),
             (self._project_root / ".sztu" / "plugins", "workspace"),
         ]
@@ -300,7 +312,11 @@ class SkillLoader:
                     else ""
                 )
                 brand_color = brand_value if _HEX_COLOR_RE.fullmatch(brand_value) else None
-                scope: SkillScope = "personal" if source == "personal" else "workspace"
+                scope: SkillScope = (
+                    "personal"
+                    if source == "personal"
+                    else "workspace" if source == "workspace" else "system"
+                )
                 plugin_id = f"{source}:{name}"
                 result.append(
                     Plugin(
@@ -315,6 +331,9 @@ class SkillLoader:
                         display_name=display_name,
                         brand_color=brand_color,
                         enabled=enabled_overrides.get(plugin_id, True),
+                        publisher=str(value.get("publisher") or ""),
+                        homepage=str(value.get("homepage") or ""),
+                        license=str(value.get("license") or ""),
                     )
                 )
         return result
@@ -351,6 +370,8 @@ class SkillLoader:
             plugin_id = f"personal:{source.split(':', 1)[1]}"
         elif source.startswith("project-plugin:"):
             plugin_id = f"workspace:{source.split(':', 1)[1]}"
+        elif source.startswith("builtin-plugin:"):
+            plugin_id = f"builtin:{source.split(':', 1)[1]}"
         else:
             return True
         return self._plugin_enabled_overrides().get(plugin_id, True)
@@ -559,11 +580,13 @@ class SkillLoader:
             raise ValueError("installed plugin could not be loaded")
         return installed
 
-    # 卸载个人或工作区插件，仅允许删除受控插件根目录的直接子项
+    # 卸载个人或工作区插件，仅允许删除受控插件根目录的直接子项；内置插件不可卸载
     def uninstall_plugin(self, plugin_id: str) -> None:
         plugin = next((item for item in self.list_plugins() if item.id == plugin_id), None)
         if plugin is None:
             raise ValueError(f"plugin not found: {plugin_id}")
+        if plugin.source == "builtin":
+            raise ValueError("builtin plugins cannot be uninstalled")
         parent = self._install_root(plugin.source, "plugins").resolve()
         target = plugin.path.resolve()
         if target.parent != parent or target == parent:

@@ -8,12 +8,13 @@ export type EventListener = (event: RuntimeEvent) => void;
 export class EventBus {
   private readonly listeners = new Set<EventListener>();
   private readonly history: RuntimeEvent[] = [];
-  // trace 写入串行化：llm.token 等高频事件若每个都独立 appendFile 会并发打开句柄，
-  // 可能乱序/丢行且拖慢事件分发；这里复用一条 Promise 链按序落盘
+  // Trace writes are serialized. Streaming events are buffered briefly so a
+  // token stream does not open and append a file once per token.
   private traceReady: Promise<void> | null = null;
   private traceWrite: Promise<void> = Promise.resolve();
-  private pendingTrace = "";
-  private traceBatchScheduled = false;
+  private streamRows: string[] = [];
+  private streamTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly streamWindowMs = 75;
   constructor(private readonly tracePath = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "traces", "runtime-ts-events.jsonl")) {
     try {
       const rows = readFileSync(this.tracePath, "utf8").split(/\r?\n/).filter(Boolean).slice(-10_000);
@@ -31,13 +32,45 @@ export class EventBus {
   publish(event: RuntimeEvent): void {
     this.history.push(event);
     if (this.history.length > 10_000) this.history.splice(0, this.history.length - 10_000);
-    if (!this.traceReady) this.traceReady = mkdir(path.dirname(this.tracePath), { recursive: true }).then(() => undefined).catch(() => undefined);
-    this.traceWrite = this.traceWrite.then(() => appendFile(this.tracePath, `${JSON.stringify(event)}\n`, "utf8")).catch(() => undefined);
+    const row = `${JSON.stringify(event)}\n`;
+    if (event.type === "llm.token" || event.type === "llm.thinking") {
+      this.streamRows.push(row);
+      if (!this.streamTimer) {
+        this.streamTimer = setTimeout(() => {
+          this.streamTimer = null;
+          this.flushStreamRows();
+        }, this.streamWindowMs);
+        this.streamTimer.unref?.();
+      }
+    } else {
+      this.flushStreamRows();
+      this.enqueueTrace(row);
+    }
     for (const listener of this.listeners) listener(event);
+  }
+
+  private enqueueTrace(row: string): void {
+    if (!this.traceReady) this.traceReady = mkdir(path.dirname(this.tracePath), { recursive: true }).then(() => undefined).catch(() => undefined);
+    this.traceWrite = this.traceWrite.then(async () => {
+      await this.traceReady;
+      await appendFile(this.tracePath, row, "utf8");
+    }).catch(() => undefined);
+  }
+
+  private flushStreamRows(): void {
+    if (!this.streamRows.length) return;
+    const rows = this.streamRows.join("");
+    this.streamRows = [];
+    this.enqueueTrace(rows);
   }
 
   // 等待 trace 写入链排空（测试/关闭场景：确保 appendFile 全部落盘后再清理目录）
   async flush(): Promise<void> {
+    if (this.streamTimer) {
+      clearTimeout(this.streamTimer);
+      this.streamTimer = null;
+    }
+    this.flushStreamRows();
     await this.traceWrite;
   }
 

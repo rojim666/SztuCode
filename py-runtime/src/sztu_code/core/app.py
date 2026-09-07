@@ -1310,6 +1310,9 @@ class CoreApp:
             display_name=plugin.display_name or plugin.name,
             brand_color=plugin.brand_color,
             enabled=plugin.enabled,
+            publisher=plugin.publisher,
+            homepage=plugin.homepage,
+            license=plugin.license,
         )
 
     # 将官方兼容市场源转换为运行时协议摘要

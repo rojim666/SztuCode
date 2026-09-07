@@ -1,0 +1,13 @@
+{
+  "name": "frontend-design",
+  "description": "高品质 UI/UX 设计工具集：生成独特、生产级的前端界面，覆盖视觉风格、布局排版、动效交互、质量保障与设计系统，系统化对抗泛 AI 审美。",
+  "version": "1.0.0",
+  "skills": "skills",
+  "interface": {
+    "displayName": "前端设计工具集",
+    "brandColor": "#7867d9"
+  },
+  "publisher": "Anthropic / Impeccable 衍生 · 非 Trae 官方包",
+  "homepage": "https://github.com/pbakaus/impeccable",
+  "license": "Apache-2.0"
+}

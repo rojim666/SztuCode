@@ -1723,7 +1723,7 @@ fn main() {
                             // 窗口尺寸由前端按内容自适应调整，outer_size 与事件坐标同为物理像素，无需 DPI 换算。
                             let size = menu
                                 .outer_size()
-                                .unwrap_or(tauri::PhysicalSize::new(252, 320));
+                                .unwrap_or(tauri::PhysicalSize::new(216, 181));
                             let monitor = menu.current_monitor().ok().flatten();
                             let (left, top, right, bottom) = monitor
                                 .map(|m| {

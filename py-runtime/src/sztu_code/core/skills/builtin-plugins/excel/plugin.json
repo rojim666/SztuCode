@@ -1,0 +1,13 @@
+{
+  "name": "excel",
+  "description": "Excel 电子表格处理工具：读取、编辑、公式、图表、格式与数据分析。",
+  "version": "1.0.0",
+  "skills": "bundled-skills",
+  "interface": {
+    "displayName": "Excel",
+    "brandColor": "#1d8f6f"
+  },
+  "publisher": "OpenAI · SztuCode 适配",
+  "homepage": "https://github.com/JetBrains/skills/tree/e0f258b5cfed145015cb3e48da9a97947f7c4ed7/spreadsheet",
+  "license": "Apache-2.0"
+}

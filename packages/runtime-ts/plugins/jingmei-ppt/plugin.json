@@ -1,0 +1,16 @@
+{
+  "name": "jingmei-ppt",
+  "description": "为汇报、研究、教学和活动演示提供可复用的视觉设计方法、风格配方与 PptxGenJS 实现指引。",
+  "version": "1.0.0",
+  "skills": [
+    "skills",
+    "bundled-skills"
+  ],
+  "interface": {
+    "displayName": "高质量 PPT（PPTX 版）",
+    "brandColor": "#a27a20"
+  },
+  "publisher": "SztuCode 集成 · 非 Trae 官方包",
+  "homepage": "https://github.com/JetBrains/skills/tree/e0f258b5cfed145015cb3e48da9a97947f7c4ed7/slides",
+  "license": "MIT / Apache-2.0"
+}

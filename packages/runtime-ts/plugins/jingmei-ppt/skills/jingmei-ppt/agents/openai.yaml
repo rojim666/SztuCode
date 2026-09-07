@@ -1,0 +1,4 @@
+interface:
+  display_name: "精美 PPT"
+  short_description: "PPT 视觉设计：风格配方与 PptxGenJS 指引"
+  default_prompt: "用精美 PPT 技能为这份汇报生成一套可复用的视觉设计系统。"

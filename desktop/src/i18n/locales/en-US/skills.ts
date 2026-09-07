@@ -1,4 +1,9 @@
 export const skills = {
+  fromPlugin: "From plugin: {name}",
+  bundledPlugin: "Built-in plugin",
+  viewPluginSkills: "View {n} skills",
+  pluginSource: "Source",
+  enableParentPlugin: "Enable the parent plugin first",
   sectionAria: "Plugins & skills",
   navAria: "Capability catalog",
   pluginsTab: "Plugins",

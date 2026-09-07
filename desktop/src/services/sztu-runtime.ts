@@ -110,8 +110,9 @@ export type SkillSummary = {
 };
 export type PluginSummary = {
   id: string; name: string; description: string; version: string;
-  source: "personal" | "workspace"; path: string; skills: string[]; installed: boolean;
+  source: "personal" | "workspace" | "builtin"; path: string; skills: string[]; installed: boolean;
   display_name: string; brand_color?: string | null; enabled: boolean;
+  publisher?: string; homepage?: string; license?: string;
 };
 export type MarketplaceSummary = {
   id: string; name: string; display_name: string; source: string;

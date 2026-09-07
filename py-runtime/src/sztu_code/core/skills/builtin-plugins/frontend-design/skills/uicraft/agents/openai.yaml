@@ -1,0 +1,4 @@
+interface:
+  display_name: "前端设计工具集"
+  short_description: "UI/UX 设计工具集：视觉风格、布局排版、动效与质量保障"
+  default_prompt: "用前端设计工具集把这个页面打磨成生产级界面。"
