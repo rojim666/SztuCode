@@ -120,9 +120,9 @@ export class RuntimeServer {
 
   async close(): Promise<void> {
     this.schedulerRunner.stop();
-    this.runs.cancelAll();
+    await this.runs.cancelAllAndWait();
     for (const workflow of this.workflows.values()) if (workflow.status === "running") workflow.controller.abort();
-    await this.mcp.close(); await this.transport.close(); await this.extensions.unloadAll(); await this.trace?.flush();
+    await this.mcp.close(); await this.transport.close(); await this.extensions.unloadAll(); await this.events.flush(); await this.trace?.flush();
   }
 
   private async executeScheduledTask(task: ScheduledTask, signal: AbortSignal): Promise<"completed" | "failed" | "cancelled" | "needs_attention"> {

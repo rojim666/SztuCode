@@ -2,7 +2,7 @@ import { createApp, defineComponent, h, ref } from "vue";
 import ModelManager from "../../../src/components/ModelConfig/ModelManager.vue";
 import { connectRuntime, type ModelProfile } from "../../../src/services/sztu-runtime";
 import { i18n } from "../../../src/i18n";
-import "../../../src/kimi.css";
+import "../../../src/sztu.css";
 import "../../../src/workbench.css";
 
 type RpcRequest = { id: string; method: string; params?: Record<string, unknown> };

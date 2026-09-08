@@ -136,3 +136,22 @@ async def test_run_event_loop_exits_on_server_close() -> None:
         await client.connect()
         await asyncio.wait_for(client.run_event_loop(), timeout=2.0)
         await client.close()
+
+
+async def test_pending_command_raises_connection_error_when_server_closes() -> None:
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readline()
+        writer.close()
+        await writer.wait_closed()
+
+    server, port = await _start_mock_server(handle)
+    async with server:
+        client = SocketClient("127.0.0.1", port)
+        await client.connect()
+        loop_task = asyncio.create_task(client.run_event_loop())
+
+        with pytest.raises(ConnectionError, match="before response"):
+            await asyncio.wait_for(client.send_command("core.ping", {}), timeout=2.0)
+
+        await loop_task
+        await client.close()

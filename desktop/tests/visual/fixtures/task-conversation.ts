@@ -2,7 +2,7 @@ import { createApp, defineComponent, h } from "vue";
 import ExecutionTimeline from "../../../src/components/timeline/ExecutionTimeline.vue";
 import type { TimelineStep } from "../../../src/components/timeline/types";
 import { i18n } from "../../../src/i18n";
-import "../../../src/kimi.css";
+import "../../../src/sztu.css";
 import "../../../src/timeline.css";
 import "../../../src/workbench.css";
 

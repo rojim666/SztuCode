@@ -137,9 +137,9 @@ from sztu_code.core.bus.commands import (
     SkillListResult,
     SkillSetEnabledCommand,
     SkillSetEnabledResult,
+    SkillSummary,
     SkillUninstallCommand,
     SkillUninstallResult,
-    SkillSummary,
     UserQuestionPendingCommand,
     UserQuestionPendingResult,
     UserQuestionRespondCommand,
@@ -779,7 +779,11 @@ class CoreApp:
                 cmd.session_id,
                 cmd.content,
                 run_id=run_id,
-                images=[image.model_dump() for image in cmd.images] if self._config.llm.supports_vision else None,
+                images=(
+                    [image.model_dump() for image in cmd.images]
+                    if self._config is not None and self._config.llm.supports_vision
+                    else None
+                ),
             )
         )
         self._active_session_runs[cmd.session_id] = run_task
@@ -794,7 +798,11 @@ class CoreApp:
         run_id = await self._sessions.steer_message(
             cmd.session_id,
             cmd.content,
-            images=[image.model_dump() for image in cmd.images] if self._config.llm.supports_vision else None,
+            images=(
+                [image.model_dump() for image in cmd.images]
+                if self._config is not None and self._config.llm.supports_vision
+                else None
+            ),
         )
         return SessionSteerMessageResult(run_id=run_id)
 
@@ -810,7 +818,6 @@ class CoreApp:
         if task is None or task.done():
             return RunCancelResult(run_id=cmd.run_id, status="not_running")
         task.cancel()
-        self._run_status[cmd.run_id] = "cancelled"
         return RunCancelResult(run_id=cmd.run_id, status="cancelling")
 
     # 返回当前进程所知的 run 生命周期状态，供客户端重连后恢复控制状态

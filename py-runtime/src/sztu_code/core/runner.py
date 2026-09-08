@@ -12,6 +12,8 @@ from sztu_code.core.bus.events import (
     RunFinishedEvent,
     RunStartedEvent,
     SubagentFinishedEvent,
+    VerificationFinishedEvent,
+    VerificationStartedEvent,
 )
 from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
@@ -60,6 +62,16 @@ from sztu_code.core.tools.builtin import (
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.trace.provider import TracingProvider
 from sztu_code.core.trace.writer import TraceWriter
+from sztu_code.core.verification import (
+    RepairCircuitBreaker,
+    VerificationExecutor,
+    VerificationOutcome,
+    build_completion_contract,
+    build_repair_prompt,
+    digests_from_change_records,
+    failure_signature,
+    mark_stale_evidence,
+)
 from sztu_code.core.workflow.tool import WorkflowRunTool
 from sztu_code.core.workspace.project_profile import (
     detect_project_profile,
@@ -76,6 +88,7 @@ class RunOutcome:
     status: str
     result: str
     reason: str | None
+    verification_status: str | None = None
 
 
 class AgentRunner:
@@ -247,6 +260,7 @@ class AgentRunner:
 
         project_root = workspace_root or Path.cwd()
         project_profile_context = ""
+        profile = None
         try:
             project_root = project_root.resolve()
             profile = detect_project_profile(project_root)
@@ -352,6 +366,7 @@ class AgentRunner:
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
         # 同上：provider 在 try 内赋值；失败路径下进化循环需判空跳过
         provider: LLMProvider | None = None
+        verification_status: str | None = None
 
         async with EventWriter(run_path / "events.jsonl") as writer:
             writer.subscribe(bus)
@@ -468,6 +483,83 @@ class AgentRunner:
                     default_max_output_tokens=self._config.llm.max_output_tokens,
                 )
                 await loop.run(context)
+
+                # Agent 的 end_turn 只代表“声称完成”。启用硬门禁且发现了可执行
+                # 完成契约时，由独立执行器验证；失败则把证据反馈给同一上下文修复。
+                if self._config.agent.require_verification and context.status == "success":
+                    contract = build_completion_contract(run_id, profile, project_root)
+                    if contract is not None:
+                        executor = VerificationExecutor(project_root, run_path)
+                        breaker = RepairCircuitBreaker(
+                            self._config.agent.max_repair_attempts
+                        )
+                        repair_attempts = 0
+                        stop_reason = ""
+                        previous_result = None
+                        await bus.publish(
+                            VerificationStartedEvent(
+                                run_id=run_id,
+                                condition_count=len(contract.conditions),
+                                ts=_now(),
+                            )
+                        )
+                        while True:
+                            change_records = (
+                                change_tracker.finalize()
+                                if change_tracker is not None
+                                else None
+                            )
+                            current_digests = digests_from_change_records(change_records)
+                            if previous_result is not None:
+                                mark_stale_evidence(
+                                    previous_result, contract, current_digests
+                                )
+                            verification_result = await executor.verify(
+                                contract, workspace_digests=current_digests
+                            )
+                            verification_status = verification_result.overall.value
+                            if verification_result.overall is VerificationOutcome.VERIFIED:
+                                break
+
+                            breaker.record(failure_signature(verification_result))
+                            stop_reason = breaker.stop_reason() or ""
+                            if stop_reason:
+                                break
+
+                            previous_result = verification_result
+                            repair_prompt = build_repair_prompt(
+                                verification_result, contract
+                            )
+                            context.messages.append(
+                                {"role": "user", "content": repair_prompt}
+                            )
+                            context.status = "running"
+                            context.reason = None
+                            breaker.note_attempt()
+                            repair_attempts += 1
+                            await loop.run(context)
+                            if context.status != "success":
+                                stop_reason = (
+                                    f"repair run ended with {context.status}: "
+                                    f"{context.reason or 'unknown'}"
+                                )
+                                break
+
+                        (run_path / "verification.json").write_text(
+                            verification_result.model_dump_json(indent=2) + "\n",
+                            encoding="utf-8",
+                        )
+                        if verification_result.overall is not VerificationOutcome.VERIFIED:
+                            context.mark_failed(stop_reason or "verification_failed")
+                        await bus.publish(
+                            VerificationFinishedEvent(
+                                run_id=run_id,
+                                outcome=verification_result.overall.value,
+                                repair_attempts=repair_attempts,
+                                stop_reason=stop_reason,
+                                ts=_now(),
+                            )
+                        )
             except asyncio.CancelledError:
                 cancelled = True
                 if self._permission_manager is not None:
@@ -551,7 +643,11 @@ class AgentRunner:
             # Recuris 循环二挂载点：失败/受困 run 在终态事件后触发记忆进化。
             # 留在 EventWriter 作用域内——Meta-Agent 调用的 LLM 事件随之落盘，
             # 形成完整审计轨迹；进化是尽力而为，任何异常不得影响 run 收尾。
-            if provider is not None and should_evolve(context.status, context.reason):
+            if (
+                provider is not None
+                and verification_status is None
+                and should_evolve(context.status, context.reason)
+            ):
                 try:
                     await run_memory_evolution(
                         provider=provider,
@@ -586,4 +682,5 @@ class AgentRunner:
             status=context.status,
             result=context.result,
             reason=context.reason,
+            verification_status=verification_status,
         )

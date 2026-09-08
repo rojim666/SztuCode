@@ -92,6 +92,8 @@ async def test_run_cancel_stops_active_session_run() -> None:
     await asyncio.wait_for(sessions.started.wait(), timeout=1.0)
     cancelled = await app._run_cancel_handler({"run_id": sent.run_id})
     assert cancelled.status == "cancelling"
+    pending = await app._run_get_handler({"run_id": sent.run_id})
+    assert pending.status == "running"
 
     task = app._active_run_tasks[sent.run_id]
     with pytest.raises(asyncio.CancelledError):

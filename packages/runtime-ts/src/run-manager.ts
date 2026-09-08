@@ -32,6 +32,7 @@ export class RunManager {
   private readonly runs = new Map<string, RunState>();
   private readonly sessionRuns = new Map<string, string>();
   private readonly runRoots = new Map<string, string>();
+  private readonly executions = new Map<string, Promise<void>>();
   readonly permissions: PermissionManager;
   constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
     this.permissions = new PermissionManager(events, 60_000, undefined, this.telemetry);
@@ -51,7 +52,10 @@ export class RunManager {
     this.emit({ type: "operation.started", run_id: runId, operation_id: runId, goal, ts: now() });
     void this.operations?.begin({ operation_id: runId, task_id: sessionId ?? runId, run_id: runId, session_id: sessionId, step: 0, attempt: 1, sequence: 1, params_summary: goal.slice(0, 500), permission_state: this.permissions.getMode(), budget_remaining: maxSteps() });
     this.emit({ type: "run.started", run_id: runId, goal, ts: now() });
-    void safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); });
+    const execution = safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); })
+      .catch(() => undefined)
+      .finally(() => { this.executions.delete(runId); });
+    this.executions.set(runId, execution);
     return runId;
   }
 
@@ -88,6 +92,13 @@ export class RunManager {
     const active = [...this.runs.values()].filter((run) => run.status === "running").map((run) => run.runId);
     for (const runId of active) this.cancel(runId);
     return active.length;
+  }
+
+  async cancelAllAndWait(): Promise<number> {
+    const pending = [...this.executions.values()];
+    const count = this.cancelAll();
+    await Promise.allSettled(pending);
+    return count;
   }
 
   private async execute(run: RunState, history: ChatMessage[], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string): Promise<void> {

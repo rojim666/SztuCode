@@ -195,6 +195,40 @@ def test_agent_tool_concurrency_rejects_invalid_values(
         get_config()
 
 
+def test_agent_verification_config_parsed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    toml_path = tmp_path / "sztu.toml"
+    toml_path.write_bytes(
+        b"[agent]\nrequire_verification = true\nmax_repair_attempts = 4\n"
+    )
+    monkeypatch.setenv("SZTU_CONFIG", str(toml_path))
+    cfg = get_config()
+    assert cfg.agent.require_verification is True
+    assert cfg.agent.max_repair_attempts == 4
+
+    monkeypatch.setenv("SZTU_REQUIRE_VERIFICATION", "false")
+    monkeypatch.setenv("SZTU_MAX_REPAIR_ATTEMPTS", "1")
+    cfg = get_config()
+    assert cfg.agent.require_verification is False
+    assert cfg.agent.max_repair_attempts == 1
+
+
+@pytest.mark.parametrize("source", ["toml", "env"])
+def test_agent_verification_rejects_negative_repair_attempts(
+    source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if source == "toml":
+        toml_path = tmp_path / "sztu.toml"
+        toml_path.write_bytes(b"[agent]\nmax_repair_attempts = -1\n")
+        monkeypatch.setenv("SZTU_CONFIG", str(toml_path))
+    else:
+        monkeypatch.setenv("SZTU_MAX_REPAIR_ATTEMPTS", "-1")
+
+    with pytest.raises(SystemExit):
+        get_config()
+
+
 # 功能：验证 SZTU_GRACE_STEP_ON_MAX_STEPS 环境变量可关闭结语宽限步
 # 设计：设 env=false，断言 get_config 读到 False；未设置时保持默认 True
 def test_grace_step_env_var_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

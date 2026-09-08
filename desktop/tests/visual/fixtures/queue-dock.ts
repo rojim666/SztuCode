@@ -3,7 +3,7 @@ import QueueDock from "../../../src/components/Composer/QueueDock.vue";
 import AppIcon from "../../../src/components/icons/AppIcon.vue";
 import { i18n } from "../../../src/i18n";
 import type { QueueDockItem } from "../../../src/utils/composerSubmission";
-import "../../../src/kimi.css";
+import "../../../src/sztu.css";
 import "../../../src/workbench.css";
 import "../../../src/appearance.css";
 import "../../../src/queue-dock.css";

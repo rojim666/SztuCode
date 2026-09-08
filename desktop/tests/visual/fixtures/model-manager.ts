@@ -1,7 +1,7 @@
 import { createApp, h, ref } from "vue";
 import type { ModelProfile, RuntimeSettings } from "../../../src/services/sztu-runtime";
 import { i18n } from "../../../src/i18n";
-import "../../../src/kimi.css";
+import "../../../src/sztu.css";
 import "../../../src/workbench.css";
 
 type RpcRequest = { id: string; method: string; params?: Record<string, unknown> };

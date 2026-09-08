@@ -40,8 +40,11 @@ class SocketClient:
             self._writer.close()
             try:
                 await asyncio.wait_for(self._writer.wait_closed(), timeout=1.0)
-            except TimeoutError:
+            except (TimeoutError, ConnectionResetError, BrokenPipeError, OSError):
                 pass
+            finally:
+                self._reader = None
+                self._writer = None
 
     # 注册服务器推送事件的回调，可多次调用以添加多个 handler
     def on_event(self, handler: EventHandler) -> None:
@@ -78,7 +81,9 @@ class SocketClient:
         finally:
             for fut in self._pending.values():
                 if not fut.done():
-                    fut.cancel()
+                    # 连接丢失不是调用方取消。用普通异常唤醒等待者，避免把 daemon
+                    # 崩溃误传播成 CancelledError 并连带取消上层任务。
+                    fut.set_exception(ConnectionError("core connection closed before response"))
             self._pending.clear()
 
     # 解析单行消息并路由到 pending future（RPC 响应）或 event handler（服务器推送）

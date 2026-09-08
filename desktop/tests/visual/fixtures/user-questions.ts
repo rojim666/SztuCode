@@ -1,7 +1,7 @@
 import { createApp, defineComponent, h, ref } from "vue";
 import UserQuestionComposer from "../../../src/components/UserQuestions/UserQuestionComposer.vue";
 import type { PendingUserQuestion, UserQuestionAnswer } from "../../../src/services/sztu-runtime";
-import "../../../src/kimi.css";
+import "../../../src/sztu.css";
 
 const pending: PendingUserQuestion = {
   rpc_id: "question-fixture",

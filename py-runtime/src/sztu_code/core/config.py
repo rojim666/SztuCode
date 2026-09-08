@@ -22,6 +22,8 @@ _DEFAULT_GRACE_STEP_ON_MAX_STEPS = True
 _DEFAULT_STUCK_MAX_FAILURES = 2
 _DEFAULT_STUCK_MAX_TOTAL = 0
 _DEFAULT_TOOL_MAX_CONCURRENCY = 4
+_DEFAULT_REQUIRE_VERIFICATION = False
+_DEFAULT_MAX_REPAIR_ATTEMPTS = 2
 _DEFAULT_TRACE_FILE = "~/.sztu/traces/daemon.jsonl"
 _DEFAULT_TUI_THEME = "dark"
 _DEFAULT_TUI_WALLPAPER = "none"
@@ -72,6 +74,10 @@ class AgentConfig:
     stuck_max_total: int = _DEFAULT_STUCK_MAX_TOTAL
     # 同轮全只读工具批次的最大并发数；1 保持完全串行
     tool_max_concurrency: int = _DEFAULT_TOOL_MAX_CONCURRENCY
+    # Agent 声称完成后由独立执行器运行完成契约；默认关闭以保持兼容
+    require_verification: bool = _DEFAULT_REQUIRE_VERIFICATION
+    # 独立验证失败后允许 Agent 修复并重验的最大轮数
+    max_repair_attempts: int = _DEFAULT_MAX_REPAIR_ATTEMPTS
 
 
 @dataclass
@@ -444,6 +450,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
         unknown_agent: set[str] = set(agent.keys()) - {
             "max_steps", "wrap_up_on_max_steps", "grace_step_on_max_steps",
             "stuck_max_failures", "stuck_max_total", "tool_max_concurrency",
+            "require_verification", "max_repair_attempts",
         }
         if unknown_agent:
             raise SystemExit(f"Unknown [agent] keys: {', '.join(sorted(unknown_agent))}")
@@ -478,6 +485,18 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
                     "Config error: agent.tool_max_concurrency must be an integer >= 1"
                 )
             config.agent.tool_max_concurrency = val
+        if "require_verification" in agent:
+            val = agent["require_verification"]
+            if not isinstance(val, bool):
+                raise SystemExit("Config error: agent.require_verification must be a boolean")
+            config.agent.require_verification = val
+        if "max_repair_attempts" in agent:
+            val = agent["max_repair_attempts"]
+            if not isinstance(val, int) or isinstance(val, bool) or val < 0:
+                raise SystemExit(
+                    "Config error: agent.max_repair_attempts must be a non-negative integer"
+                )
+            config.agent.max_repair_attempts = val
 
     if "budget" in data:
         budget = data["budget"]
@@ -883,6 +902,28 @@ def _apply_env(config: SztuConfig) -> None:
                 f"got: {tool_concurrency_str!r}"
             )
         config.agent.tool_max_concurrency = tool_concurrency
+
+    require_verification_str = os.environ.get("SZTU_REQUIRE_VERIFICATION")
+    if require_verification_str is not None:
+        config.agent.require_verification = require_verification_str.lower() not in (
+            "0", "false", "no",
+        )
+
+    repair_attempts_str = os.environ.get("SZTU_MAX_REPAIR_ATTEMPTS")
+    if repair_attempts_str is not None:
+        try:
+            repair_attempts = int(repair_attempts_str)
+        except ValueError:
+            raise SystemExit(
+                "Config error: SZTU_MAX_REPAIR_ATTEMPTS must be an integer, "
+                f"got: {repair_attempts_str!r}"
+            )
+        if repair_attempts < 0:
+            raise SystemExit(
+                "Config error: SZTU_MAX_REPAIR_ATTEMPTS must be >= 0, "
+                f"got: {repair_attempts_str!r}"
+            )
+        config.agent.max_repair_attempts = repair_attempts
 
     # --- 多智能体工作流环境变量 ---
     for _env, _attr, _minimum in (

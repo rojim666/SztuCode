@@ -53,7 +53,8 @@ export class AgentLoop {
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.70, 0, 1);
-    const memoryMode = this.options.memoryMode ?? (process.env.SZTU_MEMORY_MODE === "compaction" ? "compaction" : "token_budget");
+    const configuredMemoryMode = process.env.SZTU_MEMORY_MODE;
+    const memoryMode = this.options.memoryMode ?? (configuredMemoryMode === "token_budget" ? "token_budget" : "compaction");
     const slidingWindowSize = this.options.slidingWindowSize ?? nonNegativeEnv("SZTU_SLIDING_WINDOW_SIZE", 5);
     const compactCooldownSteps = this.options.compactCooldownSteps ?? nonNegativeEnv("SZTU_COMPACT_COOLDOWN", 3);
     const compactCircuitBreaker = this.options.compactCircuitBreaker ?? nonNegativeEnv("SZTU_COMPACT_CIRCUIT_BREAKER", 3);

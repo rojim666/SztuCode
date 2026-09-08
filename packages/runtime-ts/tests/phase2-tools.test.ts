@@ -148,11 +148,21 @@ test("bash background jobs start, report status, stream logs, and can be killed"
     const quick = await tools.get("bash")!.invoke({ command: "echo background-works", background: true }, context);
     const quickId = quick.output.match(/Started background job (\S+)\./)?.[1] ?? "";
     assert.ok(quickId);
-    const deadline = Date.now() + 10_000; let output = "";
+    const deadline = Date.now() + 30_000; let output = "";
     do { output = (await tools.get("bash_output")!.invoke({ job_id: quickId }, context)).output; if (!output.includes("background-works")) await new Promise((resolve) => setTimeout(resolve, 100)); } while (!output.includes("background-works") && Date.now() < deadline);
     assert.match(output, /background-works/);
     assert.match(output, /\[log page: job=\S+ status=(finished|running)/);
-  } finally { if (previous === undefined) delete process.env.SZTU_DATA_DIR; else process.env.SZTU_DATA_DIR = previous; await rm(root, { recursive: true, force: true }); }
+    // 输出可读不代表 Windows 上的 Git Bash 已经完全退出；等待终态后再删除其 cwd，
+    // 否则全量并发测试中会偶发 EBUSY，并掩盖真实的后台任务行为。
+    const settleDeadline = Date.now() + 5_000; let quickStatus = "running";
+    do {
+      quickStatus = (await tools.get("bash_status")!.invoke({}, context)).output;
+      if (new RegExp(`${quickId}\\s+(finished|failed)`).test(quickStatus)) break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } while (Date.now() < settleDeadline);
+    if (new RegExp(`${quickId}\\s+running`).test(quickStatus)) await tools.get("bash_kill")!.invoke({ job_id: quickId }, context);
+    assert.match((await tools.get("bash_status")!.invoke({}, context)).output, new RegExp(`${quickId}\\s+(finished|failed|killed)`));
+  } finally { if (previous === undefined) delete process.env.SZTU_DATA_DIR; else process.env.SZTU_DATA_DIR = previous; await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
 });
 
 test("workspace tools declare tool-level timeouts for filesystem-heavy operations", () => {

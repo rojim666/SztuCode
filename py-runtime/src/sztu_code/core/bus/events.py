@@ -379,6 +379,22 @@ class ChangeAppliedEvent(BaseModel):
     ts: str
 
 
+class VerificationStartedEvent(BaseModel):
+    type: Literal["verification.started"] = "verification.started"
+    run_id: str
+    condition_count: int
+    ts: str
+
+
+class VerificationFinishedEvent(BaseModel):
+    type: Literal["verification.finished"] = "verification.finished"
+    run_id: str
+    outcome: str
+    repair_attempts: int = 0
+    stop_reason: str = ""
+    ts: str
+
+
 class WorkflowTaskSnapshot(BaseModel):
     id: str
     title: str
@@ -508,6 +524,8 @@ Event = Annotated[
     | PlanUpdatedEvent
     | TestResultEvent
     | ChangeAppliedEvent
+    | VerificationStartedEvent
+    | VerificationFinishedEvent
     | WorkflowStartedEvent
     | WorkflowTaskUpdatedEvent
     | WorkflowHandoffEvent

@@ -24,13 +24,36 @@ async def _spawn_daemon(port: int, runs_dir: Path) -> subprocess.Popen[bytes]:
     deadline = time.monotonic() + 60.0
     while time.monotonic() < deadline:
         await asyncio.sleep(0.05)
+        if proc.poll() is not None:
+            raise RuntimeError(f"daemon exited during startup with code {proc.returncode}")
+        probe: SocketClient | None = None
+        event_loop: asyncio.Task[None] | None = None
+        ready = False
         try:
-            _reader, writer = await asyncio.open_connection("127.0.0.1", port)
-            writer.close()
-            await writer.wait_closed()
-            return proc
-        except (ConnectionRefusedError, OSError):
+            probe = SocketClient("127.0.0.1", port)
+            await probe.connect()
+            event_loop = asyncio.create_task(probe.run_event_loop())
+            pong = await asyncio.wait_for(
+                probe.send_command("core.ping", {"client": "restart-test"}),
+                timeout=2.0,
+            )
+            ready = bool(pong.get("server_version"))
+        except (
+            ConnectionError,
+            ConnectionRefusedError,
+            ConnectionResetError,
+            OSError,
+            TimeoutError,
+        ):
             pass
+        finally:
+            if event_loop is not None:
+                event_loop.cancel()
+                await asyncio.gather(event_loop, return_exceptions=True)
+            if probe is not None:
+                await probe.close()
+        if ready:
+            return proc
     proc.kill()
     proc.wait()
     raise RuntimeError("daemon did not start in time")

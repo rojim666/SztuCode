@@ -296,6 +296,10 @@ function skillDescription(skill: SkillSummary): string {
   return skill.short_description || skill.description || t("skills.fallbackSkillDesc");
 }
 
+function fullSkillDescription(skill: SkillSummary): string {
+  return skill.description || skill.short_description || t("skills.fallbackSkillDesc");
+}
+
 function pluginDescription(plugin: PluginSummary): string {
   if (plugin.description) return plugin.description;
   if (plugin.skills.length) return t("skills.pluginSkillsDesc", { n: plugin.skills.length, skills: plugin.skills.slice(0, 3).join(locale.value === "zh-CN" ? "、" : ", ") });
@@ -739,7 +743,7 @@ onUnmounted(() => {
         </header>
         <div class="skill-detail-body">
           <h3>技能描述</h3>
-          <p class="skill-detail-desc">{{ skillDescription(selectedSkill) }}</p>
+          <p class="skill-detail-desc">{{ fullSkillDescription(selectedSkill) }}</p>
           <div v-if="selectedSkill.plugin || owningPlugin(selectedSkill)" class="detail-info">
             <span v-if="owningPlugin(selectedSkill)">所属插件：{{ owningPlugin(selectedSkill)?.display_name }}</span>
           </div>

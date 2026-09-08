@@ -68,19 +68,19 @@ class SocketServer:
     # 启动 TCP 服务器；若端口已被占用则退出进程
     async def start(self) -> str:
         try:
-            _r, w = await asyncio.open_connection(self._host, self._port)
-            w.close()
-            await w.wait_closed()
-            raise SystemExit(f"core already running at {self._host}:{self._port}")
-        except (ConnectionRefusedError, OSError):
-            pass
-
-        self._server = await asyncio.start_server(
-            self._handle_connection,
-            host=self._host,
-            port=self._port,
-            limit=_MAX_LINE_BYTES,
-        )
+            # 直接 bind 是唯一可靠的占用判定。先 connect 再 bind 存在 TOCTOU：
+            # Windows 上前一 daemon 被强杀后的短窗口里，connect 可能成功但连接
+            # 随即复位，导致新 daemon 误判“已有实例”并退出。
+            self._server = await asyncio.start_server(
+                self._handle_connection,
+                host=self._host,
+                port=self._port,
+                limit=_MAX_LINE_BYTES,
+            )
+        except OSError as error:
+            raise SystemExit(
+                f"cannot start core at {self._host}:{self._port}: {error}"
+            ) from error
         return f"{self._host}:{self._port}"
 
     # 关闭服务器：先断开所有活跃连接，再等待服务器完全关闭（最多 2 秒）

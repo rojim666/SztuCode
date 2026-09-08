@@ -309,7 +309,7 @@ const safeRunId = (runId: string) => runId.replace(/[^A-Za-z0-9_.-]/g, "_") || "
 // bash 后台任务管理器：进程异步执行、日志落盘追加，支持状态查询/分页读取/终止
 export type BashJobStatus = "running" | "finished" | "failed" | "killed";
 export type BashJobInfo = { job_id: string; command: string; status: BashJobStatus; exit_code: number | null; started_at: string; pid: number | null };
-type InternalBashJob = BashJobInfo & { child: ChildProcessWithoutNullStreams; logPath: string };
+type InternalBashJob = BashJobInfo & { child: ChildProcessWithoutNullStreams; logPath: string; completion: Promise<void> };
 export class BashJobManager {
   private readonly jobs = new Map<string, InternalBashJob>();
   async start(command: string, workspaceRoot: string, runId: string, signal?: AbortSignal): Promise<string> {
@@ -321,15 +321,24 @@ export class BashJobManager {
     const logStream = createWriteStream(logPath, { flags: "a" });
     let child: ChildProcessWithoutNullStreams;
     try { child = spawnBashCommand(command, workspaceRoot); } catch (error) { logStream.end(); throw error instanceof Error ? error : new Error(String(error)); }
-    const job: InternalBashJob = { job_id: jobId, command, status: "running", exit_code: null, started_at: new Date().toISOString(), pid: child.pid ?? null, child, logPath };
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
+    const job: InternalBashJob = { job_id: jobId, command, status: "running", exit_code: null, started_at: new Date().toISOString(), pid: child.pid ?? null, child, logPath, completion };
     this.jobs.set(jobId, job);
     const onChunk = (chunk: Buffer) => { if (!logStream.destroyed) logStream.write(chunk); };
     child.stdout.on("data", onChunk);
     child.stderr.on("data", onChunk);
-    child.on("error", () => { if (job.status === "running") job.status = "failed"; logStream.end(); });
-    child.on("close", (code) => { if (job.status === "running") job.status = code === 0 ? "finished" : "failed"; job.exit_code = code; logStream.end(); });
+    let finalized = false;
+    const finalize = (code: number | null) => {
+      if (finalized) return; finalized = true;
+      if (job.status === "running") job.status = code === 0 ? "finished" : "failed";
+      job.exit_code = code;
+      logStream.end(resolveCompletion);
+    };
+    child.on("error", () => finalize(null));
+    child.on("close", (code) => finalize(code));
     // run 取消时连带终止后台进程
-    signal?.addEventListener("abort", () => this.kill(jobId), { once: true });
+    signal?.addEventListener("abort", () => { void this.kill(jobId); }, { once: true });
     return jobId;
   }
   status(): BashJobInfo[] { return [...this.jobs.values()].map(({ child: _child, logPath: _logPath, ...info }) => ({ ...info })); }
@@ -337,6 +346,8 @@ export class BashJobManager {
   async output(jobId: string, offset?: number, limit?: number): Promise<string> {
     const job = this.jobs.get(jobId);
     if (!job) throw new Error(`Unknown job_id: ${jobId}`);
+    // 快速任务通常在输出可读时已接近退出；短暂等待可确保日志流落盘并释放 Windows 文件句柄。
+    if (job.status === "running") await Promise.race([job.completion, new Promise<void>((resolve) => setTimeout(resolve, 25))]);
     let size = 0;
     try { size = (await stat(job.logPath)).size; } catch { /* 日志尚未生成 */ }
     const pageSize = typeof limit === "number" && Number.isInteger(limit) && limit > 0 ? Math.min(limit, 64 * 1024) : 4096;
@@ -349,13 +360,20 @@ export class BashJobManager {
     return `${content}${content ? "\n" : ""}\n[log page: ${state} chars=${start}:${next}/${size}${next < size ? `, next_offset=${next}` : ", end"}]`;
   }
   // SIGTERM 终止，1s 后仍未退出则 SIGKILL
-  kill(jobId: string): boolean {
+  async kill(jobId: string): Promise<boolean> {
     const job = this.jobs.get(jobId);
     if (!job || job.status !== "running") return false;
     job.status = "killed";
-    try { job.child.kill("SIGTERM"); } catch { /* ignore */ }
-    const timer = setTimeout(() => { if (job.exit_code === null) { try { job.child.kill("SIGKILL"); } catch { /* ignore */ } } }, 1000);
-    timer.unref?.();
+    if (process.platform === "win32" && job.pid) {
+      await new Promise<void>((resolve) => {
+        const killer = spawn("taskkill.exe", ["/pid", String(job.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+        killer.once("error", () => resolve()); killer.once("close", () => resolve());
+      });
+    } else {
+      try { job.child.kill("SIGTERM"); } catch { /* ignore */ }
+    }
+    const stopped = await Promise.race([job.completion.then(() => true), new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000))]);
+    if (!stopped) { try { job.child.kill("SIGKILL"); } catch { /* ignore */ } await Promise.race([job.completion, new Promise<void>((resolve) => setTimeout(resolve, 1_000))]); }
     return true;
   }
 }
@@ -899,7 +917,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   }});
   registry.register({ name: "bash_kill", description: "Terminate a running background job started via bash with background=true (SIGTERM, then SIGKILL after 1s)", permission: "workspace_write", schema: { type: "object", properties: { job_id: { type: "string", description: "Job id returned by bash with background=true" } }, required: ["job_id"] }, async invoke(params) {
     const jobId = str(params, "job_id"); if (!jobId) return fail("job_id is required", "schema_error");
-    const killed = jobManager.kill(jobId);
+    const killed = await jobManager.kill(jobId);
     return killed ? ok(`Killed background job ${jobId}.`) : fail(`No running background job with id ${jobId} (it may have already finished).`);
   }});
   for (const tool of extraTools) registry.register(tool);
