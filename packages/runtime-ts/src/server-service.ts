@@ -103,6 +103,7 @@ export class ServerService {
       case "schedule.create": { const task = request.params as any; const now = new Date().toISOString(); return ok(request.id, { task: await this.scheduler.upsert({ ...task, id: task.id ?? randomUUID(), status: task.status ?? "active", updated_at: now }) }); }
       case "schedule.update": { const task = request.params as any; return ok(request.id, { task: await this.scheduler.upsert({ ...task, updated_at: new Date().toISOString() }) }); }
       case "schedule.pause": { const p = request.params as { id: string }; const task = await this.scheduler.get(p.id); return ok(request.id, { task: await this.scheduler.upsert({ ...task, status: "paused", updated_at: new Date().toISOString() }) }); }
+      case "schedule.run": { const p = request.params as { id: string }; return ok(request.id, { task: await this.schedulerRunner.runNow(p.id), accepted: true }); }
       case "schedule.delete": { const p = request.params as { id: string }; await this.scheduler.delete(p.id); return ok(request.id, { id: p.id, deleted: true }); }
       case "core.shutdown": {
         setTimeout(() => { void this.close(); }, 0);

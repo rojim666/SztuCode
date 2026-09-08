@@ -13,6 +13,7 @@ import AgentLogo from "./components/timeline/AgentLogo.vue";
 import SessionStatsLine from "./components/timeline/SessionStatsLine.vue";
 import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
+import AutomationPage from "./components/Automation/AutomationPage.vue";
 import PluginIcon from "./components/Skills/PluginIcon.vue";
 import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
@@ -3660,7 +3661,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
         </div>
       </section>
-      <section v-if="page === 'automations'" class="simple-page"><header><div><h1>{{ t('app.automations') }}</h1><p>自动化任务管理</p></div></header><div class="bridge-card"><AppIcon name="CalendarClock" :size="24" /><div><h2>功能开发中</h2><p>定时自动化任务功能即将上线</p></div></div></section>
+      <section v-if="page === 'automations'" class="chat-main"><AutomationPage :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" /></section>
 
       <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 

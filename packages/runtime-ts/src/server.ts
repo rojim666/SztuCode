@@ -22,7 +22,7 @@ import { classifyError, dataRoot, clientId, error, requestRunId, responseRunId, 
 import { JsonlSessionBackend } from "@sztucode/session-fs";
 import { ArtifactStore } from "./artifact-store.js";
 import { OperationStore } from "./operation-store.js";
-import { SchedulerStore } from "./scheduler.js";
+import { LocalScheduler, SchedulerStore, type ScheduledTask } from "./scheduler.js";
 
 const PARSE_ERROR = -32700;
 const INVALID_REQUEST = -32600;
@@ -39,6 +39,7 @@ export class RuntimeServer {
   readonly artifacts = new ArtifactStore(path.join(dataRoot(), "artifacts"));
   readonly operations = new OperationStore(path.join(dataRoot(), "operations.json"));
   readonly scheduler = new SchedulerStore(path.join(dataRoot(), "scheduled-tasks.json"));
+  readonly schedulerRunner: LocalScheduler;
   readonly workspaces = new WorkspaceManager();
   readonly git = new GitManager(this.workspaces);
   readonly models = new ModelProfileStore(this.settings);
@@ -64,6 +65,10 @@ export class RuntimeServer {
     this.provider = this.trace ? new TracingProvider(baseProvider, this.trace, /^(1|true|yes)$/i.test(process.env.SZTU_TRACE_INCLUDE_LLM_PAYLOAD ?? "false"), this.telemetry) : baseProvider;
     this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, streaming: true }; }, this.sessions, this.extensions, this.telemetry, this.operations);
     this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, sessionBackend: this.sessionBackend, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider, telemetry: this.telemetry, artifacts: this.artifacts, operations: this.operations, scheduler: this.scheduler } satisfies CodingAgentServices);
+    this.schedulerRunner = new LocalScheduler(this.scheduler, {
+      execute: (task, signal) => this.executeScheduledTask(task, signal),
+      notify: async (task, result) => { console.log(`Automation ${task.name} finished: ${result}`); },
+    });
     this.transport = new TcpNdjsonTransport({ host, port, maxFrameBytes, compatibilityMode: true }, {
       onMessage: (connection, message) => {
         const socket = connection.socket;
@@ -108,14 +113,38 @@ export class RuntimeServer {
     const settings = await this.settings.get();
     this.runs.permissions.setMode(settings.permission_mode);
     const listenAddress = await this.transport.listen();
+    await this.schedulerRunner.start();
     this.events.publish({ type: "core.started", listen_addr: listenAddress, version: "ts-0.2.0" });
     return listenAddress;
   }
 
   async close(): Promise<void> {
+    this.schedulerRunner.stop();
     this.runs.cancelAll();
     for (const workflow of this.workflows.values()) if (workflow.status === "running") workflow.controller.abort();
     await this.mcp.close(); await this.transport.close(); await this.extensions.unloadAll(); await this.trace?.flush();
+  }
+
+  private async executeScheduledTask(task: ScheduledTask, signal: AbortSignal): Promise<"completed" | "failed" | "cancelled" | "needs_attention"> {
+    const session = await this.service.createSession.call(this, { mode: "one_shot", workspace_id: task.workspace_id ?? null, title: task.name });
+    const response = await this.service.dispatch.call(this, {
+        jsonrpc: "2.0",
+        id: `schedule:${task.id}:${Date.now()}`,
+        method: "session.send_message",
+        params: { session_id: session.id, content: task.prompt, client_message_id: `schedule:${task.id}:${task.next_run_at}` },
+      } as JsonRpcRequest, null as unknown as net.Socket);
+    if ("error" in response) return "failed";
+    const runId = String((response.result as Record<string, unknown>).run_id ?? "");
+    if (!runId) return "failed";
+    return await new Promise((resolve) => {
+      const finish = (result: "completed" | "failed" | "cancelled") => { unsubscribe(); signal.removeEventListener("abort", onAbort); resolve(result); };
+      const onAbort = () => { this.runs.cancel(runId); finish("cancelled"); };
+      const unsubscribe = this.events.subscribe((event) => {
+        if (event.type !== "run.finished" || event.run_id !== runId) return;
+        finish(event.status === "success" ? "completed" : event.status === "cancelled" ? "cancelled" : "failed");
+      });
+      if (signal.aborted) onAbort(); else signal.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   private async handleLine(socket: net.Socket, line: string): Promise<void> {

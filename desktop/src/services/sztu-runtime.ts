@@ -58,6 +58,16 @@ export type Attachment = {
 };
 // 随消息发送的图片内容块，字段与 daemon 的 MessageImageBlock 对齐
 export type ImageBlock = { media_type: string; data: string };
+export type ScheduleType = "daily" | "weekly" | "monthly";
+export type ScheduledTask = {
+  id: string; name: string; prompt: string; timezone: string; schedule_type?: ScheduleType;
+  day_of_week: number; day_of_month?: number; hour: number; minute: number;
+  status: "active" | "paused" | "failed" | "waiting_authorization";
+  missed_run_policy: "run_once" | "skip"; workspace_id?: string; budget?: number;
+  next_run_at: string; last_run_at?: string; last_result?: "completed" | "failed" | "cancelled" | "needs_attention";
+  updated_at: string;
+};
+export type ScheduledTaskInput = Omit<ScheduledTask, "id" | "updated_at" | "last_run_at" | "last_result"> & { id?: string };
 export type ChangeSummary = {
   path: string; index_status: string; worktree_status: string;
   run_id?: string | null; agent_owned?: boolean; revertible?: boolean;
@@ -447,6 +457,35 @@ export async function installSkill(sourcePath: string, scope: "personal" | "work
 export async function setSkillEnabled(skillId: string, enabled: boolean, workspaceId?: string | null): Promise<SkillSummary> {
   const result = await client.request("skill.set_enabled", { skill_id: skillId, enabled, workspace_id: workspaceId ?? null });
   return result.skill as SkillSummary;
+}
+
+export async function listScheduledTasks(): Promise<ScheduledTask[]> {
+  const result = await client.request("schedule.list");
+  return (result.tasks as ScheduledTask[] | undefined) ?? [];
+}
+
+export async function createScheduledTask(task: ScheduledTaskInput): Promise<ScheduledTask> {
+  const result = await client.request("schedule.create", task as unknown as Record<string, unknown>);
+  return result.task as ScheduledTask;
+}
+
+export async function updateScheduledTask(task: ScheduledTask): Promise<ScheduledTask> {
+  const result = await client.request("schedule.update", task as unknown as Record<string, unknown>);
+  return result.task as ScheduledTask;
+}
+
+export async function pauseScheduledTask(id: string): Promise<ScheduledTask> {
+  const result = await client.request("schedule.pause", { id });
+  return result.task as ScheduledTask;
+}
+
+export async function runScheduledTask(id: string): Promise<ScheduledTask> {
+  const result = await client.request("schedule.run", { id });
+  return result.task as ScheduledTask;
+}
+
+export async function deleteScheduledTask(id: string): Promise<void> {
+  await client.request("schedule.delete", { id });
 }
 
 export async function uninstallSkill(skillId: string, workspaceId?: string | null): Promise<void> {

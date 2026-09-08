@@ -34,7 +34,7 @@ export const PROTOCOL_METHODS = [
   "file.read", "file.search", "git.commit", "git.history",
   "artifact.create", "artifact.register", "artifact.get", "artifact.list", "artifact.verify",
   "operation.get", "operation.list", "operation.recover",
-  "schedule.create", "schedule.list", "schedule.update", "schedule.pause", "schedule.delete",
+  "schedule.create", "schedule.list", "schedule.update", "schedule.pause", "schedule.run", "schedule.delete",
   "plugin.catalog", "plugin.catalog_install", "plugin.install", "plugin.list", "plugin.marketplace_add", "plugin.marketplace_refresh", "plugin.marketplace_remove", "plugin.set_enabled", "plugin.uninstall",
   "provider.ccswitch_apply", "provider.ccswitch_list", "provider.model_benchmark", "provider.model_delete", "provider.model_list", "provider.model_save", "provider.model_select", "provider.model_test", "provider.status",
   "question.pending", "question.respond", "settings.get", "settings.update", "skill.install", "skill.list", "skill.set_enabled", "skill.uninstall", "workflow.run",
