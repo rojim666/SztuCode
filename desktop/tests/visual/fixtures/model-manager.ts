@@ -3,6 +3,7 @@ import type { ModelProfile, RuntimeSettings } from "../../../src/services/sztu-r
 import { i18n } from "../../../src/i18n";
 import "../../../src/sztu.css";
 import "../../../src/workbench.css";
+import "../../../src/appearance.css";
 
 type RpcRequest = { id: string; method: string; params?: Record<string, unknown> };
 type Callback = (event: { payload: string }) => void;
@@ -151,4 +152,4 @@ if (new URLSearchParams(location.search).has("menu")) {
   createApp({ setup: () => () => h("div", { style: "position:fixed;bottom:24px;right:24px" }, [
     h(ModelConfigMenu, { settings: settings.value, status: null, onUpdated: (value: RuntimeSettings) => { settings.value = value; } }),
   ]) }).use(i18n).mount("#app");
-} else createApp(ModelManager).use(i18n).mount("#app");
+} else createApp({ setup: () => () => h(ModelManager, { embedded: true }) }).use(i18n).mount("#app");

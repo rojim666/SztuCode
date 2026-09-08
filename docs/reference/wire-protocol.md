@@ -15,7 +15,7 @@
 
 - Client sends `{type: "hello", version: 1, capabilities?: string[]}` as an optional first frame.
 - Server replies with `{type: "hello", version: 1, server_version: string, capabilities: string[]}` or `hello_error`.
-- Advertised capabilities: `jsonrpc`, `ndjson`, `hello`, `request.cancel`, `request.idempotency`, `session.attach`, `session.detach`, `session.snapshot`, `session.command`, `event.subscribe`.
+- Advertised capabilities: `jsonrpc`, `ndjson`, `hello`, `request.cancel`, `request.idempotency`, `session.attach`, `session.detach`, `session.snapshot`, `session.command`, `event.subscribe`, `artifacts`.
 
 ## Error Codes
 
@@ -78,6 +78,20 @@
 - `file.search`
 - `git.commit`
 - `git.history`
+- `artifact.create`
+- `artifact.register`
+- `artifact.get`
+- `artifact.list`
+- `artifact.verify`
+- `operation.get`
+- `operation.list`
+- `operation.recover`
+- `schedule.create`
+- `schedule.list`
+- `schedule.update`
+- `schedule.pause`
+- `schedule.run`
+- `schedule.delete`
 - `plugin.catalog`
 - `plugin.catalog_install`
 - `plugin.install`
@@ -103,6 +117,7 @@
 - `skill.install`
 - `skill.list`
 - `skill.set_enabled`
+- `skill.uninstall`
 - `workflow.run`
 - `workspace.archive`
 - `workspace.delete`
@@ -220,6 +235,50 @@
 | --- | --- | --- |
 | `type` | `"workspace.list"` | no |
 
+### ArtifactCreateParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.create"` | no |
+| `workspace_id` | `string` | yes |
+| `path` | `string` | yes |
+| `artifact_type` | `"docx" \| "pptx" \| "pdf" \| "xlsx" \| "csv" \| "other"` | no |
+| `summary` | `string` | no |
+| `session_id` | `string` | no |
+| `run_id` | `string` | no |
+| `input_sources` | `Array<{ path: string; version?: string; hash?: string }>` | no |
+
+### ArtifactRegisterParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.register"` | no |
+
+### ArtifactGetParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.get"` | no |
+| `workspace_id` | `string` | yes |
+| `artifact_id` | `string` | yes |
+
+### ArtifactListParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.list"` | no |
+| `workspace_id` | `string` | yes |
+
+### ArtifactVerifyParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.verify"` | no |
+| `workspace_id` | `string` | yes |
+| `artifact_id` | `string` | yes |
+| `status` | `"unverified" \| "passed" \| "failed"` | yes |
+| `summary` | `string` | no |
+
 ### PongResult
 
 | Field | Type | Required |
@@ -316,6 +375,7 @@
 | `type` | `"session.fork"` | no |
 | `session_id` | `string` | yes |
 | `title` | `string` | no |
+| `through_run_id` | `string` | no |
 
 ### SessionGetParams
 
@@ -563,7 +623,7 @@
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `messages` | `Array<{ role: "user" \| "assistant"; content: string; ts: string; run_id?: string }>` | yes |
+| `messages` | `Array<{ role: "user" \| "assistant"; content: string; ts: string; run_id?: string; model?: string }>` | yes |
 
 ### WorkflowTask
 

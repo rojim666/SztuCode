@@ -1147,7 +1147,7 @@
   .media-preview img { box-shadow: 0 8px 24px rgb(0 0 0 / 40%) !important; }
 
   /* 代码语法高亮暗色 */
-  .code-preview .hljs-comment, .code-preview .hljs-quote { color: #6b7280 !important; }
+  .code-preview .hljs-comment, .code-preview .hljs-quote { color: #9ca3af !important; }
   .code-preview .hljs-keyword, .code-preview .hljs-selector-tag, .code-preview .hljs-literal { color: #c084fc !important; }
   .code-preview .hljs-string, .code-preview .hljs-regexp, .code-preview .hljs-addition { color: #4ade80 !important; }
   .code-preview .hljs-number, .code-preview .hljs-built_in, .code-preview .hljs-type { color: #fbbf24 !important; }

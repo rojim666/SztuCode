@@ -15,15 +15,15 @@ const open = ref(false);
 const sourceConfig = computed(() => {
   switch (props.entry.source) {
     case "intervention":
-      return { label: t("timeline.context.source.intervention"), iconActive: true };
+      return { label: t("timeline.context.source.intervention"), icon: "ShieldAlert", iconActive: true };
     case "steering":
-      return { label: t("timeline.context.source.steering"), iconActive: true };
+      return { label: t("timeline.context.source.steering"), icon: "CornerDownRight", iconActive: true };
     case "compaction":
-      return { label: t("timeline.context.source.compaction"), iconActive: false };
+      return { label: t("timeline.context.source.compaction"), icon: "Archive", iconActive: false };
     case "canvas":
-      return { label: t("timeline.context.source.canvas"), iconActive: true };
+      return { label: t("timeline.context.source.canvas"), icon: "PanelTop", iconActive: true };
     default:
-      return { label: t("timeline.context.source.system"), iconActive: false };
+      return { label: t("timeline.context.source.system"), icon: "Database", iconActive: false };
   }
 });
 

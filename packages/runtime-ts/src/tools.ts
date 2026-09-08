@@ -297,7 +297,10 @@ async function rgSearch(root: string, target: string, pattern: string, caseSensi
 function spawnBashCommand(command: string, cwd: string): ChildProcessWithoutNullStreams {
   const isWindows = process.platform === "win32";
   const bashPath = isWindows ? gitBashPath() : null;
-  if (bashPath) return spawn(bashPath, ["--login", "-c", preprocessCommand(command)], { cwd, windowsHide: true, env: { ...process.env, TERM: "dumb" } });
+  // Agent commands must be deterministic and non-interactive. Loading the
+  // user's Git Bash profile can inject aliases, prompts or even fail on an
+  // incorrectly encoded .bashrc before the requested command runs.
+  if (bashPath) return spawn(bashPath, ["--noprofile", "--norc", "-c", preprocessCommand(command)], { cwd, windowsHide: true, env: { ...process.env, TERM: "dumb" } });
   if (isWindows) return spawn("cmd.exe", ["/d", "/s", "/c", command], { cwd, windowsHide: true });
   return spawn(process.env.SHELL || "/bin/sh", ["-c", command], { cwd, windowsHide: true, env: { ...process.env, TERM: "dumb" } });
 }
@@ -784,8 +787,9 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       let child: ChildProcessWithoutNullStreams;
       try {
         if (bashPath) {
-          // Windows + Git Bash：使用 bash --login -c 执行
-          child = spawn(bashPath, ["--login", "-c", processedCommand], {
+          // Windows + Git Bash：不加载用户 profile，避免别名、提示符和
+          // 编码损坏的 .bashrc 污染自动化命令及其退出状态。
+          child = spawn(bashPath, ["--noprofile", "--norc", "-c", processedCommand], {
             cwd: context.workspace.root,
             windowsHide: true,
             env: { ...process.env, TERM: "dumb" },

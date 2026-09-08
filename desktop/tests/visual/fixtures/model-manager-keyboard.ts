@@ -3,6 +3,7 @@ import type { ModelProfile } from "../../../src/services/sztu-runtime";
 import { i18n } from "../../../src/i18n";
 import "../../../src/sztu.css";
 import "../../../src/workbench.css";
+import "../../../src/appearance.css";
 
 type RpcRequest = { id: string; method: string; params?: Record<string, unknown> };
 type Callback = (event: { payload: string }) => void;
@@ -106,7 +107,7 @@ const Host = defineComponent({
           id: "open-model-manager",
           onClick: openManager,
         }, "打开模型管理"),
-        open.value ? h(ModelManager, { onClose: closeManager }) : null,
+        open.value ? h(ModelManager, { embedded: true, onClose: closeManager }) : null,
       ]);
   },
 });

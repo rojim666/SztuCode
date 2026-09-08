@@ -431,7 +431,10 @@ test("run manager exposes note tools and injects saved session memory on the nex
     } };
     const manager = new RunManager(events, provider, root, undefined, () => [], async () => ({ contextWindow: 16_000, maxOutputTokens: 1_000 }), sessions);
     manager.permissions.setMode("accept_edits");
-    const waitFor = async (runId: string) => { const deadline = Date.now() + 5_000; while (manager.get(runId).status === "running" && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5)); assert.notEqual(manager.get(runId).status, "running"); };
+    // Full-suite runs can contend with document parsing and semantic-index
+    // workers on Windows. Keep the assertion bounded without treating normal
+    // scheduler latency as a product failure.
+    const waitFor = async (runId: string) => { const deadline = Date.now() + 15_000; while (manager.get(runId).status === "running" && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10)); assert.notEqual(manager.get(runId).status, "running", `run ${runId} did not settle before the test deadline`); };
     const first = manager.start("remember database", [], undefined, root, session.id); await waitFor(first);
     const second = manager.start("what database", [], undefined, root, session.id); await waitFor(second);
     assert.match(prompts.at(-1) ?? "", /Use PostgreSQL/);
