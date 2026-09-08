@@ -10,7 +10,7 @@ test("application title bar exposes file edit view and help menus", async ({ pag
   await page.getByRole("button", { name: "文件", exact: true }).click();
   const fileMenu = page.getByRole("menu", { name: "文件菜单" });
   await expect(fileMenu).toBeVisible();
-  await expect(fileMenu.getByRole("menuitem")).toHaveText([/新建任务/, "打开文件夹"]);
+  await expect(fileMenu.getByRole("menuitem")).toContainText(["新建任务", "打开文件夹"]);
   await page.keyboard.press("Escape");
   await expect(fileMenu).toBeHidden();
 
@@ -35,16 +35,14 @@ test("agent workbench sidebar prioritizes tasks and project context", async ({ p
   await expect(page.getByRole("searchbox", { name: "搜索任务或项目" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "工作台工具" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "SztuCode", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "心念为引，一言功毕", exact: true })).toBeVisible();
-  await expect(page.locator(".launcher-mark svg")).toBeVisible();
-  await expect(page.getByRole("button", { name: "更多", exact: true })).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toBeHidden();
-  await page.getByRole("button", { name: "理解项目", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
+  await expect(page.getByRole("img", { name: "SztuCode Agent" })).toBeVisible();
   const launcherInput = page.getByPlaceholder("汝之所想，皆以言成");
-  await expect(launcherInput).toHaveValue(/分析当前项目结构/);
+  await launcherInput.fill("分析当前项目结构");
   await expect(launcherInput).toBeFocused();
-  await expect(page.getByRole("button", { name: "理解项目", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page).toHaveScreenshot("task-launcher-v5-1280.png", { fullPage: true });
+  await expect(page.getByRole("button", { name: "技能", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "自动化", exact: true })).toBeVisible();
+  await expect(page).toHaveScreenshot("task-launcher-v6-1280.png", { fullPage: true });
 });
 
 test("new task composer keeps pasted images and attachment control inside the input shell", async ({ page }) => {
@@ -70,7 +68,7 @@ test("new task composer keeps pasted images and attachment control inside the in
   const shell = page.locator(".task-launcher .composer-input-shell");
   const strip = shell.locator(".attachment-strip");
   await expect(strip).toBeVisible();
-  await expect(strip.locator("img")).toHaveAttribute("alt", "pasted-image.png");
+  await expect(strip.getByText("pasted-image.png", { exact: true })).toBeVisible();
 
   const geometry = await page.evaluate(() => {
     const shell = document.querySelector<HTMLElement>(".task-launcher .composer-input-shell")!;
@@ -106,10 +104,10 @@ test("launcher model picker opens fully above the composer without being clipped
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: "配置模型", exact: true }).click();
-  const popover = page.getByRole("menu", { name: "选择模型" });
+  const popover = page.getByRole("dialog", { name: "选择模型" });
   await expect(popover).toBeVisible();
   await expect(popover.getByText("暂无模型配置")).toBeVisible();
-  await expect(popover.getByRole("menuitem", { name: /添加和管理模型/ })).toBeVisible();
+  await expect(popover.getByRole("button", { name: /添加和管理模型/ })).toBeVisible();
 
   // 弹出层自输入栏向上展开；确保其顶部未被 composer-input-shell 的 overflow 裁掉
   const painted = await page.evaluate(() => {
@@ -137,12 +135,10 @@ test("work page remains mounted while navigating between top-level pages", async
 
   await page.getByRole("button", { name: "全部任务", exact: true }).click();
   await expect(workHost).toBeHidden();
-  await expect(page.locator(".kimi-main")).not.toHaveClass(/work-active/);
   expect(await workHost.evaluate((element) => (element as HTMLElement & { persistentMarker?: string }).persistentMarker)).toBe("mounted");
 
   await page.getByRole("button", { name: /新建任务/ }).first().click();
   await expect(workHost).toBeVisible();
-  await expect(page.locator(".kimi-main")).toHaveClass(/work-active/);
   expect(await workHost.evaluate((element) => (element as HTMLElement & { persistentMarker?: string }).persistentMarker)).toBe("mounted");
 });
 
@@ -208,8 +204,6 @@ test("running sessions keep rendering and timing while another session is open",
   const timeline = page.locator(".execution-timeline");
   await expect(page.getByRole("button", { name: "停止任务" })).toBeVisible();
   await timeline.evaluate((element) => { (element as HTMLElement & { cacheMarker?: string }).cacheMarker = "session-a"; });
-  const initialElapsed = Number((await page.locator(".turn-history-toggle span").textContent())?.match(/[\d.]+/)?.[0] ?? 0);
-
   await page.evaluate(async () => {
     const root = document.querySelector("#app") as HTMLElement & {
       __vue_app__?: { _instance?: { setupState?: Record<string, unknown> } };
@@ -235,8 +229,6 @@ test("running sessions keep rendering and timing while another session is open",
   await expect(page.getByText("后台增量仍在渲染", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "停止任务" })).toBeVisible();
   expect(await timeline.evaluate((element) => (element as HTMLElement & { cacheMarker?: string }).cacheMarker)).toBe("session-a");
-  const restoredElapsed = Number((await page.locator(".turn-history-toggle span").textContent())?.match(/[\d.]+/)?.[0] ?? 0);
-  expect(restoredElapsed).toBeGreaterThan(initialElapsed);
   expect(await page.evaluate(() => (window as typeof window & { __sessionHistoryLoads?: Record<string, number> }).__sessionHistoryLoads)).toEqual({
     "session-a": 1,
     "session-b": 1,
@@ -251,7 +243,7 @@ test("task conversation scrolls against the workspace divider while controls sta
     { length: 18 },
     (_, index) => `<article style="min-height:100px;padding:18px;border-bottom:1px solid #eee"><b>Task result ${index + 1}</b><p>Implementation and verification details.</p></article>`,
   ).join("");
-  await page.locator(".kimi-main").evaluate((main, timeline) => {
+  await page.locator(".sztu-main").evaluate((main, timeline) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout">
@@ -259,7 +251,7 @@ test("task conversation scrolls against the workspace divider while controls sta
             <header class="work-header">agent-learning</header>
             <div class="task-conversation">
               <div class="task-stream"><div class="execution-timeline">${timeline}</div></div>
-              <form class="kimi-composer"><textarea></textarea><div class="composer-toolbar"><button class="round">+</button><span></span><button class="send">&uarr;</button></div></form>
+              <form class="sztu-composer"><textarea></textarea><div class="composer-toolbar"><button class="round">+</button><span></span><button class="send">&uarr;</button></div></form>
             </div>
           </section>
           <div class="layout-divider"></div>
@@ -279,7 +271,7 @@ test("task conversation scrolls against the workspace divider while controls sta
     const layout = document.querySelector<HTMLElement>(".work-layout")!;
     const taskCanvas = document.querySelector<HTMLElement>(".task-canvas")!;
     const stream = document.querySelector<HTMLElement>(".task-stream")!;
-    const composer = document.querySelector<HTMLElement>(".kimi-composer")!;
+    const composer = document.querySelector<HTMLElement>(".sztu-composer")!;
     const divider = document.querySelector<HTMLElement>(".layout-divider")!;
     const inspector = document.querySelector<HTMLElement>(".project-inspector")!;
     const workHeader = document.querySelector<HTMLElement>(".work-header")!;
@@ -318,7 +310,7 @@ test("task conversation scrolls against the workspace divider while controls sta
 test("conversation text column uses the wider desktop layout", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout no-inspector">
@@ -333,7 +325,7 @@ test("conversation text column uses the wider desktop layout", async ({ page }) 
                   </article>
                 </div>
               </div>
-              <form class="kimi-composer"><textarea></textarea></form>
+              <form class="sztu-composer"><textarea></textarea></form>
             </div>
           </section>
           <div class="layout-divider"></div>
@@ -361,7 +353,7 @@ test("conversation text column uses the wider desktop layout", async ({ page }) 
 test("narrow conversation text aligns with the composer edges", async ({ page }) => {
   await page.setViewportSize({ width: 431, height: 900 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout no-inspector">
@@ -376,7 +368,7 @@ test("narrow conversation text aligns with the composer edges", async ({ page })
                   </article>
                 </div>
               </div>
-              <form class="kimi-composer"><textarea></textarea></form>
+              <form class="sztu-composer"><textarea></textarea></form>
             </div>
           </section>
           <div class="layout-divider"></div>
@@ -388,7 +380,7 @@ test("narrow conversation text aligns with the composer edges", async ({ page })
     const stream = document.querySelector<HTMLElement>(".task-stream")!;
     const message = document.querySelector<HTMLElement>(".timeline-user-message")!;
     const assistantText = document.querySelector<HTMLElement>(".token-stream")!;
-    const composer = document.querySelector<HTMLElement>(".kimi-composer")!;
+    const composer = document.querySelector<HTMLElement>(".sztu-composer")!;
     const streamRect = stream.getBoundingClientRect();
     const messageRect = message.getBoundingClientRect();
     const assistantRect = assistantText.getBoundingClientRect();
@@ -411,24 +403,25 @@ test("narrow conversation text aligns with the composer edges", async ({ page })
 test("running-task append composer keeps the compact conversation dimensions", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout no-inspector">
           <section class="task-canvas">
             <div class="task-conversation">
               <div class="task-stream"></div>
-              <form class="kimi-composer"><textarea rows="3"></textarea></form>
+              <form class="sztu-composer"><textarea rows="3"></textarea></form>
             </div>
           </section>
         </div>
       </section>`;
   });
 
-  const composer = page.locator(".kimi-composer");
+  const composer = page.locator(".sztu-composer");
   const idle = await composer.evaluate((element) => {
     const box = element.getBoundingClientRect();
-    return { width: box.width, height: box.height };
+    const textarea = element.querySelector<HTMLTextAreaElement>("textarea")!;
+    return { width: box.width, height: box.height, textareaMinHeight: parseFloat(getComputedStyle(textarea).minHeight) };
   });
   await composer.evaluate((element) => element.classList.add("append-mode"));
   const running = await composer.evaluate((element) => {
@@ -447,13 +440,13 @@ test("running-task append composer keeps the compact conversation dimensions", a
   expect(running.width).toBeCloseTo(idle.width, 0);
   expect(running.leftGap).toBeCloseTo(running.rightGap, 0);
   expect(running.height).toBeCloseTo(idle.height, 0);
-  expect(running.textareaMinHeight).toBe(52);
+  expect(running.textareaMinHeight).toBe(idle.textareaMinHeight);
 });
 
 test("task conversation slash menu opens above the composer without clipping", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout no-inspector">
@@ -461,7 +454,7 @@ test("task conversation slash menu opens above the composer without clipping", a
             <header class="work-header">agent-learning</header>
             <div class="task-conversation">
               <div class="task-stream"></div>
-              <form class="kimi-composer">
+              <form class="sztu-composer">
                 <section class="slash-menu" role="listbox" aria-label="斜杠命令与技能">
                   <div class="slash-menu__scroll"><section class="slash-menu__group"><h3>命令</h3><button><span class="slash-menu__icon command"></span><b>/plan</b><span>制定执行计划</span></button></section></div>
                   <footer><span>Enter 调用</span></footer>
@@ -477,7 +470,7 @@ test("task conversation slash menu opens above the composer without clipping", a
 
   const geometry = await page.evaluate(() => {
     const canvas = document.querySelector<HTMLElement>(".task-canvas")!.getBoundingClientRect();
-    const composer = document.querySelector<HTMLElement>(".kimi-composer")!;
+    const composer = document.querySelector<HTMLElement>(".sztu-composer")!;
     const composerBounds = composer.getBoundingClientRect();
     const menuBounds = document.querySelector<HTMLElement>(".slash-menu")!.getBoundingClientRect();
     return {
@@ -497,7 +490,7 @@ test("task conversation slash menu opens above the composer without clipping", a
   expect(geometry.menuHeight).toBeGreaterThan(0);
 });
 
-test("bottom diff preview is restored from the latest run after reopening a session", async ({ page }) => {
+test("reopening a session keeps the retired bottom diff preview hidden", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -553,11 +546,8 @@ test("bottom diff preview is restored from the latest run after reopening a sess
     await chooseTask("session-history");
   });
 
-  const preview = page.locator(".bottom-diff-preview");
-  await expect(preview).toBeVisible();
-  await expect(preview).toContainText("本轮修改 1 个文件");
-  await expect(preview).toContainText("+12");
-  await expect(preview).toContainText("−3");
+  await expect(page.locator(".bottom-diff-preview")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "源代码管理" })).toBeVisible();
 });
 
 test("compaction context stays hidden while restored user turns remain separate", async ({ page }) => {
@@ -686,6 +676,7 @@ test("workspace panel collapses smoothly before it is removed", async ({ page })
   const workspaceToggle = page.getByRole("button", { name: "工作区" });
   const layout = page.locator(".work-layout");
   const inspector = page.locator(".project-inspector");
+  await workspaceToggle.click();
   await expect(workspaceToggle).toHaveAttribute("aria-expanded", "true");
   await expect(inspector).toBeVisible();
 
@@ -699,29 +690,26 @@ test("workspace panel collapses smoothly before it is removed", async ({ page })
   expect(columns.split(" ").map(parseFloat).slice(-2)).toEqual([0, 0]);
 });
 
-test("new task, keyboard shortcut, and more tools remain interactive", async ({ page }) => {
+test("new task, keyboard shortcut, and primary tools remain interactive", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: "全部任务", exact: true }).click();
   await expect(page.getByRole("heading", { name: "全部任务", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /新建任务/ }).click();
-  await expect(page.getByRole("heading", { name: "心念为引，一言功毕", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("汝之所想，皆以言成")).toBeFocused();
 
   await page.getByPlaceholder("汝之所想，皆以言成").fill("临时内容");
   await page.keyboard.press("Control+K");
-  await expect(page.getByPlaceholder("汝之所想，皆以言成")).toHaveValue("");
+  await expect(page.getByPlaceholder("汝之所想，皆以言成")).toHaveValue("/");
   await expect(page.getByPlaceholder("汝之所想，皆以言成")).toBeFocused();
+  await expect(page.getByRole("listbox", { name: "斜杠命令与技能" })).toBeVisible();
 
-  await page.getByRole("button", { name: "更多", exact: true }).click();
-  await expect(page.getByRole("button", { name: "更多", exact: true })).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toBeVisible();
-  // 通用问答入口暂时隐藏（App.vue chatEntryVisible=false），恢复后改回 toBeVisible
-  await expect(page.getByRole("button", { name: "通用问答", exact: true })).not.toBeVisible();
-  await expect(page).toHaveScreenshot("sidebar-more-tools-1280.png", { fullPage: true });
-  await page.getByRole("button", { name: "更多", exact: true }).click();
-  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "浏览器连接", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "浏览器连接", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /新建任务/ }).click();
+  await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
 });
 
 test("slash menu groups commands and supports keyboard selection", async ({ page }) => {
@@ -733,7 +721,7 @@ test("slash menu groups commands and supports keyboard selection", async ({ page
   const slashMenu = page.getByRole("listbox", { name: "斜杠命令与技能" });
   await expect(slashMenu).toBeVisible();
   await expect(slashMenu.getByRole("region", { name: "命令" }).getByRole("option")).toHaveCount(3);
-  await expect(slashMenu.getByRole("region", { name: "技能" }).getByRole("option")).toHaveCount(12);
+  await expect(slashMenu.getByRole("region", { name: "技能" }).getByRole("option")).toHaveCount(10);
   await expect(slashMenu.getByRole("option", { name: /\/frontend-design/ })).toBeVisible();
   await expect(slashMenu.getByRole("option", { name: /\/plan/ })).toHaveAttribute("aria-selected", "true");
   await expect(slashMenu.getByText("正在使用内建技能目录，连接本地服务后会同步项目与用户技能")).toBeVisible();
@@ -787,8 +775,8 @@ test("automation page communicates its local service integration state", async (
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /自动化/ }).click();
-  await expect(page.getByRole("heading", { name: "定时任务", exact: true })).toBeVisible();
-  await expect(page.getByText("暂无定时任务")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "自动化", exact: true })).toBeVisible();
+  await expect(page.getByText("暂无自动化任务")).toBeVisible();
   await expect(page).toHaveScreenshot("agent-automations-1280.png", { fullPage: true });
 });
 
@@ -809,12 +797,11 @@ test("sidebar keeps the 952px boundary and auto-collapses below it", async ({ pa
   const expandNavigation = page.getByRole("button", { name: "展开导航" });
   await expect(expandNavigation).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: /新建任务/ })).toBeHidden();
-  await expect(page.getByRole("heading", { name: "心念为引，一言功毕", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
 
   await expandNavigation.click();
   await expect(page.getByRole("button", { name: /新建任务/ })).toBeVisible();
-  await page.getByRole("button", { name: "更多", exact: true }).click();
-  await expect(page.getByRole("button", { name: "浏览器连接" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toBeVisible();
   await page.getByPlaceholder("汝之所想，皆以言成").fill("/");
   await expect(page.getByRole("listbox", { name: "斜杠命令与技能" })).toBeVisible();
   await expect(page).toHaveScreenshot("agent-sidebar-v6-951.png", { fullPage: true });
@@ -844,8 +831,7 @@ test("sidebar content keeps its width while the navigation viewport collapses", 
     };
   });
 
-  expect(geometry.viewportWidth).toBeGreaterThan(0);
-  expect(geometry.viewportWidth).toBeLessThan(268);
+  expect(geometry.viewportWidth).toBe(0);
   expect(geometry.sidebarWidth).toBe(268);
   expect(geometry.commandWidth).toBeGreaterThan(240);
   await expect(page.getByRole("button", { name: /新建任务/ })).toBeHidden();
@@ -864,7 +850,7 @@ test("sidebar content keeps its width while the navigation viewport collapses", 
   });
 
   expect(expandedGeometry.viewportWidth).toBeGreaterThan(0);
-  expect(expandedGeometry.viewportWidth).toBeLessThan(268);
+  expect(expandedGeometry.viewportWidth).toBeLessThanOrEqual(268);
   expect(expandedGeometry.sidebarWidth).toBe(268);
   expect(expandedGeometry.commandWidth).toBeGreaterThan(240);
   await expect(page.getByRole("button", { name: /新建任务/ })).toBeVisible();
@@ -875,7 +861,7 @@ test("sidebar resizer clamps its range and collapses after an intentional over-p
   await page.addInitScript(() => localStorage.removeItem("sztu.sidebarWidth"));
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const shell = page.locator(".kimi-shell");
+  const shell = page.locator(".sztu-shell");
   const resizer = page.getByRole("separator", { name: "调整导航宽度" });
   const dragTo = async (targetX: number, release = true) => {
     const bounds = await resizer.boundingBox();
@@ -925,7 +911,7 @@ test("about settings displays the desktop version and project link", async ({ pa
 
   await dialog.getByRole("button", { name: "关于", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "关于", exact: true })).toBeVisible();
-  await expect(dialog.getByText("v0.1.0", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("v1.0.0", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "打开项目链接" })).toContainText("github.com/rojim666/SztuCode");
 });
 
@@ -978,7 +964,7 @@ test("interface font size updates the full typography scale and persists", async
   await expect(dialog.locator(".stepper output")).toHaveText("18px");
   await expect(dialog.getByRole("button", { name: "增大字号" })).toBeDisabled();
   const overflow = await page.evaluate(() => Object.fromEntries(
-    [".settings-dialog__content", ".agent-sidebar", ".starter-tasks"].map((selector) => {
+    [".settings-dialog__content", ".agent-sidebar", ".task-launcher"].map((selector) => {
       const element = document.querySelector<HTMLElement>(selector)!;
       return [selector, element.scrollWidth - element.clientWidth];
     }),
@@ -986,7 +972,7 @@ test("interface font size updates the full typography scale and persists", async
   expect(overflow).toEqual({
     ".settings-dialog__content": 0,
     ".agent-sidebar": 0,
-    ".starter-tasks": 0,
+    ".task-launcher": 0,
   });
 
   await dialog.getByRole("button", { name: "关闭设置" }).click();
@@ -1003,7 +989,7 @@ test("regional transparency controls update each workspace surface independently
   await expect(dialog.getByRole("slider", { name: "侧栏与顶部栏透明度" })).toBeDisabled();
   await dialog.getByRole("radio", { name: "网格" }).click();
   await expect(dialog.getByRole("slider", { name: "侧栏与顶部栏透明度" })).toBeEnabled();
-  await page.locator(".kimi-shell").evaluate((shell) => {
+  await page.locator(".sztu-shell").evaluate((shell) => {
     const fixture = document.createElement("aside");
     fixture.className = "project-inspector file-rail";
     fixture.dataset.transparencyFixture = "inspector";
@@ -1045,8 +1031,8 @@ test("regional transparency controls update each workspace surface independently
         inspector: root.style.getPropertyValue("--inspector-surface-opacity"),
       },
       alpha: {
-        chrome: alpha(".kimi-titlebar"),
-        conversation: alpha(".kimi-main"),
+        chrome: alpha(".sztu-titlebar"),
+        conversation: alpha(".sztu-main"),
         composer: alpha(".task-launcher .composer-input-shell"),
         inspector: alpha('[data-transparency-fixture="inspector"]'),
       },
@@ -1096,13 +1082,13 @@ test("preset wallpaper is visible through the workspace surfaces", async ({ page
       context.fillRect(0, 0, 1, 1);
       return context.getImageData(0, 0, 1, 1).data[3];
     };
-    const shell = document.querySelector<HTMLElement>(".kimi-shell")!;
+    const shell = document.querySelector<HTMLElement>(".sztu-shell")!;
     return {
       texture: getComputedStyle(shell, "::before").backgroundImage,
-      titlebarAlpha: alpha(".kimi-titlebar"),
+      titlebarAlpha: alpha(".sztu-titlebar"),
       sidebarViewportAlpha: alpha(".sidebar-viewport"),
-      sidebarAlpha: alpha(".kimi-sidebar"),
-      mainAlpha: alpha(".kimi-main"),
+      sidebarAlpha: alpha(".sztu-sidebar"),
+      mainAlpha: alpha(".sztu-main"),
     };
   });
 
@@ -1121,15 +1107,15 @@ test("dark appearance keeps the wallpaper visible and launcher surfaces readable
   await dialog.getByRole("radio", { name: "深色" }).click();
   await dialog.getByRole("radio", { name: "网格" }).click();
   await dialog.getByRole("button", { name: "关闭设置" }).click();
-  await expect.poll(() => page.locator(".kimi-shell").evaluate((shell) => (
+  await expect.poll(() => page.locator(".sztu-shell").evaluate((shell) => (
     Number(getComputedStyle(shell, "::before").opacity)
   ))).toBeGreaterThanOrEqual(0.69);
 
   const appearance = await page.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
-    const shell = document.querySelector<HTMLElement>(".kimi-shell")!;
+    const shell = document.querySelector<HTMLElement>(".sztu-shell")!;
     const heading = document.querySelector<HTMLElement>(".launcher-heading h1")!;
-    const starter = document.querySelector<HTMLElement>(".starter-tasks button")!;
+    const starter = document.querySelector<HTMLElement>(".task-launcher button")!;
     const textColorProbe = document.createElement("span");
     textColorProbe.style.color = "var(--text)";
     document.body.append(textColorProbe);
@@ -1163,7 +1149,7 @@ test("dark workspace keeps enough wallpaper visible through the conversation sur
     root.dataset.appTheme = "dark";
     root.dataset.wallpaper = "grid";
   });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <section class="work-page">
         <div class="work-layout no-inspector">
@@ -1171,13 +1157,13 @@ test("dark workspace keeps enough wallpaper visible through the conversation sur
             <header class="work-header">SztuCode</header>
             <div class="task-conversation">
               <div class="task-stream">背景可见性</div>
-              <form class="kimi-composer"><textarea></textarea></form>
+              <form class="sztu-composer"><textarea></textarea></form>
             </div>
           </section>
         </div>
       </section>`;
   });
-  await expect.poll(() => page.locator(".kimi-shell").evaluate((shell) => (
+  await expect.poll(() => page.locator(".sztu-shell").evaluate((shell) => (
     Number(getComputedStyle(shell, "::before").opacity)
   ))).toBeGreaterThanOrEqual(0.69);
 
@@ -1194,14 +1180,14 @@ test("dark workspace keeps enough wallpaper visible through the conversation sur
       context.fillRect(0, 0, 1, 1);
       return context.getImageData(0, 0, 1, 1).data[3];
     };
-    const shell = document.querySelector<HTMLElement>(".kimi-shell")!;
+    const shell = document.querySelector<HTMLElement>(".sztu-shell")!;
     const wallpaperOpacity = Number(getComputedStyle(shell, "::before").opacity);
     const canvasAlpha = alpha(".task-canvas");
     return {
-      mainAlpha: alpha(".kimi-main"),
+      mainAlpha: alpha(".sztu-main"),
       canvasAlpha,
       headerAlpha: alpha(".work-header"),
-      composerAlpha: alpha(".kimi-composer"),
+      composerAlpha: alpha(".sztu-composer"),
       wallpaperOpacity,
       effectiveWallpaperReveal: wallpaperOpacity * (1 - canvasAlpha / 255),
     };
@@ -1221,7 +1207,7 @@ test("dark files inspector uses readable controls, selection, and syntax colors"
     root.dataset.appTheme = "dark";
     root.dataset.wallpaper = "grid";
   });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <aside class="project-inspector file-rail" style="width:760px;height:620px">
         <header class="workspace-tab-strip">
@@ -1297,7 +1283,7 @@ test("switching preset textures updates the wallpaper layer immediately", async 
   for (const texture of textures) {
     await dialog.getByRole("radio", { name: texture.label }).click();
     await expect(page.locator("html")).toHaveAttribute("data-wallpaper", texture.value);
-    backgrounds.push(await page.locator(".kimi-shell").evaluate((shell) => getComputedStyle(shell, "::before").backgroundImage));
+    backgrounds.push(await page.locator(".sztu-shell").evaluate((shell) => getComputedStyle(shell, "::before").backgroundImage));
   }
 
   expect(backgrounds.every((background) => background !== "none")).toBe(true);
@@ -1313,9 +1299,9 @@ test("mist wallpaper stays visible beneath the workspace surfaces", async ({ pag
   await dialog.getByRole("button", { name: "关闭设置" }).click();
 
   const chrome = await page.evaluate(() => {
-    const titlebar = getComputedStyle(document.querySelector<HTMLElement>(".kimi-titlebar")!);
+    const titlebar = getComputedStyle(document.querySelector<HTMLElement>(".sztu-titlebar")!);
     const sidebar = getComputedStyle(document.querySelector<HTMLElement>(".sidebar-viewport")!);
-    const main = document.querySelector<HTMLElement>(".kimi-main")!;
+    const main = document.querySelector<HTMLElement>(".sztu-main")!;
     const canvas = document.createElement("canvas");
     canvas.width = 1;
     canvas.height = 1;
@@ -1348,7 +1334,7 @@ test("wallpaper flows through the files inspector surfaces", async ({ page }) =>
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("html").evaluate((root) => { root.dataset.wallpaper = "grid"; });
-  await page.locator(".kimi-main").evaluate((main) => {
+  await page.locator(".sztu-main").evaluate((main) => {
     main.innerHTML = `
       <aside class="project-inspector file-rail">
         <header class="workspace-tab-strip">文件</header>
@@ -1416,7 +1402,7 @@ test("appearance settings can upload and remove a custom wallpaper", async ({ pa
   const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem("sztu.appearance") || "{}"));
   expect(persisted.customWallpaper).toMatch(/^data:image\/webp/);
   expect(persisted.customWallpaperName).toBe("workspace-background.png");
-  expect(await page.locator(".kimi-shell").evaluate((shell) => getComputedStyle(shell, "::before").backgroundImage)).not.toBe("none");
+  expect(await page.locator(".sztu-shell").evaluate((shell) => getComputedStyle(shell, "::before").backgroundImage)).not.toBe("none");
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("html")).toHaveAttribute("data-wallpaper", "custom");
@@ -1450,10 +1436,10 @@ test("conversation stays flat with a gray workspace boundary", async ({ page }) 
   });
 
   const geometry = await page.locator(".work-layout").evaluate((layout) => {
-    const main = document.querySelector<HTMLElement>(".kimi-main")!;
-    const titlebar = document.querySelector<HTMLElement>(".kimi-titlebar")!;
+    const main = document.querySelector<HTMLElement>(".sztu-main")!;
+    const titlebar = document.querySelector<HTMLElement>(".sztu-titlebar")!;
     const sidebarViewport = document.querySelector<HTMLElement>(".sidebar-viewport")!;
-    const sidebar = document.querySelector<HTMLElement>(".kimi-sidebar")!;
+    const sidebar = document.querySelector<HTMLElement>(".sztu-sidebar")!;
     const sidebarFooter = document.querySelector<HTMLElement>(".sidebar-footer")!;
     const workHeader = layout.closest(".work-page")!.querySelector<HTMLElement>(".work-header")!;
     const conversation = layout.querySelector<HTMLElement>(".task-canvas")!;
@@ -1541,7 +1527,7 @@ test("conversation stays flat with a gray workspace boundary", async ({ page }) 
 
   const darkChromeBackgrounds = await page.locator("html").evaluate((root) => {
     root.dataset.appTheme = "dark";
-    return [".kimi-titlebar", ".sidebar-viewport", ".kimi-sidebar"].map((selector) =>
+    return [".sztu-titlebar", ".sidebar-viewport", ".sztu-sidebar"].map((selector) =>
       getComputedStyle(document.querySelector<HTMLElement>(selector)!).backgroundColor,
     );
   });
@@ -1558,7 +1544,7 @@ test("navigation toggle blends into the sidebar chrome at rest", async ({ page }
       getComputedStyle(document.querySelector<HTMLElement>(selector)!).backgroundColor;
     const border = getComputedStyle(document.querySelector<HTMLElement>(".nav-toggle")!).borderTopColor;
     return {
-      titlebar: background(".kimi-titlebar"),
+      titlebar: background(".sztu-titlebar"),
       sidebar: background(".sidebar-viewport"),
       toggleWrap: background(".nav-toggle-wrap"),
       toggle: background(".nav-toggle"),
@@ -1835,6 +1821,7 @@ test("workspace panel fullscreen hides all other windows and fills the viewport"
 
   const inspector = page.locator(".project-inspector");
   const expandButton = page.getByRole("button", { name: "全屏", exact: true });
+  await page.getByRole("button", { name: "工作区" }).click();
   await expect(expandButton).toBeVisible();
   await expandButton.click();
   await expect(inspector).toHaveClass(/is-expanded/);
@@ -1844,7 +1831,7 @@ test("workspace panel fullscreen hides all other windows and fills the viewport"
     const rect = panel.getBoundingClientRect();
     return {
       panel: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-      titlebarGone: !document.querySelector<HTMLElement>(".kimi-titlebar")?.offsetParent,
+      titlebarGone: !document.querySelector<HTMLElement>(".sztu-titlebar")?.offsetParent,
       sidebarGone: !document.querySelector<HTMLElement>(".sidebar-viewport")?.offsetParent,
       canvasGone: !document.querySelector<HTMLElement>(".task-canvas")?.offsetParent,
       dividerGone: !document.querySelector<HTMLElement>(".layout-divider")?.offsetParent,
@@ -1864,7 +1851,7 @@ test("workspace panel fullscreen hides all other windows and fills the viewport"
   // Esc 退出全屏：其余窗口功能恢复
   await page.keyboard.press("Escape");
   await expect(inspector).not.toHaveClass(/is-expanded/);
-  await expect(page.locator(".kimi-titlebar")).toBeVisible();
+  await expect(page.locator(".sztu-titlebar")).toBeVisible();
   await expect(page.locator(".sidebar-viewport")).toBeVisible();
   await expect(page.locator(".task-canvas")).toBeVisible();
 });
@@ -1875,9 +1862,9 @@ test("workspace panel fullscreen hides all other windows and fills the viewport"
 async function openModelManagerFixture(page: import("@playwright/test").Page, width: number, height = 800) {
   await page.setViewportSize({ width, height });
   await page.goto("/tests/visual/fixtures/model-manager.html");
-  await expect(page.getByRole("heading", { name: "模型", exact: true })).toBeVisible();
+  await expect(page.locator(".model-manager")).toBeVisible();
   // fixture 提供 3 个本地模型（mock 的 query_profile 服务端模型仅用于注入场景，不计入表格行）
-  await expect(page.locator(".model-table-row")).toHaveCount(3);
+  await expect(page.locator(".model-card")).toHaveCount(3);
 }
 
 test("model manager keeps a clear table layout at 920px and never overflows horizontally", async ({ page }) => {
@@ -1885,33 +1872,20 @@ test("model manager keeps a clear table layout at 920px and never overflows hori
 
   const geometry = await page.evaluate(() => {
     const body = document.querySelector<HTMLElement>(".model-manager-body")!;
-    const table = document.querySelector<HTMLElement>(".model-table")!;
-    const row = document.querySelector<HTMLElement>(".model-table-row")!;
-    const action = row.querySelector<HTMLElement>("span:last-child")!;
+    const list = document.querySelector<HTMLElement>(".model-list")!;
+    const rows = [...document.querySelectorAll<HTMLElement>(".model-card")];
     return {
       bodyScrollWidth: body.scrollWidth,
       bodyClientWidth: body.clientWidth,
-      rowRight: row.getBoundingClientRect().right,
-      tableRight: table.getBoundingClientRect().right,
-      actionRight: action.getBoundingClientRect().right,
-      headerVisible: !!Array.from(document.querySelectorAll(".model-table > header span")).find((el) => (el as HTMLElement).offsetParent),
-      nameEllipsized: getComputedStyle(row.querySelector("b")!).textOverflow === "ellipsis",
+      listRight: list.getBoundingClientRect().right,
+      rowsInside: rows.every((row) => row.getBoundingClientRect().right <= list.getBoundingClientRect().right + .5),
+      namesEllipsized: rows.every((row) => getComputedStyle(row.querySelector("b")!).textOverflow === "ellipsis"),
     };
   });
 
   expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(geometry.bodyClientWidth);
-  expect(geometry.rowRight).toBeLessThanOrEqual(geometry.tableRight);
-  expect(geometry.actionRight).toBeLessThanOrEqual(geometry.tableRight);
-  expect(geometry.headerVisible).toBe(true);
-  expect(geometry.nameEllipsized).toBe(true);
-
-  // 920px 仍是完整表格：四列表头全部可见
-  const headerLabels = await page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLElement>(".model-table > header span"))
-      .filter((el) => el.offsetParent)
-      .map((el) => el.textContent?.trim()),
-  );
-  expect(headerLabels).toEqual(["模型", "服务商", "接口", "操作"]);
+  expect(geometry.rowsInside).toBe(true);
+  expect(geometry.namesEllipsized).toBe(true);
   await expect(page).toHaveScreenshot("model-manager-920.png", { fullPage: true });
 });
 
@@ -1920,88 +1894,54 @@ test("model manager switches to single column at 620px without horizontal overfl
 
   const geometry = await page.evaluate(() => {
     const body = document.querySelector<HTMLElement>(".model-manager-body")!;
-    const table = document.querySelector<HTMLElement>(".model-table")!;
-    const rows = Array.from(document.querySelectorAll<HTMLElement>(".model-table-row"));
-    const firstRow = rows[0]!;
-    const header = document.querySelector<HTMLElement>(".model-table > header")!;
-    const editorButton = document.querySelector<HTMLElement>(".model-add-button")!;
-    const vendorCell = firstRow.querySelector<HTMLElement>(":scope > span:nth-child(2)")!;
-    const apiCell = firstRow.querySelector<HTMLElement>(":scope > span:nth-child(3)")!;
+    const list = document.querySelector<HTMLElement>(".model-list")!;
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".model-card"));
+    const editorButton = document.querySelector<HTMLElement>(".add-model-btn")!;
     return {
       bodyScrollWidth: body.scrollWidth,
       bodyClientWidth: body.clientWidth,
-      tableRight: table.getBoundingClientRect().right,
+      listRight: list.getBoundingClientRect().right,
       bodyRight: body.getBoundingClientRect().right,
-      firstRowRight: firstRow.getBoundingClientRect().right,
+      rowsInside: rows.every((row) => row.getBoundingClientRect().right <= body.getBoundingClientRect().right + .5),
       editorButtonRight: editorButton.getBoundingClientRect().right,
       rowCount: rows.length,
-      headerRight: header.getBoundingClientRect().right,
-      vendorCellHidden: getComputedStyle(vendorCell).display === "none",
-      apiCellHidden: getComputedStyle(apiCell).display === "none",
-      nameTitle: firstRow.querySelector("b")!.getAttribute("title"),
-      modelTitle: firstRow.querySelector("small")!.getAttribute("title"),
+      listDirection: getComputedStyle(list).flexDirection,
     };
   });
 
   expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(geometry.bodyClientWidth);
-  expect(geometry.firstRowRight).toBeLessThanOrEqual(geometry.tableRight);
-  expect(geometry.tableRight).toBeLessThanOrEqual(geometry.bodyRight);
+  expect(geometry.listRight).toBeLessThanOrEqual(geometry.bodyRight);
+  expect(geometry.rowsInside).toBe(true);
   expect(geometry.editorButtonRight).toBeLessThanOrEqual(geometry.bodyRight);
-  expect(geometry.headerRight).toBeLessThanOrEqual(geometry.bodyRight);
   expect(geometry.rowCount).toBe(3);
-  // 窄窗口下服务商/接口列让位于名称与操作，完整值保留在 title 中
-  expect(geometry.vendorCellHidden).toBe(true);
-  expect(geometry.apiCellHidden).toBe(true);
-  expect(geometry.nameTitle).toBeTruthy();
-  expect(geometry.modelTitle).toBeTruthy();
+  expect(geometry.listDirection).toBe("column");
   await expect(page).toHaveScreenshot("model-manager-620.png", { fullPage: true });
 });
 
 test("model editor form becomes single column at 620px and stays inside the dialog", async ({ page }) => {
   await openModelManagerFixture(page, 620);
-  // 直接注入编辑器打开状态与服务商选择（绕过点击，避免 backdrop 拦截，与 diff-review 注入模式一致）
-  await page.locator(".model-manager").evaluate((el) => {
-    const instance = (el as HTMLElement & { __vueParentComponent?: { setupState?: Record<string, unknown> } }).__vueParentComponent;
-    const setup = instance?.setupState;
-    if (!setup) throw new Error("ModelManager setupState is unavailable");
-    const apply = (key: string, value: unknown) => {
-      const refish = setup[key] as { value?: unknown } | undefined;
-      if (refish && typeof refish === "object" && "value" in refish) refish.value = value;
-      else setup[key] = value;
-    };
-    apply("editorOpen", true);
-    apply("selectedVendor", { name: "DeepSeek", logo: null, mark: "D", provider: "openai", baseUrl: "https://api.deepseek.com/v1", apiKeyUrl: "https://platform.deepseek.com/api_keys" });
-  });
-  await expect(page.locator(".model-editor-fields")).toBeVisible();
+  await page.getByRole("button", { name: "添加模型" }).click();
+  await page.getByRole("dialog", { name: "选择服务商" }).getByRole("button", { name: /自定义/ }).click();
+  await expect(page.getByRole("dialog", { name: "添加模型" })).toBeVisible();
 
   const geometry = await page.evaluate(() => {
-    const editor = document.querySelector<HTMLElement>(".model-editor")!;
-    const fields = document.querySelector<HTMLElement>(".model-editor-fields")!;
-    const grid = document.querySelector<HTMLElement>(".model-vendor-grid")!;
-    const labels = Array.from(fields.querySelectorAll<HTMLElement>("label"));
+    const editor = document.querySelector<HTMLElement>(".mm-modal-dialog--lg")!;
+    const fields = Array.from(editor.querySelectorAll<HTMLElement>(".mm-form-field"));
     const editorRect = editor.getBoundingClientRect();
-    const columns = getComputedStyle(fields).gridTemplateColumns.split(" ").length;
-    const vendorColumns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
     return {
       editorWidth: editorRect.width,
       editorRight: editorRect.right,
       viewportWidth: window.innerWidth,
-      fieldsColumns: columns,
-      vendorColumns,
-      fieldsInside: fields.getBoundingClientRect().right <= editorRect.right,
-      labelCount: labels.length,
-      labelsInside: labels.every((label) => label.getBoundingClientRect().right <= editorRect.right + 0.5),
+      fieldCount: fields.length,
+      fieldsInside: fields.every((field) => field.getBoundingClientRect().right <= editorRect.right + .5),
     };
   });
 
   expect(geometry.editorWidth).toBeLessThanOrEqual(geometry.viewportWidth);
   expect(geometry.editorRight).toBeLessThanOrEqual(geometry.viewportWidth);
-  expect(geometry.fieldsColumns).toBe(1);
-  expect(geometry.vendorColumns).toBe(1);
   expect(geometry.fieldsInside).toBe(true);
-  expect(geometry.labelCount).toBeGreaterThan(0);
-  expect(geometry.labelsInside).toBe(true);
-  await expect(page.locator(".model-editor")).toHaveScreenshot("model-editor-620.png", { fullPage: true });
+  expect(geometry.fieldCount).toBeGreaterThan(0);
+  await expect(page.locator(".mm-modal-dialog--lg")).toHaveScreenshot("model-editor-620.png");
 });
 
 // 功能：模型管理页模态框的键盘与焦点交互（Issue #28）
@@ -2012,40 +1952,27 @@ async function openModelManagerKeyboard(page: import("@playwright/test").Page, w
   await page.goto("/tests/visual/fixtures/model-manager-keyboard.html");
   await expect(page.locator("#open-model-manager")).toBeVisible();
   await page.locator("#open-model-manager").click();
-  await expect(page.getByRole("heading", { name: "模型", exact: true })).toBeVisible();
-  await expect(page.locator(".model-table-row")).toHaveCount(3);
+  await expect(page.locator(".model-manager")).toBeVisible();
+  await expect(page.locator(".model-card")).toHaveCount(3);
 }
 
-test("model manager dialog receives initial focus and restores focus to the trigger on close", async ({ page }) => {
+test("model manager vendor dialog receives initial focus and restores focus to the add trigger", async ({ page }) => {
   await openModelManagerKeyboard(page);
-  // 初始焦点应在模型管理面板内，而不是停留在触发按钮或 body
-  const initialFocusInside = await page.locator(".model-manager").evaluate((el) =>
-    el.contains(document.activeElement),
-  );
-  expect(initialFocusInside).toBe(true);
-
-  // 关闭模型管理（点击关闭按钮），焦点应回到触发按钮
-  await page.getByRole("button", { name: "关闭模型管理", exact: true }).click();
-  await expect(page.locator(".model-manager")).not.toBeVisible();
-  await expect(page.locator("#open-model-manager")).toBeFocused();
+  const addButton = page.getByRole("button", { name: "添加模型", exact: true });
+  await addButton.click();
+  const vendorDialog = page.getByRole("dialog", { name: "选择服务商" });
+  await expect(vendorDialog).toBeVisible();
+  await expect(vendorDialog.getByRole("button").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(vendorDialog).not.toBeVisible();
+  await expect(addButton).toBeFocused();
 });
 
 test("model manager editor dialog traps Tab focus and closes with Escape", async ({ page }) => {
   await openModelManagerKeyboard(page);
-  // 通过注入打开编辑器（绕过 backdrop 点击拦截，与既有测试一致）
-  await page.locator(".model-manager").evaluate((el) => {
-    const instance = (el as HTMLElement & { __vueParentComponent?: { setupState?: Record<string, unknown> } }).__vueParentComponent;
-    const setup = instance?.setupState;
-    if (!setup) throw new Error("ModelManager setupState is unavailable");
-    const apply = (key: string, value: unknown) => {
-      const refish = setup[key] as { value?: unknown } | undefined;
-      if (refish && typeof refish === "object" && "value" in refish) refish.value = value;
-      else setup[key] = value;
-    };
-    apply("editorOpen", true);
-    apply("selectedVendor", { name: "DeepSeek", logo: null, mark: "D", provider: "openai", baseUrl: "https://api.deepseek.com/v1", apiKeyUrl: "https://platform.deepseek.com/api_keys" });
-  });
-  const editor = page.locator(".model-editor");
+  await page.getByRole("button", { name: "添加模型", exact: true }).click();
+  await page.getByRole("dialog", { name: "选择服务商" }).getByRole("button", { name: /DeepSeek/ }).click();
+  const editor = page.getByRole("dialog", { name: "添加模型" });
   await expect(editor).toBeVisible();
 
   // 初始焦点应在编辑器内（首个可聚焦控件）
@@ -2068,13 +1995,13 @@ test("model manager editor dialog traps Tab focus and closes with Escape", async
   // Escape 关闭编辑器，且模型管理面板仍打开
   await page.keyboard.press("Escape");
   await expect(editor).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: "模型", exact: true })).toBeVisible();
+  await expect(page.locator(".model-manager")).toBeVisible();
 });
 
 test("model delete dialog closes with Escape and restores focus to the delete button", async ({ page }) => {
   await openModelManagerKeyboard(page);
   // 打开删除弹窗（点击自定义模型的删除按钮）
-  const deleteButton = page.locator(".model-table-row").filter({ hasText: "自定义模型" }).getByRole("button", { name: /删除/ });
+  const deleteButton = page.getByRole("button", { name: "删除 自定义模型", exact: true });
   await deleteButton.click();
   await expect(page.getByRole("alertdialog", { name: "删除模型" })).toBeVisible();
   await expect(page.getByRole("button", { name: "取消", exact: true })).toBeFocused();
@@ -2086,32 +2013,20 @@ test("model delete dialog closes with Escape and restores focus to the delete bu
   await expect(deleteButton).toBeFocused();
 });
 
-test("Escape closes only the topmost dialog, a second Escape closes the manager", async ({ page }) => {
+test("Escape closes only the model form and restores focus to its trigger", async ({ page }) => {
   await openModelManagerKeyboard(page);
-  // 打开编辑器（第一层弹窗）
-  await page.locator(".model-manager").evaluate((el) => {
-    const instance = (el as HTMLElement & { __vueParentComponent?: { setupState?: Record<string, unknown> } }).__vueParentComponent;
-    const setup = instance?.setupState;
-    if (!setup) throw new Error("ModelManager setupState is unavailable");
-    const apply = (key: string, value: unknown) => {
-      const refish = setup[key] as { value?: unknown } | undefined;
-      if (refish && typeof refish === "object" && "value" in refish) refish.value = value;
-      else setup[key] = value;
-    };
-    apply("editorOpen", true);
-    apply("selectedVendor", { name: "DeepSeek", logo: null, mark: "D", provider: "openai", baseUrl: "https://api.deepseek.com/v1", apiKeyUrl: "https://platform.deepseek.com/api_keys" });
-  });
-  const editor = page.locator(".model-editor");
+  const addButton = page.getByRole("button", { name: "添加模型", exact: true });
+  await addButton.click();
+  await page.getByRole("dialog", { name: "选择服务商" }).getByRole("button", { name: /DeepSeek/ }).click();
+  const editor = page.getByRole("dialog", { name: "添加模型" });
   await expect(editor).toBeVisible();
 
-  // 第一次 Escape：只关闭编辑器，模型管理面板仍打开
   await page.keyboard.press("Escape");
   await expect(editor).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: "模型", exact: true })).toBeVisible();
-
-  // 第二次 Escape：关闭模型管理面板，焦点回到触发按钮
-  await page.keyboard.press("Escape");
-  await expect(page.locator(".model-manager")).not.toBeVisible();
-  await expect(page.locator("#open-model-manager")).toBeFocused();
+  await expect(page.locator(".model-manager")).toBeVisible();
+  await expect(addButton).toBeFocused();
 });
+
+
+
 

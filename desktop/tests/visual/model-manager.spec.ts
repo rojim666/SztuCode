@@ -116,7 +116,7 @@ test("删除成功后不会被过期的模型切换响应覆盖", async ({ page 
     (window as unknown as { __modelManagerFixture: FixtureApi }).__modelManagerFixture.setSelectDelay(220);
   });
 
-  await page.getByRole("button", { name: "将 自定义模型 设为当前模型" }).click();
+  await page.locator(".model-card").filter({ hasText: "自定义模型" }).locator(".model-card-select").click();
   await page.getByRole("button", { name: "删除 自定义模型" }).click();
   await page.getByRole("alertdialog", { name: "删除模型" }).getByRole("button", { name: "确认删除", exact: true }).click();
 

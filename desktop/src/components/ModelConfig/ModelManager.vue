@@ -158,7 +158,9 @@ async function getApiKey() {
 function closeEditor() {
   editingModel.value = null;
   addStep.value = "idle";
-  void restoreFocus(editorTrigger.value, modelManagerBody.value);
+  // The idle panel is recreated by v-if, so resolve the template refs after
+  // Vue has mounted it again instead of capturing the detached old button.
+  void restoreFocus(() => editorTrigger.value, () => modelManagerBody.value);
 }
 function setContextWindow(v: number) { contextWindow.value = v; }
 function setMaxOutput(v: number) { maxOutputTokens.value = v; }

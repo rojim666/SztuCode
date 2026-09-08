@@ -50,10 +50,15 @@ export function useFocusTrap() {
     }
   }
 
-  async function restoreFocus(trigger: HTMLElement | null | undefined, fallback?: HTMLElement | null) {
+  async function restoreFocus(
+    trigger: HTMLElement | null | undefined | (() => HTMLElement | null),
+    fallback?: HTMLElement | null | (() => HTMLElement | null),
+  ) {
     await nextTick();
-    if (trigger && trigger.isConnected) trigger.focus();
-    else fallback?.focus();
+    const target = typeof trigger === "function" ? trigger() : trigger;
+    const fallbackTarget = typeof fallback === "function" ? fallback() : fallback;
+    if (target?.isConnected) target.focus();
+    else fallbackTarget?.focus();
   }
 
   return { setInitialFocus, trapTab, restoreFocus, focusableElements };

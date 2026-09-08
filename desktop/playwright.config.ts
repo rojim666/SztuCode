@@ -21,7 +21,7 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 1424",
     url: "http://127.0.0.1:1424",
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     // predev 会先构建并复制随安装包分发的 TS runtime；冷启动在 Windows
     // 上可能超过 30 秒，过短会把尚未启动完成误报成页面功能失败。
     timeout: 120_000,

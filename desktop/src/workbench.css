@@ -514,7 +514,7 @@
 @media (max-width: 620px) {
   .task-stream { width: 100%; }
   .task-stream > .execution-timeline { padding: 0 16px; }
-  .task-conversation .sztu-composer { width: calc(100% - 24px); }
+  .task-conversation .sztu-composer { width: calc(100% - 32px); }
   /* 暂时停用文件修改摘要的移动端定位。
   .change-summary-rail { top: auto; right: 12px; bottom: 96px; min-height: 126px; }
   */

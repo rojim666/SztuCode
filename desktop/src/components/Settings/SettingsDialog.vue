@@ -2005,7 +2005,7 @@ function selectLocale(value: AppLocale) {
 }
 
 .settings-pane-title { margin-bottom: 18px; }
-.settings-pane-title h2 { font-size: 19px; letter-spacing: 0; }
+.settings-pane-title h2 { font-size: var(--text-page-title); letter-spacing: 0; }
 
 .settings-card {
   margin-bottom: 10px;

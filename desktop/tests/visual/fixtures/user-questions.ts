@@ -1,5 +1,6 @@
 import { createApp, defineComponent, h, ref } from "vue";
 import UserQuestionComposer from "../../../src/components/UserQuestions/UserQuestionComposer.vue";
+import { i18n } from "../../../src/i18n";
 import type { PendingUserQuestion, UserQuestionAnswer } from "../../../src/services/sztu-runtime";
 import "../../../src/sztu.css";
 
@@ -45,4 +46,4 @@ const Fixture = defineComponent({
   },
 });
 
-createApp(Fixture).mount("#app");
+createApp(Fixture).use(i18n).mount("#app");

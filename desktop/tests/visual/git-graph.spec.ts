@@ -30,6 +30,6 @@ test("git graph renders dense history, refs, and connected lanes", async ({ page
     };
   });
   expect(layout.graphHeight).toBeGreaterThan(300);
-  expect(layout.rowHeights.every((height) => height === 34)).toBeTruthy();
+  expect(layout.rowHeights.every((height) => height === 40)).toBeTruthy();
   expect(layout.overflow).toBeFalsy();
 });

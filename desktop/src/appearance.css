@@ -928,6 +928,10 @@
 :root[data-app-theme="dark"]:not([data-wallpaper="none"]) :is(.sztu-main, .task-canvas) {
   background: color-mix(in srgb, #171717 var(--conversation-surface-opacity), transparent) !important;
 }
+:root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.skill-center),
+:root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.chat-automations) {
+  background: transparent !important;
+}
 
 /* 壁纸模式下文件标签hover和激活态半透明 */
 :root:not([data-wallpaper="none"]) .file-tab:hover {

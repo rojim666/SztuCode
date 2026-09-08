@@ -1,6 +1,5 @@
 import { createApp, defineComponent, h, ref } from "vue";
-import ModelManager from "../../../src/components/ModelConfig/ModelManager.vue";
-import { connectRuntime, type ModelProfile } from "../../../src/services/sztu-runtime";
+import type { ModelProfile } from "../../../src/services/sztu-runtime";
 import { i18n } from "../../../src/i18n";
 import "../../../src/sztu.css";
 import "../../../src/workbench.css";
@@ -79,6 +78,8 @@ const globalWindow = window as unknown as Record<string, unknown>;
 globalWindow.__TAURI_INTERNALS__ = tauriInternals;
 globalWindow.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
 
+const { connectRuntime } = await import("../../../src/services/sztu-runtime");
+const { default: ModelManager } = await import("../../../src/components/ModelConfig/ModelManager.vue");
 await connectRuntime();
 
 // 包装组件：模拟 App.vue 的打开/关闭模式。
