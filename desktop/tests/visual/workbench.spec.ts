@@ -913,7 +913,7 @@ test("about settings displays the desktop version and project link", async ({ pa
 
   await dialog.getByRole("button", { name: "关于", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "关于", exact: true })).toBeVisible();
-  await expect(dialog.getByText("v1.0.0", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("v1.0.1", { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "打开项目链接" })).toContainText("github.com/rojim666/SztuCode");
 });
 

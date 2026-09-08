@@ -1,4 +1,3 @@
-import { PDFParse } from "pdf-parse";
 import type { DocumentBlock, DocumentParser, ParseOptions, ParsedDocument } from "./types.js";
 
 // pdf-parse v2：自带类型与 ESM 支持，getText 返回逐页文本，getInfo 返回 Info 字典
@@ -6,6 +5,9 @@ export class PdfParser implements DocumentParser {
   readonly formats = ["pdf"];
 
   async parse(buffer: Buffer, options: ParseOptions = {}): Promise<ParsedDocument> {
+    // pdfjs 会在模块初始化时探测 Canvas/DOMMatrix。这里必须按需加载，避免可选的
+    // PDF 原生依赖缺失或损坏时拖垮整个 daemon，使 7438 端口永远无法监听。
+    const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     try {
       const maxPages = Number.isInteger(options.max_pages) && (options.max_pages ?? 0) > 0

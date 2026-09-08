@@ -89,6 +89,16 @@ if (process.platform === "linux") {
     }
   }
 }
+// pdfjs 在 Node 环境中通过运行时 require("@napi-rs/canvas") 提供 DOMMatrix。
+// 该 require 无法被 esbuild 静态打包，因此要把 JS 包和当前平台的原生包一起分发。
+// 同时 PdfParser 自身采用按需加载，即便原生模块意外损坏也不会阻止 daemon 启动。
+const napiSource = path.join(repositoryRoot, "node_modules", "@napi-rs");
+const napiTarget = path.join(runtimeRoot, "node_modules", "@napi-rs");
+for (const packageName of await readdir(napiSource).catch(() => [])) {
+  if (packageName !== "canvas" && !packageName.startsWith("canvas-")) continue;
+  await mkdir(napiTarget, { recursive: true });
+  await cp(path.join(napiSource, packageName), path.join(napiTarget, packageName), { recursive: true });
+}
 // esbuild 以 --format=esm 输出 .js，而 Node 对 .js 默认按 CommonJS 解析；
 // 必须在 runtime 目录声明 "type": "module"，否则安装版 daemon 启动即报
 // "Cannot use import statement outside a module"（issue #152）
