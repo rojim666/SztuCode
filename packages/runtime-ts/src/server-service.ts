@@ -209,7 +209,7 @@ export class ServerService {
         runId = this.runs.start(goal, history, async (messages: import("./agent-loop.js").ChatMessage[], usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) => {
           const assistant = messages.at(-1);
           if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}), run_id: runId });
-        }, workspaceRoot, params.session_id, (createdRunId: string) => this.runSessions.set(createdRunId, params.session_id));
+        }, workspaceRoot, params.session_id, (createdRunId: string) => this.runSessions.set(createdRunId, params.session_id), images?.length ? [{ type: "text", text: goal }, ...images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.media_type, data: image.data } }))] : undefined);
         if (params.client_message_id) this.clientMessageRuns.set(`${params.session_id}:${params.client_message_id}`, runId);
         await this.sessions.attachRun(params.session_id, runId);
         if (invokedSkill) this.events.publish({ type: "skill.invoked", skill_name: invokedSkill.name, arguments: invokedSkill.arguments, run_id: runId, ts: new Date().toISOString() });

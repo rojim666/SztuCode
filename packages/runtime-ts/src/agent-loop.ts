@@ -40,14 +40,14 @@ export class EchoProvider implements ModelProvider {
 export class AgentLoop {
   constructor(private readonly provider: ModelProvider, private readonly tools: ToolRegistry, private readonly context: ToolContext, private readonly events: EventBus, private readonly permissions: PermissionGate, private readonly options: AgentLoopOptions = {}) {}
 
-  async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[], steeringSignal?: () => AbortSignal): Promise<AgentRunResult> {
+  async run(runId: string, goal: string, maxSteps = 100, history: ChatMessage[] = [], signal?: AbortSignal, takeSteering?: () => ChatMessage[], steeringSignal?: () => AbortSignal, userContent: ChatMessage["content"] = goal): Promise<AgentRunResult> {
     const extensionRoot = this.options.workspaceRoot ?? this.context.workspace.root;
     const extensions = this.options.extensions;
     await extensions?.dispatch("before_agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
     await extensions?.dispatch("agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
     const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? booleanEnv("SZTU_OFFLOAD_ENABLED", true), minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 2_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 50) });
     this.tools.replace(createReadRefTool(offload));
-    const context = new ContextManager([...history, { role: "user", content: goal }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
+    const context = new ContextManager([...history, { role: "user", content: userContent }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
     const initialSystem = messages.find((message) => message.role === "system");
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
