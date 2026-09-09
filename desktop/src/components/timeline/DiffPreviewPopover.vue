@@ -10,8 +10,6 @@ const props = defineProps<{
   path: string;
   additions: number;
   deletions: number;
-  /** 预览/测试时直接注入解析后的行，跳过运行时请求。 */
-  previewLines?: DiffPreviewLine[];
 }>();
 
 const { t } = useI18n({ useScope: "global" });
@@ -21,11 +19,6 @@ const loading = ref(true);
 const failed = ref(false);
 
 onMounted(async () => {
-  if (props.previewLines) {
-    lines.value = props.previewLines;
-    loading.value = false;
-    return;
-  }
   if (!props.workspaceId) {
     loading.value = false;
     failed.value = true;
