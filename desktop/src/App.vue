@@ -2309,8 +2309,21 @@ async function removeProject(item: Workspace) {
   }
   finally { projectActionBusy.value = false; }
 }
-// 撤销后清除该 run 的全部改动，使变更卡片随之消失
-function handleReverted(runId: string) {
+// 撤销：回滚该 run 的全部文件改动，再清除时间线中的变更卡片
+async function handleReverted(runId: string) {
+  const wsId = activeWorkspace.value?.workspace_id;
+  if (!wsId) return;
+  try {
+    const changes = await listChanges(wsId, runId);
+    const paths = changes.map((change) => change.path);
+    if (paths.length) {
+      if (!window.confirm(t("timeline.changes.undoConfirm", { count: paths.length }))) return;
+      await revertChanges(wsId, runId, paths);
+    }
+  } catch (error) {
+    await showProjectNotice(t("timeline.changes.undoFailed"), error instanceof Error ? error.message : String(error), "danger");
+    return;
+  }
   discardPendingTimeline();
   const next = new Map(timeline.value);
   for (const [step, item] of next) {

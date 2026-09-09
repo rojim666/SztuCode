@@ -7,7 +7,7 @@ import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
-import FileChangesBadge from "./FileChangesBadge.vue";
+import EditedFilesCard from "./EditedFilesCard.vue";
 import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry, UserAttachment } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
@@ -654,12 +654,13 @@ watch(
           <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" :aria-label="t('timeline.evidence.aria')">
             <div v-if="turn.passedTests" class="evidence-item passed"><AppIcon name="CheckCircle2" :size="14" /><span><b>{{ turn.passedTests }}</b> {{ t('timeline.evidence.passedSuffix') }}</span></div>
             <div v-if="turn.failedTests" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span><b>{{ turn.failedTests }}</b> {{ t('timeline.evidence.failedSuffix') }}</span></div>
-            <FileChangesBadge
+            <EditedFilesCard
               v-if="turn.changeFiles.length"
               :files="turn.changeFiles"
               :workspace-path="workspacePath ?? ''"
               @open-file="(path) => emit('openFile', path)"
-              @open-all="turn.runId && emit('openChanges', turn.runId)"
+              @undo="turn.runId && emit('reverted', turn.runId)"
+              @review="turn.runId && emit('review', { workspaceId: workspaceId ?? '', runId: turn.runId, paths: turn.changePaths })"
             />
             <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span>{{ turn.failureReason }}</span></div>
           </section>

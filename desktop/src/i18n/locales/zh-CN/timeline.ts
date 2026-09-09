@@ -184,6 +184,11 @@ export const timeline = {
   changes: {
     filesSuffix: "个文件已更改",
     openAll: "在右侧查看所有变更",
+    editedTitle: "已编辑 {count} 个文件",
+    undo: "撤销",
+    review: "审核",
+    undoConfirm: "回滚本轮的全部文件改动？共 {count} 个文件。",
+    undoFailed: "撤销失败",
   },
   /** 权限审批 */
   permission: {
