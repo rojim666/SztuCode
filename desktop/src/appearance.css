@@ -508,7 +508,7 @@
 
 :root[data-app-theme="dark"] .markdown-body pre code { background: transparent; }
 
-:root[data-app-theme="dark"] .markdown-body table,
+:root[data-app-theme="dark"] .markdown-body .markdown-table-scroll,
 :root[data-app-theme="dark"] .markdown-body th,
 :root[data-app-theme="dark"] .markdown-body td { border-color: var(--border); }
 

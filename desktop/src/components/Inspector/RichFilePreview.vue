@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import DOMPurify from "dompurify";
-import { marked, Renderer } from "marked";
+import { marked } from "marked";
+import { ScrollableTableRenderer } from "../../utils/markdown-renderer";
 import AppIcon from "../icons/AppIcon.vue";
 import CodePreview from "./CodePreview.vue";
 import { readFile } from "../../services/sztu-runtime";
@@ -47,7 +48,7 @@ const svgDataUrl = computed(() =>
 const imageUrlCache = new Map<string, string>();
 const failedImages = new Set<string>();
 
-class MarkdownRenderer extends Renderer {
+class MarkdownRenderer extends ScrollableTableRenderer {
   override image({ href, title, text }: { href: string; title: string | null | undefined; text: string }): string {
     const alt = text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     if (/^(?:https?:|data:|blob:)/i.test(href)) {
@@ -308,9 +309,15 @@ watch([markdownHtml, mode], () => {
   background: transparent;
 }
 
+.rich-preview-markdown :deep(.markdown-table-scroll) {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+
 .rich-preview-markdown :deep(table) {
   border-collapse: collapse;
-  margin: 0.8em 0;
+  margin: 0;
   width: 100%;
   font-size: 12.5px;
 }
