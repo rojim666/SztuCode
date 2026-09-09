@@ -779,6 +779,9 @@
   border-radius: 10px;
 }
 
+/* 相邻会话条 hover/focus 的底色会糊成一块，行与行之间留出间距 */
+.sidebar-session + .sidebar-session { margin-top: 3px; }
+
 .sidebar-session:hover,
 .sidebar-session:focus-within { background: #eef0f2; }
 
