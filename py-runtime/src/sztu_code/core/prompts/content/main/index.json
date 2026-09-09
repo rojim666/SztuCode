@@ -12,6 +12,11 @@
       "source": "docs/Prompt.md#1.2"
     },
     {
+      "id": "deliver-editable-results",
+      "file": "system-prompt-deliver-editable-results.md",
+      "source": "product/core-capabilities"
+    },
+    {
       "id": "malicious-activities-safety",
       "file": "system-prompt-censoring-assistance-with-malicious-activities.md",
       "source": "docs/Prompt.md#1.3"

@@ -40,14 +40,16 @@ def test_static_base_contains_indexed_main_and_existing_sections() -> None:
 
 
 # 功能：验证第一章主系统提示词完全由有序索引加载
-# 设计：断言三个原子内容均存在，并按照身份、权限、安全审查的索引顺序拼接
+# 设计：断言四个原子内容均存在，并按照身份、权限、成果交付、安全审查的索引顺序拼接
 def test_main_prompt_sections_are_loaded_in_index_order() -> None:
     sections = load_prompt_sections("main")
 
-    assert len(sections) == 3
+    assert len(sections) == 4
     assert sections[0].startswith("你是 SztuCode")
     assert sections[1].startswith("工具在用户选择的权限模式下执行")
-    assert sections[2].startswith("重要提示：可以协助进行授权的安全测试")
+    assert sections[2].startswith("## 从回答问题到交付成果")
+    assert "交付可继续编辑的文件或工程" in sections[2]
+    assert sections[3].startswith("重要提示：可以协助进行授权的安全测试")
 
 
 # 功能：验证第二章任务执行指令按 2.1 至 2.13 的索引顺序完整加载
