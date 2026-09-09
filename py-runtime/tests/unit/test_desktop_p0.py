@@ -4,7 +4,7 @@ import asyncio
 import json
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -102,6 +102,197 @@ async def test_run_cancel_stops_active_session_run() -> None:
 
     status = await app._run_get_handler({"run_id": sent.run_id})
     assert status.status == "cancelled"
+
+
+# 功能：验证 run.cancel 会先拒绝该 run 的待审批请求，再取消运行任务
+# 设计：把真实 PermissionManager pending 与可取消的活动 task 同时注入 CoreApp，
+#       断言审批 Future 已完成且运行 task 收到取消
+async def test_run_cancel_cleans_pending_permissions_before_task_cancel() -> None:
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+
+    async def emitter(event: dict[str, Any]) -> None:
+        del event
+
+    permission_task = asyncio.create_task(
+        manager.check_and_wait(
+            tool_use_id="run-cancel-permission",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-1",
+            event_emitter=emitter,
+            run_id="run-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    run_task = asyncio.create_task(asyncio.sleep(60, result="done"))
+    app._track_run("run-1", run_task, "sess-1")
+
+    result = await app._run_cancel_handler({"run_id": "run-1"})
+
+    assert result.status == "cancelling"
+    assert await permission_task == (False, "deny_once")
+    with pytest.raises(asyncio.CancelledError):
+        await run_task
+
+
+# 功能：验证成功关闭 session 后，会拒绝该 session 遗留的待审批请求
+# 设计：使用最小 SessionManager 替身只观察 close 调用，避免把测试耦合到持久化实现
+async def test_session_close_cleans_pending_permissions() -> None:
+    class _ClosableSessions:
+        def __init__(self) -> None:
+            self.closed: list[str] = []
+
+        async def close(self, session_id: str) -> None:
+            self.closed.append(session_id)
+
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+    sessions = _ClosableSessions()
+    app._sessions = sessions  # type: ignore[assignment]
+
+    async def emitter(event: dict[str, Any]) -> None:
+        del event
+
+    permission_task = asyncio.create_task(
+        manager.check_and_wait(
+            tool_use_id="session-close-permission",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-1",
+            event_emitter=emitter,
+            run_id="run-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    result = await app._session_close_handler({"session_id": "sess-1"})
+
+    assert result.status == "closed"
+    assert sessions.closed == ["sess-1"]
+    assert await permission_task == (False, "deny_once")
+    assert manager._session_cancellations == {}
+
+
+# 功能：验证 session.close 失败时不会改变权限审批生命周期
+# 设计：让替身模拟真实 SessionManager 的 SESSION_BUSY，确认 session 未关闭时 pending 仍在；
+#       再显式清理测试请求，避免把测试资源泄漏到下一用例
+async def test_session_close_cleans_pending_when_close_fails() -> None:
+    class _BusySessions:
+        async def close(self, session_id: str) -> None:
+            del session_id
+            raise HandlerError(-32012, "session busy")
+
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+    app._sessions = _BusySessions()  # type: ignore[assignment]
+
+    async def emitter(event: dict[str, Any]) -> None:
+        del event
+
+    permission_task = asyncio.create_task(
+        manager.check_and_wait(
+            tool_use_id="session-close-failed-permission",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-1",
+            event_emitter=emitter,
+            run_id="run-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    with pytest.raises(HandlerError, match="session busy"):
+        await app._session_close_handler({"session_id": "sess-1"})
+
+    assert not permission_task.done()
+    assert "session-close-failed-permission" in manager._pending
+    manager.cancel_session(
+        "sess-1", reason="test_cleanup", prevent_new_requests=False
+    )
+    assert await permission_task == (False, "deny_once")
+
+
+# 功能：验证成功删除 session 后，会拒绝该 session 遗留的待审批请求
+# 设计：使用最小 SessionManager 替身只观察 delete 调用，覆盖 close 之外的删除清理路径
+async def test_session_delete_cleans_pending_permissions() -> None:
+    class _DeletableSessions:
+        def __init__(self) -> None:
+            self.deleted: list[str] = []
+
+        async def delete(self, session_id: str) -> None:
+            self.deleted.append(session_id)
+
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+    sessions = _DeletableSessions()
+    app._sessions = sessions  # type: ignore[assignment]
+
+    async def emitter(event: dict[str, Any]) -> None:
+        del event
+
+    permission_task = asyncio.create_task(
+        manager.check_and_wait(
+            tool_use_id="session-delete-permission",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-1",
+            event_emitter=emitter,
+            run_id="run-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    result = await app._session_delete_handler({"session_id": "sess-1"})
+
+    assert result.session_id == "sess-1"
+    assert result.deleted is True
+    assert sessions.deleted == ["sess-1"]
+    assert await permission_task == (False, "deny_once")
+    assert manager._session_cancellations == {}
+
+
+# 功能：验证断开一个连接不会取消仍由另一连接持有的 session 审批
+# 设计：同一 session 由两个连接持有时先断开一个，权限 Future 继续等待；最后一个连接断开
+#       后才拒绝请求，覆盖 SocketServer → CoreApp → PermissionManager 的归属链路
+async def test_client_disconnect_cancels_session_only_without_other_holders() -> None:
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+
+    async def emitter(event: dict[str, Any]) -> None:
+        del event
+
+    permission_task = asyncio.create_task(
+        manager.check_and_wait(
+            tool_use_id="disconnect-session",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-1",
+            event_emitter=emitter,
+            run_id="run-1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    writer_a = cast(asyncio.StreamWriter, object())
+    writer_b = cast(asyncio.StreamWriter, object())
+    app._connection_sessions[writer_a] = {"sess-1"}
+    app._connection_sessions[writer_b] = {"sess-1"}
+    app._session_connections["sess-1"] = {writer_a, writer_b}
+
+    app._on_client_disconnect(writer_a)
+    await asyncio.sleep(0)
+    assert not permission_task.done()
+
+    app._on_client_disconnect(writer_b)
+    assert await permission_task == (False, "deny_once")
+    assert app._session_connections == {}
 
 
 # 功能：验证 run.replay 从持久事件文件返回有限且顺序稳定的事件序列。

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -28,6 +30,7 @@ from sztu_code.core.transport.ipc_broadcaster import IpcEventBroadcaster
 logger = logging.getLogger(__name__)
 
 type CommandHandler = Callable[[dict[str, Any]], Awaitable[Any]]
+type DisconnectHandler = Callable[[asyncio.StreamWriter], Awaitable[None] | None]
 
 # 每个连接处理协程中，当前正在处理的 writer（供 handler 读取连接上下文）
 _writer_var: ContextVar[asyncio.StreamWriter] = ContextVar("_writer_var")
@@ -52,6 +55,7 @@ class SocketServer:
         port: int,
         broadcaster: IpcEventBroadcaster | None = None,
         trace: TraceWriter | None = None,
+        on_disconnect: DisconnectHandler | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -59,7 +63,9 @@ class SocketServer:
         self._server: asyncio.AbstractServer | None = None
         self._broadcaster = broadcaster
         self._trace = trace
+        self._on_disconnect = on_disconnect
         self._active_writers: set[asyncio.StreamWriter] = set()
+        self._handler_tasks: dict[asyncio.StreamWriter, set[asyncio.Task[None]]] = {}
 
     # 注册一个方法名对应的命令处理函数
     def register(self, method: str, handler: CommandHandler) -> None:
@@ -110,14 +116,46 @@ class SocketServer:
         try:
             await self._read_loop(reader, writer)
         finally:
-            self._active_writers.discard(writer)
-            if self._broadcaster is not None:
-                self._broadcaster.unsubscribe(writer)
             try:
-                writer.close()
-            except Exception:
-                pass
-            logger.debug("client disconnected: %s", peer)
+                # Cancel RPC handlers before notifying the owner.  Otherwise a
+                # slow handler can bind a session after EOF and evade cleanup.
+                await self._cancel_handler_tasks(writer)
+            finally:
+                self._active_writers.discard(writer)
+                if self._broadcaster is not None:
+                    self._broadcaster.unsubscribe(writer)
+                if self._on_disconnect is not None:
+                    try:
+                        result = self._on_disconnect(writer)
+                        if inspect.isawaitable(result):
+                            await result
+                    except Exception:
+                        logger.exception("disconnect cleanup failed: %s", peer)
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+                logger.debug("client disconnected: %s", peer)
+
+    # 记录并取消指定连接尚未完成的 RPC handler，避免 EOF 后继续修改生命周期状态
+    async def _cancel_handler_tasks(self, writer: asyncio.StreamWriter) -> None:
+        tasks = self._handler_tasks.pop(writer, set())
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    # handler 结束后移除连接索引，避免短连接留下任务引用
+    def _discard_handler_task(
+        self, writer: asyncio.StreamWriter, task: asyncio.Task[None]
+    ) -> None:
+        tasks = self._handler_tasks.get(writer)
+        if tasks is None:
+            return
+        tasks.discard(task)
+        if not tasks:
+            self._handler_tasks.pop(writer, None)
 
     # 持续读取换行分隔的 JSON 行并逐行分发处理
     async def _read_loop(
@@ -137,7 +175,9 @@ class SocketServer:
 
             # 每条命令独立作为 task 执行，避免长时间运行的 handler（如 session.send_message）
             # 阻塞读循环，使 permission.respond 等并发命令能被及时处理
-            asyncio.create_task(self._handle_line(line, writer))
+            task = asyncio.create_task(self._handle_line(line, writer))
+            self._handler_tasks.setdefault(writer, set()).add(task)
+            task.add_done_callback(partial(self._discard_handler_task, writer))
 
     # 解析单行 JSON-RPC 请求并调用对应 handler，将结果或错误写回客户端
     async def _handle_line(self, line: bytes, writer: asyncio.StreamWriter) -> None:

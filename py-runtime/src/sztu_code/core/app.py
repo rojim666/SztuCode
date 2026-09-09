@@ -276,9 +276,12 @@ class CoreApp:
         self._config: SztuConfig | None = None
         self._running_runs: set[asyncio.Task[Any]] = set()
         self._active_run_tasks: dict[str, asyncio.Task[str]] = {}
+        self._run_sessions: dict[str, str] = {}
         self._run_status: dict[str, str] = {}
         self._client_message_runs: dict[tuple[str, str], str] = {}
         self._active_session_runs: dict[str, asyncio.Task[str]] = {}
+        self._connection_sessions: dict[asyncio.StreamWriter, set[str]] = {}
+        self._session_connections: dict[str, set[asyncio.StreamWriter]] = {}
         self._run_store: RunStore | None = None
         self._sessions: SessionManager | None = None
         self._permission_manager: PermissionManager | None = None
@@ -318,17 +321,32 @@ class CoreApp:
         )
 
     # 跟踪后台 run 任务，以支持客户端查询与安全取消
-    def _track_run(self, run_id: str, task: asyncio.Task[str]) -> None:
+    def _track_run(
+        self,
+        run_id: str,
+        task: asyncio.Task[str],
+        session_id: str | None = None,
+    ) -> None:
         self._running_runs.add(task)
         self._active_run_tasks[run_id] = task
+        if session_id is not None:
+            self._run_sessions[run_id] = session_id
         self._run_status[run_id] = "running"
         task.add_done_callback(partial(self._on_run_finished, run_id))
 
     # 记录 run 终态并清理活动索引，防止后台异常变成未观察任务
     def _on_run_finished(self, run_id: str, task: asyncio.Task[str]) -> None:
         self._running_runs.discard(task)
+        session_id = self._run_sessions.get(run_id)
         if self._active_run_tasks.get(run_id) is task:
             self._active_run_tasks.pop(run_id, None)
+        self._run_sessions.pop(run_id, None)
+        if (
+            session_id is not None
+            and self._permission_manager is not None
+            and session_id not in self._run_sessions.values()
+        ):
+            self._permission_manager.clear_session_cancellation(session_id)
         if task.cancelled():
             self._run_status[run_id] = "cancelled"
             if self._run_store is not None:
@@ -345,6 +363,35 @@ class CoreApp:
             self._run_status[run_id] = "completed"
             if self._run_store is not None:
                 self._run_store.finish(run_id, status="completed")
+
+    # 将当前连接标记为 session 的使用者；直接调用 handler 的测试没有连接上下文时跳过
+    def _bind_connection_session(self, session_id: str) -> None:
+        try:
+            writer = get_connection_writer()
+        except LookupError:
+            return
+        self._connection_sessions.setdefault(writer, set()).add(session_id)
+        self._session_connections.setdefault(session_id, set()).add(writer)
+        if self._permission_manager is not None:
+            self._permission_manager.mark_session_connected(session_id)
+
+    # 客户端断连时只清理不再被任何连接持有的 session，避免误伤其他客户端
+    def _on_client_disconnect(self, writer: asyncio.StreamWriter) -> None:
+        session_ids = self._connection_sessions.pop(writer, set())
+        for session_id in session_ids:
+            writers = self._session_connections.get(session_id)
+            if writers is None:
+                continue
+            writers.discard(writer)
+            if writers:
+                continue
+            self._session_connections.pop(session_id, None)
+            if self._permission_manager is not None:
+                self._permission_manager.cancel_session(
+                    session_id,
+                    reason="client_disconnected",
+                    prevent_new_requests=session_id in self._run_sessions.values(),
+                )
 
     # 处理 core.ping 请求，返回服务版本、运行时长和接收时间
     async def _ping_handler(self, params: dict[str, Any]) -> PongResult:
@@ -387,7 +434,8 @@ class CoreApp:
         run_task = asyncio.create_task(
             self._sessions.send_message(session.id, cmd.goal, run_id=run_id)
         )
-        self._track_run(run_id, run_task)
+        self._track_run(run_id, run_task, session.id)
+        self._bind_connection_session(session.id)
         return AgentRunResult(run_id=run_id)
 
     # 创建 chat 或 one_shot session，并返回 session_id
@@ -403,6 +451,7 @@ class CoreApp:
         session = await self._sessions.create(
             mode=cmd.mode, title=cmd.title, workspace_id=cmd.workspace_id
         )
+        self._bind_connection_session(session.id)
         return SessionCreateResult(session_id=session.id, status=session.status)
 
     # 返回按最近活动排序的 session 列表，供任务历史侧栏使用
@@ -444,6 +493,7 @@ class CoreApp:
     async def _session_resume_handler(self, params: dict[str, Any]) -> SessionResumeResult:
         assert self._sessions is not None
         cmd = SessionResumeCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         session = await self._sessions.resume(cmd.session_id)
         return SessionResumeResult(session=self._session_summary(session))
 
@@ -750,6 +800,7 @@ class CoreApp:
     async def _session_send_handler(self, params: dict[str, Any]) -> SessionSendMessageResult:
         assert self._sessions is not None
         cmd = SessionSendMessageCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         if cmd.client_message_id:
             existing_run_id = self._client_message_runs.get(
                 (cmd.session_id, cmd.client_message_id)
@@ -787,7 +838,7 @@ class CoreApp:
             )
         )
         self._active_session_runs[cmd.session_id] = run_task
-        self._track_run(run_id, run_task)
+        self._track_run(run_id, run_task, cmd.session_id)
         run_task.add_done_callback(partial(self._on_session_run_finished, cmd.session_id))
         return SessionSendMessageResult(run_id=run_id)
 
@@ -795,6 +846,7 @@ class CoreApp:
     async def _session_steer_handler(self, params: dict[str, Any]) -> SessionSteerMessageResult:
         assert self._sessions is not None
         cmd = SessionSteerMessageCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         run_id = await self._sessions.steer_message(
             cmd.session_id,
             cmd.content,
@@ -817,6 +869,10 @@ class CoreApp:
         task = self._active_run_tasks.get(cmd.run_id)
         if task is None or task.done():
             return RunCancelResult(run_id=cmd.run_id, status="not_running")
+        if self._permission_manager is not None:
+            session_id = self._run_sessions.get(cmd.run_id)
+            if session_id is not None:
+                self._permission_manager.cancel_run(cmd.run_id, session_id)
         task.cancel()
         return RunCancelResult(run_id=cmd.run_id, status="cancelling")
 
@@ -842,6 +898,7 @@ class CoreApp:
     async def _session_history_handler(self, params: dict[str, Any]) -> SessionGetHistoryResult:
         assert self._sessions is not None
         cmd = SessionGetHistoryCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         messages = await self._sessions.get_history(cmd.session_id)
         return SessionGetHistoryResult(
             messages=messages,
@@ -1771,6 +1828,7 @@ class CoreApp:
     async def _session_compact_handler(self, params: dict[str, Any]) -> SessionCompactResult:
         assert self._sessions is not None
         cmd = SessionCompactCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         result = await self._sessions.compact(cmd.session_id, cmd.focus)
         return result  # type: ignore[no-any-return]
 
@@ -1778,13 +1836,27 @@ class CoreApp:
     async def _session_close_handler(self, params: dict[str, Any]) -> SessionCloseResult:
         assert self._sessions is not None
         cmd = SessionCloseCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         await self._sessions.close(cmd.session_id)
+        if self._permission_manager is not None:
+            self._permission_manager.cancel_session(
+                cmd.session_id,
+                reason="session_closed",
+                prevent_new_requests=False,
+            )
         return SessionCloseResult(status="closed")
 
     async def _session_delete_handler(self, params: dict[str, Any]) -> SessionDeleteResult:
         assert self._sessions is not None
         cmd = SessionDeleteCommand.model_validate(params)
+        self._bind_connection_session(cmd.session_id)
         await self._sessions.delete(cmd.session_id)
+        if self._permission_manager is not None:
+            self._permission_manager.cancel_session(
+                cmd.session_id,
+                reason="session_deleted",
+                prevent_new_requests=False,
+            )
         return SessionDeleteResult(session_id=cmd.session_id, deleted=True)
 
     # 注册客户端事件订阅，可选先回放 events.jsonl 历史再接收实时流
@@ -1932,6 +2004,7 @@ class CoreApp:
             self._config.port,
             self._broadcaster,
             trace=self._trace,
+            on_disconnect=self._on_client_disconnect,
         )
         server.register("core.ping", self._ping_handler)
         server.register("agent.run", self._agent_run_handler)
@@ -2025,6 +2098,8 @@ class CoreApp:
         await shutdown.wait()
 
         logger.info("shutting down")
+        if self._permission_manager is not None:
+            self._permission_manager.cancel_all(reason="daemon_shutdown")
         for run_task in list(self._running_runs):
             run_task.cancel()
         if self._running_runs:

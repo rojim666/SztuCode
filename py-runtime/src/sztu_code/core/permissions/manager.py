@@ -65,6 +65,9 @@ class PermissionManager:
         self._mode = mode
         # 模式变更回调列表：参数为 (old_mode, new_mode)
         self._mode_listeners: list[Callable[[PermissionMode, PermissionMode], Awaitable[None]]] = []
+        # 没有客户端持有 session 时，后台 run 后续产生的 ASK 请求不能再次挂起。
+        # 重新连接并绑定 session 后清除对应标记；后台 run 本身仍按既有语义继续运行。
+        self._session_cancellations: dict[str, str] = {}
 
     # 对工具名 + 参数执行 4 层静态评估，不挂起
     def evaluate(self, tool_name: str, params: dict[str, Any]) -> PermissionDecision:
@@ -227,39 +230,54 @@ class PermissionManager:
             # default == ASK（bash、unknown tool）→ fall through to Future
 
         # ASK 路径（来自 OUTSIDE_CWD 强制 ASK，或 default=ASK）
+        cancellation_reason = self._session_cancellations.get(session_id)
+        if cancellation_reason is not None:
+            logger.debug(
+                "permission: deny new request for cancelled session=%s reason=%s",
+                session_id,
+                cancellation_reason,
+            )
+            return False, "deny_once"
+
         loop = asyncio.get_event_loop()
         future: asyncio.Future[str] = loop.create_future()
-        self._pending[tool_use_id] = _PendingRequest(
+        pending = _PendingRequest(
             future=future,
             session_id=session_id,
             tool_name=tool_name,
             run_id=run_id,
         )
-
-        await event_emitter(
-            {
-                "type": "permission.requested",
-                "tool_use_id": tool_use_id,
-                "tool_name": tool_name,
-                "params": params,
-                "param_preview": param_preview(tool_name, params),
-                "session_id": session_id,
-                "ts": _now(),
-            }
-        )
+        self._pending[tool_use_id] = pending
 
         try:
-            if self._timeout_s > 0:
-                raw = await asyncio.wait_for(future, timeout=self._timeout_s)
-            else:
-                raw = await future
-        except TimeoutError:
-            self._pending.pop(tool_use_id, None)
-            logger.info("permission: timeout tool_use_id=%s tool=%s", tool_use_id, tool_name)
-            return False, "timeout"
+            await event_emitter(
+                {
+                    "type": "permission.requested",
+                    "tool_use_id": tool_use_id,
+                    "tool_name": tool_name,
+                    "params": params,
+                    "param_preview": param_preview(tool_name, params),
+                    "session_id": session_id,
+                    "ts": _now(),
+                }
+            )
+            try:
+                if self._timeout_s > 0:
+                    raw = await asyncio.wait_for(future, timeout=self._timeout_s)
+                else:
+                    raw = await future
+            except TimeoutError:
+                logger.info("permission: timeout tool_use_id=%s tool=%s", tool_use_id, tool_name)
+                return False, "timeout"
 
-        allowed = self._apply_response(raw, session_id, tool_name)
-        return allowed, raw
+            allowed = self._apply_response(raw, session_id, tool_name)
+            return allowed, raw
+        finally:
+            # respond() and the cancellation helpers may have removed this entry
+            # already.  Only remove the request created by this invocation so a
+            # same-ID request created during a cancellation race is not lost.
+            if self._pending.get(tool_use_id) is pending:
+                self._pending.pop(tool_use_id, None)
 
     # 处理客户端返回的审批决策，resolve 对应 Future
     def respond(
@@ -337,14 +355,32 @@ class PermissionManager:
                 logger.warning("permission: policy_file is None, skipping persistence")
         return allow
 
-    # 客户端断连时拒绝该 session 所有待审批请求，防止 Future 永久挂起
-    def cancel_session(self, session_id: str, reason: str = "client_disconnected") -> None:
+    # 客户端断连或 session 关闭时拒绝该 session 所有待审批请求，防止 Future 永久挂起
+    def cancel_session(
+        self,
+        session_id: str,
+        reason: str = "client_disconnected",
+        *,
+        prevent_new_requests: bool = True,
+    ) -> None:
+        if prevent_new_requests:
+            self._session_cancellations[session_id] = reason
+        else:
+            self._session_cancellations.pop(session_id, None)
         to_cancel = [uid for uid, req in self._pending.items() if req.session_id == session_id]
         for uid in to_cancel:
             req = self._pending.pop(uid)
             if not req.future.done():
                 logger.debug("permission: cancel pending tool_use_id=%s reason=%s", uid, reason)
                 req.future.set_result("deny_once")
+
+    # 客户端重新连接并重新绑定 session 后，允许新的 ASK 请求进入审批队列
+    def mark_session_connected(self, session_id: str) -> None:
+        self._session_cancellations.pop(session_id, None)
+
+    # run 结束后释放 session 生命周期屏障，避免无界保留已完成 session 的标记
+    def clear_session_cancellation(self, session_id: str) -> None:
+        self._session_cancellations.pop(session_id, None)
 
     # 取消指定 run 在指定 session 下的待审批请求，避免 Future 泄漏和过期响应
     def cancel_run(self, run_id: str, session_id: str) -> None:
@@ -361,3 +397,12 @@ class PermissionManager:
                     uid,
                 )
                 req.future.set_result("deny_once")
+
+    # daemon 关闭时拒绝所有待审批请求，确保没有 Future 留在事件循环中
+    def cancel_all(self, reason: str = "daemon_shutdown") -> None:
+        for uid in list(self._pending):
+            req = self._pending.pop(uid)
+            if not req.future.done():
+                logger.debug("permission: cancel pending tool_use_id=%s reason=%s", uid, reason)
+                req.future.set_result("deny_once")
+        self._session_cancellations.clear()

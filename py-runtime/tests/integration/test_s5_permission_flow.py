@@ -7,15 +7,23 @@ commands must be safe (echo, true).
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import socket
+from contextlib import suppress
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
+from sztu_code.core.app import CoreApp
 from sztu_code.core.config import SztuConfig
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
 from sztu_code.core.permissions.manager import PermissionManager
 from sztu_code.core.runner import AgentRunner
+from sztu_code.core.session.model import Session, SessionMode
+from sztu_code.core.transport.socket_server import SocketServer
 
 # ── stub providers ────────────────────────────────────────────────────────────
 
@@ -170,3 +178,165 @@ async def test_always_allow_cached_within_session(tmp_path: Path) -> None:
 
     assert perm_requested_count == 1
     assert outcome.status == "success"
+
+
+# 功能：验证 run 在权限审批等待期间被取消时，工具不会执行且 pending 请求会清理
+# 设计：使用真实 AgentRunner + PermissionManager，等 permission.requested 到达后取消
+#       run；断言没有 tool.call_finished，并确认权限管理器不再保留该请求
+async def test_cancelled_permission_wait_does_not_execute_tool(tmp_path: Path) -> None:
+    manager = PermissionManager(timeout_s=0)
+    bus = EventBus()
+    event_types: list[str] = []
+    permission_requested = asyncio.Event()
+
+    async def collect(e: BaseModel) -> None:
+        event_type = getattr(e, "type", "")
+        event_types.append(event_type)
+        if event_type == "permission.requested":
+            permission_requested.set()
+
+    bus.subscribe(collect)
+    task = asyncio.create_task(
+        _runner(_SingleBashProvider(), bus, manager, tmp_path)
+        .run_and_capture("run bash", run_id="cancelled-permission")
+    )
+    await asyncio.wait_for(permission_requested.wait(), timeout=1.0)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert manager._pending == {}
+    assert "tool.call_finished" not in event_types
+
+
+# 功能：验证真实 SocketServer → CoreApp → PermissionManager 断连清理链路
+# 设计：通过 TCP 请求创建 session，使 CoreApp 记录实际连接；随后挂起同 session 的审批并关闭客户端，
+#       断言断连回调拒绝 Future、清空 pending，避免仅凭手工填充连接映射得到假阳性
+async def test_client_disconnect_cleans_permission_over_ipc() -> None:
+    class _SessionFactory:
+        async def create(
+            self,
+            mode: SessionMode,
+            title: str = "",
+            workspace_id: str | None = None,
+        ) -> Session:
+            return Session(
+                id="sess-ipc",
+                mode=mode,
+                status="waiting_for_input",
+                title=title,
+                created_at="",
+                updated_at="",
+                workspace_id=workspace_id,
+            )
+
+    async def send_recv(
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        method: str,
+        params: dict[str, object],
+    ) -> dict[str, object]:
+        request = {
+            "jsonrpc": "2.0",
+            "id": "session-create",
+            "method": method,
+            "params": params,
+        }
+        writer.write((json.dumps(request) + "\n").encode())
+        await writer.drain()
+        return json.loads(await asyncio.wait_for(reader.readline(), timeout=1.0))
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+
+    app = CoreApp()
+    manager = PermissionManager(timeout_s=0)
+    app._permission_manager = manager
+    app._sessions = _SessionFactory()  # type: ignore[assignment]
+    server = SocketServer("127.0.0.1", port, on_disconnect=app._on_client_disconnect)
+    server.register("session.create", app._session_create_handler)
+    permission_task: asyncio.Task[tuple[bool, str]] | None = None
+
+    await server.start()
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        response = await send_recv(reader, writer, "session.create", {"mode": "chat"})
+        assert response["result"] == {
+            "session_id": "sess-ipc",
+            "status": "waiting_for_input",
+        }
+
+        pending_started = asyncio.Event()
+
+        async def emitter(event: dict[str, object]) -> None:
+            del event
+            pending_started.set()
+
+        permission_task = asyncio.create_task(
+            manager.check_and_wait(
+                tool_use_id="ipc-disconnect",
+                tool_name="bash",
+                params={"command": "echo"},
+                session_id="sess-ipc",
+                event_emitter=emitter,
+                run_id="run-ipc",
+            )
+        )
+        # 模拟权限请求所属的后台 run 仍在执行，断连后后续 ASK 必须被拒绝。
+        app._run_sessions["run-ipc"] = "sess-ipc"
+        await asyncio.wait_for(pending_started.wait(), timeout=1.0)
+        assert "ipc-disconnect" in manager._pending
+
+        writer.close()
+        await writer.wait_closed()
+        assert await asyncio.wait_for(permission_task, timeout=1.0) == (False, "deny_once")
+        assert manager._pending == {}
+        assert app._connection_sessions == {}
+        assert app._session_connections == {}
+
+        # 即使后台 run 在断连后继续运行，后续危险调用也不能重新挂起审批。
+        assert await manager.check_and_wait(
+            tool_use_id="after-ipc-disconnect",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="sess-ipc",
+            event_emitter=emitter,
+            run_id="run-ipc-2",
+        ) == (False, "deny_once")
+        assert manager._pending == {}
+
+        # 新连接重新绑定 session 后，审批能力恢复。
+        reader2, writer2 = await asyncio.open_connection("127.0.0.1", port)
+        response2 = await send_recv(reader2, writer2, "session.create", {"mode": "chat"})
+        assert response2["result"] == {
+            "session_id": "sess-ipc",
+            "status": "waiting_for_input",
+        }
+        reconnected_task = asyncio.create_task(
+            manager.check_and_wait(
+                tool_use_id="after-ipc-reconnect",
+                tool_name="bash",
+                params={"command": "echo"},
+                session_id="sess-ipc",
+                event_emitter=emitter,
+                run_id="run-ipc-3",
+            )
+        )
+        await asyncio.sleep(0)
+        manager.respond(
+            "after-ipc-reconnect",
+            "allow_once",
+            run_id="run-ipc-3",
+            session_id="sess-ipc",
+        )
+        assert await reconnected_task == (True, "allow_once")
+        writer2.close()
+        await writer2.wait_closed()
+    finally:
+        if permission_task is not None and not permission_task.done():
+            permission_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await permission_task
+        await server.stop()
