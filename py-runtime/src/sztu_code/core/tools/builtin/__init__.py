@@ -1,6 +1,7 @@
 from sztu_code.core.tools.builtin.ask_user_question import AskUserQuestionTool
 from sztu_code.core.tools.builtin.bash import BashTool
 from sztu_code.core.tools.builtin.edit_file import EditFileTool
+from sztu_code.core.tools.builtin.file_history import FileHistoryTool
 from sztu_code.core.tools.builtin.glob_search import GlobSearchTool
 from sztu_code.core.tools.builtin.grep_search import GrepSearchTool
 from sztu_code.core.tools.builtin.list_dir import ListDirTool
@@ -24,6 +25,7 @@ __all__ = [
     "AskUserQuestionTool",
     "BashTool",
     "EditFileTool",
+    "FileHistoryTool",
     "GlobSearchTool",
     "GrepSearchTool",
     "ListDirTool",

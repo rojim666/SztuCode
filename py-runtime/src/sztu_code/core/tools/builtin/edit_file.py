@@ -15,6 +15,7 @@ from sztu_code.core.tools.base import (
     ToolResult,
 )
 from sztu_code.core.tools.workspace import resolve_workspace_path
+from sztu_code.core.file_versions import FileVersions, digest
 from sztu_code.core.workflow.scope import ScopeAuditLog, write_is_outside_scope
 
 _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
@@ -26,6 +27,7 @@ class EditFileParams(BaseModel):
     old_string: str
     new_string: str
     replace_all: bool = False
+    expected_hash: str | None = None
 
 
 class EditFileTool(BaseTool):
@@ -62,6 +64,7 @@ class EditFileTool(BaseTool):
                 "type": "boolean",
                 "description": "Replace all occurrences of old_string (default false).",
             },
+            "expected_hash": {"type": "string", "description": "SHA-256 at selection time; reject edits to stale selections."},
         },
         "required": ["path", "old_string", "new_string"],
     }
@@ -110,7 +113,12 @@ class EditFileTool(BaseTool):
                 error_type="runtime_error",
             )
 
-        original = path.read_text(encoding="utf-8")
+        original_bytes = path.read_bytes()
+        original = original_bytes.decode("utf-8")
+        if not p.old_string:
+            return ToolResult(content="old_string must be non-empty", is_error=True, error_type="schema_error")
+        if p.expected_hash is not None and digest(original_bytes) != p.expected_hash:
+            return ToolResult(content="File changed since selection; read and select again", is_error=True, error_type="runtime_error")
         if len(original.encode("utf-8")) > _MAX_BYTES:
             return ToolResult(
                 content=f"file too large: {len(original.encode('utf-8'))} bytes (limit 1 MB)",
@@ -145,8 +153,8 @@ class EditFileTool(BaseTool):
         else:
             result = original.replace(p.old_string, p.new_string, 1)
 
-        path.write_text(result, encoding="utf-8")
+        revision = FileVersions(self._workspace_root).write(p.path, result.encode("utf-8"), digest(original_bytes))
         if outside_scope and self._scope_audit is not None:
             self._scope_audit.record(p.path)
         replaced = count if p.replace_all else 1
-        return ToolResult(content=f"replaced {replaced} occurrence(s) in {p.path}")
+        return ToolResult(content=f"replaced {replaced} occurrence(s) in {p.path}; previous version: {revision['before']}; current version: {revision['after']}")
