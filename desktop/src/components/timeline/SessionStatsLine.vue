@@ -74,8 +74,7 @@ const contextTip = computed(() => {
 
 <template>
   <div v-if="line" class="session-stats-line" :title="line" :aria-label="t('timeline.stats.aria')">
-    <span v-for="(group, index) in groups" :key="index" class="session-stats-line__group">
-      <span v-if="index" class="session-stats-line__sep" aria-hidden="true">|</span>
+    <span v-for="(group, index) in groups" :key="index" class="session-stats-line__group" :data-kind="group.kind">
       <template v-if="group.kind === 'context'">
         <span class="session-stats-line__ctx" :class="`ctx-${contextLevel}`" :title="contextTip">
           <span aria-hidden="true">{{ group.text }}</span>

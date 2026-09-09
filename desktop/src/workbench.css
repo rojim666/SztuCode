@@ -228,30 +228,39 @@
   max-width: 860px;
 }
 
+/* 底部统计行容器：为“回到底部”按钮提供定位上下文，使其悬浮在统计行上方 */
+.task-bottom-meta {
+  position: relative;
+}
+
 /* 会话流“回到底部”悬浮按钮：滚动离开底部时出现，点击平滑回到最新内容 */
 .task-stream-to-bottom {
   position: absolute;
-  right: 16px;
-  bottom: 106px;
+  left: 50%;
+  bottom: calc(100% + 6px);
   z-index: 7;
   display: grid;
   width: 32px;
   height: 32px;
+  margin-left: -16px; /* 居中悬浮：抵消 32px 宽度的一半 */
   place-items: center;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 50%;
-  background: var(--surface-raised);
+  /* 玻璃质感：半透明主题表面 + 背景模糊 + 顶部高光，无边框 */
+  background: color-mix(in srgb, var(--surface-raised) 58%, transparent);
   color: var(--text-muted);
-  box-shadow: 0 4px 14px rgb(28 36 44 / 14%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
+  backdrop-filter: blur(12px) saturate(108%);
+  box-shadow: 0 4px 14px rgb(28 36 44 / 14%), inset 0 1px 0 rgb(255 255 255 / 34%);
   cursor: pointer;
   animation: scroll-to-bottom-in 160ms ease;
 }
 
 .task-stream-to-bottom:hover,
 .task-stream-to-bottom:focus-visible {
-  border-color: var(--border-strong);
   color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
 }
 
 .task-stream-to-bottom:focus-visible {
@@ -866,7 +875,7 @@
 .sidebar-resizing .sidebar-resizer { transition: none; }
 .sidebar-collapsed .sidebar-resizer { visibility: hidden; opacity: 0; pointer-events: none; transform: translateX(-50%); }
 .sztu-main {
-  --workspace-surface-radius: 16px;
+  --workspace-surface-radius: 24px;
   margin: 0;
   background: #fff;
   border: 0;
@@ -1204,6 +1213,30 @@
 .task-conversation .sztu-composer .permission svg { width: 17px; height: 17px; }
 .task-launcher .round:hover, .task-launcher .permission:hover { background: #f2f3f4; }
 .launcher-permission-control { position: relative; flex: 0 0 auto; }
+/* Respond to the pane width, including when the inspector is open. */
+.task-conversation { container: conversation / inline-size; }
+.composer-input-shell { container: composer / inline-size; }
+.composer-toolbar { min-width: 0; }
+.composer-toolbar .permission { white-space: nowrap; flex-shrink: 0; }
+.composer-toolbar .permission svg { flex-shrink: 0; }
+.composer-toolbar .model-config-control { min-width: 0; flex: 0 1 auto; }
+.composer-toolbar .model-config-trigger { width: 100%; }
+.composer-toolbar > .active-plugin-control { flex-shrink: 0; }
+@container composer (max-width: 460px) {
+  .composer-toolbar .model-config-control { flex-basis: auto; }
+  .task-conversation .sztu-composer .composer-toolbar,
+  .task-launcher .composer-toolbar { gap: 3px; padding-inline: 6px; }
+  .composer-toolbar .composer-plugin-icons > :not(:first-child) { display: none; }
+  .task-conversation .sztu-composer .permission,
+  .task-launcher .permission { font-size: 0; gap: 3px; padding-inline: 5px; height: 32px; }
+  .composer-toolbar .model-config-trigger { gap: 5px; padding-inline: 5px; }
+}
+@container composer (max-width: 300px) {
+  .composer-toolbar .model-config-control { flex-basis: auto; }
+  .composer-toolbar .model-config-trigger > i { display: none; }
+  .composer-toolbar .permission > svg:last-child { display: none; }
+  .composer-toolbar .round, .composer-toolbar .send { width: 28px; height: 28px; }
+}
 .launcher-popover { position: absolute; z-index: 40; color: #292d33; background: #fff; border: 1px solid #dedfe1; border-radius: 10px; box-shadow: 0 14px 38px #20252d1c, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
 .permission-popover { bottom: calc(100% + 8px); left: 0; width: 238px; padding: 5px; }
 .full-access-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px; color: #30343a; background: transparent; border-radius: 7px; text-align: left; }
