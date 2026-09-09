@@ -404,6 +404,18 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+// 项目条折叠：记录任务列表已收起的项目（按工作区 ID），并持久化到本地
+const collapsedProjects = ref<Set<string>>(new Set(readCollapsedProjects()));
+function readCollapsedProjects(): string[] {
+  try { const raw = localStorage.getItem("sztu.collapsedProjects"); return raw ? (JSON.parse(raw) as string[]) : []; } catch { return []; }
+}
+function isProjectCollapsed(item: Workspace): boolean { return collapsedProjects.value.has(item.workspace_id); }
+function toggleProjectCollapsed(item: Workspace) {
+  const next = new Set(collapsedProjects.value);
+  if (next.has(item.workspace_id)) next.delete(item.workspace_id); else next.add(item.workspace_id);
+  collapsedProjects.value = next;
+  try { localStorage.setItem("sztu.collapsedProjects", JSON.stringify([...next])); } catch { /* 忽略存储配额错误 */ }
+}
 const projectPreviewId = ref<string | null>(null);
 const projectPreviewStyle = ref<Record<string, string>>({});
 let projectPreviewCloseTimer: number | undefined;
@@ -565,6 +577,7 @@ function handleProjectRowPointerDown(item: Workspace, event: PointerEvent) {
   if (event.button !== 0) return;
   const target = event.target as HTMLElement | null;
   if (target?.closest(".project-action-menu")) return;
+  if (target?.closest(".project-row-caret")) return;
   beginTask(item);
 }
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
@@ -3376,8 +3389,17 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <span class="side-label side-label--action project-tree-label"><span>{{ t('app.projects') }}</span><button :title="t('app.openLocalDir')" :aria-label="t('app.openLocalDir')" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
             <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
+              <button
+                class="project-row-caret"
+                type="button"
+                :aria-expanded="!isProjectCollapsed(item)"
+                :aria-label="isProjectCollapsed(item) ? t('app.expandProject') : t('app.collapseProject')"
+                :title="isProjectCollapsed(item) ? t('app.expandProject') : t('app.collapseProject')"
+                @click.stop="toggleProjectCollapsed(item)"
+              >
+                <AppIcon :name="isProjectCollapsed(item) ? 'Folder' : 'FolderOpen'" :size="16" />
+              </button>
               <button class="project-row-toggle" :title="t('app.newTempSessionInProject')" @click.stop.prevent>
-                <AppIcon name="FolderOpen" :size="16" />
                 <span>{{ item.name }}</span>
               </button>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="t('app.projectActionsAria', { name: item.name })">
@@ -3391,7 +3413,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><AppIcon name="Unlink" :size="16" />{{ t('app.removeProject') }}</button>
               </div>
             </div>
-            <div class="project-task-list">
+            <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item) }">
               <div class="project-task-list__inner">
                 <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">

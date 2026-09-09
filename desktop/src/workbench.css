@@ -592,7 +592,7 @@
 /* Sidebar project and conversation controls. */
 .project-row-shell {
   position: relative;
-  display: block;
+  display: flex;
   align-items: center;
   gap: 2px;
   min-height: 36px;
@@ -601,13 +601,26 @@
   transition: background-color 140ms ease;
 }
 
+.project-row-caret {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  place-items: center;
+  color: #202124;
+  background: transparent;
+  border-radius: 6px;
+}
+.project-row-caret svg { color: currentColor; }
+.project-row-caret:hover { color: #202124; background: #e9edf1; }
+
 .project-row-toggle {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 7px;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-width: 0;
-  width: 100%;
   min-height: 36px;
   padding: 0 6px;
   color: #202124;

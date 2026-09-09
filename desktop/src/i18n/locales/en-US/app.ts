@@ -63,6 +63,8 @@ export const app = {
   projects: "Projects",
   openLocalDir: "Open local folder",
   newTempSessionInProject: "New temporary session in project",
+  collapseProject: "Collapse project",
+  expandProject: "Expand project",
   projectActionsAria: "{name} project actions",
   unpin: "Unpin",
   pin: "Pin",

@@ -63,6 +63,8 @@ export const app = {
   projects: "项目",
   openLocalDir: "打开本地目录",
   newTempSessionInProject: "在项目中新建临时会话",
+  collapseProject: "收起项目",
+  expandProject: "展开项目",
   projectActionsAria: "{name} 项目操作",
   unpin: "取消置顶",
   pin: "置顶",

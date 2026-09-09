@@ -364,6 +364,7 @@
 :root[data-app-theme="dark"] :is(
   .new-task-button,
   .sidebar-tools button,
+  .project-row-caret,
   .project-row-toggle,
   .status-task-row,
   .account,
@@ -377,10 +378,12 @@
 ) { color: var(--text-muted) !important; }
 
 :root[data-app-theme="dark"] .project-row-toggle svg { color: currentColor !important; }
+:root[data-app-theme="dark"] .project-row-caret svg { color: currentColor !important; }
 
 :root[data-app-theme="dark"] :is(
   .new-task-button,
   .sidebar-tools button,
+  .project-row-caret,
   .project-row-shell,
   .project-row-toggle,
   .status-task-row,
@@ -890,7 +893,8 @@
 }
 
 :root:not([data-wallpaper="none"]) :is(
-  .task-conversation > .queue-dock,
+  .task-conversation > .queue-dock > .sztu-composer,
+  .task-conversation > .queue-dock > .user-question-composer,
   .task-launcher .composer-input-shell,
   .chat-composer > textarea
 ) {
@@ -899,6 +903,22 @@
   -webkit-backdrop-filter: blur(12px) saturate(108%);
 }
 
+/* Only the visible card owns the fill, including in dark mode. */
+.task-launcher .launcher-bottom-controls {
+  margin-top: 0;
+  padding-top: 10px;
+  background: #f5f5f5;
+  border-radius: 0 0 14px 14px;
+}
+:root[data-app-theme="dark"] .task-launcher .launcher-bottom-controls {
+  background: #252525;
+}
+
+:root:not([data-wallpaper="none"]) .task-conversation .sztu-composer:not(.drag-over) .composer-input-shell,
+:root:not([data-wallpaper="none"]) .task-launcher .sztu-composer:not(.drag-over) {
+  background: transparent !important;
+  box-shadow: none;
+}
 
 :root:not([data-wallpaper="none"]) :is(
   .work-header, .workspace-tab-strip, .workspace-home-header
@@ -965,6 +985,7 @@
   background: color-mix(in srgb, #171717 var(--conversation-surface-opacity), transparent) !important;
 }
 :root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.skill-center),
+:root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.work-page),
 :root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.chat-automations) {
   background: transparent !important;
 }
