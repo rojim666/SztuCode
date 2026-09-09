@@ -108,6 +108,7 @@ class LlmConfig:
     provider: str = "anthropic"  # legacy SDK family derived from api_format
     api_format: str = "anthropic_messages"
     router: str = "static"  # "static" | "rule_based" (S4) | "cost_budget" (S6)
+    flagship_model: str = ""  # Opt-in Smart routing; same configured provider/endpoint.
     context_window: int = 0  # 0 = use provider's model-aware default
     max_output_tokens: int = 8_192
     temperature: float | None = None
@@ -542,6 +543,7 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             "provider",
             "api_format",
             "router",
+            "flagship_model",
             "context_window",
             "max_output_tokens",
             "temperature",
@@ -581,6 +583,10 @@ def _apply_toml(config: SztuConfig, data: dict[str, Any]) -> None:
             if not isinstance(val, str):
                 raise SystemExit("Config error: llm.router must be a string")
             config.llm.router = val
+        if "flagship_model" in llm:
+            if not isinstance(llm["flagship_model"], str):
+                raise SystemExit("Config error: llm.flagship_model must be a string")
+            config.llm.flagship_model = llm["flagship_model"].strip()
         if "context_window" in llm:
             val = llm["context_window"]
             if not isinstance(val, int) or val <= 0:

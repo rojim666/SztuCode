@@ -141,7 +141,7 @@ class AnthropicProvider:
             max_output_tokens if max_output_tokens is not None else self._max_output_tokens
         )
         await bus.publish(
-            LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
+            LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy=getattr(self, "_routing_strategy", "static"), ts=_now())
         )
 
         system_block: dict[str, object] = {
