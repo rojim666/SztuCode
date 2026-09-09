@@ -196,7 +196,7 @@ watch([markdownHtml, mode], () => {
   gap: 8px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border, #eceef0);
-  background: var(--surface-soft, #f7f8f9);
+  background: var(--surface, #fff);
   flex-shrink: 0;
 }
 

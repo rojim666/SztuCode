@@ -4,6 +4,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  border-radius: 0;
+  overflow: hidden;
 }
 
 /* 切换会话的加载层：终端图标呼吸 + 提示符光标闪烁 */
@@ -863,8 +865,20 @@
 .sidebar-resizer { position: absolute; z-index: 25; top: 40px; bottom: 10px; left: var(--sidebar-width, 268px); width: 12px; padding: 0; color: #77808a; cursor: col-resize; outline: 0; opacity: 1; transform: translateX(calc(-50% + var(--sidebar-pull, 0px))); touch-action: none; transition: left 200ms ease, opacity 120ms ease, transform 160ms cubic-bezier(.2, .8, .2, 1); }
 .sidebar-resizing .sidebar-resizer { transition: none; }
 .sidebar-collapsed .sidebar-resizer { visibility: hidden; opacity: 0; pointer-events: none; transform: translateX(-50%); }
-.sztu-main { margin: 0; background: #fff; border: 0; border-radius: 0; box-shadow: none; }
-/* 会话区卡片：灰边框改暖米、阴影改暖调并减淡 —— 四角圆角外不再出现冷灰边线与暗角 */
+.sztu-main {
+  --workspace-surface-radius: 16px;
+  margin: 0;
+  background: #fff;
+  border: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
+  corner-shape: squircle;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: none;
+}
+/* 主容器是唯一的圆角裁切层，避免页面宿主和会话画布叠出突兀的白色缺口。 */
+.sztu-main > :is(.work-page-host, .source-control-host, .simple-page, .chat-main),
+.sztu-main > .chat-main > :is(.skill-center, .chat-automations),
 .sztu-main .task-canvas {
   border: 0;
   border-radius: 0;
@@ -876,12 +890,12 @@
 }
 .sztu-shell.is-macos.sidebar-collapsed .sztu-main { margin-left: 0; }
 .sztu-main.work-active {
-  overflow: visible;
-  background: transparent;
-  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
   box-shadow: none;
 }
-.sztu-main.chat-main, .chat-main { border: 0; border-radius: 0; }
+.sztu-main.chat-main, .chat-main { border: 0; }
 .sidebar-brand { display: flex; align-items: center; min-height: 36px; padding: 0 1px 0 8px; }
 .sztu-shell.is-macos .sidebar-brand { min-height: 36px; padding-top: 0; }
 .sidebar-brand h1 { margin: 0; min-width: 0; overflow: hidden; color: var(--accent); font-family: "Aptos Display", "Microsoft YaHei UI", sans-serif; font-size: 15px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
@@ -975,13 +989,18 @@
   content: none;
 }
 .sztu-shell.is-macos .sztu-main {
-  border-radius: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
 }
 .sztu-shell.is-macos.window-resizing .sztu-main {
   box-shadow: none;
 }
 .sztu-shell.is-macos .sztu-main.chat-main {
-  border-radius: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
+}
+.sztu-shell.sidebar-collapsed .sztu-main,
+.sztu-shell.is-macos.sidebar-collapsed .sztu-main,
+.sztu-shell.is-macos.sidebar-collapsed .sztu-main.chat-main {
+  border-top-left-radius: 0;
 }
 .sztu-titlebar,
 .sidebar-viewport {

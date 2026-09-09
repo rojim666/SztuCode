@@ -218,6 +218,11 @@ function attachmentCategory(att: UserAttachment): string {
   if (["doc", "docx", "odt", "rtf"].includes(ext)) return "word";
   if (["xls", "xlsx", "xlsm", "csv", "tsv", "ods"].includes(ext)) return "excel";
   if (["ppt", "pptx", "odp"].includes(ext)) return "powerpoint";
+  if (att.mime?.startsWith("audio/") || ["mp3", "wav", "m4a", "flac", "ogg", "aac"].includes(ext)) return "audio";
+  if (att.mime?.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(ext)) return "video";
+  if (["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz"].includes(ext)) return "archive";
+  if (att.mime?.startsWith("model/") || ["glb", "gltf", "obj", "fbx", "stl", "ply", "dae", "3mf"].includes(ext)) return "model";
+  if (["apk", "exe", "msi", "dmg", "deb"].includes(ext)) return "app";
   if (["txt", "md", "markdown", "json", "xml", "yaml", "yml", "log"].includes(ext)) return "text";
   return "file";
 }
@@ -226,6 +231,7 @@ function attachmentIcon(att: UserAttachment): string {
   const cat = attachmentCategory(att);
   const representative: Record<string, string> = {
     pdf: "file.pdf", word: "file.docx", excel: "file.xlsx", powerpoint: "file.pptx",
+    audio: "file.mp3", video: "file.mp4", archive: "file.zip", model: "file.obj", app: "file.exe",
     text: "file.txt", file: att.name.toLowerCase(),
   };
   return fileTypeIconUrl(representative[cat] ?? att.name.toLowerCase()) || fileTypeIconUrl("file.txt");

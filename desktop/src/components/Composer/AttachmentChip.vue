@@ -5,7 +5,7 @@ import AppIcon from "../icons/AppIcon.vue";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
 const props = defineProps<{ file: {
-  name: string; size: number; kind: "image" | "text"; mime?: string; dataBase64?: string;
+  name: string; size: number; kind: "image" | "text" | "file"; mime?: string; dataBase64?: string;
 } }>();
 const emit = defineEmits<{ remove: [] }>();
 const { t } = useI18n();
@@ -16,12 +16,18 @@ const category = computed(() => {
   if (["doc", "docx", "odt", "rtf"].includes(extension.value)) return "word";
   if (["xls", "xlsx", "xlsm", "csv", "tsv", "ods"].includes(extension.value)) return "excel";
   if (["ppt", "pptx", "odp"].includes(extension.value)) return "powerpoint";
+  if (props.file.mime?.startsWith("audio/") || ["mp3", "wav", "m4a", "flac", "ogg", "aac"].includes(extension.value)) return "audio";
+  if (props.file.mime?.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(extension.value)) return "video";
+  if (["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz"].includes(extension.value)) return "archive";
+  if (props.file.mime?.startsWith("model/") || ["glb", "gltf", "obj", "fbx", "stl", "ply", "dae", "3mf"].includes(extension.value)) return "model";
+  if (["apk", "exe", "msi", "dmg", "deb"].includes(extension.value)) return "app";
   if (["txt", "md", "markdown", "json", "xml", "yaml", "yml", "log"].includes(extension.value)) return "text";
   return "file";
 });
 const icon = computed(() => {
   const representative: Record<string, string> = {
     pdf: "file.pdf", word: "file.docx", excel: "file.xlsx", powerpoint: "file.pptx",
+    audio: "file.mp3", video: "file.mp4", archive: "file.zip", model: "file.obj", app: "file.exe",
     text: "file.txt", file: props.file.name.toLowerCase(),
   };
   return fileTypeIconUrl(representative[category.value] ?? props.file.name.toLowerCase())
@@ -75,6 +81,11 @@ const sizeLabel = computed(() => {
 .composer-attachment[data-category="excel"] { --attachment-accent: #279468; }
 .composer-attachment[data-category="powerpoint"] { --attachment-accent: #d7773d; }
 .composer-attachment[data-category="image"] { --attachment-accent: #9a67c7; }
+.composer-attachment[data-category="audio"] { --attachment-accent: #b45fa1; }
+.composer-attachment[data-category="video"] { --attachment-accent: #6b64c8; }
+.composer-attachment[data-category="archive"] { --attachment-accent: #b47c35; }
+.composer-attachment[data-category="model"] { --attachment-accent: #3b8f94; }
+.composer-attachment[data-category="app"] { --attachment-accent: #4b75ad; }
 .composer-attachment[data-category="text"] { --attachment-accent: #667c91; }
 .composer-attachment__visual {
   position: relative;

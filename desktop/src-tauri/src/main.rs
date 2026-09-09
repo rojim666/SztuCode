@@ -656,7 +656,7 @@ async fn daemon_start(app: tauri::AppHandle, state: State<'_, DaemonProcess>) ->
     ))
 }
 
-// 附件读取结果：图片/二进制走 base64，文本走 UTF-8 内容，超限或不支持在 error 里说明
+// 附件读取结果：小图片走 base64，文本提供预览，其余素材保留路径并在发送前复制进项目。
 #[derive(Serialize)]
 struct AttachmentData {
     path: String,
@@ -666,14 +666,16 @@ struct AttachmentData {
     is_text: bool,
     text_content: Option<String>,
     data_base64: Option<String>,
+    warning: Option<String>,
     error: Option<String>,
 }
 
 const IMAGE_MAX_BYTES: u64 = 5 * 1024 * 1024;
-const TEXT_MAX_BYTES: u64 = 1024 * 1024;
 const TEXT_READ_LIMIT: usize = 32 * 1024;
 // 文档解析由随安装包分发的 Python helper 完成。
 const DOCUMENT_MAX_BYTES: u64 = 20 * 1024 * 1024;
+// 音视频、压缩包、3D 模型和安装包不注入 RPC，只复制到项目供工具按路径处理。
+const ATTACHMENT_MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 // 按扩展名推断常见文件的 MIME 类型；未知类型返回 None
 fn guess_mime(path: &PathBuf) -> Option<String> {
@@ -685,6 +687,37 @@ fn guess_mime(path: &PathBuf) -> Option<String> {
         "webp" => "image/webp",
         "bmp" => "image/bmp",
         "svg" => "image/svg+xml",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "m4a" => "audio/mp4",
+        "flac" => "audio/flac",
+        "ogg" | "oga" => "audio/ogg",
+        "aac" => "audio/aac",
+        "mp4" | "m4v" => "video/mp4",
+        "mov" => "video/quicktime",
+        "mkv" => "video/x-matroska",
+        "webm" => "video/webm",
+        "avi" => "video/x-msvideo",
+        "zip" => "application/zip",
+        "7z" => "application/x-7z-compressed",
+        "rar" => "application/vnd.rar",
+        "tar" => "application/x-tar",
+        "gz" | "tgz" => "application/gzip",
+        "bz2" => "application/x-bzip2",
+        "xz" => "application/x-xz",
+        "glb" => "model/gltf-binary",
+        "gltf" => "model/gltf+json",
+        "obj" => "model/obj",
+        "stl" => "model/stl",
+        "ply" => "model/ply",
+        "3mf" => "model/3mf",
+        "fbx" => "application/vnd.autodesk.fbx",
+        "dae" => "model/vnd.collada+xml",
+        "apk" => "application/vnd.android.package-archive",
+        "exe" => "application/vnd.microsoft.portable-executable",
+        "msi" => "application/x-msi",
+        "dmg" => "application/x-apple-diskimage",
+        "deb" => "application/vnd.debian.binary-package",
         "pdf" => "application/pdf",
         "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -717,6 +750,19 @@ fn is_image(mime: &str) -> bool {
     mime.starts_with("image/")
 }
 
+fn is_path_only_asset(mime: &str) -> bool {
+    mime.starts_with("audio/")
+        || mime.starts_with("video/")
+        || mime.starts_with("model/")
+        || matches!(mime,
+            "application/zip" | "application/x-7z-compressed" | "application/vnd.rar"
+            | "application/x-tar" | "application/gzip" | "application/x-bzip2"
+            | "application/x-xz" | "application/vnd.autodesk.fbx"
+            | "application/vnd.android.package-archive"
+            | "application/vnd.microsoft.portable-executable" | "application/x-msi"
+            | "application/x-apple-diskimage" | "application/vnd.debian.binary-package")
+}
+
 // 前 8KB 出现 NUL 字节即视为二进制
 fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8192).any(|&byte| byte == 0)
@@ -737,6 +783,7 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
         is_text: false,
         text_content: None,
         data_base64: None,
+        warning: None,
         error: Some(error),
     };
     let metadata = match std::fs::metadata(&pb) {
@@ -755,16 +802,10 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
     let is_img = mime.as_deref().is_some_and(is_image);
     let is_document = mime.as_deref() == Some("application/pdf")
         || pb.extension().is_some_and(|ext| matches!(ext.to_string_lossy().to_lowercase().as_str(), "docx" | "xlsx" | "pptx"));
-    if is_img && size > IMAGE_MAX_BYTES {
-        return failed(size, mime, "图片超过 5MB 限制".into());
+    if size > ATTACHMENT_MAX_BYTES {
+        return failed(size, mime, "附件超过 512MB 限制".into());
     }
-    if is_document && size > DOCUMENT_MAX_BYTES {
-        return failed(size, mime, "资料文件超过 20MB 限制".into());
-    }
-    if !is_img && !is_document && size > TEXT_MAX_BYTES {
-        return failed(size, mime, "文件超过 1MB 限制".into());
-    }
-    if is_document {
+    if is_document && size <= DOCUMENT_MAX_BYTES {
         let (text_content, error) = match document_to_text(&pb, parser).await {
             Ok(text) => (Some(text), None),
             Err(error) => (None, Some(error)),
@@ -777,11 +818,54 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
             is_text: text_content.is_some(),
             text_content,
             data_base64: None,
-            error,
+            warning: error,
+            error: None,
+        };
+    }
+    if is_document {
+        return AttachmentData {
+            path: path.to_string(),
+            name,
+            size,
+            mime_type: mime,
+            is_text: false,
+            text_content: None,
+            data_base64: None,
+            warning: Some("资料超过 20MB，已保留完整文件但未生成内联预览。".into()),
+            error: None,
+        };
+    }
+    if is_img && size > IMAGE_MAX_BYTES {
+        return AttachmentData {
+            path: path.to_string(),
+            name,
+            size,
+            mime_type: mime,
+            is_text: false,
+            text_content: None,
+            data_base64: None,
+            warning: Some("图片超过 5MB，已保留完整文件但未注入视觉内容块。".into()),
+            error: None,
+        };
+    }
+    if mime.as_deref().is_some_and(is_path_only_asset) {
+        return AttachmentData {
+            path: path.to_string(),
+            name,
+            size,
+            mime_type: mime,
+            is_text: false,
+            text_content: None,
+            data_base64: None,
+            warning: None,
+            error: None,
         };
     }
     let mut data = Vec::new();
-    if let Err(error) = std::fs::File::open(&pb).and_then(|mut file| file.read_to_end(&mut data)) {
+    let read_limit = if is_img { IMAGE_MAX_BYTES as usize } else { TEXT_READ_LIMIT + 1 };
+    if let Err(error) = std::fs::File::open(&pb)
+        .and_then(|file| file.take(read_limit as u64).read_to_end(&mut data))
+    {
         return failed(size, mime, format!("读取失败：{error}"));
     }
     if !is_img && !looks_binary(&data) {
@@ -794,10 +878,11 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
             is_text: true,
             text_content: Some(text),
             data_base64: None,
+            warning: (size > TEXT_READ_LIMIT as u64).then(|| "仅内联前 32KB，完整文件已保留在项目中。".into()),
             error: None,
         };
     }
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+    let encoded = is_img.then(|| base64::engine::general_purpose::STANDARD.encode(&data));
     AttachmentData {
         path: path.to_string(),
         name,
@@ -805,7 +890,8 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
         mime_type: mime,
         is_text: false,
         text_content: None,
-        data_base64: Some(encoded),
+        data_base64: encoded,
+        warning: None,
         error: None,
     }
 }
@@ -864,8 +950,8 @@ async fn read_attachment(app: tauri::AppHandle, paths: Vec<String>) -> Result<Ve
     Ok(results)
 }
 
-// Keep original office attachments inside the workspace for follow-up reads and edits.
-fn stage_document_files(workspace: &str, paths: &[String]) -> Result<Vec<String>, String> {
+// Keep every original attachment inside the workspace for follow-up inspection and editing.
+fn stage_attachment_files(workspace: &str, paths: &[String]) -> Result<Vec<String>, String> {
     let root = fs::canonicalize(workspace).map_err(|error| error.to_string())?;
     let mut directory = root.clone();
     for part in [".sztu", "attachments"] {
@@ -883,20 +969,23 @@ fn stage_document_files(workspace: &str, paths: &[String]) -> Result<Vec<String>
     for source in paths {
         let source = PathBuf::from(source);
         let metadata = fs::metadata(&source).map_err(|error| error.to_string())?;
-        if !metadata.is_file() || metadata.len() > DOCUMENT_MAX_BYTES {
-            return Err("附件不是文件或超过 20MB 限制".into());
+        if !metadata.is_file() || metadata.len() > ATTACHMENT_MAX_BYTES {
+            return Err("附件不是文件或超过 512MB 限制".into());
         }
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
             .map_err(|error| error.to_string())?.as_nanos();
         let folder = directory.join(format!("{stamp}-{}", SEQUENCE.fetch_add(1, Ordering::Relaxed)));
         fs::create_dir(&folder).map_err(|error| error.to_string())?;
         let destination = folder.join(source.file_name().ok_or("附件文件名无效")?);
-        let mut bytes = Vec::new();
-        fs::File::open(&source).map_err(|error| error.to_string())?
-            .take(DOCUMENT_MAX_BYTES + 1).read_to_end(&mut bytes).map_err(|error| error.to_string())?;
-        if bytes.len() as u64 > DOCUMENT_MAX_BYTES { return Err("资料文件超过 20MB 限制".into()); }
-        fs::OpenOptions::new().write(true).create_new(true).open(&destination)
-            .and_then(|mut file| file.write_all(&bytes)).map_err(|error| error.to_string())?;
+        let mut reader = fs::File::open(&source).map_err(|error| error.to_string())?
+            .take(ATTACHMENT_MAX_BYTES + 1);
+        let mut writer = fs::OpenOptions::new().write(true).create_new(true).open(&destination)
+            .map_err(|error| error.to_string())?;
+        let copied = std::io::copy(&mut reader, &mut writer).map_err(|error| error.to_string())?;
+        if copied > ATTACHMENT_MAX_BYTES {
+            let _ = fs::remove_file(&destination);
+            return Err("附件超过 512MB 限制".into());
+        }
         staged.push(destination.strip_prefix(&root).map_err(|error| error.to_string())?
             .to_string_lossy().replace('\\', "/"));
     }
@@ -905,7 +994,7 @@ fn stage_document_files(workspace: &str, paths: &[String]) -> Result<Vec<String>
 
 #[tauri::command]
 async fn stage_document_attachments(workspace: String, paths: Vec<String>) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || stage_document_files(&workspace, &paths))
+    tauri::async_runtime::spawn_blocking(move || stage_attachment_files(&workspace, &paths))
         .await.map_err(|error| error.to_string())?
 }
 
@@ -1876,25 +1965,42 @@ mod tests {
             let broken = directory.join("broken.pdf");
             fs::write(&broken, "broken").unwrap();
             let result = read_one_attachment(broken.to_str().unwrap(), &parser).await;
-            assert!(result.error.unwrap().contains("解析失败"));
+            assert!(result.error.is_none());
+            assert!(result.warning.unwrap().contains("解析失败"));
+            assert!(!result.is_text);
             fs::remove_file(broken).unwrap();
             let svg = directory.join("image.svg");
             fs::write(&svg, "<svg xmlns='http://www.w3.org/2000/svg'/>").unwrap();
             let result = read_one_attachment(svg.to_str().unwrap(), &parser).await;
             assert!(result.data_base64.is_some() && !result.is_text);
             fs::remove_file(svg).unwrap();
+            for (name, expected_mime) in [
+                ("recording.mp3", "audio/mpeg"),
+                ("demo.mp4", "video/mp4"),
+                ("sources.zip", "application/zip"),
+                ("scene.glb", "model/gltf-binary"),
+                ("installer.exe", "application/vnd.microsoft.portable-executable"),
+            ] {
+                let asset = directory.join(name);
+                fs::write(&asset, b"\0binary material").unwrap();
+                let result = read_one_attachment(asset.to_str().unwrap(), &parser).await;
+                assert!(result.error.is_none(), "{name}: {:?}", result.error);
+                assert_eq!(result.mime_type.as_deref(), Some(expected_mime));
+                assert!(!result.is_text && result.data_base64.is_none());
+                fs::remove_file(asset).unwrap();
+            }
         });
         fs::remove_dir(directory).unwrap();
     }
 
     #[test]
-    fn office_attachments_are_staged_as_separate_workspace_copies() {
+    fn attachments_are_staged_as_separate_workspace_copies() {
         let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../.sztu").join(format!("stage-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let source = directory.join("原始 资料.docx");
         fs::write(&source, "source bytes").unwrap();
-        let result = stage_document_files(directory.to_str().unwrap(), &[source.to_string_lossy().into_owned()]).unwrap();
+        let result = stage_attachment_files(directory.to_str().unwrap(), &[source.to_string_lossy().into_owned()]).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].starts_with(".sztu/attachments/"));
         assert_eq!(fs::read(directory.join(&result[0])).unwrap(), b"source bytes");

@@ -32,7 +32,7 @@
   --surface: #171717;
   --surface-soft: #1e1e1e;
   --surface-raised: #242424;
-  --chrome-bg: var(--surface-soft);
+  --chrome-bg: #202020;
   --border: #2e2e2e;
   --border-strong: #3d3d3d;
   --text: #ffffff;
@@ -88,6 +88,11 @@
   color: var(--text) !important;
   background: var(--app-bg) !important;
   border-color: var(--border) !important;
+}
+
+/* Without wallpaper, exposed workspace corners must match the adjacent chrome. */
+:root[data-wallpaper="none"] .sztu-shell {
+  background: var(--chrome-bg) !important;
 }
 
 .sztu-shell::before {
@@ -583,7 +588,7 @@
    注意层级是 .sidebar-viewport(外栏) > .sztu-sidebar(aside) > 各子容器；
    子容器一律强制透明，否则会在栏体内出现颜色不一致的内嵌色块。 */
 :root[data-app-theme="dark"] :is(.sztu-titlebar, .sidebar-viewport, .sztu-sidebar) {
-  background: #202020 !important;
+  background: var(--chrome-bg) !important;
 }
 :root[data-app-theme="dark"] .sztu-sidebar :is(
   .sidebar-brand,

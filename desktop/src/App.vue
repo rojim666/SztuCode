@@ -434,13 +434,14 @@ const pendingVisualWrites = new Map<string, string>(); // toolUseId → 写入�
 let inspectorCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let inspectorOpenFrame: number | undefined;
 let trayListeners: Array<() => void> = [];
-// 待发送附件：图片走 base64 内容块，文本把内容注入消息
+// 待发送附件：图片走视觉内容块，文本注入预览，通用素材复制到项目后按路径交给工具。
 type PendingAttachment = {
   path: string; name: string; size: number;
-  kind: "image" | "text";
+  kind: "image" | "text" | "file";
   mime?: string;
   textContent?: string;
   dataBase64?: string;
+  warning?: string;
   workspacePath?: string;
   workspaceRoot?: string;
 };
@@ -2075,7 +2076,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
     return;
   }
-  if (!await prepareOfficeAttachments()) return;
+  if (!await prepareWorkspaceAttachments()) return;
   const { displayText, payload, images, timelineAttachments } = await buildMessagePayload(content);
   const sessionId = activeId.value;
   if (sessionId && isAppending.value) {
@@ -2447,6 +2448,11 @@ async function createLocalWorkspace() {
   beginTask(workspace.value);
 }
 function removeAttachment(index: number) { attachedFiles.value = attachedFiles.value.filter((_, i) => i !== index); }
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 // 从当前附件构造发送载荷：
 // - displayText: 用户原始输入文本，用于时间线气泡显示
 // - payload: 发送给后端的完整内容（含附件注入文本，供模型读取）
@@ -2484,11 +2490,18 @@ async function buildMessagePayload(baseText: string): Promise<{
       } else {
         // 模型不支持视觉：OCR 识别后转文本（在下面统一处理）
       }
+      if (att.workspacePath) {
+        sections.push(`[图片原文件: ${att.name}]\n项目相对路径：${JSON.stringify(att.workspacePath)}。需要编辑、转换或复用原图时请使用此文件。`);
+      }
     } else if (att.kind === "text" && att.textContent) {
       const source = att.workspacePath
         ? `\n完整资料的项目相对路径：${JSON.stringify(att.workspacePath)}。请用 read_document 读取并按 next_offset 翻页；以下仅为上传预览。`
         : "";
       sections.push(`[附件: ${att.name}]${source}\n\`\`\`\n${att.textContent}\n\`\`\``);
+    } else if (att.workspacePath) {
+      const metadata = [att.mime || "application/octet-stream", formatAttachmentBytes(att.size)].join(" · ");
+      const warning = att.warning ? `\n处理提示：${att.warning}` : "";
+      sections.push(`[附件: ${att.name}]\n完整素材已保存到项目相对路径 ${JSON.stringify(att.workspacePath)}（${metadata}）。请先检查素材，再选择合适的工具读取、解包、转录、转换或编辑。${warning}`);
     }
   }
 
@@ -2536,21 +2549,23 @@ async function buildMessagePayload(baseText: string): Promise<{
   };
 }
 
-let preparingOfficeAttachments = false;
-async function prepareOfficeAttachments(): Promise<boolean> {
-  if (preparingOfficeAttachments) return false;
+let preparingWorkspaceAttachments = false;
+async function prepareWorkspaceAttachments(): Promise<boolean> {
+  if (preparingWorkspaceAttachments) return false;
   if (!("__TAURI_INTERNALS__" in window)) return true;
-  const documents = attachedFiles.value.filter((file) => file.kind === "text"
-    && (/\.(pdf|docx|xlsx|pptx)$/i.test(file.name) || file.mime === "application/pdf"));
-  if (!documents.length) return true;
+  const requiresWorkspace = attachedFiles.value.some((file) => file.kind === "file"
+    || /\.(pdf|docx|xlsx|pptx)$/i.test(file.name)
+    || file.mime === "application/pdf");
+  if (!attachedFiles.value.length) return true;
   const root = activeWorkspace.value?.path;
   if (!root) {
-    await showProjectNotice("请选择项目", "请选择或创建一个项目，以保存完整办公资料并继续读取、分析和修改。", "danger");
+    if (!requiresWorkspace) return true;
+    await showProjectNotice("请选择项目", "音视频、压缩包、3D 模型和其他二进制素材需要先安全复制到项目中，才能继续分析和编辑。", "danger");
     return false;
   }
-  preparingOfficeAttachments = true;
+  preparingWorkspaceAttachments = true;
   try {
-    const pending = documents.filter((file) => file.workspaceRoot !== root || !file.workspacePath);
+    const pending = attachedFiles.value.filter((file) => file.workspaceRoot !== root || !file.workspacePath);
     if (pending.length) {
       const paths = await invoke<string[]>("stage_document_attachments", { workspace: root, paths: pending.map((file) => file.path) });
       pending.forEach((file, index) => { file.workspacePath = paths[index]; file.workspaceRoot = root; });
@@ -2561,9 +2576,9 @@ async function prepareOfficeAttachments(): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    await showProjectNotice("保存办公资料失败", friendlyError(error).message, "danger");
+    await showProjectNotice("保存附件失败", friendlyError(error).message, "danger");
     return false;
-  } finally { preparingOfficeAttachments = false; }
+  } finally { preparingWorkspaceAttachments = false; }
 }
 // 被跳过的附件统一汇总为一次提示，避免多文件时连续弹窗
 function notifySkippedAttachments(skipped: string[]) {
@@ -2572,18 +2587,18 @@ function notifySkippedAttachments(skipped: string[]) {
   const more = skipped.length > 4 ? t("app.attachmentsMoreSkipped", { n: skipped.length - 4 }) : "";
   void showProjectNotice(t("app.attachmentsPartiallySkipped"), shown + more, "danger");
 }
-// 处理「添加附件」读取结果：图片/文本归档，超限或二进制在 error 中提示并跳过
+// 处理「添加附件」读取结果：图片/文本生成即时预览，其余素材保留为项目文件。
 function addReadAttachments(results: Attachment[]) {
   const added: PendingAttachment[] = [];
   const skipped: string[] = [];
   for (const item of results) {
     if (item.error) { skipped.push(`${item.name}：${friendlyError(item.error).message}`); continue; }
     if (item.mime_type?.startsWith("image/") && item.data_base64) {
-      added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64 });
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64, warning: item.warning ?? undefined });
     } else if (item.is_text && item.text_content != null) {
-      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content });
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content, warning: item.warning ?? undefined });
     } else {
-      skipped.push(t("app.attachmentUnsupported", { name: item.name }));
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "file", mime: item.mime_type ?? undefined, warning: item.warning ?? undefined });
     }
   }
   if (added.length) attachedFiles.value = [...attachedFiles.value, ...added];
