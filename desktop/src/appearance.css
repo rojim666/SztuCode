@@ -785,6 +785,37 @@
 }
 
 :root:not([data-wallpaper="none"]) :is(.sztu-titlebar, .sidebar-viewport) {
+  background: transparent !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Chrome must not sit under translucent content surfaces. Use the same round
+   corner for the workspace and the complementary chrome cutout. */
+:root:not([data-wallpaper="none"]) .sztu-shell {
+  --chrome-cutout-left: var(--sidebar-width, 268px);
+  --chrome-cutout-radius: 24px;
+}
+:root:not([data-wallpaper="none"]) .sztu-shell.sidebar-collapsed {
+  --chrome-cutout-left: 0px;
+  --chrome-cutout-radius: 0px;
+}
+:root:not([data-wallpaper="none"]) .sztu-main {
+  --workspace-surface-radius: var(--chrome-cutout-radius);
+  corner-shape: round;
+}
+:root:not([data-wallpaper="none"]) .sztu-shell::before { z-index: -2; }
+:root:not([data-wallpaper="none"]) .sztu-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: shape(from 0px 0px,
+    line to 100% 0px, line to 100% 52px,
+    line to calc(var(--chrome-cutout-left) + var(--chrome-cutout-radius)) 52px,
+    arc to var(--chrome-cutout-left) calc(52px + var(--chrome-cutout-radius)) of var(--chrome-cutout-radius) ccw,
+    line to var(--chrome-cutout-left) 100%, line to 0px 100%, close);
   background: color-mix(in srgb, var(--chrome-bg) var(--chrome-surface-opacity), transparent) !important;
   backdrop-filter: blur(16px) saturate(112%);
   -webkit-backdrop-filter: blur(16px) saturate(112%);
@@ -1027,7 +1058,7 @@
   background: transparent !important;
 }
 
-:root[data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
+:root[data-wallpaper="mist"] .sztu-shell::after {
   background:
     linear-gradient(
       118deg,
@@ -1043,7 +1074,7 @@
   animation: mist-chrome-flow 18s ease-in-out infinite;
 }
 
-:root[data-app-theme="dark"][data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
+:root[data-app-theme="dark"][data-wallpaper="mist"] .sztu-shell::after {
   background:
     linear-gradient(
       118deg,
@@ -1062,7 +1093,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root[data-wallpaper="mist"] :is(.sztu-titlebar, .sidebar-viewport) {
+  :root[data-wallpaper="mist"] .sztu-shell::after {
     animation: none;
     background-position: 50% 50%;
   }

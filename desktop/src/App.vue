@@ -30,6 +30,7 @@ import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
 import { detectVisionSupport } from "./utils/modelVision";
+import { needsAttachmentStaging } from "./utils/attachmentSource";
 import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
@@ -436,6 +437,7 @@ let inspectorOpenFrame: number | undefined;
 let trayListeners: Array<() => void> = [];
 // 待发送附件：图片走视觉内容块，文本注入预览，通用素材复制到项目后按路径交给工具。
 type PendingAttachment = {
+  source?: "inline" | "disk";
   path: string; name: string; size: number;
   kind: "image" | "text" | "file";
   mime?: string;
@@ -2565,7 +2567,7 @@ async function prepareWorkspaceAttachments(): Promise<boolean> {
   }
   preparingWorkspaceAttachments = true;
   try {
-    const pending = attachedFiles.value.filter((file) => file.workspaceRoot !== root || !file.workspacePath);
+    const pending = attachedFiles.value.filter((file) => needsAttachmentStaging(file, root));
     if (pending.length) {
       const paths = await invoke<string[]>("stage_document_attachments", { workspace: root, paths: pending.map((file) => file.path) });
       pending.forEach((file, index) => { file.workspacePath = paths[index]; file.workspaceRoot = root; });
@@ -2646,7 +2648,7 @@ async function addBrowserFile(file: File): Promise<string | null> {
     }).catch(() => "");
     const comma = dataUrl.indexOf(",");
     const dataBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
-    if (dataBase64) attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
+    if (dataBase64) attachedFiles.value = [...attachedFiles.value, { source: "inline", path: `clipboard:${crypto.randomUUID()}`, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
     return dataBase64 ? null : t("app.attachmentReadFailed", { name: file.name });
   }
   const textLike = !file.type || file.type.startsWith("text/") || ["application/json", "application/xml"].includes(file.type);
@@ -2657,7 +2659,7 @@ async function addBrowserFile(file: File): Promise<string | null> {
     reader.onerror = () => reject(new Error(t("app.attachmentReadFileFailed")));
     reader.readAsText(file);
   }).catch(() => "");
-  attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
+  attachedFiles.value = [...attachedFiles.value, { source: "inline", path: `clipboard:${crypto.randomUUID()}`, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
   return null;
 }
 // 处理输入框粘贴：剪贴板含文件时读取为附件并阻止默认行为，纯文本粘贴正常放行
