@@ -179,13 +179,15 @@ def discover_instruction_files(root: Path) -> list[tuple[str, str]]:
     return entries
 
 
-# 渲染项目上下文与项目指令段
+# 渲染项目上下文与项目指令段。
+# 注意：git 快照不在这里渲染——它随文件改动每轮变化，写进 system prompt 会击穿
+# 前缀缓存（system 是缓存锚点，一旦变化整段缓存失效）；改由 runner 通过
+# render_git_snapshot 注入到消息尾部。
 def _project_sections(
     *,
     cwd: str,
     date: str,
     instruction_entries: list[tuple[str, str]],
-    git_snapshot: str | None,
 ) -> list[str]:
     sections: list[str] = [
         "# Project context\n"
@@ -193,8 +195,6 @@ def _project_sections(
         f" - Working directory: {cwd}\n"
         f" - Project instruction files discovered: {len(instruction_entries)}."
     ]
-    if git_snapshot:
-        sections.append(git_snapshot)
     if instruction_entries:
         parts = ["# Project instructions"]
         for label, content in instruction_entries:
@@ -218,10 +218,8 @@ def build_system_prompt(
     os_version = platform_version or platform.release()
 
     instruction_entries: list[tuple[str, str]] = []
-    git_snapshot: str | None = None
     if workspace_root is not None:
         instruction_entries = discover_instruction_files(workspace_root)
-        git_snapshot = render_git_snapshot(workspace_root)
 
     sections: list[str] = list(_static_sections())
     sections.append(DYNAMIC_BOUNDARY)
@@ -239,7 +237,6 @@ def build_system_prompt(
             cwd=cwd,
             date=today,
             instruction_entries=instruction_entries,
-            git_snapshot=git_snapshot,
         )
     )
     return "\n\n".join(sections)

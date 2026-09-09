@@ -328,13 +328,17 @@ class AgentRunner:
         self._task_registry.register_sink(run_id, _on_terminal)
 
         base_prompt = ""
+        workspace_snapshot = ""
         if not system_prompt_override:
             from sztu_code.core.prompts import build_system_prompt
+            from sztu_code.core.prompts.system_prompt import render_git_snapshot
 
             # The runner treats the current directory as the default project root for
             # profile detection, memory, and tools; use the same root for prompt
             # injection so CLAUDE.md is available even without an explicit workspace.
             base_prompt = build_system_prompt(workspace_root=project_root)
+            # git 快照随文件改动每轮变化，注入消息尾部而非 system prompt，避免击穿前缀缓存
+            workspace_snapshot = render_git_snapshot(project_root) or ""
 
         from sztu_code.core.prompts.harness import (
             DEFAULT_PROMPT_HARNESS,
@@ -364,6 +368,8 @@ class AgentRunner:
             max_tokens=self._config.budget.max_tokens,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
+        if workspace_snapshot:
+            context.prepend_goal_reminder(workspace_snapshot)
         prefill_len = len(history)
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
         # 同上：provider 在 try 内赋值；失败路径下进化循环需判空跳过

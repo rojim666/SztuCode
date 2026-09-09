@@ -527,7 +527,8 @@ async def test_session_history_and_notes_injected(tmp_path: Path) -> None:
 
     assert len(provider.messages) == 1
     assert provider.messages[0]["role"] == "user"
-    assert provider.messages[0]["content"] == "remember python"
+    # goal 前置了工作区快照的 system-reminder（缓存友好注入），原文保留在末尾
+    assert provider.messages[0]["content"].endswith("remember python")
     assert provider.messages[0]["ts"]
     assert provider.system is not None
     assert "Python 3.12" in provider.system

@@ -141,6 +141,24 @@ class ExecutionContext:
         self.messages.append({"role": "user", "content": [block]})
         return True
 
+    # 将工作区/git 快照以 system-reminder 注入到本轮 goal 消息开头。
+    # 放在消息尾部而非 system prompt：快照随文件改动每轮变化，写进 system 会击穿前缀缓存。
+    def prepend_goal_reminder(self, text: str) -> None:
+        body = text.strip()
+        if not body:
+            return
+        reminder = f"<system-reminder>\n{body}\n</system-reminder>"
+        last = self.messages[-1] if self.messages else None
+        if last is not None and last.get("role") == "user":
+            content = last.get("content")
+            if isinstance(content, str):
+                last["content"] = f"{reminder}\n\n{content}"
+                return
+            if isinstance(content, list):
+                last["content"] = [{"type": "text", "text": reminder}, *content]
+                return
+        self.messages.append({"role": "user", "content": reminder})
+
     # 将 LLM 响应的 content blocks 追加为 assistant 消息
     def add_assistant_message(self, content: list[Any]) -> None:
         self.messages.append({"role": "assistant", "content": content})
