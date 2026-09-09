@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EditedFilesCard · Vite preview</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #eef1f4;
+        font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, -apple-system, sans-serif;
+      }
+      .wrap { display: grid; gap: 20px; max-width: 800px; margin: 0 auto; padding: 28px; }
+      .stage { display: grid; gap: 10px; padding: 18px; border-radius: 16px; }
+      .stage[data-app-theme="light"] { background: #ffffff; box-shadow: 0 1px 3px rgb(16 24 40 / 8%); }
+      .stage[data-app-theme="dark"] { background: #14171b; }
+      .stage-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #98a1ab;
+      }
+      .log { margin: 0; color: #6b7280; font-family: Consolas, monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./edited-files-card.ts"></script>
+  </body>
+</html>

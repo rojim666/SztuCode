@@ -119,6 +119,7 @@ onMounted(async () => {
 .diff-preview-popover__pre {
   margin: 0;
   padding: 4px 0;
+  color: #24292f;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
   line-height: 1.7;
@@ -153,6 +154,7 @@ onMounted(async () => {
 
 :global([data-app-theme="dark"] .diff-preview-popover__head) { border-bottom-color: #2b3138; }
 :global([data-app-theme="dark"] .diff-preview-popover__path) { color: #e6e9ed; }
+:global([data-app-theme="dark"] .diff-preview-popover__pre) { color: #c9d1d9; }
 :global([data-app-theme="dark"] .diff-preview-popover__status) { color: #8b929a; }
 :global([data-app-theme="dark"] .diff-preview-popover__gutter) { color: #6b737c; }
 :global([data-app-theme="dark"] .diff-preview-popover__stats .additions) { color: #4ade80; }

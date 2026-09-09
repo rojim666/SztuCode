@@ -3,7 +3,7 @@ import sharp from "sharp";
 
 for (const theme of ["light", "dark"]) {
   test(`${theme}: input transparency slider changes the actual conversation card`, async ({ page }) => {
-    await page.addInitScript((theme) => localStorage.setItem("sztu.appearance", JSON.stringify({ theme, wallpaper: "custom", customWallpaper: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path fill="#e03060" d="M0 0h10v10H0z"/></svg>'), wallpaperIntensity: 70, composerTransparency: 0 })), theme);
+    await page.addInitScript((theme) => localStorage.setItem("sztu.appearance", JSON.stringify({ theme, wallpaper: "mist", composerTransparency: 0 })), theme);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator("#app").evaluate((root) => {
       const state = (root as any).__vue_app__._instance.setupState;
@@ -27,6 +27,11 @@ for (const theme of ["light", "dark"]) {
       expect(colors.queue).toBe("rgba(0, 0, 0, 0)");
       if (transparency) expect(colors.fill).toContain(`/ ${((100 - transparency) / 100).toFixed(1)})`);
       const bounds = await card.boundingBox();
+      if (theme === "dark" && transparency === 40) console.log(await card.evaluate((el) => {
+        const out = [];
+        for (let node: Element | null = el; node; node = node.parentElement) out.push([node.className, getComputedStyle(node).backgroundColor, getComputedStyle(node).backgroundImage]);
+        return out;
+      }));
       if (!bounds) throw new Error("Missing input card");
       samples.push([...await sharp(await page.screenshot({ animations: "disabled" })).extract({ left: Math.round(bounds.x + bounds.width / 2), top: Math.round(bounds.y + 55), width: 1, height: 1 }).removeAlpha().raw().toBuffer()]);
     }

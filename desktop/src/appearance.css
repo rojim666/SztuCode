@@ -985,7 +985,6 @@
   background: color-mix(in srgb, #171717 var(--conversation-surface-opacity), transparent) !important;
 }
 :root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.skill-center),
-:root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.work-page),
 :root[data-app-theme="dark"]:not([data-wallpaper="none"]) .sztu-main:has(.chat-automations) {
   background: transparent !important;
 }
