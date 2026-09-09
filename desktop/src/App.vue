@@ -699,7 +699,7 @@ function stopTaskTitleScroll(event: FocusEvent) {
   if (title) stopTaskTitleElementScroll(title);
 }
 
-function showSessionPreview(task: Session, event: MouseEvent) {
+function showSessionPreview(task: Session, event: MouseEvent | FocusEvent) {
   keepProjectPreviewOpen();
   projectPreviewId.value = null;
   projectActionsOpen.value = null;
@@ -708,6 +708,12 @@ function showSessionPreview(task: Session, event: MouseEvent) {
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
 function hideSessionPreview() { sessionPreview.value = null; }
+// 键盘聚焦移出会话条（且未落到同一行的子控件）时收起预览窗
+function handleSessionPreviewFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as HTMLElement | null;
+  if (next?.closest(".sidebar-session")) return;
+  hideSessionPreview();
+}
 // 分支信息按工作区缓存，避免每次悬停都触发 git 查询
 async function loadBranch(workspaceId: string) {
   let branch: string | null = null;
@@ -3398,7 +3404,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       <div class="sidebar-workspace">
         <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
           <span class="side-label">{{ t('app.searchResults') }} <small>{{ visibleSessions.length }}</small></span>
-          <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
               <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
             </button>
@@ -3441,7 +3447,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
             </div>
             <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item) }">
               <div class="project-task-list__inner">
-                <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+                <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
                     <span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span>
                   </button>
@@ -3456,7 +3462,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
         <section v-if="ordinaryTemporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
           <span class="side-label">{{ t('app.temporaryTasks') }}</span>
-          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span></button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
