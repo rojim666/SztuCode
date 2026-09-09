@@ -6,45 +6,37 @@
   margin: 0 auto 17px;
   overflow: visible; /* 斜杠菜单与模型气泡需要溢出显示 */
   color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid #e4e6e8;
-  border-radius: 14px;
-  box-shadow: 0 3px 10px rgb(28 36 44 / 4%);
   font-size: 13px; /* 与输入框正文同号，队列条不再显得比输入框小一号 */
 }
 
-.queue-dock:focus-within {
-  border-color: #d7dade;
-  box-shadow: 0 3px 10px rgb(28 36 44 / 5%);
+/* 卡片堆独立于输入框：外层容器不再充当玻璃卡片层，仅作布局与定位 */
+:root:not([data-wallpaper="none"]) .task-conversation > .queue-dock {
+  background: transparent !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* 待处理区只增加内容，不改变输入卡片的底色、描边或焦点反馈。 */
 .queue-dock__queue {
-  max-height: min(168px, 25dvh);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  padding: 6px 10px;
-  background: color-mix(in srgb, var(--surface-soft) 65%, transparent);
-  border-radius: 13px 13px 0 0;
-  border-bottom: 1px solid var(--border);
+  position: relative;
+  margin: 0 0 8px;
 }
 
 
-/* 被卡片包住后，内层的输入框与问答框不再单独描边，避免出现双边框与双重阴影 */
+/* 卡片堆移到输入框外后，输入框自己承载卡片外观 */
 .task-conversation > .queue-dock > .sztu-composer,
 .task-conversation > .queue-dock > .user-question-composer {
   width: 100%;
   margin: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  background: var(--surface);
+  border: 1px solid #e4e6e8;
+  border-radius: 14px;
+  box-shadow: 0 3px 10px rgb(28 36 44 / 4%);
 }
 
 .task-conversation > .queue-dock > .sztu-composer:focus-within {
-  border-color: transparent;
-  box-shadow: none;
+  border-color: #d7dade;
+  box-shadow: 0 3px 10px rgb(28 36 44 / 5%);
 }
 
 .queue-dock__summary,
@@ -66,35 +58,45 @@
   transition: background-color 140ms ease;
 }
 
-.queue-dock__summary:hover { background: var(--surface-soft); }
+.queue-dock__summary:hover { background: var(--surface); }
 .queue-dock__summary span { flex: 1; }
 .queue-dock__summary > svg:last-child { transition: transform 140ms ease; }
 .queue-dock__summary[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
-.queue-dock__items { display: grid; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.queue-dock__deck { position: relative; height: 58px; }
 
 .queue-dock__item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   min-width: 0;
-  min-height: 36px;
+  height: 42px;
   align-items: center;
   gap: 9px;
   padding: 5px 6px 5px 10px;
+  background: var(--surface-raised);
   border-radius: 9px;
-  transition: background-color 140ms ease;
+  box-shadow: 0 1px 2px rgb(28 36 44 / 6%);
+  /* 层深驱动的前后堆叠：越靠后越往上缩、越小、越淡 */
+  transform: translateY(calc(var(--depth, 0) * -8px)) scale(calc(1 - var(--depth, 0) * 0.025));
+  opacity: calc(1 - var(--depth, 0) * 0.3);
+  transition: transform 260ms cubic-bezier(.22, .85, .25, 1), opacity 220ms ease;
 }
+.queue-dock__item--hidden { opacity: 0; pointer-events: none; }
+.queue-dock__counter { position: absolute; top: 5px; right: 12px; font-size: 10px; line-height: 1; color: var(--text-faint); }
 
-.queue-dock__item:hover { background: var(--surface-soft); }
+.queue-dock__item--front:hover { background: var(--surface-soft); }
 
 /* 序号做成小徽标，与右侧按钮组在视觉上呼应 */
 .queue-dock__lead {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--text-muted);
-  background: var(--surface-soft);
-  border-radius: 6px;
+  background: transparent;
 }
 
 
