@@ -189,6 +189,9 @@ export const timeline = {
     review: "审核",
     undoConfirm: "回滚本轮的全部文件改动？共 {count} 个文件。",
     undoFailed: "撤销失败",
+    previewLoading: "正在加载差异…",
+    previewEmpty: "无差异内容",
+    previewError: "差异加载失败",
   },
   /** 权限审批 */
   permission: {

@@ -189,6 +189,9 @@ export const timeline = {
     review: "Review",
     undoConfirm: "Revert all file changes from this run? {count} files.",
     undoFailed: "Undo failed",
+    previewLoading: "Loading diff…",
+    previewEmpty: "No diff",
+    previewError: "Failed to load diff",
   },
   /** 权限审批 */
   permission: {

@@ -658,6 +658,8 @@ watch(
               v-if="turn.changeFiles.length"
               :files="turn.changeFiles"
               :workspace-path="workspacePath ?? ''"
+              :workspace-id="workspaceId ?? ''"
+              :run-id="turn.runId ?? ''"
               @open-file="(path) => emit('openFile', path)"
               @undo="turn.runId && emit('reverted', turn.runId)"
               @review="turn.runId && emit('review', { workspaceId: workspaceId ?? '', runId: turn.runId, paths: turn.changePaths })"

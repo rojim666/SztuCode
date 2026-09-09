@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
+import DiffPreviewPopover from "./DiffPreviewPopover.vue";
 import type { ChangeFile } from "./types";
 
 const props = defineProps<{
   files: ChangeFile[];
   workspacePath: string;
+  workspaceId?: string;
+  runId?: string;
   busy?: boolean;
 }>();
 
@@ -27,6 +30,28 @@ function relativePath(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   const workspace = props.workspacePath.replace(/\\/g, "/").replace(/\/+$/, "");
   return normalized.startsWith(`${workspace}/`) ? normalized.slice(workspace.length + 1) : normalized;
+}
+
+// 文件行 hover/focus 时在该行上方浮出差异预览
+const preview = ref<{ file: ChangeFile; style: Record<string, string> } | null>(null);
+function openPreview(file: ChangeFile, event: MouseEvent | FocusEvent) {
+  const anchor = event.currentTarget as HTMLElement | null;
+  if (!anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const width = Math.min(660, window.innerWidth - 24);
+  preview.value = {
+    file,
+    style: {
+      left: `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`,
+      bottom: `${Math.max(8, window.innerHeight - rect.top + 6)}px`,
+    },
+  };
+}
+function closePreview() { preview.value = null; }
+function handlePreviewFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as HTMLElement | null;
+  if (next?.closest(".edited-files-card__row")) return;
+  closePreview();
 }
 </script>
 
@@ -59,7 +84,15 @@ function relativePath(path: string): string {
 
     <ul class="edited-files-card__list">
       <li v-for="file in files" :key="file.path">
-        <button type="button" class="edited-files-card__row" @click="emit('openFile', file.path)">
+        <button
+          type="button"
+          class="edited-files-card__row"
+          @click="emit('openFile', file.path)"
+          @mouseenter="openPreview(file, $event)"
+          @mouseleave="closePreview"
+          @focusin="openPreview(file, $event)"
+          @focusout="handlePreviewFocusOut"
+        >
           <span class="edited-files-card__path" :title="file.path">{{ relativePath(file.path) }}</span>
           <span class="edited-files-card__row-stats">
             <span v-if="(file.additions ?? 0) > 0" class="additions">+{{ file.additions }}</span>
@@ -68,6 +101,18 @@ function relativePath(path: string): string {
         </button>
       </li>
     </ul>
+
+    <Teleport to="body">
+      <DiffPreviewPopover
+        v-if="preview"
+        :workspace-id="workspaceId ?? ''"
+        :run-id="runId ?? ''"
+        :path="preview.file.path"
+        :additions="preview.file.additions ?? 0"
+        :deletions="preview.file.deletions ?? 0"
+        :style="preview.style"
+      />
+    </Teleport>
   </div>
 </template>
 
