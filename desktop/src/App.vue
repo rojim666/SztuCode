@@ -404,6 +404,19 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+// 侧栏工具图标点击脉冲：用弹性缩放替代选中变实心的观感
+const pulsingIcon = ref("");
+let pulseClearTimer: number | undefined;
+function pulseIcon(key: string) {
+  window.clearTimeout(pulseClearTimer);
+  if (pulsingIcon.value === key) {
+    pulsingIcon.value = "";
+    requestAnimationFrame(() => { pulsingIcon.value = key; });
+  } else {
+    pulsingIcon.value = key;
+  }
+  pulseClearTimer = window.setTimeout(() => { pulsingIcon.value = ""; }, 420);
+}
 // 项目条折叠：记录任务列表已收起的项目（按工作区 ID），并持久化到本地
 const collapsedProjects = ref<Set<string>>(new Set(readCollapsedProjects()));
 function readCollapsedProjects(): string[] {
@@ -3359,14 +3372,14 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="beginTask()"><AppIcon name="Compose" :size="16" />{{ t('app.newTask') }}</button>
+        <button class="new-task-button" @click="pulseIcon('new-task'); beginTask()"><AppIcon name="Compose" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'new-task' }" />{{ t('app.newTask') }}</button>
       </div>
 
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
-        <button :class="{ active: page === 'board' }" @click="openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :filled="page === 'board'" /><span>{{ t('app.allTasks') }}</span></button>
-        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="16" :filled="page === 'automations'" /><span>{{ t('app.automations') }}</span></button>
-        <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
-        <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
+        <button :class="{ active: page === 'board' }" @click="pulseIcon('board'); openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'board' }" /><span>{{ t('app.allTasks') }}</span></button>
+        <button :class="{ active: page === 'automations' }" @click="pulseIcon('automations'); openPage('automations')"><AppIcon name="CalendarClock" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'automations' }" /><span>{{ t('app.automations') }}</span></button>
+        <button :class="{ active: page === 'skills' }" @click="pulseIcon('skills'); openPage('skills')"><AppIcon name="Puzzle" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'skills' }" /><span>{{ t('app.skills') }}</span></button>
+        <button :class="{ active: page === 'webbridge' }" @click="pulseIcon('webbridge'); openPage('webbridge')"><AppIcon name="Globe2" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'webbridge' }" /><span>{{ t('app.webbridge') }}</span></button>
       </nav>
 
       <div class="sidebar-workspace">
