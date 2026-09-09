@@ -10,7 +10,14 @@ const output = path.join(root, "docs", "reference", "wire-protocol.md");
 function typeSection(node: ts.InterfaceDeclaration, source: ts.SourceFile): string {
   const rows = node.members.filter(ts.isPropertySignature).map((field) => {
     const name = field.name.getText(source);
-    const type = (field.type?.getText(source) ?? "unknown").replace(/\s+/g, " ").replaceAll("|", "\\|");
+    const aliasName = field.type && ts.isTypeReferenceNode(field.type) && ts.isIdentifier(field.type.typeName)
+      ? field.type.typeName.text
+      : null;
+    const referencedAlias = aliasName
+      ? source.statements.find((statement): statement is ts.TypeAliasDeclaration =>
+        ts.isTypeAliasDeclaration(statement) && statement.name.text === aliasName)
+      : undefined;
+    const type = (referencedAlias?.type.getText(source) ?? field.type?.getText(source) ?? "unknown").replace(/\s+/g, " ").replaceAll("|", "\\|");
     return `| \`${name}\` | \`${type}\` | ${field.questionToken ? "no" : "yes"} |`;
   });
   const name = node.name.text;

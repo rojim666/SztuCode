@@ -19,6 +19,7 @@ import type { Chunk } from "./chunking/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
 import { JsonlVectorStore } from "./vector-store/index.js";
 import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
+import { inspectAsset } from "./asset-inspector.js";
 
 export type { ToolPermission } from "./tools-types.js";
 /** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */
@@ -591,6 +592,11 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register(createSemanticSearchTool());
+  registry.register({ name: "inspect_asset", description: "Inspect an input or deliverable without executing it. Returns type, size, hash and safe structural metadata for ZIP archives, WAV/MP4 media, PNG images and common GLTF/GLB/OBJ/STL 3D models.", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path relative to the workspace" }, max_entries: { type: "integer", minimum: 1, maximum: 1000, description: "Maximum ZIP entries to list" } }, required: ["path"] }, async invoke(params, context) {
+    const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
+    try { const target = await context.workspace.resolveExisting(file); return ok(JSON.stringify(await inspectAsset(target, Number(params.max_entries ?? 200)), null, 2)); }
+    catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  }});
   registry.register({ name: "parse_document", description: "Extract readable text, tables and metadata from binary documents (PDF, DOCX, XLSX, PPTX); use read_document for structured pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string", description: "Path to the document, relative to workspace root" }, format: { type: "string", enum: ["auto", "pdf", "docx", "xlsx", "pptx"], description: "Force a parser instead of extension/magic detection", default: "auto" }, max_pages: { type: "integer", minimum: 1, maximum: 200, description: "PDF: parse only the first N pages (default: all)" }, max_rows: { type: "integer", minimum: 1, maximum: 5000, description: "XLSX: maximum rows per sheet (default: 500)" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
     try {
