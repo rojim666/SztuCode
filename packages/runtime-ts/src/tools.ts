@@ -61,7 +61,18 @@ const globRegexCache = new Map<string, RegExp>();
 const globMatch = (value: string, pattern: string): boolean => {
   let regex = globRegexCache.get(pattern);
   if (!regex) {
-    regex = new RegExp(`^${pattern.split("**").map((part) => part.split("*").map(escapeRegex).join("[^/]*")).join(".*")}$`);
+    let source = "";
+    for (let index = 0; index < pattern.length; index += 1) {
+      const char = pattern[index]!;
+      if (char === "*" && pattern[index + 1] === "*") {
+        index += 1;
+        if (pattern[index + 1] === "/") { source += "(?:.*/)?"; index += 1; }
+        else source += ".*";
+      } else if (char === "*") source += "[^/]*";
+      else if (char === "?") source += "[^/]";
+      else source += escapeRegex(char);
+    }
+    regex = new RegExp(`^${source}$`);
     globRegexCache.set(pattern, regex);
   }
   return regex.test(value);
@@ -282,7 +293,8 @@ async function rgSearch(root: string, target: string, pattern: string, caseSensi
       // rg 输出 `相对路径:行号:内容`（Windows 路径为反斜杠，仅规范化路径段，避免破坏内容中的反斜杠）
       const first = line.indexOf(":"); const second = first >= 0 ? line.indexOf(":", first + 1) : -1;
       if (first <= 0 || second < 0) return;
-      matches.push(`${line.slice(0, first).split("\\").join("/")}:${line.slice(first + 1, second)}: ${line.slice(second + 1)}`);
+      const relativePath = line.slice(0, first).split("\\").join("/").replace(/^\.\//, "");
+      matches.push(`${relativePath}:${line.slice(first + 1, second)}: ${line.slice(second + 1)}`);
       // 上限仍为 200 匹配：读满即截断（--max-count 按文件计不够），直接终止 rg
       if (matches.length >= MAX_RESULTS) { truncated = true; buffer = ""; try { child.kill(); } catch { /* ignore */ } }
     };
@@ -579,7 +591,19 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       if (documentHint) {
         return ok(JSON.stringify(await invokeOffice("read_document", { path: file }, context)));
       }
-      const data = await readFile(target); const byteLimit = 2 * 1024 * 1024;
+      const byteLimit = 2 * 1024 * 1024;
+      const handle = await open(target, "r");
+      let data: Buffer;
+      try {
+        const buffer = Buffer.alloc(byteLimit + 1);
+        let total = 0;
+        while (total < buffer.length) {
+          const { bytesRead } = await handle.read(buffer, total, buffer.length - total, null);
+          if (bytesRead === 0) break;
+          total += bytesRead;
+        }
+        data = buffer.subarray(0, total);
+      } finally { await handle.close(); }
       const content = data.subarray(0, byteLimit).toString("utf8"); const lines = content.split(/\r?\n/);
       if (lines.at(-1) === "") lines.pop();
       const offset = Number.isInteger(params.offset) ? Math.max(0, Number(params.offset)) : 0;
@@ -657,7 +681,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
       return ok(sorted.length ? sorted.join("\n") : "No files found.");
     } catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
-  registry.register({ name: "grep_search", timeoutMs: 60_000, description: "Search workspace files with a regular expression (uses ripgrep when available)", permission: "read_only", schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" } }, required: ["pattern"] }, async invoke(params, context) {
+  registry.register({ name: "grep_search", timeoutMs: 60_000, description: "Search workspace files with a regular expression (uses ripgrep when available)", permission: "read_only", schema: { type: "object", properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" }, case_sensitive: { type: "boolean", description: "Whether matching is case-sensitive. Default false." } }, required: ["pattern"] }, async invoke(params, context) {
     const pattern = str(params, "pattern"); if (!pattern) return fail("pattern is required", "schema_error");
     let matcher: RegExp;
     try { matcher = new RegExp(pattern, params.case_sensitive === true ? "" : "i"); }
@@ -686,7 +710,7 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
         filesToSearch.push(path.relative(root, target).split(path.sep).join("/"));
       } else {
         for await (const file of walkFiles(root, target, context.signal)) {
-          if (globPattern && !globMatch(file, globPattern)) continue;
+          if (globPattern && !globMatch(file, globPattern.includes("/") ? globPattern : `**/${globPattern}`)) continue;
           filesToSearch.push(file);
           // 限制待搜索文件数量，防止遍历超大仓库
           if (filesToSearch.length >= 2000) { filesTruncated = true; break; }

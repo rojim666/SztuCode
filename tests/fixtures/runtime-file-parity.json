@@ -1,0 +1,8 @@
+{
+  "files": {"root.py": "Needle\n", "src/nested.py": "needle\n", "src/skip.txt": "Needle\n"},
+  "glob": {"pattern": "**/*.py", "expected": ["root.py", "src/nested.py"]},
+  "grep": [
+    {"pattern": "needle", "glob": "**/*.py", "case_sensitive": false, "expected": ["root.py", "src/nested.py"]},
+    {"pattern": "needle", "glob": "*.py", "case_sensitive": true, "expected": ["src/nested.py"]}
+  ]
+}

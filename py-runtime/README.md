@@ -6,6 +6,24 @@ tests, and Python project metadata.
 Run commands from the repository root with `npm run daemon` or `npm run cli`.
 For direct Python development, change into this directory and use `uv run`.
 
+## 双运行时文件工具回归
+
+Python `read_file` 支持与 TypeScript 相同的 `offset`（从 0 开始）和
+`limit`（1–2000 行）参数，显式传入任一参数时返回带行号的文本分页。
+未传分页参数时保留原有纯文本输出和 512KB 上限。分页可继续读取该上限之后的行；
+超长单行会标记 `line truncated`，续页从下一行开始。办公文档仍使用文档解析流程。
+
+两端文件搜索使用同一组测试数据 `tests/fixtures/runtime-file-parity.json`，
+验证 `**/` 匹配零级目录、grep 的扩展名过滤和大小写选项。
+Python 搜索跳过遍历中的符号链接文件，避免读取工作区外内容。
+
+```bash
+node --import tsx --test packages/runtime-ts/tests/file-parity.test.ts
+uv run --project py-runtime pytest py-runtime/tests/unit/test_file_parity.py
+```
+
+该回归覆盖文件工具，不代表语义检索、调度、连接器和全部 RPC 已完全对齐。
+
 ## 资料解析
 
 `read_file` 和桌面聊天附件共用 `src/sztu_code/core/documents.py`，支持 PDF 文本层、
