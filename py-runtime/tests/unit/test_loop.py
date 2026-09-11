@@ -1285,7 +1285,7 @@ async def test_pricing_catalog_budget_stops_loop() -> None:
 
 
 # 功能：验证墙钟超时在 loop 内正确终止
-# 设计：设 max_wall_clock_s=0（已超时），预检应触发中断
+# 设计：将 started_at 预置到 Deadline 之前，预检应触发中断
 async def test_wall_clock_exceeded_stops_loop() -> None:
     provider = _MockProvider([LlmResponse(stop_reason="end_turn", text="ok")])
     loop, _ = _make_loop(provider)
@@ -1308,13 +1308,15 @@ async def test_wall_clock_exceeded_preserves_result() -> None:
     ])
     loop, _ = _make_loop(provider)
     ctx = _ctx(max_steps=10)
+    clock = [100.0]
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
     await loop.run(ctx)  # 先正常完成一次 run
     assert ctx.status == "success"
     assert ctx.result == "final answer"
     # 再次 run（模拟 resume），墙钟已超时
     ctx.status = "running"
-    ctx.started_at = time.monotonic() - 10.0
-    ctx.max_wall_clock_s = 1
+    clock[0] = 102.0
     await loop.run(ctx)
     assert ctx.status == "interrupted"  # 有 result，保留
     assert ctx.result == "final answer"

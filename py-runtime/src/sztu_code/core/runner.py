@@ -368,6 +368,8 @@ class AgentRunner:
             max_tokens=self._config.budget.max_tokens,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
+        # 固定完整 Run 的墙钟起点，覆盖 run.started 事件之后的 provider/registry 初始化。
+        context.start()
         dynamic_reminder = "\n\n".join(
             part
             for part in (

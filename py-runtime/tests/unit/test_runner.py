@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from sztu_code.core.config import SztuConfig
+from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.runner import AgentRunner
@@ -369,6 +370,36 @@ async def test_run_started_event_published(tmp_path: Path) -> None:
     assert "run.started" in types
     started = next(e for e in events if e.type == "run.started")  # type: ignore[attr-defined]
     assert started.goal == "my goal"  # type: ignore[attr-defined]
+
+
+# 功能：验证 Runner 在发布 run.started 前就固定 Run 的墙钟起点
+# 设计：记录 ExecutionContext.start 与事件处理的顺序，避免把事件发布之后的惰性 loop 起点
+#       误当作完整 Run 的开始时间
+async def test_run_deadline_starts_before_run_started_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sequence: list[str] = []
+    original_start = ExecutionContext.start
+
+    def record_start(self: ExecutionContext) -> None:
+        sequence.append("deadline.start")
+        original_start(self)
+
+    async def record_event(event: BaseModel) -> None:
+        if event.type == "run.started":  # type: ignore[attr-defined]
+            sequence.append("run.started")
+
+    monkeypatch.setattr(ExecutionContext, "start", record_start)
+    runner = AgentRunner(
+        _config(),
+        provider=_EndTurnProvider(),  # type: ignore[arg-type]
+        extra_handlers=[record_event],
+        runs_dir=tmp_path,
+    )
+
+    await runner.run("deadline start")
+
+    assert sequence.index("deadline.start") < sequence.index("run.started")
 
 
 # 功能：验证成功完成时发布 status=success 的 run.finished 事件
