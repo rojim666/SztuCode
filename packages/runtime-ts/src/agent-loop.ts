@@ -45,7 +45,12 @@ export class AgentLoop {
     const extensions = this.options.extensions;
     await extensions?.dispatch("before_agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
     await extensions?.dispatch("agent_start", { goal, messages: history }, extensionRoot, { runId, sessionId: this.options.sessionId });
-    const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? booleanEnv("SZTU_OFFLOAD_ENABLED", true), minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 2_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 50) });
+    const offloadExplicitlyConfigured = this.options.offloadEnabled !== undefined
+      || this.options.offloadMinChars !== undefined
+      || this.options.offloadMinLines !== undefined
+      || this.options.offloadRoot !== undefined
+      || booleanEnv("SZTU_OFFLOAD_ENABLED", false);
+    const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? offloadExplicitlyConfigured, minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 20_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 200) });
     this.tools.replace(createReadRefTool(offload));
     const context = new ContextManager([...history, { role: "user", content: userContent }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
@@ -53,7 +58,6 @@ export class AgentLoop {
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.90, 0, 1);
-    const cacheHitTarget = this.options.cacheHitTarget ?? numberEnv("SZTU_CACHE_HIT_TARGET", 0.99, 0, 0.999);
     const configuredMemoryMode = process.env.SZTU_MEMORY_MODE;
     const memoryMode = this.options.memoryMode ?? (configuredMemoryMode === "token_budget" ? "token_budget" : "compaction");
     const slidingWindowSize = this.options.slidingWindowSize ?? nonNegativeEnv("SZTU_SLIDING_WINDOW_SIZE", 5);
@@ -565,13 +569,7 @@ export class AgentLoop {
         await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });
         const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "Tool failed";
         let contextOutput = rawOutput;
-        // A newly appended tool result is necessarily a cache miss on the next request.
-        // Keep that fresh suffix within the configured miss budget; the complete result
-        // remains available through read_ref. Four chars/token is deliberately conservative.
-        const cacheBudgetChars = cacheHitTarget > 0 && responseTotalInputTokens > 0
-          ? Math.max(600, Math.floor(responseTotalInputTokens * 4 * (1 - cacheHitTarget) / cacheHitTarget))
-          : Number.POSITIVE_INFINITY;
-        if (offload.shouldOffload(toolName, rawOutput) || rawOutput.length > cacheBudgetChars) {
+        if (offload.shouldOffload(toolName, rawOutput)) {
           try {
             const record = await offload.offload(toolName, call.id, rawOutput, runId, !result.ok);
             contextOutput = offload.placeholder(record);

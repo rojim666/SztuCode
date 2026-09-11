@@ -163,10 +163,10 @@ class CompactionConfig:
 
 @dataclass
 class OffloadConfig:
-    enabled: bool = True  # 是否启用上下文卸载
-    min_chars: int = 2_000  # 触发卸载的最小字符数
-    min_lines: int = 50  # 触发卸载的最小行数
-    force_tools: list[str] = field(default_factory=lambda: ["bash", "grep", "glob"])
+    enabled: bool = False  # 是否启用上下文卸载
+    min_chars: int = 20_000  # 触发卸载的最小字符数
+    min_lines: int = 200  # 触发卸载的最小行数
+    force_tools: list[str] = field(default_factory=list)
     summary_max_chars: int = 300  # 摘要最大字符数
 
 

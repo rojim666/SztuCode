@@ -224,7 +224,7 @@ test("99 percent cache target offloads a fresh tool tail before the next request
       : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 100, cache_read_input_tokens: 10_000, output_tokens: 1 } };
   } };
   try {
-    await new AgentLoop(provider, tools, { workspace: new Workspace(root) }, events, new PermissionManager(events), { contextWindow: 100_000, maxOutputTokens: 1_000, offloadMinChars: 2_000, offloadMinLines: 50, cacheHitTarget: 0.99 }).run("cache-target", "inspect", 3, [{ role: "system", content: "stable" }]);
+    await new AgentLoop(provider, tools, { workspace: new Workspace(root) }, events, new PermissionManager(events), { contextWindow: 100_000, maxOutputTokens: 1_000, offloadEnabled: true, offloadMinChars: 2_000, offloadMinLines: 50, cacheHitTarget: 0.99 }).run("cache-target", "inspect", 3, [{ role: "system", content: "stable" }]);
     const toolResult = requests[1]!.find((message) => message.role === "tool");
     assert.match(String(toolResult?.content), /^\[上下文卸载:/);
     assert.ok(String(toolResult?.content).length < 600);

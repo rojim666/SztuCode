@@ -75,9 +75,9 @@ Python 包入口连接 `py-runtime/src/sztu_code` 中的 Python daemon，默认�
 
 ### 上下文
 
-Runner 组合会话消息与当前目标。上下文预算由 `packages/runtime-ts/src/context.ts` 计算；工具结果超过阈值时，`packages/runtime-ts/src/offload.ts` 将完整内容保存到当前 run 的 `refs/`，上下文保留摘要并可通过只读 `read_ref` 分页回读。写盘失败时才回退到有标记的截断；达到整体上下文阈值时再执行压缩。
+Runner 组合会话消息与当前目标。上下文预算由 `packages/runtime-ts/src/context.ts` 计算；工具结果默认以内联形式保留在当前上下文；只有显式启用 offload 且结果超过阈值时，`packages/runtime-ts/src/offload.ts` 才将完整内容保存到当前 run 的 `refs/`，并通过只读 `read_ref` 提供分页回读。缓存命中率不会触发卸载，达到整体上下文阈值时由工具结果限长和上下文压缩统一治理。
 
-默认卸载阈值为 2,000 字符或 50 行，`bash`、`grep_search` 和 `glob_search` 始终卸载。可通过 `SZTU_OFFLOAD_ENABLED`、`SZTU_OFFLOAD_MIN_CHARS` 和 `SZTU_OFFLOAD_MIN_LINES` 调整。
+offload 默认关闭；显式启用后默认阈值为 20,000 字符或 200 行，不再按缓存命中预算强制卸载。可通过 `SZTU_OFFLOAD_ENABLED`、`SZTU_OFFLOAD_MIN_CHARS` 和 `SZTU_OFFLOAD_MIN_LINES` 调整。
 
 `task_create`、`task_update`、`task_list` 和 `task_get` 由 TypeScript `TaskManager` 提供。任务以 JSON 保存在当前 run 目录中，进程重启后仍可恢复；主 Agent 和声明这些工具的子 Agent 使用相同契约。
 

@@ -68,6 +68,8 @@ SZTU_LLM_KEYLESS=true
 | `SZTU_COMPACT_COOLDOWN` | `3` | 两次自动压缩尝试的最小步数间隔 |
 | `SZTU_COMPACT_CIRCUIT_BREAKER` | `3` | 连续压缩失败达到该次数后，本次 run 停止自动压缩 |
 | `SZTU_COMPACT_MIN_OLD_TOKENS` | `2000` | 旧 turn 达到该 token 数后才生成摘要 |
+| `SZTU_OFFLOAD_ENABLED` | `false` | 是否将超大工具结果移到 refs；默认保留工具结果在当前上下文 |
+| `SZTU_OFFLOAD_MIN_CHARS` / `SZTU_OFFLOAD_MIN_LINES` | `20000` / `200` | 显式启用 offload 后的阈值 |
 | `SZTU_LLM_KEYLESS` | `false` | 允许 OpenAI-compatible 请求不发送 Authorization |
 | `SZTU_PERMISSION_MODE` | `normal` | `normal`、`plan`、`accept_edits`、`auto` |
 | `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` | 未设置 | OpenAI-compatible 凭据 |

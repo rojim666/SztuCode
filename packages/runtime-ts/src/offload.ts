@@ -18,7 +18,7 @@ export type OffloadRecord = {
 
 export type OffloadOptions = { enabled?: boolean; minChars?: number; minLines?: number; forceTools?: ReadonlySet<string>; summaryMaxChars?: number };
 
-const defaultForceTools = new Set(["bash", "grep", "glob", "grep_search", "glob_search"]);
+const defaultForceTools = new Set<string>();
 
 export class OffloadManager {
   readonly enabled: boolean;

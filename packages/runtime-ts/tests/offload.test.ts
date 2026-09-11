@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { AgentLoop, type ModelProvider } from "../src/agent-loop.js";
+import { AgentLoop, type ChatMessage, type ModelProvider } from "../src/agent-loop.js";
 import { EventBus } from "../src/event-bus.js";
 import { createReadRefTool, OffloadManager } from "../src/offload.js";
 import { createWorkspaceTools } from "../src/tools.js";
@@ -41,6 +41,24 @@ test("agent loop offloads tool output and can recover it with read_ref", async (
     assert.equal((await loop.run("run-1", "read it", 4)).text, "done");
     assert.ok(refPath.startsWith("refs/")); assert.match(recovered, /0123456789/); assert.match(recovered, /\[ref page:/);
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+});
+
+test("agent loop keeps ordinary tool output inline by default", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-offload-default-inline-"));
+  try {
+    const seen: ChatMessage[][] = [];
+    const provider: ModelProvider = { complete: async (messages) => {
+      seen.push(structuredClone(messages));
+      return seen.length === 1
+        ? { text: "", tool_calls: [{ id: "inspect-1", name: "read_file", input: { path: "large.txt" } }], stop_reason: "tool_use" }
+        : { text: "done", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    await writeFile(path.join(root, "large.txt"), "x".repeat(5_000));
+    await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }).run("inline-default", "read it", 3);
+    const toolResult = seen[1]?.find((message) => message.role === "tool");
+    assert.match(String(toolResult?.content), /x/);
+    assert.doesNotMatch(String(toolResult?.content), /上下文卸载/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("disabled offload creates no files", async () => {
