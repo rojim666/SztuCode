@@ -256,11 +256,6 @@ function keepTaskStreamAtBottom() {
 }
 
 // 会话轮次圆点导航（Trae Work风格）
-const TURN_DOT_VISIBLE = 11; // 固定可见圆点数量（奇数，中间为active）
-const TURN_DOT_SIZE = 8;     // 圆点直径
-const TURN_DOT_GAP = 8;      // 圆点间距
-const TURN_DOT_PAD = 16;     // rail 上下 padding
-const TURN_DOT_STEP = TURN_DOT_SIZE + TURN_DOT_GAP; // 每个圆点占用高度
 
 const turnDotActive = ref(-1);
 const turnDotCount = ref(0);
@@ -294,12 +289,26 @@ function scrollRailToActive() {
   const idx = turnDotActive.value;
   if (idx < 0) return;
   // 让 active 圆点位于 rail 垂直居中位置：dotCenter - (railHeight/2 - dotRadius)
-  const dotCenter = TURN_DOT_PAD + idx * TURN_DOT_STEP + TURN_DOT_SIZE / 2;
+  const dot = rail.querySelector<HTMLElement>(`[data-idx="${idx}"]`);
+  if (!dot) return;
+  const dotCenter = dot.offsetTop + dot.offsetHeight / 2;
   const targetScroll = dotCenter - rail.clientHeight / 2;
   if (turnScrollRaf) cancelAnimationFrame(turnScrollRaf);
   turnScrollRaf = requestAnimationFrame(() => {
     rail.scrollTo({ top: Math.max(0, targetScroll), behavior: "smooth" });
   });
+}
+
+function handleTurnDotKeydown(idx: number, event: KeyboardEvent) {
+  let nextIdx = idx;
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") nextIdx = Math.min(turnDotCount.value - 1, idx + 1);
+  else if (event.key === "ArrowUp" || event.key === "ArrowLeft") nextIdx = Math.max(0, idx - 1);
+  else if (event.key === "Home") nextIdx = 0;
+  else if (event.key === "End") nextIdx = turnDotCount.value - 1;
+  else return;
+  event.preventDefault();
+  scrollToTurn(nextIdx);
+  nextTick(() => (turnDotRailEl.value?.querySelector(`[data-idx="${nextIdx}"]`) as HTMLElement | null)?.focus());
 }
 
 function refreshTurnObserver() {
@@ -579,7 +588,7 @@ function scheduleProjectPreviewClose() {
   if (!closingId) return;
   projectPreviewCloseTimer = window.setTimeout(() => {
     if (projectPreviewId.value === closingId) projectPreviewId.value = null;
-  }, 700);
+  }, 180);
 }
 function keepProjectPreviewOpen() {
   window.clearTimeout(projectPreviewCloseTimer);
@@ -604,7 +613,8 @@ function handleProjectRowPointerDown(item: Workspace, event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest(".project-action-menu")) return;
   if (target?.closest(".project-row-caret")) return;
-  beginTask(item);
+  if (target?.closest(".project-row-toggle")) return;
+  toggleProjectCollapsed(item);
 }
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
 const projectBeingEdited = computed(() => workspaces.value.find((item) => item.workspace_id === projectEditingId.value) ?? null);
@@ -3444,7 +3454,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               >
                 <AppIcon :name="isProjectCollapsed(item) ? 'Folder' : 'FolderOpen'" :size="16" />
               </button>
-              <button class="project-row-toggle" :title="t('app.newTempSessionInProject')" @click.stop.prevent>
+              <button class="project-row-toggle" type="button" :aria-expanded="!isProjectCollapsed(item)" @click.stop="toggleProjectCollapsed(item)">
                 <span>{{ item.name }}</span>
               </button>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="t('app.projectActionsAria', { name: item.name })">

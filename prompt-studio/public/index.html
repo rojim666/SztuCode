@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="SztuCode 系统提示词编排台：浏览、编辑 packages/runtime-ts 提示词，并用运行时真实函数预览组装结果。" />
+<title>SztuCode · Prompt Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23141a28'/%3E%3Ctext x='16' y='23' font-size='19' text-anchor='middle' fill='%237c9cff'%3E%E2%97%88%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+
+<header class="appbar">
+  <div class="brand">
+    <span class="brand__mark" aria-hidden="true">◈</span>
+    <div class="brand__text">
+      <h1>Prompt Studio</h1>
+      <p>系统提示词编排台</p>
+    </div>
+  </div>
+  <div class="appbar__actions">
+    <span class="chip" id="endpoint" title="提示词根目录">连接中…</span>
+    <button id="refresh" class="btn btn--ghost" type="button" title="重新扫描提示词目录">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 3v3h-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      刷新
+    </button>
+  </div>
+</header>
+
+<main class="workspace">
+
+  <!-- 提示词库 -->
+  <aside class="panel" aria-label="提示词库">
+    <div class="panel__head">
+      <h2>提示词库</h2>
+      <span class="panel__hint">点击条目开始编辑</span>
+    </div>
+    <div class="search">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input id="filter" type="search" placeholder="过滤 id / 文件名…" aria-label="过滤提示词" />
+      <kbd>/</kbd>
+    </div>
+    <div id="library" class="scroll library"></div>
+  </aside>
+
+  <!-- 编辑器 -->
+  <section class="panel" aria-label="提示词编辑器">
+    <div class="panel__head">
+      <h2>编辑器</h2>
+      <div class="head-actions">
+        <span id="dirty" class="dirty hide" title="有未保存的修改">● 未保存</span>
+        <button id="reload" class="btn btn--ghost" type="button" disabled title="放弃修改并重新加载">还原</button>
+        <button id="save" class="btn btn--primary" type="button" disabled title="写回磁盘（Ctrl/⌘+S）">保存</button>
+      </div>
+    </div>
+    <div id="editor-meta" class="meta meta--idle">从左侧选择一个提示词条目。</div>
+    <div class="editor-wrap">
+      <textarea id="editor" class="editor" spellcheck="false" disabled aria-label="提示词内容"></textarea>
+      <div id="editor-empty" class="empty">
+        <span class="empty__mark" aria-hidden="true">✎</span>
+        <p>选择左侧条目开始编辑</p>
+        <p class="empty__hint">保存会写回 <code>packages/runtime-ts/prompts</code>，并自动生成备份</p>
+      </div>
+    </div>
+    <div class="statusbar">
+      <span id="editor-stats" class="statusbar__stats"></span>
+      <span id="editor-status" class="statusbar__msg"></span>
+    </div>
+  </section>
+
+  <!-- 编排预览 -->
+  <section class="panel" aria-label="编排预览">
+    <div class="panel__head">
+      <h2>编排预览</h2>
+      <div class="head-actions">
+        <button id="expand-all" class="btn btn--ghost" type="button">展开全部</button>
+        <button id="run-compose" class="btn btn--primary" type="button">
+          <span id="compose-spinner" class="spinner hide" aria-hidden="true"></span>重新编排
+        </button>
+      </div>
+    </div>
+
+    <form id="compose-form" class="config" aria-label="编排参数">
+      <label class="field">
+        <span>Agent role</span>
+        <input id="c-role" type="text" value="coder" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Permission mode</span>
+        <select id="c-permission">
+          <option value="normal">normal</option>
+          <option value="plan">plan</option>
+          <option value="accept_edits">accept_edits</option>
+          <option value="auto">auto</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Interaction mode</span>
+        <select id="c-interaction">
+          <option value="">默认（craft）</option>
+          <option value="ask">ask</option>
+          <option value="craft">craft</option>
+          <option value="plan">plan</option>
+          <option value="expert">expert</option>
+        </select>
+      </label>
+      <label class="field field--check">
+        <input id="c-memory" type="checkbox" checked />
+        <span>注入记忆层</span>
+      </label>
+      <div class="chips" role="group" aria-label="已注册工具">
+        <div class="chips__label">已注册工具 <span class="muted">决定注入哪些 tool-usage-policy</span></div>
+        <div id="tool-chips" class="chips__list"></div>
+        <input id="c-tools-extra" class="chips__extra" type="text" spellcheck="false" placeholder="追加工具名，逗号分隔后回车" />
+      </div>
+    </form>
+
+    <div id="metrics" class="metrics"></div>
+    <div id="compose-out" class="scroll compose-out"></div>
+  </section>
+</main>
+
+<footer class="appfooter">
+  <span id="foot-roots" class="appfooter__roots"></span>
+  <span class="appfooter__keys">
+    <kbd>Ctrl</kbd><kbd>S</kbd> 保存 · <kbd>/</kbd> 搜索 · <kbd>Esc</kbd> 取消
+  </span>
+</footer>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
