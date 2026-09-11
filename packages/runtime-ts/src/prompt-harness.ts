@@ -17,7 +17,6 @@ const toolRules: Array<[string[], string[]]> = [
   [["bash"], ["reserve-bash", "sztucode-tool-environment"]], [["spawn_agent"], ["delegate-exploration"]],
   [["task_create", "task_update", "task_list", "task_get"], ["task-management"]],
 ];
-const cautious = /(?:\b(?:delete|remove|drop|reset|rebase|push|publish|deploy|release|overwrite|credential|secret|production)\b|删除|清空|重置|变基|推送|发布|部署|覆盖|密钥|生产环境)/i;
 const cache = new Map<string, Promise<Map<string, { content: string; status: "active" | "reference-only" }>>>();
 
 export async function runtimePromptEntries(context: PromptRuntimeContext): Promise<string[]> {
@@ -26,7 +25,13 @@ export async function runtimePromptEntries(context: PromptRuntimeContext): Promi
   if (tools.size > 1) selected.push("parallel-tool-calls");
   const entries: string[] = [];
   for (const id of [...new Set(selected)]) entries.push(await activePrompt("tool-usage-policy", id));
-  if (cautious.test(context.taskText ?? "")) entries.push(await activePrompt("executing-actions-with-care", "executing-actions-with-care"));
+  // Safety guidance must not disappear or invalidate the prefix when the goal changes.
+  entries.push(await activePrompt("executing-actions-with-care", "executing-actions-with-care"));
+  return entries;
+}
+
+export async function dynamicRuntimePromptEntries(context: PromptRuntimeContext): Promise<string[]> {
+  const entries: string[] = [];
   if (context.permissionMode === "auto") entries.push(await activePrompt("safety-prompts", "auto-mode"));
   if (context.memoryEnabled) entries.push(await activePrompt("memory-system-prompts", "auto-memory"));
   return entries;

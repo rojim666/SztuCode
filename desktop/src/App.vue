@@ -2,6 +2,8 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
+import WeChatBridge from "./components/WebBridge/WeChatBridge.vue";
+import WeChatConnectionPanel from "./components/WebBridge/WeChatConnectionPanel.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
@@ -29,7 +31,7 @@ import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockIt
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
-import { canAddImageAttachments, detectVisionSupport, imageProcessingMode } from "./utils/modelVision";
+import { detectVisionSupport } from "./utils/modelVision";
 import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
@@ -403,6 +405,31 @@ const permissionSettingsError = ref("");
 // 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
 const steering = ref(false);
 const projectActionsOpen = ref<string | null>(null);
+// 侧栏工具图标点击脉冲：用弹性缩放替代选中变实心的观感
+const pulsingIcon = ref("");
+let pulseClearTimer: number | undefined;
+function pulseIcon(key: string) {
+  window.clearTimeout(pulseClearTimer);
+  if (pulsingIcon.value === key) {
+    pulsingIcon.value = "";
+    requestAnimationFrame(() => { pulsingIcon.value = key; });
+  } else {
+    pulsingIcon.value = key;
+  }
+  pulseClearTimer = window.setTimeout(() => { pulsingIcon.value = ""; }, 420);
+}
+// 项目条折叠：记录任务列表已收起的项目（按工作区 ID），并持久化到本地
+const collapsedProjects = ref<Set<string>>(new Set(readCollapsedProjects()));
+function readCollapsedProjects(): string[] {
+  try { const raw = localStorage.getItem("sztu.collapsedProjects"); return raw ? (JSON.parse(raw) as string[]) : []; } catch { return []; }
+}
+function isProjectCollapsed(item: Workspace): boolean { return collapsedProjects.value.has(item.workspace_id); }
+function toggleProjectCollapsed(item: Workspace) {
+  const next = new Set(collapsedProjects.value);
+  if (next.has(item.workspace_id)) next.delete(item.workspace_id); else next.add(item.workspace_id);
+  collapsedProjects.value = next;
+  try { localStorage.setItem("sztu.collapsedProjects", JSON.stringify([...next])); } catch { /* 忽略存储配额错误 */ }
+}
 const projectPreviewId = ref<string | null>(null);
 const projectPreviewStyle = ref<Record<string, string>>({});
 let projectPreviewCloseTimer: number | undefined;
@@ -434,13 +461,15 @@ const pendingVisualWrites = new Map<string, string>(); // toolUseId → 写入�
 let inspectorCloseTimer: ReturnType<typeof setTimeout> | undefined;
 let inspectorOpenFrame: number | undefined;
 let trayListeners: Array<() => void> = [];
-// 待发送附件：图片走 base64 内容块，文本把内容注入消息
+// 待发送附件：图片走视觉内容块，文本注入预览，通用素材复制到项目后按路径交给工具。
 type PendingAttachment = {
+  source?: "inline" | "disk";
   path: string; name: string; size: number;
-  kind: "image" | "text";
+  kind: "image" | "text" | "file";
   mime?: string;
   textContent?: string;
   dataBase64?: string;
+  warning?: string;
   workspacePath?: string;
   workspaceRoot?: string;
 };
@@ -448,6 +477,9 @@ const attachedFiles = ref<PendingAttachment[]>([]);
 const isDragOver = ref(false);
 let dragCounter = 0;
 const providerStatus = ref<ProviderStatus | null>(null);
+// 微信连接面板：内嵌 OpenClaw Control UI，扫码/状态在该页面完成
+const wechatPanelOpen = ref(false);
+const wechatControlUiUrl = "http://127.0.0.1:18789/";
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const imageProcessingLabel = computed(() => imageProcessingMode(runtimeSettings.value?.model ?? "", runtimeSettings.value?.supports_vision ?? null) === "direct" ? "图片将直接发送给当前视觉模型" : "图片将先通过 OCR 转为文本" );
 const settingsOpen = ref(false);
@@ -497,6 +529,14 @@ const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
+const wechatSessions = computed(() => {
+  const workspaceById = new Map(workspaces.value.map((item) => [item.workspace_id, item]));
+  return sessions.value.map((session) => ({
+    session_id: session.session_id,
+    title: session.title,
+    projectName: session.workspace_id ? workspaceById.get(session.workspace_id)?.name ?? null : null,
+  }));
+});
 const operations = ref<DurableOperation[]>([]);
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
@@ -563,6 +603,7 @@ function handleProjectRowPointerDown(item: Workspace, event: PointerEvent) {
   if (event.button !== 0) return;
   const target = event.target as HTMLElement | null;
   if (target?.closest(".project-action-menu")) return;
+  if (target?.closest(".project-row-caret")) return;
   beginTask(item);
 }
 const pinnedProjects = computed(() => allProjects.value.filter((item) => item.pinned));
@@ -671,7 +712,7 @@ function stopTaskTitleScroll(event: FocusEvent) {
   if (title) stopTaskTitleElementScroll(title);
 }
 
-function showSessionPreview(task: Session, event: MouseEvent) {
+function showSessionPreview(task: Session, event: MouseEvent | FocusEvent) {
   keepProjectPreviewOpen();
   projectPreviewId.value = null;
   projectActionsOpen.value = null;
@@ -680,6 +721,12 @@ function showSessionPreview(task: Session, event: MouseEvent) {
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
 function hideSessionPreview() { sessionPreview.value = null; }
+// 键盘聚焦移出会话条（且未落到同一行的子控件）时收起预览窗
+function handleSessionPreviewFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget as HTMLElement | null;
+  if (next?.closest(".sidebar-session")) return;
+  hideSessionPreview();
+}
 // 分支信息按工作区缓存，避免每次悬停都触发 git 查询
 async function loadBranch(workspaceId: string) {
   let branch: string | null = null;
@@ -2076,7 +2123,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
     void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
     return;
   }
-  if (!await prepareOfficeAttachments()) return;
+  if (!await prepareWorkspaceAttachments()) return;
   const { displayText, payload, images, timelineAttachments } = await buildMessagePayload(content);
   const sessionId = activeId.value;
   if (sessionId && isAppending.value) {
@@ -2281,8 +2328,21 @@ async function removeProject(item: Workspace) {
   }
   finally { projectActionBusy.value = false; }
 }
-// 撤销后清除该 run 的全部改动，使变更卡片随之消失
-function handleReverted(runId: string) {
+// 撤销：回滚该 run 的全部文件改动，再清除时间线中的变更卡片
+async function handleReverted(runId: string) {
+  const wsId = activeWorkspace.value?.workspace_id;
+  if (!wsId) return;
+  try {
+    const changes = await listChanges(wsId, runId);
+    const paths = changes.map((change) => change.path);
+    if (paths.length) {
+      if (!window.confirm(t("timeline.changes.undoConfirm", { count: paths.length }))) return;
+      await revertChanges(wsId, runId, paths);
+    }
+  } catch (error) {
+    await showProjectNotice(t("timeline.changes.undoFailed"), error instanceof Error ? error.message : String(error), "danger");
+    return;
+  }
   discardPendingTimeline();
   const next = new Map(timeline.value);
   for (const [step, item] of next) {
@@ -2448,6 +2508,11 @@ async function createLocalWorkspace() {
   beginTask(workspace.value);
 }
 function removeAttachment(index: number) { attachedFiles.value = attachedFiles.value.filter((_, i) => i !== index); }
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 // 从当前附件构造发送载荷：
 // - displayText: 用户原始输入文本，用于时间线气泡显示
 // - payload: 发送给后端的完整内容（含附件注入文本，供模型读取）
@@ -2485,11 +2550,18 @@ async function buildMessagePayload(baseText: string): Promise<{
       } else {
         // 模型不支持视觉：OCR 识别后转文本（在下面统一处理）
       }
+      if (att.workspacePath) {
+        sections.push(`[图片原文件: ${att.name}]\n项目相对路径：${JSON.stringify(att.workspacePath)}。需要编辑、转换或复用原图时请使用此文件。`);
+      }
     } else if (att.kind === "text" && att.textContent) {
       const source = att.workspacePath
         ? `\n完整资料的项目相对路径：${JSON.stringify(att.workspacePath)}。请用 read_document 读取并按 next_offset 翻页；以下仅为上传预览。`
         : "";
       sections.push(`[附件: ${att.name}]${source}\n\`\`\`\n${att.textContent}\n\`\`\``);
+    } else if (att.workspacePath) {
+      const metadata = [att.mime || "application/octet-stream", formatAttachmentBytes(att.size)].join(" · ");
+      const warning = att.warning ? `\n处理提示：${att.warning}` : "";
+      sections.push(`[附件: ${att.name}]\n完整素材已保存到项目相对路径 ${JSON.stringify(att.workspacePath)}（${metadata}）。请先检查素材，再选择合适的工具读取、解包、转录、转换或编辑。${warning}`);
     }
   }
 
@@ -2537,21 +2609,23 @@ async function buildMessagePayload(baseText: string): Promise<{
   };
 }
 
-let preparingOfficeAttachments = false;
-async function prepareOfficeAttachments(): Promise<boolean> {
-  if (preparingOfficeAttachments) return false;
+let preparingWorkspaceAttachments = false;
+async function prepareWorkspaceAttachments(): Promise<boolean> {
+  if (preparingWorkspaceAttachments) return false;
   if (!("__TAURI_INTERNALS__" in window)) return true;
-  const documents = attachedFiles.value.filter((file) => file.kind === "text"
-    && (/\.(pdf|docx|xlsx|pptx)$/i.test(file.name) || file.mime === "application/pdf"));
-  if (!documents.length) return true;
+  const requiresWorkspace = attachedFiles.value.some((file) => file.kind === "file"
+    || /\.(pdf|docx|xlsx|pptx)$/i.test(file.name)
+    || file.mime === "application/pdf");
+  if (!attachedFiles.value.length) return true;
   const root = activeWorkspace.value?.path;
   if (!root) {
-    await showProjectNotice("请选择项目", "请选择或创建一个项目，以保存完整办公资料并继续读取、分析和修改。", "danger");
+    if (!requiresWorkspace) return true;
+    await showProjectNotice("请选择项目", "音视频、压缩包、3D 模型和其他二进制素材需要先安全复制到项目中，才能继续分析和编辑。", "danger");
     return false;
   }
-  preparingOfficeAttachments = true;
+  preparingWorkspaceAttachments = true;
   try {
-    const pending = documents.filter((file) => file.workspaceRoot !== root || !file.workspacePath);
+    const pending = attachedFiles.value.filter((file) => needsAttachmentStaging(file, root));
     if (pending.length) {
       const paths = await invoke<string[]>("stage_document_attachments", { workspace: root, paths: pending.map((file) => file.path) });
       pending.forEach((file, index) => { file.workspacePath = paths[index]; file.workspaceRoot = root; });
@@ -2562,9 +2636,9 @@ async function prepareOfficeAttachments(): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    await showProjectNotice("保存办公资料失败", friendlyError(error).message, "danger");
+    await showProjectNotice("保存附件失败", friendlyError(error).message, "danger");
     return false;
-  } finally { preparingOfficeAttachments = false; }
+  } finally { preparingWorkspaceAttachments = false; }
 }
 // 被跳过的附件统一汇总为一次提示，避免多文件时连续弹窗
 function notifySkippedAttachments(skipped: string[]) {
@@ -2573,20 +2647,18 @@ function notifySkippedAttachments(skipped: string[]) {
   const more = skipped.length > 4 ? t("app.attachmentsMoreSkipped", { n: skipped.length - 4 }) : "";
   void showProjectNotice(t("app.attachmentsPartiallySkipped"), shown + more, "danger");
 }
-// 处理「添加附件」读取结果：图片/文本归档，超限或二进制在 error 中提示并跳过
+// 处理「添加附件」读取结果：图片/文本生成即时预览，其余素材保留为项目文件。
 function addReadAttachments(results: Attachment[]) {
   const added: PendingAttachment[] = [];
   const skipped: string[] = [];
   for (const item of results) {
     if (item.error) { skipped.push(`${item.name}：${friendlyError(item.error).message}`); continue; }
     if (item.mime_type?.startsWith("image/") && item.data_base64) {
-      const imageCount = attachedFiles.value.filter((file) => file.kind === "image").length + added.filter((file) => file.kind === "image").length;
-      if (!canAddImageAttachments(imageCount)) { skipped.push(`${item.name}：图片数量超过上限（20）`); continue; }
       added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64 });
     } else if (item.is_text && item.text_content != null) {
-      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content });
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content, warning: item.warning ?? undefined });
     } else {
-      skipped.push(t("app.attachmentUnsupported", { name: item.name }));
+      added.push({ path: item.path, name: item.name, size: item.size, kind: "file", mime: item.mime_type ?? undefined, warning: item.warning ?? undefined });
     }
   }
   if (added.length) attachedFiles.value = [...attachedFiles.value, ...added];
@@ -2635,7 +2707,7 @@ async function addBrowserFile(file: File): Promise<string | null> {
     }).catch(() => "");
     const comma = dataUrl.indexOf(",");
     const dataBase64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
-    if (dataBase64) attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
+    if (dataBase64) attachedFiles.value = [...attachedFiles.value, { source: "inline", path: `clipboard:${crypto.randomUUID()}`, name: file.name, size: file.size, kind: "image", mime: file.type, dataBase64 }];
     return dataBase64 ? null : t("app.attachmentReadFailed", { name: file.name });
   }
   const textLike = !file.type || file.type.startsWith("text/") || ["application/json", "application/xml"].includes(file.type);
@@ -2646,7 +2718,7 @@ async function addBrowserFile(file: File): Promise<string | null> {
     reader.onerror = () => reject(new Error(t("app.attachmentReadFileFailed")));
     reader.readAsText(file);
   }).catch(() => "");
-  attachedFiles.value = [...attachedFiles.value, { path: file.name, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
+  attachedFiles.value = [...attachedFiles.value, { source: "inline", path: `clipboard:${crypto.randomUUID()}`, name: file.name, size: file.size, kind: "text", mime: file.type || undefined, textContent: text.slice(0, 32 * 1024) }];
   return null;
 }
 // 处理输入框粘贴：剪贴板含文件时读取为附件并阻止默认行为，纯文本粘贴正常放行
@@ -3333,20 +3405,20 @@ watch(activeId, () => { streamScrolledUp.value = false; });
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="beginTask()"><AppIcon name="Compose" :size="16" />{{ t('app.newTask') }}</button>
+        <button class="new-task-button" @click="pulseIcon('new-task'); beginTask()"><AppIcon name="Compose" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'new-task' }" />{{ t('app.newTask') }}</button>
       </div>
 
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
-        <button :class="{ active: page === 'board' }" @click="openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :filled="page === 'board'" /><span>{{ t('app.allTasks') }}</span></button>
-        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="16" :filled="page === 'automations'" /><span>{{ t('app.automations') }}</span></button>
-        <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="16" :filled="page === 'skills'" /><span>{{ t('app.skills') }}</span></button>
-        <button :class="{ active: page === 'webbridge' }" @click="openPage('webbridge')"><AppIcon name="Globe2" :size="16" :filled="page === 'webbridge'" /><span>{{ t('app.webbridge') }}</span></button>
+        <button :class="{ active: page === 'board' }" @click="pulseIcon('board'); openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'board' }" /><span>{{ t('app.allTasks') }}</span></button>
+        <button :class="{ active: page === 'automations' }" @click="pulseIcon('automations'); openPage('automations')"><AppIcon name="CalendarClock" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'automations' }" /><span>{{ t('app.automations') }}</span></button>
+        <button :class="{ active: page === 'skills' }" @click="pulseIcon('skills'); openPage('skills')"><AppIcon name="Puzzle" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'skills' }" /><span>{{ t('app.skills') }}</span></button>
+        <button :class="{ active: page === 'webbridge' }" @click="pulseIcon('webbridge'); openPage('webbridge')"><AppIcon name="Globe2" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'webbridge' }" /><span>{{ t('app.webbridge') }}</span></button>
       </nav>
 
       <div class="sidebar-workspace">
         <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
           <span class="side-label">{{ t('app.searchResults') }} <small>{{ visibleSessions.length }}</small></span>
-          <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in visibleSessions" :key="`search-${task.session_id}`" class="sidebar-session status-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
             <button class="status-task-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
               <i :class="task.status" /><span><b data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</b><small>{{ taskStatusLabel(task) }} · {{ formatSessionUsage(task) }}</small></span>
             </button>
@@ -3363,8 +3435,17 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <span class="side-label side-label--action project-tree-label"><span>{{ t('app.projects') }}</span><button :title="t('app.openLocalDir')" :aria-label="t('app.openLocalDir')" @click="openLocalProject"><AppIcon name="FolderOpen" :size="16" /></button></span>
           <div v-for="item in allProjects" :key="item.workspace_id" class="project-group" :class="{ 'project-group--pinned': item.pinned }">
             <div class="project-row-shell" @pointerdown="handleProjectRowPointerDown(item, $event)" @mouseenter="showProjectPreview(item, $event)" @mouseleave="scheduleProjectPreviewClose" @focusin="showProjectPreview(item, $event)" @focusout="handleProjectPreviewFocusOut" @contextmenu.prevent.stop="openProjectActions(item)">
+              <button
+                class="project-row-caret"
+                type="button"
+                :aria-expanded="!isProjectCollapsed(item)"
+                :aria-label="isProjectCollapsed(item) ? t('app.expandProject') : t('app.collapseProject')"
+                :title="isProjectCollapsed(item) ? t('app.expandProject') : t('app.collapseProject')"
+                @click.stop="toggleProjectCollapsed(item)"
+              >
+                <AppIcon :name="isProjectCollapsed(item) ? 'Folder' : 'FolderOpen'" :size="16" />
+              </button>
               <button class="project-row-toggle" :title="t('app.newTempSessionInProject')" @click.stop.prevent>
-                <AppIcon name="FolderOpen" :size="16" />
                 <span>{{ item.name }}</span>
               </button>
               <div v-if="projectActionsOpen === item.workspace_id" class="project-action-menu" role="menu" :aria-label="t('app.projectActionsAria', { name: item.name })">
@@ -3378,9 +3459,9 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <button role="menuitem" :disabled="projectActionBusy" @click="removeProject(item)"><AppIcon name="Unlink" :size="16" />{{ t('app.removeProject') }}</button>
               </div>
             </div>
-            <div class="project-task-list">
+            <div class="project-task-list" :class="{ collapsed: isProjectCollapsed(item) }">
               <div class="project-task-list__inner">
-                <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+                <div v-for="task in item.tasks" :key="task.session_id" class="sidebar-session project-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
                   <button class="project-task" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)">
                     <span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span>
                   </button>
@@ -3395,7 +3476,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
         <section v-if="ordinaryTemporaryTasks.length && !normalizedTaskQuery" class="side-section temporary-tasks">
           <span class="side-label">{{ t('app.temporaryTasks') }}</span>
-          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview">
+          <div v-for="task in ordinaryTemporaryTasks" :key="task.session_id" class="sidebar-session conversation-session" @mouseenter="showSessionPreview(task, $event)" @mouseleave="hideSessionPreview" @focusin="showSessionPreview(task, $event)" @focusout="handleSessionPreviewFocusOut">
             <button class="conversation-row" :class="{ active: task.session_id === activeId }" @focus="startTaskTitleScroll" @blur="stopTaskTitleScroll" @click="chooseTask(task.session_id)"><span data-auto-scroll-title>{{ task.title || t('app.unnamedTask') }}</span></button>
             <SessionActions :session="task" :active="task.session_id === activeId" @changed="refreshIndex(false)" @closed="handleSessionClosed(task.session_id)" />
           </div>
@@ -3495,6 +3576,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                         type="button"
                         role="tab"
                         class="turn-dot"
+                        :style="{ '--wave-offset': `${Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 4}px`, '--wave-scale': `${1 + Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 0.55}` }"
                         :class="{ active: turnDotActive === idx }"
                         :aria-selected="turnDotActive === idx"
                         :aria-label="t('app.turnAria', { n: idx + 1, label })"
@@ -3517,9 +3599,11 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                     <span class="turn-dot-bubble-inner">{{ turnLabels[turnDotHoverIdx] }}</span>
                   </span>
                 </div>
-                <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" :title="t('app.backToBottom')" :aria-label="t('app.backToBottom')" @click="scrollTaskStreamToBottom"><AppIcon name="ChevronDown" :size="16" /></button>
-                <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计 -->
-                <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
+                <!-- 底部统计栏（借鉴 dsh StatsLine）：composer 上方一行全局会话统计；“回到底部”悬浮其上方 -->
+                <div class="task-bottom-meta">
+                  <button v-if="streamScrolledUp" type="button" class="task-stream-to-bottom" :title="t('app.backToBottom')" :aria-label="t('app.backToBottom')" @click="scrollTaskStreamToBottom"><AppIcon name="ChevronDown" :size="16" /></button>
+                  <SessionStatsLine v-if="sessionStats.steps" :stats="sessionStats" />
+                </div>
                 <!-- 暂时隐藏“修改了 N 个文件”提示。
                 <ChangeSummaryRail
                   v-if="active"
@@ -3556,7 +3640,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                           <AppIcon name="Upload" :size="32" />
                           <span>{{ t('app.dropFilesHere') }}</span>
                         </div>
-                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
+                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                       </div>
                     </form>
                 </QueueDock>
@@ -3606,7 +3690,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="composer-toolbar launcher-toolbar">
                   <button type="button" class="round launcher-attachment-trigger" :title="t('app.addAttachment')" :aria-label="t('app.addAttachment')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button>
                   <div class="launcher-permission-control">
-                    <button type="button" class="permission" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><AppIcon name="ShieldCheck" :size="15" />{{ permissionModeLabel }}<AppIcon name="ChevronDown" :size="13" /></button>
+                    <button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" aria-haspopup="menu" :aria-expanded="launcherPermissionMenuOpen" @click.stop="toggleLauncherPermissionMenu"><AppIcon name="ShieldCheck" :size="15" />{{ permissionModeLabel }}<AppIcon name="ChevronDown" :size="13" /></button>
                     <div v-if="launcherPermissionMenuOpen" class="launcher-popover permission-popover" role="menu" :aria-label="t('app.permissionModeAria')">
                       <button type="button" class="full-access-row" role="menuitemcheckbox" :aria-checked="runtimeSettings?.permission_mode === 'auto'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><span><b>{{ t('app.allowAllPermissions') }}</b><small>{{ t('app.skipConfirmations') }}</small></span><i :class="{ active: runtimeSettings?.permission_mode === 'auto' }"><em /></i></button>
                       <p v-if="permissionSettingsError" class="launcher-menu-error">{{ permissionSettingsError }}</p>
@@ -3671,7 +3755,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 
-      <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p></section>
+      <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p>
+        <!-- 微信 OpenClaw 接入功能暂时隐藏，保留代码待后续恢复。
+        <WeChatBridge :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" :panel-open="wechatPanelOpen" @open-panel="wechatPanelOpen = !wechatPanelOpen" />
+        <WeChatConnectionPanel v-if="wechatPanelOpen" :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" @close="wechatPanelOpen = false" />
+        -->
+      </section>
     </main>
 
     <Teleport to="body">

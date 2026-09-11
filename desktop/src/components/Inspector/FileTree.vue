@@ -455,7 +455,8 @@ onMounted(() => void loadDir(null));
 <template>
   <div
     class="file-tree-view"
-    :style="treeCollapsed ? 'grid-template-columns: minmax(0, 1fr) 0 0;' : `grid-template-columns: minmax(0, 1fr) 6px ${treeWidth}px;`"
+    :class="{ 'is-tree-collapsed': treeCollapsed }"
+    :style="{ '--tree-width': `${treeWidth}px` }"
   >
     <!-- 左：预览区 -->
     <section class="file-preview file-preview--files" :class="{ empty: !selectedPath, error: !!previewError }">
@@ -483,7 +484,15 @@ onMounted(() => void loadDir(null));
         <div class="file-tabs-actions">
           <!-- Open 按钮 -->
           <div v-if="activeTab" class="file-open-wrap">
-            <button ref="openBtnRef" class="file-open-btn" @click="toggleOpenMenu" title="使用外部应用打开">
+            <button
+              ref="openBtnRef"
+              class="file-open-btn"
+              type="button"
+              aria-haspopup="menu"
+              :aria-expanded="openMenuOpen"
+              @click="toggleOpenMenu"
+              title="使用外部应用打开"
+            >
               <AppIcon name="ExternalLink" :size="14" />
               <span>Open</span>
               <AppIcon name="ChevronDown" :size="13" :class="{ rotated: openMenuOpen }" />
@@ -492,6 +501,7 @@ onMounted(() => void loadDir(null));
           <!-- 折叠/展开文件树按钮 -->
           <button
             class="tree-toggle-btn"
+            type="button"
             :title="treeCollapsed ? '展开文件树' : '折叠文件树'"
             @click="toggleTreeCollapse"
           >
@@ -504,6 +514,7 @@ onMounted(() => void loadDir(null));
       <div v-else class="file-tabs-bar file-tabs-bar--empty">
         <button
           class="tree-toggle-btn tree-toggle-btn--solo"
+          type="button"
           :title="treeCollapsed ? '展开文件树' : '折叠文件树'"
           @click="toggleTreeCollapse"
         >

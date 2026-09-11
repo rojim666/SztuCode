@@ -111,3 +111,57 @@ def test_message_order_across_steps() -> None:
 def test_step_counter_default() -> None:
     ctx = ExecutionContext(run_id="r1", goal="g", max_steps=20)
     assert ctx.step == 0
+
+
+# 功能：验证有限墙钟预算在 Run 开始时只建立一次绝对 Deadline
+# 设计：使用可控 monotonic clock 推进时间，检查重复 start 不会重置 deadline，
+#       并且 remaining_s 在耗尽后钳制为 0 而不是返回负数
+def test_wall_clock_deadline_is_absolute_and_does_not_reset() -> None:
+    clock = [0.0]
+    ctx = ExecutionContext(
+        run_id="deadline-1",
+        goal="g",
+        max_steps=5,
+        max_wall_clock_s=10,
+        clock=lambda: clock[0],
+    )
+
+    ctx.start()
+    assert ctx.started_at == 0.0
+    assert ctx.deadline_at == 10.0
+    assert ctx.elapsed_s() == 0.0
+    assert ctx.remaining_s() == 10.0
+
+    clock[0] = 4.5
+    ctx.start()
+    assert ctx.started_at == 0.0
+    assert ctx.deadline_at == 10.0
+    assert ctx.elapsed_s() == 4.5
+    assert ctx.remaining_s() == 5.5
+
+    clock[0] = 10.0
+    assert ctx.remaining_s() == 0.0
+    assert ctx.wall_clock_exceeded() is True
+
+    # 继续越过 Deadline 后仍保持钳制，不会产生负数。
+    clock[0] = 11.0
+    assert ctx.remaining_s() == 0.0
+
+
+# 功能：验证 max_wall_clock_s=0 保持“不限时”语义
+# 设计：推进可控时钟后 remaining_s 仍表示 unlimited，且 wall_clock_exceeded 不误报
+def test_unlimited_wall_clock_has_no_deadline() -> None:
+    clock = [100.0]
+    ctx = ExecutionContext(
+        run_id="deadline-unlimited",
+        goal="g",
+        max_steps=5,
+        clock=lambda: clock[0],
+    )
+
+    ctx.start()
+    clock[0] = 100_000.0
+
+    assert ctx.deadline_at is None
+    assert ctx.remaining_s() is None
+    assert ctx.wall_clock_exceeded() is False

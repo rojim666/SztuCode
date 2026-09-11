@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel
 
 from sztu_code.core.config import SztuConfig
+from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
 from sztu_code.core.runner import AgentRunner
@@ -371,6 +372,36 @@ async def test_run_started_event_published(tmp_path: Path) -> None:
     assert started.goal == "my goal"  # type: ignore[attr-defined]
 
 
+# 功能：验证 Runner 在发布 run.started 前就固定 Run 的墙钟起点
+# 设计：记录 ExecutionContext.start 与事件处理的顺序，避免把事件发布之后的惰性 loop 起点
+#       误当作完整 Run 的开始时间
+async def test_run_deadline_starts_before_run_started_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sequence: list[str] = []
+    original_start = ExecutionContext.start
+
+    def record_start(self: ExecutionContext) -> None:
+        sequence.append("deadline.start")
+        original_start(self)
+
+    async def record_event(event: BaseModel) -> None:
+        if event.type == "run.started":  # type: ignore[attr-defined]
+            sequence.append("run.started")
+
+    monkeypatch.setattr(ExecutionContext, "start", record_start)
+    runner = AgentRunner(
+        _config(),
+        provider=_EndTurnProvider(),  # type: ignore[arg-type]
+        extra_handlers=[record_event],
+        runs_dir=tmp_path,
+    )
+
+    await runner.run("deadline start")
+
+    assert sequence.index("deadline.start") < sequence.index("run.started")
+
+
 # 功能：验证成功完成时发布 status=success 的 run.finished 事件
 # 设计：EndTurnProvider 触发最短成功路径，聚焦 runner 层对任何终止路径都能保证发布 finished 事件
 async def test_run_finished_event_published_on_success(tmp_path: Path) -> None:
@@ -527,10 +558,12 @@ async def test_session_history_and_notes_injected(tmp_path: Path) -> None:
 
     assert len(provider.messages) == 1
     assert provider.messages[0]["role"] == "user"
-    assert provider.messages[0]["content"] == "remember python"
+    # goal 前置了工作区快照的 system-reminder（缓存友好注入），原文保留在末尾
+    assert provider.messages[0]["content"].endswith("remember python")
     assert provider.messages[0]["ts"]
     assert provider.system is not None
-    assert "Python 3.12" in provider.system
+    # 记忆层已注入到消息尾部（system prompt 只保留稳定前缀）
+    assert "Python 3.12" in provider.messages[0]["content"]
     assert (store.runs_dir("sess-1") / "run-new" / "events.jsonl").exists()
     assert not (tmp_path / "runs" / "run-new").exists()
 
@@ -564,8 +597,9 @@ async def test_project_profile_is_injected_into_system_prompt(
     assert outcome.status == "success"
     assert detected_roots == [workspace_root.resolve()]
     assert provider.system is not None
-    assert "## Project Profile" in provider.system
-    assert "Recommended unit test: uv run pytest" in provider.system
+    injected = provider.messages[0]["content"]
+    assert "## Project Profile" in injected
+    assert "Recommended unit test: uv run pytest" in injected
 
 
 # 功能：验证 runner 的最终 system prompt 会注入工作区 CLAUDE.md
@@ -660,7 +694,7 @@ async def test_project_profile_detection_errors_do_not_block_run(
 
         assert outcome.status == "success"
         assert provider.system is not None
-        assert "## Project Profile" not in provider.system
+        assert "## Project Profile" not in provider.messages[0]["content"]
 
 
 # 功能：验证真实工作区画像会进入 Agent prompt，且 package script 正文不会被注入。
@@ -678,11 +712,12 @@ async def test_workspace_project_profile_is_injected_into_agent_context(tmp_path
     await runner.run_and_capture("inspect", run_id="run-profile", workspace_root=workspace)
 
     assert provider.system is not None
-    assert "## Project Profile" in provider.system
-    assert "Detected Project Profile" in provider.system
-    assert "npm run build" in provider.system
-    assert "advisory only" in provider.system
-    assert "unsafe-build --all" not in provider.system
+    injected = provider.messages[0]["content"]
+    assert "## Project Profile" in injected
+    assert "Detected Project Profile" in injected
+    assert "npm run build" in injected
+    assert "advisory only" in injected
+    assert "unsafe-build --all" not in injected
 
 
 # 功能：验证桌面端收到 run.finished 时本轮耗时与 token 已经持久化

@@ -134,7 +134,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
 
 <template>
   <div ref="root" class="model-config-control">
-    <button ref="trigger" type="button" class="model-config-trigger" aria-haspopup="dialog" :aria-expanded="open" @click.stop="toggle">
+    <button ref="trigger" type="button" class="model-config-trigger" :title="activeModelName" aria-haspopup="dialog" :aria-expanded="open" @click.stop="toggle">
       <i :class="{ online: status?.ready_for_next_run }" /><span>{{ activeModelName }}</span><AppIcon name="ChevronDown" :size="13" />
     </button>
     <section v-if="open" class="model-picker-popover" role="dialog" :aria-label="t('model.selectModel')" @click.stop>

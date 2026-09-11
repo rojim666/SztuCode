@@ -41,6 +41,8 @@ export class WorkingState {
     return this._facts.length > 0;
   }
 
+  get factCount(): number { return this._facts.length; }
+
   setGoal(goal: string): void {
     this._goal = goal;
     this._version++;
@@ -76,16 +78,16 @@ export class WorkingState {
     }
   }
 
-  render(): string {
+  render(fromFact?: number): string {
     if (!this.hasContent) return "";
 
     const lines: string[] = [];
     lines.push("--- Working State ---");
-    if (this._goal) {
+    if (this._goal && fromFact === undefined) {
       lines.push(`Goal: ${this._goal}`);
     }
     lines.push("Facts:");
-    for (const fact of this._facts.slice(-20)) {
+    for (const fact of this._facts.slice(fromFact ?? -20)) {
       lines.push(`- ${fact.content} (source: ${fact.source}, timestamp: ${fact.timestamp})`);
     }
     return lines.join("\n");

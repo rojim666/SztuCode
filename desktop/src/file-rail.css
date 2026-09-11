@@ -348,15 +348,17 @@
   height: 30px;
   padding: 0 8px;
   color: #252a27;
-  background: #f3f4f6;
-  border: 1px solid #e2e5e3;
+  background: transparent;
+  border: 0;
   border-radius: 7px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
-.file-open-btn:hover { background: #e8ebe9; border-color: #d1d5d3; }
+.file-open-btn:hover,
+.file-open-btn[aria-expanded="true"] { background: #ecefed; }
+.file-open-btn:focus-visible { outline: 0; box-shadow: 0 0 0 2px rgb(42 48 44 / 16%); }
 .file-open-btn svg:first-child { color: #3b6fd8; }
 .file-open-btn svg:last-child { color: #6a726d; transition: transform 150ms ease; }
 .file-open-btn svg.rotated { transform: rotate(180deg); }
@@ -437,13 +439,14 @@
   padding: 0;
   place-items: center;
   color: #4a524e;
-  background: #f3f4f6;
-  border: 1px solid #e2e5e3;
+  background: transparent;
+  border: 0;
   border-radius: 7px;
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
-.tree-toggle-btn:hover { color: #252a27; background: #e8ebe9; border-color: #d1d5d3; }
+.tree-toggle-btn:hover { color: #252a27; background: #ecefed; }
+.tree-toggle-btn:focus-visible { outline: 0; box-shadow: 0 0 0 2px rgb(42 48 44 / 16%); }
 .tree-toggle-btn--solo { position: static; margin: 6px 0; background: transparent; border: 0; }
 .tree-toggle-btn--solo:hover { background: #f2f4f2; }
 
@@ -482,7 +485,9 @@
 .preview-error p { margin: 0; max-width: 240px; font-size: 11px; line-height: 1.5; color: #8a6e68; word-break: break-all; }
 .files-workspace { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 /* 左右分栏：左预览自适应、右文件树（宽度可拖拽调整） */
-.file-tree-view { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr) 6px 200px; }
+/* 预览列保底 200px 并优先占位，文件树列用 minmax(0, …) 在空间不足时先让位，避免窄面板下两栏互相挤压 */
+.file-tree-view { position: relative; display: grid; min-width: 0; min-height: 0; overflow: hidden; grid-template-columns: minmax(200px, 1fr) 6px minmax(0, var(--tree-width, 200px)); }
+.file-tree-view.is-tree-collapsed { grid-template-columns: minmax(0, 1fr) 0 0; }
 .file-tree-view .files-body { overflow: auto; padding: 6px 0 10px; }
 .file-tree-divider { position: relative; min-height: 0; cursor: col-resize; background: transparent; }
 .file-tree-divider::after { position: absolute; inset: 7px 2px; background: #f2f3f2; border-radius: 2px; content: ""; }
@@ -755,6 +760,32 @@
   .workspace-open-tab .workspace-tab-icon {
     width: 14px !important;
     opacity: 1 !important;
+  }
+}
+
+/* ── 文件视图响应式（inspector 容器查询） ───────────── */
+/* 面板过窄时左右分栏不再成立（如窗口 ≤980px 时面板仅 285px），改为上下堆叠：文件树在上，预览在下 */
+@container inspector (max-width: 360px) {
+  .file-tree-view {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.4fr) minmax(0, 0.6fr);
+  }
+  .file-tree-view > .files-body {
+    grid-row: 1;
+    border-bottom: 1px solid #eceeec;
+  }
+  .file-tree-view > .file-preview--files {
+    grid-row: 2;
+  }
+  .file-tree-view > .file-tree-divider {
+    display: none;
+  }
+  /* 折叠文件树时预览独占整个高度 */
+  .file-tree-view.is-tree-collapsed {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .file-tree-view.is-tree-collapsed > .file-preview--files {
+    grid-row: 1;
   }
 }
 
@@ -1094,8 +1125,8 @@
   .file-tab.has-error { color: #f87171 !important; }
   .file-tab-close { color: var(--text-muted) !important; }
   .file-tab-close:hover { color: var(--text) !important; background: var(--surface-raised) !important; }
-  .file-open-btn { color: var(--text) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
-  .file-open-btn:hover { background: var(--surface-raised) !important; border-color: var(--text-muted) !important; }
+  .file-open-btn { color: var(--text) !important; background: transparent !important; border: 0 !important; }
+  .file-open-btn:hover, .file-open-btn[aria-expanded="true"] { background: var(--surface-soft) !important; }
   .file-open-btn svg:first-child { color: var(--accent) !important; }
   .file-open-btn svg:last-child { color: var(--text-muted) !important; }
   .file-open-menu { background: var(--surface-raised) !important; border-color: var(--border) !important; box-shadow: 0 12px 36px rgb(0 0 0 / 40%), 0 3px 10px rgb(0 0 0 / 20%) !important; }
@@ -1104,8 +1135,8 @@
   .file-open-item.disabled { color: var(--text-disabled) !important; }
   .file-open-icon { background: var(--surface-soft) !important; color: var(--text-muted) !important; }
   .file-open-item:hover:not(.disabled) .file-open-icon { background: var(--surface-raised) !important; }
-  .tree-toggle-btn { color: var(--text) !important; background: var(--surface-soft) !important; border-color: var(--border) !important; }
-  .tree-toggle-btn:hover { color: var(--text) !important; background: var(--surface-raised) !important; border-color: var(--text-muted) !important; }
+  .tree-toggle-btn { color: var(--text) !important; background: transparent !important; border: 0 !important; }
+  .tree-toggle-btn:hover { color: var(--text) !important; background: var(--surface-soft) !important; }
   .tree-toggle-btn--solo:hover { background: var(--surface-soft) !important; }
   .files-preview-placeholder { color: var(--text-muted) !important; }
   .files-preview-placeholder svg { color: var(--text-muted) !important; }

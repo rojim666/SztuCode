@@ -1,4 +1,20 @@
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
+
+test("workspace corner exposes the same background as the surrounding chrome", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("html")).toHaveAttribute("data-wallpaper", "none");
+  for (const theme of ["light", "dark"]) {
+    await page.locator("html").evaluate((root, value) => { root.dataset.appTheme = value; }, theme);
+    const bounds = await page.locator(".sztu-main").boundingBox();
+    if (!bounds) throw new Error("Workspace surface is missing");
+    const { data, info } = await sharp(await page.screenshot()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const x = Math.ceil(bounds.x), y = Math.ceil(bounds.y);
+    const pixel = (px: number, py: number) => [...data.subarray((py * info.width + px) * info.channels, (py * info.width + px) * info.channels + 3)];
+    expect(pixel(x, y), `${theme}: corner must not expose a darker backing patch`).toEqual(pixel(x - 3, y - 3));
+  }
+});
 
 test("application title bar exposes file edit view and help menus", async ({ page }) => {
   await page.setViewportSize({ width: 680, height: 640 });
@@ -1419,7 +1435,7 @@ test("appearance settings can upload and remove a custom wallpaper", async ({ pa
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("sztu.appearance") || "{}").customWallpaper)).toBe("");
 });
 
-test("conversation stays flat with a gray workspace boundary", async ({ page }) => {
+test("conversation keeps a rounded upper-left workspace boundary", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.locator("#app").evaluate((root) => {
@@ -1481,6 +1497,8 @@ test("conversation stays flat with a gray workspace boundary", async ({ page }) 
       mainTopRightRadius: mainStyle.borderTopRightRadius,
       mainBottomRightRadius: mainStyle.borderBottomRightRadius,
       mainBottomLeftRadius: mainStyle.borderBottomLeftRadius,
+      mainCornerShape: mainStyle.getPropertyValue("corner-shape"),
+      mainOverflow: mainStyle.overflow,
       conversationTopLeftRadius: conversationStyle.borderTopLeftRadius,
       conversationTopRightRadius: conversationStyle.borderTopRightRadius,
       conversationBottomRightRadius: conversationStyle.borderBottomRightRadius,
@@ -1509,10 +1527,12 @@ test("conversation stays flat with a gray workspace boundary", async ({ page }) 
   expect(geometry.sidebarBorder).toBe("0px");
   expect(geometry.sidebarFooterBorder).toBe("0px");
   expect(geometry.workHeaderBorder).toBe("0px");
-  expect(geometry.mainTopLeftRadius).toBe("0px");
+  expect(geometry.mainTopLeftRadius).toBe("16px");
   expect(geometry.mainTopRightRadius).toBe("0px");
   expect(geometry.mainBottomRightRadius).toBe("0px");
   expect(geometry.mainBottomLeftRadius).toBe("0px");
+  expect(["squircle", "superellipse(2)"]).toContain(geometry.mainCornerShape);
+  expect(geometry.mainOverflow).toBe("hidden");
   expect(geometry.conversationTopLeftRadius).toBe("0px");
   expect(geometry.conversationTopRightRadius).toBe("0px");
   expect(geometry.conversationBottomRightRadius).toBe("0px");
@@ -1537,6 +1557,45 @@ test("conversation stays flat with a gray workspace boundary", async ({ page }) 
   });
   expect(new Set(darkChromeBackgrounds).size).toBe(1);
   expect(darkChromeBackgrounds[0]).not.toBe("rgba(0, 0, 0, 0)");
+});
+
+test("one continuous main surface owns the rounded upper-left corner", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const scenarios = [
+    { route: "work", surfaces: [".work-page-host"] },
+    { route: "board", surfaces: [".board-page"] },
+    { route: "source-control", surfaces: [".source-control-host"] },
+    { route: "automations", surfaces: [".chat-main", ".chat-automations"] },
+    { route: "skills", surfaces: [".chat-main", ".skill-center"] },
+    { route: "webbridge", surfaces: [".simple-page"] },
+  ] as const;
+
+  for (const scenario of scenarios) {
+    await page.locator("#app").evaluate((root, route) => {
+      const app = (root as HTMLElement & { __vue_app__?: { _instance?: { setupState?: Record<string, unknown> } } }).__vue_app__;
+      const state = app?._instance?.setupState;
+      if (!state) throw new Error("Vue application state is unavailable");
+      state.page = route;
+    }, scenario.route);
+
+    for (const selector of scenario.surfaces) {
+      const surface = page.locator(`.sztu-main > ${selector}, .sztu-main > .chat-main > ${selector}`).first();
+      await expect(surface).toBeVisible();
+      await expect(surface).toHaveCSS("border-top-left-radius", "0px");
+    }
+  }
+
+  const main = page.locator(".sztu-main");
+  await expect(main).toHaveCSS("border-top-left-radius", "16px");
+  await expect(main).toHaveCSS("border-top-right-radius", "0px");
+  await expect(main).toHaveCSS("border-bottom-right-radius", "0px");
+  await expect(main).toHaveCSS("border-bottom-left-radius", "0px");
+
+  await page.getByRole("button", { name: "收起导航" }).click();
+  await expect(page.locator(".sztu-shell")).toHaveClass(/sidebar-collapsed/);
+  await expect(main).toHaveCSS("border-top-left-radius", "0px");
 });
 
 test("navigation toggle blends into the sidebar chrome at rest", async ({ page }) => {
@@ -1863,6 +1922,74 @@ test("model manager keeps a clear table layout at 920px and never overflows hori
   expect(geometry.rowsInside).toBe(true);
   expect(geometry.namesEllipsized).toBe(true);
   await expect(page).toHaveScreenshot("model-manager-920.png", { fullPage: true });
+});
+
+test("file preview toolbar uses a white canvas and borderless contextual controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(async () => {
+    document.documentElement.dataset.appTheme = "light";
+    document.documentElement.dataset.wallpaper = "none";
+    const { IpcClient } = await import("/src/lib/ipc.ts") as {
+      IpcClient: { prototype: { request: (method: string) => Promise<Record<string, unknown>> } };
+    };
+    IpcClient.prototype.request = async (method) => {
+      if (method === "workspace.tree") return { nodes: [{ name: "README.md", path: "README.md", kind: "file" }] };
+      if (method === "file.read") return { content: "# Preview", encoding: "UTF-8", binary: false, truncated: false };
+      if (method === "change.list") return { changes: [] };
+      return {};
+    };
+    const root = document.querySelector("#app") as HTMLElement & {
+      __vue_app__?: { _instance?: { setupState?: Record<string, unknown> } };
+    };
+    const state = root.__vue_app__?._instance?.setupState;
+    if (!state) throw new Error("Vue application state is unavailable");
+    const workspace = { workspace_id: "workspace-preview", name: "Preview", path: "F:/preview", archived: false };
+    state.workspace = workspace;
+    state.workspaces = [workspace];
+    state.sessions = [{
+      session_id: "session-preview", title: "Preview task", status: "active", updated_at: "",
+      archived: false, pinned: false, workspace_id: "workspace-preview",
+      total_input_tokens: 0, total_output_tokens: 0, total_elapsed_s: 0,
+    }];
+    state.activeId = "session-preview";
+    state.inspectorOpen = true;
+    state.inspectorRendered = true;
+  });
+
+  await page.locator(".project-inspector").getByRole("button", { name: "文件", exact: true }).click();
+  await page.getByRole("treeitem").filter({ hasText: "README.md" }).click();
+  const openButton = page.locator(".file-open-btn");
+  const collapseButton = page.locator(".tree-toggle-btn").first();
+  await expect(page.locator(".rich-preview-toolbar")).toBeVisible();
+
+  const resting = await page.evaluate(() => {
+    const toolbar = getComputedStyle(document.querySelector<HTMLElement>(".rich-preview-toolbar")!);
+    const open = getComputedStyle(document.querySelector<HTMLButtonElement>(".file-open-btn")!);
+    const collapse = getComputedStyle(document.querySelector<HTMLButtonElement>(".tree-toggle-btn")!);
+    return {
+      toolbarBackground: toolbar.backgroundColor,
+      openBackground: open.backgroundColor,
+      openBorder: open.borderTopWidth,
+      collapseBackground: collapse.backgroundColor,
+      collapseBorder: collapse.borderTopWidth,
+    };
+  });
+  expect(resting).toEqual({
+    toolbarBackground: "rgb(255, 255, 255)",
+    openBackground: "rgba(0, 0, 0, 0)",
+    openBorder: "0px",
+    collapseBackground: "rgba(0, 0, 0, 0)",
+    collapseBorder: "0px",
+  });
+
+  await openButton.hover();
+  await expect(openButton).toHaveCSS("background-color", "rgb(236, 239, 237)");
+  await openButton.click();
+  await expect(openButton).toHaveAttribute("aria-expanded", "true");
+  await expect(openButton).toHaveCSS("background-color", "rgb(236, 239, 237)");
+  await collapseButton.hover();
+  await expect(collapseButton).toHaveCSS("background-color", "rgb(236, 239, 237)");
 });
 
 test("model manager switches to single column at 620px without horizontal overflow", async ({ page }) => {

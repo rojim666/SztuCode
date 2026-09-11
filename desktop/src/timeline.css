@@ -338,6 +338,20 @@
   text-overflow: ellipsis;
 }
 .session-stats-line__sep { color: #c6cbd1; margin: 0 8px; }
+.session-stats-line { display: flex; justify-content: center; gap: 12px; min-width: 0; box-sizing: border-box; }
+.session-stats-line__group { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.session-stats-line__group[data-kind="context"] { flex-shrink: 0; }
+@container conversation (max-width: 760px) {
+  .session-stats-line__group[data-kind="ttft"] { display: none; }
+}
+@container conversation (max-width: 600px) {
+  .session-stats-line__group[data-kind="tokens"],
+  .session-stats-line__group[data-kind="cache"] { display: none; }
+}
+@container conversation (max-width: 380px) {
+  .session-stats-line { gap: 8px; padding-inline: 12px; }
+  .session-stats-line__meter { display: none; }
+}
 /* 上下文占用（借鉴 dsh ContextMeter 警示色）：80% 起琥珀、95% 起红 */
 .session-stats-line__ctx { border-radius: 4px; padding: 0 4px; }
 .session-stats-line__ctx.ctx-ok { color: #9aa0a7; }

@@ -83,6 +83,7 @@
 - `artifact.get`
 - `artifact.list`
 - `artifact.verify`
+- `artifact.restore`
 - `operation.get`
 - `operation.list`
 - `operation.recover`
@@ -140,7 +141,7 @@
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `code` | `JsonRpcErrorCode` | yes |
+| `code` | `number` | yes |
 | `message` | `string` | yes |
 | `data` | `unknown` | no |
 
@@ -149,7 +150,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"hello"` | yes |
-| `version` | `ProtocolVersion` | yes |
+| `version` | `typeof PROTOCOL_VERSION` | yes |
 | `client` | `string` | no |
 | `capabilities` | `ProtocolCapability[]` | no |
 
@@ -158,7 +159,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"hello"` | yes |
-| `version` | `ProtocolVersion` | yes |
+| `version` | `typeof PROTOCOL_VERSION` | yes |
 | `server_version` | `string` | yes |
 | `capabilities` | `ProtocolCapability[]` | yes |
 | `connection_id` | `string` | no |
@@ -211,7 +212,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"request.cancel" \| "$/cancelRequest"` | no |
-| `request_id` | `RequestId` | yes |
+| `request_id` | `string` | yes |
 | `reason` | `string` | no |
 
 ### PermissionRespondParams
@@ -220,7 +221,7 @@
 | --- | --- | --- |
 | `type` | `"permission.respond"` | no |
 | `permission_id` | `string` | yes |
-| `decision` | `PermissionDecision` | yes |
+| `decision` | `"allow_once" \| "always_allow" \| "deny_once" \| "always_deny"` | yes |
 
 ### WorkspaceOpenParams
 
@@ -242,7 +243,7 @@
 | `type` | `"artifact.create"` | no |
 | `workspace_id` | `string` | yes |
 | `path` | `string` | yes |
-| `artifact_type` | `"docx" \| "pptx" \| "pdf" \| "xlsx" \| "csv" \| "other"` | no |
+| `artifact_type` | `"docx" \| "pptx" \| "pdf" \| "xlsx" \| "csv" \| "web" \| "image" \| "audio" \| "video" \| "model3d" \| "app" \| "archive" \| "code" \| "other"` | no |
 | `summary` | `string` | no |
 | `session_id` | `string` | no |
 | `run_id` | `string` | no |
@@ -269,6 +270,16 @@
 | `type` | `"artifact.list"` | no |
 | `workspace_id` | `string` | yes |
 
+### ArtifactRestoreParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `type` | `"artifact.restore"` | no |
+| `workspace_id` | `string` | yes |
+| `artifact_id` | `string` | yes |
+| `version` | `number` | yes |
+| `expected_hash` | `string` | yes |
+
 ### ArtifactVerifyParams
 
 | Field | Type | Required |
@@ -287,7 +298,7 @@
 | `uptime_ms` | `number` | yes |
 | `received_at` | `string` | yes |
 | `capabilities` | `string[]` | yes |
-| `protocol_version` | `ProtocolVersion` | no |
+| `protocol_version` | `typeof PROTOCOL_VERSION` | no |
 
 ### AgentRunResult
 
@@ -320,7 +331,7 @@
 
 | Field | Type | Required |
 | --- | --- | --- |
-| `request_id` | `RequestId` | yes |
+| `request_id` | `string` | yes |
 | `status` | `"cancelling" \| "not_running"` | yes |
 
 ### WorkspaceSummary
@@ -479,7 +490,7 @@
 | --- | --- | --- |
 | `session_id` | `string` | yes |
 | `mode` | `"one_shot" \| "chat"` | yes |
-| `status` | `SessionStatus` | yes |
+| `status` | `"active" \| "waiting_for_input" \| "closed"` | yes |
 | `title` | `string` | yes |
 | `created_at` | `string` | no |
 | `updated_at` | `string` | yes |
@@ -500,7 +511,7 @@
 | `session_id` | `string` | yes |
 | `title` | `string` | no |
 | `mode` | `"one_shot" \| "chat"` | no |
-| `status` | `SessionStatus` | no |
+| `status` | `"active" \| "waiting_for_input" \| "closed"` | no |
 | `updated_at` | `string` | no |
 | `archived` | `boolean` | no |
 | `workspace_id` | `string \| null` | no |
@@ -510,7 +521,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `server_id` | `string` | no |
-| `protocol_version` | `ProtocolVersion` | yes |
+| `protocol_version` | `typeof PROTOCOL_VERSION` | yes |
 | `revision` | `number` | yes |
 | `sessions` | `SessionMetadata[]` | yes |
 | `models` | `unknown[]` | no |
@@ -589,7 +600,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"session.command"` | no |
-| `command` | `SessionCommand` | yes |
+| `command` | `SessionCommandList \| SessionCommandCreate \| SessionCommandAttach \| SessionCommandDetach \| SessionCommandPrompt \| SessionCommandSteer \| SessionCommandAbort \| SessionCommandSetModel \| SessionCommandSetThinking` | yes |
 
 ### SessionResult
 
@@ -632,7 +643,7 @@
 | `id` | `string` | yes |
 | `title` | `string` | yes |
 | `description` | `string` | yes |
-| `owner` | `WorkflowRole` | yes |
+| `owner` | `"planner" \| "coder" \| "tester" \| "reviewer"` | yes |
 | `dependencies` | `string[]` | yes |
 | `completion_criteria` | `string[]` | yes |
 | `allowed_paths` | `string[]` | yes |
@@ -657,7 +668,7 @@
 | --- | --- | --- |
 | `workflow_id` | `string` | yes |
 | `task_id` | `string` | yes |
-| `role` | `WorkflowRole` | yes |
+| `role` | `"planner" \| "coder" \| "tester" \| "reviewer"` | yes |
 | `status` | `"succeeded" \| "failed"` | yes |
 | `summary` | `string` | yes |
 | `changed_paths` | `string[]` | yes |
@@ -681,7 +692,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `task` | `WorkflowTask` | yes |
-| `status` | `WorkflowTaskStatus` | yes |
+| `status` | `"pending" \| "running" \| "succeeded" \| "failed" \| "blocked" \| "cancelled" \| "timed_out" \| "rejected"` | yes |
 | `attempts` | `number` | yes |
 | `artifact` | `HandoffArtifact \| null` | yes |
 | `error` | `string` | yes |
@@ -694,7 +705,7 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `workflow_id` | `string` | yes |
-| `status` | `WorkflowStatus` | yes |
+| `status` | `"succeeded" \| "failed" \| "cancelled" \| "timed_out"` | yes |
 | `reason` | `string` | yes |
 | `tasks` | `WorkflowTaskResult[]` | yes |
 | `total_tokens` | `number` | yes |
@@ -707,8 +718,8 @@
 | --- | --- | --- |
 | `id` | `string` | yes |
 | `title` | `string` | yes |
-| `owner` | `WorkflowRole` | yes |
-| `status` | `WorkflowTaskStatus` | yes |
+| `owner` | `"planner" \| "coder" \| "tester" \| "reviewer"` | yes |
+| `status` | `"pending" \| "running" \| "succeeded" \| "failed" \| "blocked" \| "cancelled" \| "timed_out" \| "rejected"` | yes |
 | `dependencies` | `string[]` | yes |
 | `completion_criteria` | `string[]` | yes |
 | `allowed_paths` | `string[]` | yes |
@@ -809,8 +820,8 @@
 | `type` | `"phase.changed"` | yes |
 | `run_id` | `string` | yes |
 | `step` | `number` | yes |
-| `phase` | `AgentPhase` | yes |
-| `previous` | `AgentPhase` | no |
+| `phase` | `"understanding" \| "executing" \| "verifying" \| "delivering"` | yes |
+| `previous` | `"understanding" \| "executing" \| "verifying" \| "delivering"` | no |
 | `reason` | `string` | yes |
 | `ts` | `string` | yes |
 
@@ -876,7 +887,7 @@
 | `run_id` | `string` | yes |
 | `permission_id` | `string` | yes |
 | `tool_use_id` | `string` | yes |
-| `decision` | `PermissionDecision` | yes |
+| `decision` | `"allow_once" \| "always_allow" \| "deny_once" \| "always_deny"` | yes |
 | `ts` | `string` | yes |
 
 ### PermissionGrantedEvent
@@ -1098,7 +1109,7 @@
 | `type` | `"workflow.finished"` | yes |
 | `run_id` | `string` | yes |
 | `workflow_id` | `string` | yes |
-| `status` | `WorkflowStatus` | yes |
+| `status` | `"succeeded" \| "failed" \| "cancelled" \| "timed_out"` | yes |
 | `reason` | `string` | yes |
 | `total_tokens` | `number` | yes |
 | `elapsed_s` | `number` | yes |
@@ -1210,6 +1221,6 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"permission.mode_changed"` | yes |
-| `old_mode` | `PermissionMode` | yes |
-| `new_mode` | `PermissionMode` | yes |
+| `old_mode` | `"normal" \| "plan" \| "accept_edits" \| "auto"` | yes |
+| `new_mode` | `"normal" \| "plan" \| "accept_edits" \| "auto"` | yes |
 | `ts` | `string` | yes |

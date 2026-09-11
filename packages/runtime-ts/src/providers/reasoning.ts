@@ -19,8 +19,10 @@ export function anthropicReasoningParams(effort: string | undefined, maxTokens: 
   };
 }
 
-export function openaiReasoningParams(effort: string | undefined, responses: boolean) {
+export function openaiReasoningParams(effort: string | undefined, responses: boolean, model = "") {
   validateReasoningEffort(effort ?? "");
   if (!effort) return {};
-  return responses ? { reasoning: { effort, summary: "auto" } } : { reasoning_effort: effort };
+  const deepseek = /^deepseek/i.test(model);
+  const effective = deepseek && (effort === "medium" || effort === "xhigh") ? "high" : effort;
+  return responses ? { reasoning: { effort: effective, ...(!deepseek ? { summary: "auto" } : {}) } } : { reasoning_effort: effective, ...(deepseek ? { thinking: { type: "enabled" } } : {}) };
 }

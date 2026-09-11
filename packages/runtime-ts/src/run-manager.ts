@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { RunGetResult, RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
@@ -11,7 +11,7 @@ import type { ModelProvider } from "./agent-loop.js";
 import { QuestionManager } from "./questions.js";
 import { WorkspaceChangeTracker } from "./changes.js";
 import type { Tool } from "./tools.js";
-import { buildDynamicContext, buildSystemPrompt } from "./prompt-loader.js";
+import { appendGoalReminder, buildDynamicContext, buildSystemPrompt } from "./prompt-loader.js";
 import { createMemoryTools, loadMemoryCatalog } from "./memory.js";
 import type { SessionStore } from "./session-store.js";
 import { ExtensionRegistry } from "./extensions/registry.js";
@@ -21,7 +21,7 @@ import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 import { runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 import type { OperationStore } from "./operation-store.js";
 
-type RunState = { runId: string; goal: string; currentMessage?: ChatMessage; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
+type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
 /**
  * Compatibility runner for the legacy runtime API.
@@ -42,9 +42,9 @@ export class RunManager {
     });
   }
 
-  start(goal: string, history: ChatMessage[] = [], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, onRunCreated?: (runId: string) => void, currentMessage?: ChatMessage): string {
+  start(goal: string, history: ChatMessage[] = [], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, onRunCreated?: (runId: string) => void, userContent?: ChatMessage["content"]): string {
     const runId = randomUUID();
-    const run: RunState = { runId, goal, ...(currentMessage ? { currentMessage } : {}), status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), generationController: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
+    const run: RunState = { runId, goal, status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), generationController: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
     this.runs.set(runId, run);
     this.runRoots.set(runId, workspaceRoot ?? process.cwd());
     if (sessionId) this.sessionRuns.set(sessionId, runId);
@@ -52,7 +52,7 @@ export class RunManager {
     this.emit({ type: "operation.started", run_id: runId, operation_id: runId, goal, ts: now() });
     void this.operations?.begin({ operation_id: runId, task_id: sessionId ?? runId, run_id: runId, session_id: sessionId, step: 0, attempt: 1, sequence: 1, params_summary: goal.slice(0, 500), permission_state: this.permissions.getMode(), budget_remaining: maxSteps() });
     this.emit({ type: "run.started", run_id: runId, goal, ts: now() });
-    const execution = safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId); })
+    const execution = safeStartSpan(this.telemetry, { name: "agent.run", attributes: { run_id: runId, session_id: sessionId, workspace: workspaceRoot ? "configured" : "default" } }, (span) => { span.addEvent("agent.started"); return this.execute(run, history, onComplete, workspaceRoot, sessionId, userContent); })
       .catch(() => undefined)
       .finally(() => { this.executions.delete(runId); });
     this.executions.set(runId, execution);
@@ -101,7 +101,7 @@ export class RunManager {
     return count;
   }
 
-  private async execute(run: RunState, history: ChatMessage[], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string): Promise<void> {
+  private async execute(run: RunState, history: ChatMessage[], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, userContent?: ChatMessage["content"]): Promise<void> {
     let result: AgentRunResult;
     const tracker = workspaceRoot ? new WorkspaceChangeTracker(workspaceRoot, run.runId) : null;
     const root = workspaceRoot ?? process.cwd();
@@ -115,13 +115,16 @@ export class RunManager {
       if (sessionId && this.questions) registerQuestionTool(tools, (questions) => this.questions!.ask(sessionId, run.runId, questions as never));
       const config = await this.contextConfig();
       const extensionPrompt = (await this.extensions.renderToolPromptContributions(root, { sessionId, runId: run.runId })).filter(Boolean).join("\n\n");
-      const prompt = [await buildSystemPrompt(root, "coder", { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name) }), extensionPrompt].filter(Boolean).join("\n\n");
-      const dynamicContext = [await buildDynamicContext(root), memory.prompt()].filter(Boolean).join("\n\n");
+      const runtimeContext = { permissionMode: this.permissions.getMode(), memoryEnabled: Boolean(sessionId) || memory.requiresReader(), toolNames: tools.list().map((tool) => tool.name) };
+      const prompt = await buildSystemPrompt(root, "coder", runtimeContext);
+      const dynamicContext = await buildDynamicContext(root, runtimeContext, [memory.prompt(), extensionPrompt]);
+      const goalContent = appendGoalReminder(userContent ?? run.goal, dynamicContext);
+      this.emit({ type: "log.line", run_id: run.runId, level: "INFO", source: "prompt-cache", message: `system_bytes=${Buffer.byteLength(prompt, "utf8")} system_sha256=${createHash("sha256").update(prompt).digest("hex")} reminder_bytes=${Buffer.byteLength(dynamicContext, "utf8")}`, ts: now() });
       await this.extensions.dispatch("session_start", { goal: run.goal }, root, { runId: run.runId, sessionId });
-      const initialHistory = [{ role: "system" as const, content: prompt }, ...(dynamicContext ? [{ role: "user" as const, content: dynamicContext }] : []), ...history];
+      const initialHistory = [{ role: "system" as const, content: prompt }, ...history];
       const checkpointInterval = positiveEnv("SZTU_CHECKPOINT_INTERVAL", 5);
       const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { if (checkpoint.phase === "tool_batch" && checkpoint.step % checkpointInterval !== 0) return; await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
-      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal, run.currentMessage);
+      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal, goalContent);
 
       // Recuris: 如果需要进化，触发记忆进化
       if (result.taskCanvas && shouldEvolve("interrupted")) {

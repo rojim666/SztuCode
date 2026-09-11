@@ -210,14 +210,14 @@ test("OpenAI-compatible provider supports keyless endpoints without an authoriza
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test("OpenAI-compatible provider marks stable system and tool prefixes for caching", async () => {
+test("OpenAI-compatible provider uses automatic prefix caching without Anthropic annotations", async () => {
   const originalFetch = globalThis.fetch; let requestBody: Record<string, any> = {};
   globalThis.fetch = (async (_input, init) => { requestBody = JSON.parse(String(init?.body)); return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }], usage: { prompt_tokens: 10, prompt_tokens_details: { cached_tokens: 6 } } }), { status: 200, headers: { "content-type": "application/json" } }); }) as typeof fetch;
   try {
     const tools = new ToolRegistry(); tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object" }, invoke: async () => ({ ok: true, output: "" }) });
     const result = await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "cached-model", cacheControl: true }).complete([{ role: "system", content: "stable" }, { role: "user", content: "hi" }], tools);
-    assert.deepEqual(requestBody.messages[0].cache_control, { type: "ephemeral" });
-    assert.deepEqual(requestBody.tools[0].cache_control, { type: "ephemeral" });
+    assert.equal(requestBody.messages[0].cache_control, undefined);
+    assert.equal(requestBody.tools[0].cache_control, undefined);
     assert.equal(result.usage?.cache_read_input_tokens, 6);
     // prompt_tokens=10 含缓存命中 6，协议口径 input_tokens 为净输入 10-6=4
     assert.equal(result.usage?.input_tokens, 4);
@@ -478,7 +478,7 @@ test("OpenAI Responses provider strips cache_control from tool definitions", asy
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test("OpenAI chat provider keeps cache_control in tool definitions", async () => {
+test("OpenAI chat provider omits cache_control in tool definitions", async () => {
   const originalFetch = globalThis.fetch;
   let requestBody: Record<string, any> = {};
   globalThis.fetch = (async (_input, init) => {
@@ -489,7 +489,7 @@ test("OpenAI chat provider keeps cache_control in tool definitions", async () =>
     const tools = new ToolRegistry();
     tools.register({ name: "read_file", description: "read", permission: "read_only", schema: { type: "object" }, invoke: async () => ({ ok: true, output: "" }) });
     await new OpenAiCompatibleProvider({ baseUrl: "http://mock/v1", model: "cached-model", cacheControl: true }).complete([{ role: "user", content: "hi" }], tools);
-    assert.deepEqual(requestBody.tools[0].cache_control, { type: "ephemeral" });
+    assert.equal(requestBody.tools[0].cache_control, undefined);
   } finally { globalThis.fetch = originalFetch; }
 });
 

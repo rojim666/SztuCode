@@ -57,10 +57,30 @@ _SYSTEM_PROMPT = (
 )
 
 
-# 在消息列表中扫描摘要确认消息，放置 cache_control 断点
-# 借鉴 Claude Code：摘要 ack 消息上的 cache_control 使前缀稳定可缓存
-# 缓存前缀 = [system + summary_user + summary_ack + 历史摘要]
+# 在消息列表中放置 cache_control 断点：
+# 1) 摘要 ack 消息——压缩后使 [system + summary_user + summary_ack] 前缀可缓存；
+# 2) 最后一条消息——滚动断点，使整段对话历史跨轮缓存，每轮只重算新增的尾部。
+# 每次调用先清除旧断点，避免跨轮累积超过 API 的 4 个断点上限。
 def _annotate_cache_control(messages: list[dict[str, object]]) -> None:
+    _clear_cache_control(messages)
+    _mark_summary_ack_breakpoint(messages)
+    if messages:
+        _mark_trailing_breakpoint(messages[-1])
+
+
+# 清除消息内容块上的 cache_control，保证每次注解幂等
+def _clear_cache_control(messages: list[dict[str, object]]) -> None:
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict):
+                block.pop("cache_control", None)
+
+
+# 扫描摘要确认消息（含 "Understood"），在其上放置 cache_control 断点
+def _mark_summary_ack_breakpoint(messages: list[dict[str, object]]) -> None:
     for msg in messages:
         if msg.get("role") != "assistant":
             continue
@@ -74,9 +94,21 @@ def _annotate_cache_control(messages: list[dict[str, object]]) -> None:
                 continue
             text = block.get("text", "")
             if isinstance(text, str) and "Understood" in text:
-                # 放置 cache_control 断点 — 使此前所有内容可被 API 缓存
                 block["cache_control"] = {"type": "ephemeral"}
                 return
+
+
+# 在一条消息的最后一个内容块上放置 cache_control 断点（滚动缓存整段历史）
+def _mark_trailing_breakpoint(message: dict[str, object]) -> None:
+    content = message.get("content")
+    if isinstance(content, list) and content:
+        last = content[-1]
+        if isinstance(last, dict) and "cache_control" not in last:
+            last["cache_control"] = {"type": "ephemeral"}
+    elif isinstance(content, str) and content:
+        message["content"] = [
+            {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}
+        ]
 
 
 # 返回当前 UTC 时间的 ISO 8601 字符串
@@ -141,7 +173,7 @@ class AnthropicProvider:
             max_output_tokens if max_output_tokens is not None else self._max_output_tokens
         )
         await bus.publish(
-            LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy="static", ts=_now())
+            LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy=getattr(self, "_routing_strategy", "static"), ts=_now())
         )
 
         system_block: dict[str, object] = {

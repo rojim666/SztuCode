@@ -32,7 +32,7 @@ export const PROTOCOL_METHODS = [
   "session.archive", "session.close", "session.compact", "session.delete", "session.fork", "session.pin", "session.rename", "session.resume", "session.set_workspace",
   "change.diff", "change.discard", "change.list", "change.revert", "change.stage", "change.unstage",
   "file.read", "file.search", "git.commit", "git.history",
-  "artifact.create", "artifact.register", "artifact.get", "artifact.list", "artifact.verify",
+  "artifact.create", "artifact.register", "artifact.get", "artifact.list", "artifact.verify", "artifact.restore",
   "operation.get", "operation.list", "operation.recover",
   "schedule.create", "schedule.list", "schedule.update", "schedule.pause", "schedule.run", "schedule.delete",
   "plugin.catalog", "plugin.catalog_install", "plugin.install", "plugin.list", "plugin.marketplace_add", "plugin.marketplace_refresh", "plugin.marketplace_remove", "plugin.set_enabled", "plugin.uninstall",
@@ -135,10 +135,12 @@ export interface RequestCancelParams { type?: "request.cancel" | "$/cancelReques
 export interface PermissionRespondParams { type?: "permission.respond"; permission_id: string; decision: PermissionDecision }
 export interface WorkspaceOpenParams { type?: "workspace.open"; path: string }
 export interface WorkspaceListParams { type?: "workspace.list" }
-export interface ArtifactCreateParams { type?: "artifact.create"; workspace_id: string; path: string; artifact_type?: "docx" | "pptx" | "pdf" | "xlsx" | "csv" | "other"; summary?: string; session_id?: string; run_id?: string; input_sources?: Array<{ path: string; version?: string; hash?: string }> }
+export type ArtifactType = "docx" | "pptx" | "pdf" | "xlsx" | "csv" | "web" | "image" | "audio" | "video" | "model3d" | "app" | "archive" | "code" | "other";
+export interface ArtifactCreateParams { type?: "artifact.create"; workspace_id: string; path: string; artifact_type?: ArtifactType; summary?: string; session_id?: string; run_id?: string; input_sources?: Array<{ path: string; version?: string; hash?: string }> }
 export interface ArtifactRegisterParams extends Omit<ArtifactCreateParams, "type"> { type?: "artifact.register" }
 export interface ArtifactGetParams { type?: "artifact.get"; workspace_id: string; artifact_id: string }
 export interface ArtifactListParams { type?: "artifact.list"; workspace_id: string }
+export interface ArtifactRestoreParams { type?: "artifact.restore"; workspace_id: string; artifact_id: string; version: number; expected_hash: string }
 export interface ArtifactVerifyParams { type?: "artifact.verify"; workspace_id: string; artifact_id: string; status: "unverified" | "passed" | "failed"; summary?: string }
 
 export interface PongResult { server_version: string; uptime_ms: number; received_at: string; capabilities: string[]; protocol_version?: ProtocolVersion }

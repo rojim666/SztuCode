@@ -30,6 +30,21 @@ def _apply_endpoint_env(prefix: str, llm: object) -> None:
 
 # 根据配置创建对应的 LLM provider 实例
 def create_provider(config: SztuConfig) -> LLMProvider:
+    if config.llm.router == "smart":
+        from copy import deepcopy
+        from sztu_code.core.llm.smart import SmartProvider
+
+        if not config.llm.flagship_model.strip():
+            raise SystemExit("Smart routing requires llm.flagship_model on the configured endpoint")
+        standard_config = deepcopy(config)
+        standard_config.llm.router = "static"
+        flagship_config = deepcopy(standard_config)
+        flagship_config.llm.default_model = config.llm.flagship_model
+        standard = create_provider(standard_config)
+        flagship = create_provider(flagship_config)
+        setattr(standard, "_routing_strategy", "smart:standard")
+        setattr(flagship, "_routing_strategy", "smart:flagship")
+        return SmartProvider(standard, flagship)
     if not config.llm.default_model.strip():
         raise SystemExit(
             "LLM model not configured. Set SZTU_LLM_DEFAULT_MODEL in .env."

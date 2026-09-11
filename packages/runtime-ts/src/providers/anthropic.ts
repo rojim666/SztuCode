@@ -22,6 +22,9 @@ function createIdleTimeout(onFire: () => void, ms: number): { reset: () => void;
 
 
 export class AnthropicMessagesProvider implements ModelProvider {
+  /** 滚动断点：上次成功请求的末块指纹。steering/干预/错误回注在 assistant 后追加 user
+   * 消息时，推导边界会漂移到新消息上；显式沿用旧锚点保证上次写入的前缀缓存仍可命中。 */
+  private priorAnchor: AnchorFingerprint | null = null;
   constructor(private readonly options: AnthropicProviderOptions) {}
   stream(model: Model, context: ModelContext, options: StreamOptions = {}): AsyncIterable<ModelEvent> {
     return streamFromCompletion(async (_model, _context, streamOptions, callbacks): Promise<AssistantMessage> => {
@@ -30,27 +33,89 @@ export class AnthropicMessagesProvider implements ModelProvider {
     }, model, context, options);
   }
   async complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, _invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
-    const system = messages.filter((message) => message.role === "system").map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n");
+    // The first system message is the stable base; additional system messages are
+    // caller-owned tails and must not move the breakpoint past that base.
+    const system = messages.filter((message) => message.role === "system").flatMap((message) =>
+      typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content.map(({ cache_control: _cache, ...block }) => block));
     const bodyMessages = toAnthropicMessages(messages);
+    annotateConversationCache(bodyMessages, Boolean(this.options.cacheControl), this.priorAnchor);
     const timeoutMs = this.options.timeoutMs ?? 120_000;
     const controller = new AbortController(); const abort = () => controller.abort(signal?.reason); signal?.addEventListener("abort", abort, { once: true });
     let timedOut = false; const timeout = createIdleTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      const systemValue = this.options.cacheControl && system ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] : system ? system : undefined;
+      const systemValue = system.length ? system.map((block, index) => ({ ...block, ...(this.options.cacheControl && index === 0 ? { cache_control: { type: "ephemeral" } } : {}) })) : undefined;
       const streaming = Boolean(onToken);
       const baseMaxTokens = this.options.maxTokens ?? 8192;
       const { max_tokens: maxTokens, thinking } = anthropicReasoningParams(this.options.reasoningEffort, baseMaxTokens);
-      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: maxTokens, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(!thinking && this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(!thinking && this.options.topP != null ? { top_p: this.options.topP } : {}), ...(thinking ? { thinking } : {}) }), signal: controller.signal });
+      const response = await fetch(`${(this.options.baseUrl ?? "https://api.anthropic.com/v1").replace(/\/$/, "")}/messages`, { method: "POST", headers: { "x-api-key": this.options.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(streaming ? { accept: "text/event-stream" } : {}) }, body: JSON.stringify({ model: this.options.model, max_tokens: maxTokens, stream: streaming, ...(systemValue ? { system: systemValue } : {}), messages: bodyMessages, tools: tools.list().slice().sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map((tool, index, all) => ({ name: tool.name, description: tool.description, input_schema: tool.schema, ...(this.options.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) })), ...(!thinking && this.options.temperature != null ? { temperature: this.options.temperature } : {}), ...(!thinking && this.options.topP != null ? { top_p: this.options.topP } : {}), ...(thinking ? { thinking } : {}) }), signal: controller.signal });
       if (!response.ok) throw await providerHttpError(response, "Anthropic");
       timeout.reset();
-      if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking, timeout.reset);
+      if (streaming && response.body) {
+        const result = await parseAnthropicStream(response.body, this.options.model, onToken, onThinking, timeout.reset);
+        this.priorAnchor = anchorFingerprint(bodyMessages.at(-1));
+        return result;
+      }
       const data = await response.json() as AnthropicResponse; const content = data.content ?? []; const text = content.filter((block) => block.type === "text").map((block) => block.text ?? "").join(""); const calls = content.filter((block) => block.type === "tool_use" && block.id && block.name).map((block) => ({ id: block.id!, name: block.name!, input: block.input ?? {} }));
       const thinking_blocks = content.filter((block) => block.type === "thinking").map((block) => ({ type: "thinking" as const, thinking: block.thinking ?? "", signature: block.signature ?? "" }));
       if (thinking_blocks.length) onThinking?.(thinking_blocks.map((block) => block.thinking).filter(Boolean).join("\n\n"));
       if (text) onToken?.(text);
+      this.priorAnchor = anchorFingerprint(bodyMessages.at(-1));
       return { text, thinking_blocks, tool_calls: calls, stop_reason: normalizeStopReason(data.stop_reason, calls.length > 0), model: this.options.model, streamed: Boolean(onToken), usage: { input_tokens: Number(data.usage?.input_tokens ?? 0), output_tokens: Number(data.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(data.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(data.usage?.cache_creation_input_tokens ?? 0) } };
     } catch (error) { if (timedOut) throw new ProviderTimeoutError("Anthropic", timeoutMs); throw error; } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
   }
+}
+
+type AnchorFingerprint = { role: "user" | "assistant"; blockType: string; text: string };
+
+/** 块的稳定指纹文本：tool_result 取 content、其余取 text/thinking/id，截断防指纹膨胀。 */
+function anchorBlockText(block: AnthropicBlock): string {
+  if (block.type === "tool_result") return typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "");
+  return String(block.text ?? block.thinking ?? block.id ?? "");
+}
+
+function markableBlock(message: AnthropicMessage | undefined): AnthropicBlock | undefined {
+  return message?.content.slice().reverse().find((block) => block.type !== "thinking" && block.type !== "redacted_thinking" && (block.type !== "text" || Boolean(block.text)));
+}
+
+function anchorFingerprint(message: AnthropicMessage | undefined): AnchorFingerprint | null {
+  const block = markableBlock(message);
+  if (!message || !block) return null;
+  return { role: message.role, blockType: block.type, text: anchorBlockText(block).slice(0, 128) };
+}
+
+function findAnchorBlock(messages: AnthropicMessage[], anchor: AnchorFingerprint): AnthropicBlock | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== anchor.role) continue;
+    const block = message.content.slice().reverse().find((candidate) => candidate.type === anchor.blockType && anchorBlockText(candidate).slice(0, 128) === anchor.text);
+    if (block) return block;
+  }
+  return undefined;
+}
+
+/** Two conversation anchors leave room for the system and tool breakpoints. */
+function annotateConversationCache(messages: AnthropicMessage[], enabled: boolean, priorAnchor: AnchorFingerprint | null): void {
+  // Persisted summaries can carry old annotations. Rebuild rather than exceed
+  // Anthropic's four-breakpoint limit or leave caching active when disabled.
+  for (const message of messages) for (const block of message.content) delete block.cache_control;
+  if (!enabled) return;
+  const last = messages.at(-1);
+  const lastBlock = markableBlock(last);
+  // 读取锚点：上次请求的末块（滚动断点）优先——steering/干预/错误回注只在旧 assistant
+  // 之后追加 user 消息，推导边界会漂移到新消息，而旧缓存前缀仍需一个断点才能命中。
+  // 锚点等于当前末块（同集重试）或已不存在（压缩重写）时回退到推导边界。
+  const priorBlock = priorAnchor ? findAnchorBlock(messages, priorAnchor) : undefined;
+  const anchorBlock = priorBlock && priorBlock !== lastBlock
+    ? priorBlock
+    : (() => {
+      // This user boundary preceded the newest assistant response, so it was part
+      // of the previous request. Keep it reachable even after >20 new tool blocks.
+      const assistant = messages.map((message) => message.role).lastIndexOf("assistant");
+      const derived = assistant > 0 ? messages[assistant - 1] : undefined;
+      return derived !== last ? markableBlock(derived) : undefined;
+    })();
+  if (anchorBlock) anchorBlock.cache_control = { type: "ephemeral" };
+  if (lastBlock) lastBlock.cache_control = { type: "ephemeral" };
 }
 
 export function toAnthropicMessages(messages: ChatMessage[]): AnthropicMessage[] {

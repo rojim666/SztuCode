@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch, nextTick, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import DOMPurify from "dompurify";
-import { marked, Renderer } from "marked";
+import { marked } from "marked";
+import { ScrollableTableRenderer } from "../../utils/markdown-renderer";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isTauri } from "@tauri-apps/api/core";
 import { render, h } from "vue";
@@ -45,7 +46,7 @@ function looksLikeFilePath(raw: string): string | null {
 }
 
 // 自定义 marked renderer
-class CustomRenderer extends Renderer {
+class CustomRenderer extends ScrollableTableRenderer {
   constructor(private readonly translate: (key: string) => string) { super(); }
 
   override codespan({ text }: { text: string }): string {

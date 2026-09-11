@@ -9,8 +9,7 @@ type LiveSources = { sessions?: SessionStore; sessionId?: string; files?: Partia
 const MEMORY_LAYERS: MemoryLayer[] = ["global", "project", "session"];
 const LAYER_SOURCES: Record<MemoryLayer, string> = { global: "~/.sztu/context.md", project: ".sztu/context.md", session: "session/notes.md" };
 const CONTEXT_MAX_BYTES = 256 * 1024; // project/global context.md 写入上限
-const consolidatedPrefix = "## Consolidated notes (";
-const todayHeader = () => `${consolidatedPrefix}${new Date().toISOString().slice(0, 10)})`;
+const consolidatedPrefix = "## Consolidated notes";
 
 export class MemoryCatalog {
   private readonly documents = new Map<MemoryLayer, MemoryDocument>();
@@ -143,11 +142,12 @@ async function consolidateNotes(sessions: SessionStore, sessionId: string, conte
   return { ok: true, output: `Consolidated ${added} note(s) into project context (${skipped} skipped as duplicates).` };
 }
 
-// 同日已有段落则追加到段落末尾，否则在文末新建段落
+// Use a stable heading for new notes; legacy dated sections remain readable.
 function appendConsolidated(text: string, entries: string[]): string {
-  const header = todayHeader(); const joined = entries.join("\n\n");
-  if (text.includes(header)) {
-    const start = text.indexOf(header) + header.length; const next = text.indexOf("\n## ", start);
+  const header = consolidatedPrefix; const joined = entries.join("\n\n");
+  const existing = /^## Consolidated notes\r?$/m.exec(text);
+  if (existing) {
+    const start = existing.index + existing[0].length; const next = text.indexOf("\n## ", start);
     const insertAt = next === -1 ? text.length : next;
     return `${text.slice(0, insertAt).replace(/\s+$/, "")}\n\n${joined}${text.slice(insertAt)}`;
   }

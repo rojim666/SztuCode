@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fnmatch
 import os
 import re
 from collections.abc import Iterator
@@ -10,6 +9,7 @@ from typing import ClassVar
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.builtin.glob_search import _matches_glob
 from sztu_code.core.tools.workspace import resolve_workspace_path
 
 # 搜索时剪枝忽略的目录，避免扫入依赖与构建产物
@@ -81,7 +81,9 @@ class GrepSearchTool(BaseTool):
                 files.extend(Path(dirpath) / f for f in filenames)
         for file in files:
             rel = file.relative_to(root)
-            if glob_filter and not fnmatch.fnmatch(rel.as_posix(), glob_filter):
+            if file.is_symlink():
+                continue
+            if glob_filter and not _matches_glob(rel.as_posix(), glob_filter):
                 continue
             yield file
 

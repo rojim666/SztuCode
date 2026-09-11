@@ -50,11 +50,12 @@ export type FileReadResult = {
   content: string; encoding: string; binary: boolean; truncated: boolean;
   media_base64?: string | null; mime_type?: string | null;
 };
-// 「添加附件」读取结果：图片/二进制给 data_base64，文本给 text_content，超限/失败给 error
+// 「添加附件」读取结果：小图片给 data_base64，文本给预览，其余素材保留路径并进入项目附件区。
 export type Attachment = {
   path: string; name: string; size: number;
   mime_type?: string | null; is_text: boolean;
-  text_content?: string | null; data_base64?: string | null; error?: string | null;
+  text_content?: string | null; data_base64?: string | null;
+  warning?: string | null; error?: string | null;
 };
 // 随消息发送的图片内容块，字段与 daemon 的 MessageImageBlock 对齐
 export type ImageBlock = { media_type: string; data: string };

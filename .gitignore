@@ -64,3 +64,7 @@ desktop/src-tauri/icons-backup-*/
 
 # tesseract.js 运行时下载的语言训练数据（不入库）
 *.traineddata
+
+# 本地临时目录与账号 token 导出（含凭证，不入库）
+.tmp/
+tok_*.json

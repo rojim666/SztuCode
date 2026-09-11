@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from sztu_code.cli.commands.acp import cmd_acp
 from sztu_code.cli.commands.chat import cmd_chat
 from sztu_code.cli.commands.core import cmd_core_start, cmd_core_status, cmd_core_stop
 from sztu_code.cli.commands.ping import cmd_ping
@@ -21,6 +22,7 @@ def main() -> None:
 
     subparsers.add_parser("ping", help="Ping the core daemon")
     subparsers.add_parser("chat", help="Start a multi-turn chat session")
+    subparsers.add_parser("acp", help="Run as an ACP agent over stdio (editor / WeChat channel)")
 
     run_parser = subparsers.add_parser("run", help="Run an agent task")
     run_parser.add_argument("--goal", required=True, help="Goal for the agent to accomplish")
@@ -51,6 +53,8 @@ def main() -> None:
         cmd_ping(config)
     elif args.command == "chat":
         cmd_chat(config)
+    elif args.command == "acp":
+        cmd_acp(config)
     elif args.command == "run":
         cmd_run(args.goal, config)
     elif args.command == "core":

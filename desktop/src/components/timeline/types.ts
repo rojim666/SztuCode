@@ -5,7 +5,7 @@ export type RunStats = { inputTokens: number; outputTokens: number; cacheReadInp
 export type UserAttachment = {
   name: string;
   size: number;
-  kind: "image" | "text";
+  kind: "image" | "text" | "file";
   mime?: string;
   dataBase64?: string;
 };

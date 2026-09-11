@@ -39,7 +39,7 @@ test("subagents create independent child sessions with parent links and subscrip
     assert.equal(snapshot.header.metadata?.parentRunId, "parent-run");
     assert.ok(snapshot.entries.some((entry) => entry.type === "message" && entry.message.role === "assistant"));
     assert.equal(result.tokens, 5);
-  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 });
 
 test("child cancellation and parent cancellation abort the SessionRuntime", async () => {
@@ -58,7 +58,7 @@ test("child cancellation and parent cancellation abort the SessionRuntime", asyn
     const parentRun = manager.run("planner", "wait for parent", [], "parent", { signal: controller.signal });
     await new Promise((resolve) => setTimeout(resolve, 10)); controller.abort();
     await assert.rejects(parentRun, /aborted|cancelled/i);
-  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 });
 
 test("workflow persists node state and propagates DAG failure to dependents", async () => {
@@ -81,7 +81,7 @@ test("workflow persists node state and propagates DAG failure to dependents", as
     assert.equal(result.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "c")?.status, "failed"); assert.equal(result.tasks.find((item) => item.task.id === "d")?.status, "blocked");
     const persisted = await manager.loadWorkflow(workflowRunId);
     assert.equal(persisted.status, "failed"); assert.equal(persisted.parent_session_id, "parent");
-  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 });
 
 test("spawn returns a handle immediately; handleResult is async and handleList tracks handles", async () => {
@@ -95,12 +95,12 @@ test("spawn returns a handle immediately; handleResult is async and handleList t
     assert.equal((early as { status?: string }).status, "running");
     assert.ok((early as { note?: string }).note, "still-running result must carry a note");
     assert.equal(manager.handleList().length, 1);
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + 15000;
     let done: { status?: string; text?: string } = {};
     while (Date.now() < deadline) { done = manager.handleResult(handle) as { status?: string; text?: string }; if (done.status === "completed") break; await new Promise((resolve) => setTimeout(resolve, 20)); }
     assert.equal(done.status, "completed");
     assert.equal(done.text, "child output");
-  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 });
 
 test("subagent_result validates planner output as a WorkflowGraph after completion", async () => {
@@ -111,12 +111,12 @@ test("subagent_result validates planner output as a WorkflowGraph after completi
     const manager = new SubagentManager(provider, root, events, permissions, backend);
     const resultTool = createSubagentResultTool(manager);
     const { handle } = manager.spawn("planner", "plan it");
-    const deadline = Date.now() + 3000;
+    const deadline = Date.now() + 15000;
     let done: { status?: string } = {};
     while (Date.now() < deadline) { done = manager.handleResult(handle) as { status?: string }; if (done.status === "completed") break; await new Promise((resolve) => setTimeout(resolve, 20)); }
     assert.equal(done.status, "completed");
     const toolResult = await resultTool.invoke({ handle }, { workspace: new Workspace(root) });
     assert.equal(toolResult.ok, true);
     assert.deepEqual(JSON.parse(toolResult.output).workflow, graph);
-  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
 });

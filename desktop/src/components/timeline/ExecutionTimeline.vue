@@ -8,7 +8,7 @@ import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
 import TokenStream from "./TokenStream.vue";
 import PermissionBadge from "./PermissionBadge.vue";
-import FileChangesBadge from "./FileChangesBadge.vue";
+import EditedFilesCard from "./EditedFilesCard.vue";
 import type { ChangeFile, ContextInjectionEntry, PermissionDecision, PermissionState, PlanItem, RunStats, TimelineEvent, TimelineStep, ToolCallEntry, UserAttachment } from "./types";
 import { formatTokens } from "../../utils/sessionStats";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
@@ -220,6 +220,11 @@ function attachmentCategory(att: UserAttachment): string {
   if (["doc", "docx", "odt", "rtf"].includes(ext)) return "word";
   if (["xls", "xlsx", "xlsm", "csv", "tsv", "ods"].includes(ext)) return "excel";
   if (["ppt", "pptx", "odp"].includes(ext)) return "powerpoint";
+  if (att.mime?.startsWith("audio/") || ["mp3", "wav", "m4a", "flac", "ogg", "aac"].includes(ext)) return "audio";
+  if (att.mime?.startsWith("video/") || ["mp4", "mov", "mkv", "webm", "avi", "m4v"].includes(ext)) return "video";
+  if (["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz"].includes(ext)) return "archive";
+  if (att.mime?.startsWith("model/") || ["glb", "gltf", "obj", "fbx", "stl", "ply", "dae", "3mf"].includes(ext)) return "model";
+  if (["apk", "exe", "msi", "dmg", "deb"].includes(ext)) return "app";
   if (["txt", "md", "markdown", "json", "xml", "yaml", "yml", "log"].includes(ext)) return "text";
   return "file";
 }
@@ -228,6 +233,7 @@ function attachmentIcon(att: UserAttachment): string {
   const cat = attachmentCategory(att);
   const representative: Record<string, string> = {
     pdf: "file.pdf", word: "file.docx", excel: "file.xlsx", powerpoint: "file.pptx",
+    audio: "file.mp3", video: "file.mp4", archive: "file.zip", model: "file.obj", app: "file.exe",
     text: "file.txt", file: att.name.toLowerCase(),
   };
   return fileTypeIconUrl(representative[cat] ?? att.name.toLowerCase()) || fileTypeIconUrl("file.txt");
@@ -658,12 +664,15 @@ watch(
           <section v-if="isTurnExpanded(turn) && (turn.passedTests || turn.failedTests || turn.changeFiles.length || (turn.state === 'failed' && turn.failureReason))" class="evidence-strip" :aria-label="t('timeline.evidence.aria')">
             <div v-if="turn.passedTests" class="evidence-item passed"><AppIcon name="CheckCircle2" :size="14" /><span><b>{{ turn.passedTests }}</b> {{ t('timeline.evidence.passedSuffix') }}</span></div>
             <div v-if="turn.failedTests" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span><b>{{ turn.failedTests }}</b> {{ t('timeline.evidence.failedSuffix') }}</span></div>
-            <FileChangesBadge
+            <EditedFilesCard
               v-if="turn.changeFiles.length"
               :files="turn.changeFiles"
               :workspace-path="workspacePath ?? ''"
+              :workspace-id="workspaceId ?? ''"
+              :run-id="turn.runId ?? ''"
               @open-file="(path) => emit('openFile', path)"
-              @open-all="turn.runId && emit('openChanges', turn.runId)"
+              @undo="turn.runId && emit('reverted', turn.runId)"
+              @review="turn.runId && emit('review', { workspaceId: workspaceId ?? '', runId: turn.runId, paths: turn.changePaths })"
             />
             <div v-if="turn.state === 'failed' && turn.failureReason" class="evidence-item failed"><AppIcon name="CircleAlert" :size="14" /><span>{{ turn.failureReason }}</span></div>
           </section>

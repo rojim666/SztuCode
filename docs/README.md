@@ -32,6 +32,7 @@
 | [系统提示词架构](reference/system-prompts.html) | 参考 | 分层提示词结构的可视化说明 |
 | [评估指南](guides/evaluation.md) | 指南 | SWE-bench 与轨迹质量评估方法 |
 | [Terminal-Bench 评测指南](guides/terminal-bench.md) | 指南 | 通过 Harbor 接入 Terminal-Bench 的运行、模型与成本控制 |
+| [微信接入指南](guides/wechat-openclaw-acp.md) | 指南 | 通过 OpenClaw 微信插件，以 ACP 将 SztuCode 接入微信 |
 | [多智能体工作流现状](evaluations/multi-agent-workflow.md) | 现行 | TypeScript DAG、角色化子 Agent 与当前验证边界 |
 | [Agent 能力评审](evaluations/agent-capability-review.md) | 评审快照 | Runtime 各项能力打分、性能障碍与分阶段扩展路线 |
 | [Agent 能力审计（第二版）](evaluations/agent-capability-review-v2.md) | 评审快照 | 阶段二、三落地后的重新评分、性能瓶颈、顶级产品差距和 durable 路线 |

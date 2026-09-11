@@ -88,7 +88,10 @@ class GlobSearchTool(BaseTool):
         for dirpath, dirnames, filenames in os.walk(target):
             dirnames[:] = [d for d in dirnames if d not in _IGNORED_DIRS]
             for filename in filenames:
-                rel = (Path(dirpath) / filename).relative_to(root).as_posix()
+                file = Path(dirpath) / filename
+                if file.is_symlink():
+                    continue
+                rel = file.relative_to(root).as_posix()
                 if _matches_glob(rel, pattern):
                     results.append(rel)
         return results

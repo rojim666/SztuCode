@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 class TerminationReason(StrEnum):
     SUCCESS = "success"                         # LLM 返回 end_turn，正常完成
     MAX_TURNS = "max_turns"                     # 达到 max_steps 上限
+    MAX_WALL_CLOCK_EXCEEDED = "max_wall_clock_exceeded"  # 墙钟预算耗尽
     CANCELLED = "cancelled"                      # 用户手动取消
     LLM_ERROR = "llm_error"                      # LLM API 调用异常
     REPEATED_ERROR = "repeated_error"            # 同一错误连续 N 次
@@ -72,7 +74,10 @@ class ExecutionContext:
     # Token 预算准入按本字段累计：请求前估算的是完整 prompt，口径必须一致
     total_prompt_tokens: int = 0
     last_context_pct: float = 0.0  # 最近一次 LLM 调用的上下文占用百分比（用于 run 级结算透传）
-    started_at: float = 0.0       # run 开始墙钟（time.monotonic()），loop 惰性初始化
+    started_at: float = 0.0       # run 开始墙钟（由 monotonic clock 提供）
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False, compare=False)
+    deadline_at: float | None = field(default=None, init=False)
+    _deadline_initialized: bool = field(default=False, init=False, repr=False)
     max_budget_usd: float = 0.0   # USD 成本上限（0 = 不限制）
     # --- Claude Code 风格终止/继续系统 ---
     # 错误累积器：{tool_name: {error_type: count}} — 同一工具同类错误重复 N 次触发熔断
@@ -89,22 +94,28 @@ class ExecutionContext:
         elif not self.messages:
             self.messages.append({"role": "user", "content": self.goal})
 
-    # 返回当前 run 的 system prompt；有 override 时跳过 base，直接注入记忆层
+    # 返回当前 run 的 system prompt：只含字节稳定的静态前缀。
+    # 动态记忆层（global/project/profile/notes）见 dynamic_context_reminder，
+    # 由 runner 注入到消息尾部，避免记忆更新击穿前缀缓存。
     def system_prompt(self, base: str) -> str:
-        parts = [self.system_prompt_override if self.system_prompt_override else base]
+        return self.system_prompt_override if self.system_prompt_override else base
+
+    # 动态记忆层，注入到消息尾部而非 system prompt
+    def dynamic_context_reminder(self) -> str:
+        parts: list[str] = []
         if self.global_context.strip():
-            parts.append("\n\n## Global Context\n" + self.global_context.strip())
+            parts.append("## Global Context\n" + self.global_context.strip())
         if self.project_context.strip():
-            parts.append("\n\n## Project Context\n" + self.project_context.strip())
+            parts.append("## Project Context\n" + self.project_context.strip())
         if self.project_profile_context.strip():
-            parts.append("\n\n## Project Profile\n" + self.project_profile_context.strip())
+            parts.append("## Project Profile\n" + self.project_profile_context.strip())
         if self.session_notes.strip():
             parts.append(
-                "\n\n## Session Notes\n"
+                "## Session Notes\n"
                 + self.session_notes.strip()
                 + "\n\nRemember important durable facts by calling note_save."
             )
-        return "".join(parts)
+        return "\n\n".join(parts)
 
     # 将动态任务状态追加到消息尾部，保持 system prompt 字节级稳定以命中前缀缓存
     def add_canvas_update(self) -> None:
@@ -140,6 +151,24 @@ class ExecutionContext:
         block = {"type": "text", "text": text}
         self.messages.append({"role": "user", "content": [block]})
         return True
+
+    # 将工作区/git 快照以 system-reminder 注入到本轮 goal 消息开头。
+    # 放在消息尾部而非 system prompt：快照随文件改动每轮变化，写进 system 会击穿前缀缓存。
+    def prepend_goal_reminder(self, text: str) -> None:
+        body = text.strip()
+        if not body:
+            return
+        reminder = f"<system-reminder>\n{body}\n</system-reminder>"
+        last = self.messages[-1] if self.messages else None
+        if last is not None and last.get("role") == "user":
+            content = last.get("content")
+            if isinstance(content, str):
+                last["content"] = f"{reminder}\n\n{content}"
+                return
+            if isinstance(content, list):
+                last["content"] = [{"type": "text", "text": reminder}, *content]
+                return
+        self.messages.append({"role": "user", "content": reminder})
 
     # 将 LLM 响应的 content blocks 追加为 assistant 消息
     def add_assistant_message(self, content: list[Any]) -> None:
@@ -202,17 +231,42 @@ class ExecutionContext:
     def token_budget_exhausted(self) -> bool:
         return self.max_tokens > 0 and self.budget_spend_tokens() >= self.max_tokens
 
+    # 在 Run 开始时只建立一次绝对 monotonic deadline；重复进入同一 context 不重置预算。
+    def start(self) -> None:
+        if self._deadline_initialized:
+            return
+
+        start_at = self.started_at if self.started_at > 0 else self.clock()
+        self.started_at = start_at
+        self.deadline_at = (
+            start_at + float(self.max_wall_clock_s)
+            if self.max_wall_clock_s > 0
+            else None
+        )
+        self._deadline_initialized = True
+
+    # 返回当前 Run 的剩余墙钟秒数；None 表示未配置墙钟上限，耗尽时钳制为 0。
+    def remaining_s(self) -> float | None:
+        self.start()
+        if self.deadline_at is None:
+            return None
+        return max(0.0, self.deadline_at - self.clock())
+
     # 返回 run 已运行的墙钟秒数；started_at 未初始化时返回 0
     def elapsed_s(self) -> float:
-        return time.monotonic() - self.started_at if self.started_at > 0 else 0.0
-
-    # 返回墙钟预算是否已超时；max_wall_clock_s=0 视为不限
-    def wall_clock_exceeded(self) -> bool:
         return (
-            self.max_wall_clock_s > 0
-            and self.started_at > 0
-            and self.elapsed_s() >= self.max_wall_clock_s
+            self.clock() - self.started_at
+            if self._deadline_initialized or self.started_at > 0
+            else 0.0
         )
+
+    # 返回墙钟预算是否已超时；Deadline 建立后以其自身为准，不受配置字段后续变化影响
+    def wall_clock_exceeded(self) -> bool:
+        if not self._deadline_initialized:
+            if self.started_at <= 0:
+                return False
+            self.start()
+        return self.deadline_at is not None and self.remaining_s() == 0.0
 
     # --- Claude Code 风格错误累积 ---
 

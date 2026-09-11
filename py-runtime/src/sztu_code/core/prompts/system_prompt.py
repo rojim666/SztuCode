@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import platform
 import subprocess
 from pathlib import Path
@@ -99,15 +98,16 @@ def build_static_base() -> str:
     return "\n\n".join(_static_sections())
 
 
-# 渲染环境上下文段：模型家族、工作目录、日期、平台
+# 渲染环境上下文段：模型家族、工作目录、平台
+# 注意：日期不在这里——它每天变化，写进 system 会击穿前缀缓存；
+# 改由 runner 注入到消息尾部。
 def _environment_section(
-    *, cwd: str, date: str, model_family: str, os_name: str, os_version: str
+    *, cwd: str, model_family: str, os_name: str, os_version: str
 ) -> str:
     return (
         "# Environment context\n"
         f" - Model family: {model_family}\n"
         f" - Working directory: {cwd}\n"
-        f" - Date: {date}\n"
         f" - Platform: {os_name} {os_version}"
     )
 
@@ -179,22 +179,20 @@ def discover_instruction_files(root: Path) -> list[tuple[str, str]]:
     return entries
 
 
-# 渲染项目上下文与项目指令段
+# 渲染项目上下文与项目指令段。
+# 注意：git 快照不在这里渲染——它随文件改动每轮变化，写进 system prompt 会击穿
+# 前缀缓存（system 是缓存锚点，一旦变化整段缓存失效）；改由 runner 通过
+# render_git_snapshot 注入到消息尾部。
 def _project_sections(
     *,
     cwd: str,
-    date: str,
     instruction_entries: list[tuple[str, str]],
-    git_snapshot: str | None,
 ) -> list[str]:
     sections: list[str] = [
         "# Project context\n"
-        f" - Today's date is {date}.\n"
         f" - Working directory: {cwd}\n"
         f" - Project instruction files discovered: {len(instruction_entries)}."
     ]
-    if git_snapshot:
-        sections.append(git_snapshot)
     if instruction_entries:
         parts = ["# Project instructions"]
         for label, content in instruction_entries:
@@ -207,28 +205,23 @@ def _project_sections(
 def build_system_prompt(
     *,
     workspace_root: Path | None = None,
-    date: str | None = None,
     model_family: str = "an AI assistant",
     platform_name: str | None = None,
     platform_version: str | None = None,
 ) -> str:
     cwd = str((workspace_root or Path.cwd()).resolve())
-    today = date or datetime.date.today().isoformat()
     os_name = platform_name or platform.system()
     os_version = platform_version or platform.release()
 
     instruction_entries: list[tuple[str, str]] = []
-    git_snapshot: str | None = None
     if workspace_root is not None:
         instruction_entries = discover_instruction_files(workspace_root)
-        git_snapshot = render_git_snapshot(workspace_root)
 
     sections: list[str] = list(_static_sections())
     sections.append(DYNAMIC_BOUNDARY)
     sections.append(
         _environment_section(
             cwd=cwd,
-            date=today,
             model_family=model_family,
             os_name=os_name,
             os_version=os_version,
@@ -237,9 +230,7 @@ def build_system_prompt(
     sections.extend(
         _project_sections(
             cwd=cwd,
-            date=today,
             instruction_entries=instruction_entries,
-            git_snapshot=git_snapshot,
         )
     )
     return "\n\n".join(sections)

@@ -402,3 +402,169 @@ async def test_permission_timeout_cleans_up_pending() -> None:
     # 超时后迟到的 respond 不应 crash
     mgr.respond("t_late", "allow_once")  # should be noop
     assert "t_late" not in mgr._pending
+
+
+# 功能：验证 check_and_wait 被外部取消时也会清理 pending 请求
+# 设计：先让审批请求进入等待，再取消调用任务；迟到的响应只能命中 unknown/no-op，
+#       不能留下 Future 或重新放行已取消的工具调用
+async def test_permission_cancellation_cleans_up_pending() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="t_cancelled",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+    assert "t_cancelled" in mgr._pending
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert "t_cancelled" not in mgr._pending
+    mgr.respond("t_cancelled", "allow_once", run_id="r1", session_id="s1")
+
+
+# 功能：验证权限事件发送期间取消也会清理 pending 请求
+# 设计：让 event_emitter 在请求已登记后挂起，再取消 check_and_wait，覆盖等待 Future 前的窗口
+async def test_permission_cancellation_during_event_emission_cleans_up_pending() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    emitter_started = asyncio.Event()
+    emitter_release = asyncio.Event()
+
+    async def emitter(event: dict[str, Any]) -> None:
+        assert event["tool_use_id"] == "emit-cancelled"
+        emitter_started.set()
+        await emitter_release.wait()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="emit-cancelled",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r1",
+        )
+    )
+    await emitter_started.wait()
+    assert "emit-cancelled" in mgr._pending
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    emitter_release.set()
+    assert "emit-cancelled" not in mgr._pending
+
+
+# 功能：验证 session 断连后，后台 run 的后续 ASK 请求直接拒绝而不重新创建 pending
+# 设计：先取消 session，再发起新的危险调用；重新标记连接后确认审批队列恢复可用
+async def test_disconnected_session_does_not_create_new_pending() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    mgr.cancel_session("s1", reason="client_disconnected")
+    assert await mgr.check_and_wait(
+        tool_use_id="after-disconnect",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+    ) == (False, "deny_once")
+    assert mgr._pending == {}
+
+    mgr.mark_session_connected("s1")
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="after-reconnect",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r2",
+        )
+    )
+    await asyncio.sleep(0)
+    mgr.respond("after-reconnect", "allow_once", run_id="r2", session_id="s1")
+    assert await task == (True, "allow_once")
+
+
+# 功能：验证取消旧 run 后，迟到的旧上下文响应不会唤醒同 ID 的新审批请求
+# 设计：先取消 r-old，再用相同 tool_use_id 创建 r-new；旧响应必须被拒绝并保留新请求，
+#       随后只有匹配 r-new/session 的响应才能完成新请求
+async def test_stale_response_from_cancelled_run_does_not_release_new_request() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    old_task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="reused-id",
+            tool_name="bash",
+            params={"command": "echo old"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r-old",
+        )
+    )
+    await asyncio.sleep(0)
+    mgr.cancel_run("r-old", "s1")
+    assert await old_task == (False, "deny_once")
+
+    new_task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="reused-id",
+            tool_name="bash",
+            params={"command": "echo new"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r-new",
+        )
+    )
+    await asyncio.sleep(0)
+
+    mgr.respond("reused-id", "allow_once", run_id="r-old", session_id="s1")
+    await asyncio.sleep(0)
+    assert not new_task.done()
+
+    mgr.respond("reused-id", "deny_once", run_id="r-new", session_id="s1")
+    assert await new_task == (False, "deny_once")
+
+
+# 功能：验证 daemon shutdown 可一次性拒绝所有 session 的待审批请求
+# 设计：同时挂起两个 session 的审批，调用 cancel_all 后两个调用都应完成且无残留
+async def test_cancel_all_resolves_all_pending_requests() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+    mgr.cancel_session("stale-session", reason="client_disconnected")
+
+    tasks = [
+        asyncio.create_task(
+            mgr.check_and_wait(
+                tool_use_id=tool_use_id,
+                tool_name="bash",
+                params={"command": "echo"},
+                session_id=session_id,
+                event_emitter=emitter,
+                run_id=f"run-{session_id}",
+            )
+        )
+        for tool_use_id, session_id in (("shutdown-a", "s1"), ("shutdown-b", "s2"))
+    ]
+    await asyncio.sleep(0)
+    mgr.cancel_all(reason="daemon_shutdown")
+
+    assert await asyncio.gather(*tasks) == [
+        (False, "deny_once"),
+        (False, "deny_once"),
+    ]
+    assert mgr._pending == {}
+    assert mgr._session_cancellations == {}

@@ -4,6 +4,8 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  border-radius: 0;
+  overflow: hidden;
 }
 
 /* 切换会话的加载层：终端图标呼吸 + 提示符光标闪烁 */
@@ -90,7 +92,8 @@
   top: 50%;
   transform: translateY(-50%);
   z-index: 20;
-  width: 20px;
+  /* 40px：为圆点波浪位移(+5px)与放大(约1.67x)留出横向空间，避免被 .turn-dot-scroll 的 overflow-x 裁切 */
+  width: 40px;
   height: 200px;
   pointer-events: none;
   overflow: visible;
@@ -109,10 +112,10 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start; /* 圆点保持约8px的横向中心，右侧空间留给波浪位移与放大 */
   justify-content: flex-start;
   gap: 8px;
-  padding: 16px 0;
+  padding: 16px 0 16px 4px;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
@@ -130,23 +133,27 @@
   border-radius: 50%;
   background: #d1d5db;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --wave-offset: 0px;
+  --wave-scale: 1;
+  transition: background 0.24s ease, transform 0.34s cubic-bezier(.22,.8,.3,1), box-shadow 0.24s ease;
+  transform: translateX(var(--wave-offset)) scale(var(--wave-scale));
 }
 
 .turn-dot:hover {
   background: #6b7280;
-  transform: scale(1.25);
+  transform: translateX(calc(var(--wave-offset) + 1px)) scale(calc(var(--wave-scale) + .12));
+  box-shadow: 0 0 0 3px rgba(107,114,128,.12);
 }
 
 .turn-dot.active {
   background: #374151;
-  transform: scale(1.5);
+  transform: translateX(var(--wave-offset)) scale(var(--wave-scale));
 }
 
 /* 气泡tooltip：rail的兄弟节点，绝对定位在wrap中，完全不受overflow裁剪 */
 .turn-dot-bubble {
   position: absolute;
-  left: 20px;
+  left: 24px; /* 圆点右缘最大约20px（hover时含波浪位移与放大），避免气泡压住圆点 */
   z-index: 50;
   pointer-events: none;
   white-space: nowrap;
@@ -166,7 +173,7 @@
   border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.15);
 }
-/* 气泡小三角精确指向圆点中心（圆点中心在wrap左边缘+14px，气泡从left:28px开始，三角在left:-5px指向14px+8/2=18px处...实际三角在气泡左边5px，指向rail右侧边缘） */
+/* 气泡小三角指向圆点：三角位于气泡左侧5px处 */
 .turn-dot-bubble::before {
   content: "";
   position: absolute;
@@ -226,30 +233,39 @@
   max-width: 860px;
 }
 
+/* 底部统计行容器：为“回到底部”按钮提供定位上下文，使其悬浮在统计行上方 */
+.task-bottom-meta {
+  position: relative;
+}
+
 /* 会话流“回到底部”悬浮按钮：滚动离开底部时出现，点击平滑回到最新内容 */
 .task-stream-to-bottom {
   position: absolute;
-  right: 16px;
-  bottom: 106px;
+  left: 50%;
+  bottom: calc(100% + 6px);
   z-index: 7;
   display: grid;
   width: 32px;
   height: 32px;
+  margin-left: -16px; /* 居中悬浮：抵消 32px 宽度的一半 */
   place-items: center;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 50%;
-  background: var(--surface-raised);
+  /* 玻璃质感：半透明主题表面 + 背景模糊 + 顶部高光，无边框 */
+  background: color-mix(in srgb, var(--surface-raised) 58%, transparent);
   color: var(--text-muted);
-  box-shadow: 0 4px 14px rgb(28 36 44 / 14%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
+  backdrop-filter: blur(12px) saturate(108%);
+  box-shadow: 0 4px 14px rgb(28 36 44 / 14%), inset 0 1px 0 rgb(255 255 255 / 34%);
   cursor: pointer;
   animation: scroll-to-bottom-in 160ms ease;
 }
 
 .task-stream-to-bottom:hover,
 .task-stream-to-bottom:focus-visible {
-  border-color: var(--border-strong);
   color: var(--text);
+  background: color-mix(in srgb, var(--surface-raised) 80%, transparent);
 }
 
 .task-stream-to-bottom:focus-visible {
@@ -581,7 +597,7 @@
 /* Sidebar project and conversation controls. */
 .project-row-shell {
   position: relative;
-  display: block;
+  display: flex;
   align-items: center;
   gap: 2px;
   min-height: 36px;
@@ -590,13 +606,26 @@
   transition: background-color 140ms ease;
 }
 
+.project-row-caret {
+  display: grid;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  place-items: center;
+  color: #202124;
+  background: transparent;
+  border-radius: 6px;
+}
+.project-row-caret svg { color: currentColor; }
+.project-row-caret:hover { color: #202124; background: #e9edf1; }
+
 .project-row-toggle {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 7px;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   min-width: 0;
-  width: 100%;
   min-height: 36px;
   padding: 0 6px;
   color: #202124;
@@ -755,6 +784,9 @@
   border-radius: 10px;
 }
 
+/* 相邻会话条 hover/focus 的底色会糊成一块，行与行之间留出间距 */
+.sidebar-session + .sidebar-session { margin-top: 3px; }
+
 .sidebar-session:hover,
 .sidebar-session:focus-within { background: #eef0f2; }
 
@@ -863,8 +895,20 @@
 .sidebar-resizer { position: absolute; z-index: 25; top: 40px; bottom: 10px; left: var(--sidebar-width, 268px); width: 12px; padding: 0; color: #77808a; cursor: col-resize; outline: 0; opacity: 1; transform: translateX(calc(-50% + var(--sidebar-pull, 0px))); touch-action: none; transition: left 200ms ease, opacity 120ms ease, transform 160ms cubic-bezier(.2, .8, .2, 1); }
 .sidebar-resizing .sidebar-resizer { transition: none; }
 .sidebar-collapsed .sidebar-resizer { visibility: hidden; opacity: 0; pointer-events: none; transform: translateX(-50%); }
-.sztu-main { margin: 0; background: #fff; border: 0; border-radius: 0; box-shadow: none; }
-/* 会话区卡片：灰边框改暖米、阴影改暖调并减淡 —— 四角圆角外不再出现冷灰边线与暗角 */
+.sztu-main {
+  --workspace-surface-radius: 24px;
+  margin: 0;
+  background: #fff;
+  border: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
+  corner-shape: squircle;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: none;
+}
+/* 主容器是唯一的圆角裁切层，避免页面宿主和会话画布叠出突兀的白色缺口。 */
+.sztu-main > :is(.work-page-host, .source-control-host, .simple-page, .chat-main),
+.sztu-main > .chat-main > :is(.skill-center, .chat-automations),
 .sztu-main .task-canvas {
   border: 0;
   border-radius: 0;
@@ -876,12 +920,12 @@
 }
 .sztu-shell.is-macos.sidebar-collapsed .sztu-main { margin-left: 0; }
 .sztu-main.work-active {
-  overflow: visible;
-  background: transparent;
-  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
   box-shadow: none;
 }
-.sztu-main.chat-main, .chat-main { border: 0; border-radius: 0; }
+.sztu-main.chat-main, .chat-main { border: 0; }
 .sidebar-brand { display: flex; align-items: center; min-height: 36px; padding: 0 1px 0 8px; }
 .sztu-shell.is-macos .sidebar-brand { min-height: 36px; padding-top: 0; }
 .sidebar-brand h1 { margin: 0; min-width: 0; overflow: hidden; color: var(--accent); font-family: "Aptos Display", "Microsoft YaHei UI", sans-serif; font-size: 15px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
@@ -975,13 +1019,18 @@
   content: none;
 }
 .sztu-shell.is-macos .sztu-main {
-  border-radius: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
 }
 .sztu-shell.is-macos.window-resizing .sztu-main {
   box-shadow: none;
 }
 .sztu-shell.is-macos .sztu-main.chat-main {
-  border-radius: 0;
+  border-radius: var(--workspace-surface-radius) 0 0 0;
+}
+.sztu-shell.sidebar-collapsed .sztu-main,
+.sztu-shell.is-macos.sidebar-collapsed .sztu-main,
+.sztu-shell.is-macos.sidebar-collapsed .sztu-main.chat-main {
+  border-top-left-radius: 0;
 }
 .sztu-titlebar,
 .sidebar-viewport {
@@ -1126,6 +1175,19 @@
 .sidebar-tools button:focus-visible { color: #25292f; background: #e9e9e9; outline: 0; box-shadow: inset 0 0 0 1px #8b8f95; }
 .sidebar-tools button.active { color: #24272c; background: #dedede; font-weight: 550; }
 .sidebar-tools button.active svg { color: #3d4249; }
+/* 点击脉冲：用弹性缩放替代选中变实心的观感 */
+.sidebar-tools button .app-icon.icon-pulse,
+.new-task-button .app-icon.icon-pulse { animation: sidebar-icon-pop 360ms cubic-bezier(.22, 1, .36, 1); }
+@keyframes sidebar-icon-pop {
+  0% { transform: scale(1); }
+  38% { transform: scale(.8); }
+  72% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-tools button .app-icon.icon-pulse,
+  .new-task-button .app-icon.icon-pulse { animation: none; }
+}
 .sidebar-tools button small { color: #9a9fa5; font-size: 9px; }
 .agent-sidebar .sidebar-footer { flex: 0 0 auto; min-height: 49px; padding: 7px 5px 9px; border-top: 0; }
 .service-status { display: flex; align-items: center; gap: 8px; min-width: 0; margin-right: auto; color: #344057; }
@@ -1185,6 +1247,30 @@
 .task-conversation .sztu-composer .permission svg { width: 17px; height: 17px; }
 .task-launcher .round:hover, .task-launcher .permission:hover { background: #f2f3f4; }
 .launcher-permission-control { position: relative; flex: 0 0 auto; }
+/* Respond to the pane width, including when the inspector is open. */
+.task-conversation { container: conversation / inline-size; }
+.composer-input-shell { container: composer / inline-size; }
+.composer-toolbar { min-width: 0; }
+.composer-toolbar .permission { white-space: nowrap; flex-shrink: 0; }
+.composer-toolbar .permission svg { flex-shrink: 0; }
+.composer-toolbar .model-config-control { min-width: 0; flex: 0 1 auto; }
+.composer-toolbar .model-config-trigger { width: 100%; }
+.composer-toolbar > .active-plugin-control { flex-shrink: 0; }
+@container composer (max-width: 460px) {
+  .composer-toolbar .model-config-control { flex-basis: auto; }
+  .task-conversation .sztu-composer .composer-toolbar,
+  .task-launcher .composer-toolbar { gap: 3px; padding-inline: 6px; }
+  .composer-toolbar .composer-plugin-icons > :not(:first-child) { display: none; }
+  .task-conversation .sztu-composer .permission,
+  .task-launcher .permission { font-size: 0; gap: 3px; padding-inline: 5px; height: 32px; }
+  .composer-toolbar .model-config-trigger { gap: 5px; padding-inline: 5px; }
+}
+@container composer (max-width: 300px) {
+  .composer-toolbar .model-config-control { flex-basis: auto; }
+  .composer-toolbar .model-config-trigger > i { display: none; }
+  .composer-toolbar .permission > svg:last-child { display: none; }
+  .composer-toolbar .round, .composer-toolbar .send { width: 28px; height: 28px; }
+}
 .launcher-popover { position: absolute; z-index: 40; color: #292d33; background: #fff; border: 1px solid #dedfe1; border-radius: 10px; box-shadow: 0 14px 38px #20252d1c, 0 2px 8px #20252d0d; animation: launcher-popover-in 120ms ease-out; }
 .permission-popover { bottom: calc(100% + 8px); left: 0; width: 238px; padding: 5px; }
 .full-access-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px; color: #30343a; background: transparent; border-radius: 7px; text-align: left; }

@@ -184,6 +184,14 @@ export const timeline = {
   changes: {
     filesSuffix: "files changed",
     openAll: "View all changes in the side panel",
+    editedTitle: "Edited {count} files",
+    undo: "Undo",
+    review: "Review",
+    undoConfirm: "Revert all file changes from this run? {count} files.",
+    undoFailed: "Undo failed",
+    previewLoading: "Loading diff…",
+    previewEmpty: "No diff",
+    previewError: "Failed to load diff",
   },
   /** 权限审批 */
   permission: {
