@@ -112,29 +112,8 @@ def runtime_contract() -> str:
 
 
 def build_base() -> str:
-    text = resource_path("main/workbuddy-prompt.tpl").read_text(encoding="utf-8")
-    for tag in (
-        "agent_loop",
-        "result_presentation",
-        "sharing_files",
-        "final_answer_instructions",
-        "task_management",
-        "tool_use",
-        "instructions_for_visualizer",
-        "visualizer_examples",
-        "automations",
-        "mcp_configuration",
-    ):
-        text = re.sub(f"^<{tag}>[\\s\\S]*?^</{tag}>", "", text, flags=re.MULTILINE)
-    text = re.sub(
-        r"^.*(?:100\+ domain experts|WorkBuddy's features).*$", "", text, flags=re.MULTILINE
-    )
-    parts = [render_text(text)]
-    parts.extend(
-        load_resource(f"modes/craft/fragments/{name}.md")
-        for name in ("agent-loop", "task-management", "result-presentation")
-    )
-    return "\n\n".join([*parts, load_resource("styles/style-efficient.md"), runtime_contract()])
+    # Keep the initial injection small. Product workflows and skills are loaded on demand.
+    return "\n\n".join([load_resource("main/sztucode-core.tpl"), runtime_contract()])
 
 
 def mode_prompt(mode: str) -> str:

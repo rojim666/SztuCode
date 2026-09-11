@@ -67,14 +67,9 @@ export function workbuddyPlugins(): { name: string; path: string; skills: string
 }
 
 export function buildWorkbuddyBase(): string {
-  let text = fs.readFileSync(resourcePath("main/workbuddy-prompt.tpl"), "utf8");
-  // Mode fragments own these policies. Product-only UI integrations are not host capabilities.
-  for (const tag of ["agent_loop", "result_presentation", "sharing_files", "final_answer_instructions", "task_management", "tool_use", "instructions_for_visualizer", "visualizer_examples", "automations", "mcp_configuration"]) text = text.replace(new RegExp(`^<${tag}>[\\s\\S]*?^</${tag}>`, "gm"), "");
-  text = text.replace(/^.*(?:100\+ domain experts|WorkBuddy's features).*$/gm, "");
-  const sections = [renderWorkbuddyText(text), ...["agent-loop", "task-management", "result-presentation"].map(name => loadWorkbuddyResource(`modes/craft/fragments/${name}.md`)), loadWorkbuddyResource("styles/style-efficient.md"), workbuddyContract()];
-  return sections.filter(Boolean).join("\n\n");
+  // Keep the initial injection small. Product workflows and skills are loaded on demand.
+  return [loadWorkbuddyResource("main/sztucode-core.tpl"), workbuddyContract()].filter(Boolean).join("\n\n");
 }
-
 export function workbuddyMode(mode: InteractionMode): string {
   if (!["ask", "craft", "plan", "expert"].includes(mode)) throw new Error(`Unknown interaction mode: ${mode}`);
   const files = workbuddyManifest().files.filter(file => file.path.startsWith(`modes/${mode}/fragments/`) && !file.path.endsWith("interaction.md"));
