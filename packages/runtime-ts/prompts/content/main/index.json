@@ -2,6 +2,11 @@
   "version": 1,
   "sections": [
     {
+      "id": "workbuddy-system",
+      "source": "prompts-合集/01-主提示词-单体tpl/workbuddy-prompt.tpl",
+      "file": "workbuddy-system.md"
+    },
+    {
       "id": "identity-and-role",
       "file": "system-prompt-identity-and-role.md",
       "source": "docs/Prompt.md#1.1"

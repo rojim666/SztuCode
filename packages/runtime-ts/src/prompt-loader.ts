@@ -77,7 +77,7 @@ export async function buildSystemPrompt(workspaceRoot: string, role = "coder", r
   if (memoized) return memoized;
   const building = (async () => {
     const sections = [
-      ...(await markdownGroup("main")),
+      await firstPrompt("main", "workbuddy-system"),
       await firstPrompt("safety-prompts", "malicious-code-protection"),
       await firstPrompt("doing-tasks", "software-engineering-focus"),
       await firstPrompt("doing-tasks", "read-before-modifying"),
