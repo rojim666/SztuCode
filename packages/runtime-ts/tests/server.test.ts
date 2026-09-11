@@ -34,6 +34,108 @@ test("runtime server exposes JSON-RPC and classified errors over NDJSON", async 
   } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
 });
 
+test("session.send_message forwards the current image blocks to the first model request", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-image-message-"));
+  const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
+  let receiveMessages!: (messages: any[]) => void;
+  const providerMessages = new Promise<any[]>((resolve) => { receiveMessages = resolve; });
+  const server = new RuntimeServer("127.0.0.1", 0, {
+    complete: async (messages) => {
+      receiveMessages(messages);
+      return { text: "I can see the image.", tool_calls: [], stop_reason: "end_turn" as const };
+    },
+  });
+  const address = await server.listen(); const port = Number(address.split(":").at(-1));
+  const socket = net.createConnection({ host: "127.0.0.1", port }); await new Promise<void>((resolve, reject) => { socket.once("connect", () => resolve()); socket.once("error", reject); });
+  try {
+    await rpc(socket, "settings.update", { supports_vision: true });
+    const created = await rpc(socket, "session.create", { mode: "chat" });
+    const image = { type: "image", media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" };
+    const sent = await rpc(socket, "session.send_message", { session_id: created.session_id, content: "Read this image", images: [image] });
+
+    const messages = await providerMessages;
+    assert.deepEqual(messages.at(-1), {
+      role: "user",
+      content: [
+        { type: "text", text: "Read this image" },
+        { type: "image", source: { media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" } },
+      ],
+    });
+    while (server.runs.get(sent.run_id).status === "running") await new Promise((resolve) => setTimeout(resolve, 10));
+    const persisted = await server.sessions.modelHistory(created.session_id);
+    assert.deepEqual(persisted.find((message) => message.role === "user" && Array.isArray(message.content))?.content, [
+      { type: "text", text: "Read this image" },
+      { type: "image", source: { media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" } },
+    ]);
+    while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
+  } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
+});
+
+test("a persisted image remains in the provider context on the next session turn", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-image-follow-up-"));
+  const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
+  const calls: any[][] = [];
+  const server = new RuntimeServer("127.0.0.1", 0, {
+    complete: async (messages) => {
+      calls.push(messages);
+      return { text: `reply ${calls.length}`, tool_calls: [], stop_reason: "end_turn" as const };
+    },
+  });
+  const address = await server.listen(); const port = Number(address.split(":").at(-1));
+  const socket = net.createConnection({ host: "127.0.0.1", port }); await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+  try {
+    await rpc(socket, "settings.update", { supports_vision: true });
+    const created = await rpc(socket, "session.create", { mode: "chat" });
+    const first = await rpc(socket, "session.send_message", {
+      session_id: created.session_id,
+      content: "Inspect this image",
+      images: [{ type: "image", media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" }],
+    });
+    while (server.runs.get(first.run_id).status === "running") await new Promise((resolve) => setTimeout(resolve, 10));
+    while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
+    const second = await rpc(socket, "session.send_message", { session_id: created.session_id, content: "Now summarize it again" });
+    while (server.runs.get(second.run_id).status === "running") await new Promise((resolve) => setTimeout(resolve, 10));
+    while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(calls.length, 2);
+    assert.ok(calls[1]!.some((message) => Array.isArray(message.content) && message.content.some((block: any) => block.type === "image" && block.source?.data === "aW1hZ2UtYnl0ZXM=")));
+  } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
+});
+
+test("session.send_message rejects invalid images before persisting them", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-invalid-image-"));
+  const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
+  const server = new RuntimeServer("127.0.0.1", 0, { complete: async () => ({ text: "unexpected", tool_calls: [], stop_reason: "end_turn" }) });
+  const address = await server.listen(); const port = Number(address.split(":").at(-1));
+  const socket = net.createConnection({ host: "127.0.0.1", port }); await new Promise<void>((resolve, reject) => { socket.once("connect", () => resolve()); socket.once("error", reject); });
+  try {
+    await rpc(socket, "settings.update", { supports_vision: true });
+    const created = await rpc(socket, "session.create", { mode: "chat" });
+    await assert.rejects(() => rpc(socket, "session.send_message", {
+      session_id: created.session_id,
+      content: "Read this",
+      images: [{ type: "image", media_type: "image/svg+xml", data: "PHN2Zz4=" }],
+    }), /Unsupported image type/);
+    await assert.rejects(() => rpc(socket, "session.send_message", {
+      session_id: created.session_id,
+      content: "Read this",
+      images: [{ type: "image", media_type: "image/png", data: "not base64" }],
+    }), /valid base64/);
+    assert.deepEqual(await server.sessions.history(created.session_id), []);
+  } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
+});
+
+test("session.send_message rejects direct image blocks for a text-only profile", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-text-image-")); const previous = process.env.SZTU_DATA_DIR; process.env.SZTU_DATA_DIR = root;
+  const server = new RuntimeServer("127.0.0.1", 0, { complete: async () => ({ text: "unexpected", tool_calls: [], stop_reason: "end_turn" as const }) });
+  const address = await server.listen(); const socket = net.createConnection({ host: "127.0.0.1", port: Number(address.split(":").at(-1)) }); await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+  try {
+    await rpc(socket, "settings.update", { supports_vision: false }); const created = await rpc(socket, "session.create", { mode: "chat" });
+    await assert.rejects(() => rpc(socket, "session.send_message", { session_id: created.session_id, content: "read this", images: [{ type: "image", media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" }] }), /does not support images.*OCR/i);
+    assert.deepEqual(await server.sessions.history(created.session_id), []);
+  } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
+});
+
 test("runtime server traces IPC traffic and reports the actual bound address", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-runtime-trace-"));
   const previousData = process.env.SZTU_DATA_DIR; const previousTrace = process.env.SZTU_TRACE_FILE;

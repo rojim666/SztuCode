@@ -3,7 +3,19 @@ import path from "node:path";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
 import type { ModelInvocation } from "./agent-loop.js";
 
-export type ContentBlock = { type: string; text?: string; content?: string; [key: string]: unknown };
+type ContentBlockFields = { text?: string; content?: string | ContentBlock[]; [key: string]: unknown };
+export type KnownContentBlock = ContentBlockFields & (
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string; signature?: string }
+  | { type: "image"; source: { media_type: string; data: string; width?: number; height?: number; original_width?: number; original_height?: number; original_bytes?: number; image_ref?: string; bytes?: number } }
+  | { type: "image_url"; image_url: string | { url: string } }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | { type: "tool_result"; tool_use_id: string; content: string | ContentBlock[]; is_error?: boolean }
+  | { type: "file"; file: { filename?: string; data?: string; mime_type?: string; [key: string]: unknown } }
+);
+// Keep the context contract open for extensions and provider-specific history,
+// while exporting KnownContentBlock for code that wants strict built-in variants.
+export type ContentBlock = KnownContentBlock | (ContentBlockFields & { type: string });
 export type ContextToolCall = { id: string; name: string; input: Record<string, unknown> };
 export type ContextMessage = { role: "system" | "user" | "assistant" | "tool"; content: string | ContentBlock[]; tool_call_id?: string; tool_calls?: ContextToolCall[]; reasoning_content?: string; is_error?: boolean };
 export type ContextCompactionProvider = { complete(messages: ContextMessage[], tools: { list(): unknown[] }, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation): Promise<{ text: string; usage?: { input_tokens?: number; output_tokens?: number }; stop_reason?: string }> };
@@ -14,15 +26,33 @@ const isCjk = (char: string) => { const code = char.codePointAt(0) ?? 0; return 
 const encoders = new Map<string, Tiktoken | null>();
 const loadEncoder = (name: string): Tiktoken | null => { if (encoders.has(name)) return encoders.get(name)!; let encoder: Tiktoken | null = null; try { encoder = getEncoding(name as Parameters<typeof getEncoding>[0]); } catch { /* fallback below */ } encoders.set(name, encoder); return encoder; };
 
+export type ImageTokenEstimator = { name: string; estimate(block: ContentBlock): number };
+const imageDimensions = (block: ContentBlock): { width: number; height: number } => {
+  const source = block.type === "image" && block.source && typeof block.source === "object" ? block.source as Record<string, unknown> : {};
+  const width = Number(source.width ?? block.width); const height = Number(source.height ?? block.height);
+  return { width: Number.isFinite(width) && width > 0 ? width : 1024, height: Number.isFinite(height) && height > 0 ? height : 1024 };
+};
+const safeImageEstimator: ImageTokenEstimator = { name: "safe-default", estimate: () => 1_024 };
+const openAiImageEstimator: ImageTokenEstimator = { name: "openai-tiled-estimate", estimate: (block) => { const { width, height } = imageDimensions(block); return 85 + Math.ceil(width / 512) * Math.ceil(height / 512) * 170; } };
+const anthropicImageEstimator: ImageTokenEstimator = { name: "anthropic-area-estimate", estimate: (block) => { const { width, height } = imageDimensions(block); return Math.max(256, Math.ceil((width * height) / 750)); } };
+
+/** A deliberately conservative local estimate, not a billing formula. Add a model-specific estimator here as providers expose stable guidance. */
+export function imageTokenEstimatorFor(provider?: string, model?: string): ImageTokenEstimator {
+  const family = `${provider ?? ""} ${model ?? ""}`.toLowerCase();
+  if (family.includes("anthropic") || family.includes("claude")) return anthropicImageEstimator;
+  if (family.includes("openai") || /gpt|o1|o3|o4|chatgpt/.test(family)) return openAiImageEstimator;
+  return safeImageEstimator;
+}
+
 export class TokenCounter {
   private readonly encoder: Tiktoken | null;
   // 默认 o200k_base：GPT-4o/5 系真实编码（js-tiktoken 支持），比 cl100k_base 更贴近现役模型分词
-  constructor(readonly encodingName = "o200k_base") { this.encoder = loadEncoder(encodingName); }
+  constructor(readonly encodingName = "o200k_base", readonly imageEstimator: ImageTokenEstimator = safeImageEstimator) { this.encoder = loadEncoder(encodingName); }
   // 按 provider/模型名选择真实编码：OpenAI 系（gpt/o1/o3/o4/chatgpt）用 o200k_base；其余模型无本地真实 tokenizer，默认沿用 o200k_base 作为估算基准
   static forModel(provider?: string, model?: string): TokenCounter {
     const family = `${provider ?? ""} ${model ?? ""}`;
     const isOpenAi = /openai/i.test(provider ?? "") || /gpt|o1|o3|o4|chatgpt/i.test(family);
-    return new TokenCounter(isOpenAi ? "o200k_base" : "o200k_base");
+    return new TokenCounter(isOpenAi ? "o200k_base" : "o200k_base", imageTokenEstimatorFor(provider, model));
   }
   // 纯编码长度（不含每段 +4 开销），供消息级计数统一在消息层加一次开销，避免分块重复累加
   rawCount(text: string): number {
@@ -33,9 +63,10 @@ export class TokenCounter {
     return Math.max(1, Math.ceil(cjk + (text.length - cjk) / 4));
   }
   count(text: string): number { return this.rawCount(text) + 4; }
+  rawCountBlock(block: ContentBlock): number { return block.type === "image" ? this.imageEstimator.estimate(block) : this.rawCount(String(block.text ?? block.content ?? "")); }
   countJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.count(typeof value === "string" ? value : JSON.stringify(value)); }
   rawCountJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.rawCount(typeof value === "string" ? value : JSON.stringify(value)); }
-  countMessages(messages: ContextMessage[]): number { return Math.max(1, messages.reduce((total, message) => total + 4 + (typeof message.content === "string" ? this.rawCount(message.content) : message.content.reduce((sum, block) => sum + this.rawCount(String(block.text ?? block.content ?? "")), 0)), 0)); }
+  countMessages(messages: ContextMessage[]): number { return Math.max(1, messages.reduce((total, message) => total + 4 + (typeof message.content === "string" ? this.rawCount(message.content) : message.content.reduce((sum, block) => sum + this.rawCountBlock(block), 0)), 0)); }
   get preciseAvailable(): boolean { return this.encoder !== null; }
 }
 
@@ -170,7 +201,7 @@ export class ContextManager {
       conversation += this.counter.rawCount(message.content);
     } else {
       for (const block of message.content) {
-        conversation += this.counter.rawCount(String(block.text ?? block.content ?? ""));
+        conversation += this.counter.rawCountBlock(block);
       }
     }
     // tool_calls 部分（assistant 消息的工具调用参数）

@@ -125,6 +125,39 @@ test("agent loop feeds malformed truncated tool arguments back as schema_error",
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
 
+test("agent loop preserves mixed text and image tool results for the next provider call", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-multimodal-tool-result-"));
+  const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0;
+    const tools = createWorkspaceTools([{
+      name: "test_view_image", description: "return a visual result", permission: "read_only", schema: { type: "object" },
+      async invoke() { return { ok: true, output: "image metadata", content: [{ type: "text", text: "image metadata" }, { type: "image", source: { media_type: "image/png", data: "aW1hZ2U=" } }] } as any; },
+    }]);
+    const provider: ModelProvider = { complete: async (messages) => {
+      calls += 1;
+      if (calls === 1) return { text: "", tool_calls: [{ id: "image-1", name: "test_view_image", input: {} }], stop_reason: "tool_use" };
+      const result = messages.find((message) => message.role === "tool" && message.tool_call_id === "image-1");
+      assert.deepEqual(result?.content, [
+        { type: "text", text: "image metadata" },
+        { type: "image", source: { media_type: "image/png", data: "aW1hZ2U=" } },
+      ]);
+      return { text: "I saw the image", tool_calls: [], stop_reason: "end_turn" };
+    } };
+    const result = await new AgentLoop(provider, tools, { workspace: new Workspace(root) }, events, { check: async () => true }, { toolRetryBaseMs: 0 }).run("multimodal-tool", "inspect", 2);
+    assert.equal(result.text, "I saw the image");
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("agent loop omits image blocks from tool results when vision is disabled", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-text-tool-result-")); const events = new EventBus(path.join(root, "events.jsonl"));
+  try {
+    let calls = 0; const tools = createWorkspaceTools([{ name: "test_image", description: "image", permission: "read_only", schema: { type: "object" }, async invoke() { return { ok: true, output: "metadata", content: [{ type: "text", text: "metadata" }, { type: "image", source: { media_type: "image/png", data: "aW1hZ2U=" } }] } as any; } }]);
+    const provider: ModelProvider = { complete: async (messages) => { calls += 1; if (calls === 1) return { text: "", tool_calls: [{ id: "image", name: "test_image", input: {} }], stop_reason: "tool_use" }; const result = messages.find((message) => message.role === "tool"); assert.equal(Array.isArray(result?.content) && result.content.some((block: any) => block.type === "image"), false); assert.match(JSON.stringify(result?.content), /does not support visual input/i); return { text: "text fallback", tool_calls: [], stop_reason: "end_turn" }; } };
+    assert.equal((await new AgentLoop(provider, tools, { workspace: new Workspace(root) }, events, { check: async () => true }, { supportsVision: false, toolRetryBaseMs: 0 } as any).run("text-tool", "inspect", 2)).text, "text fallback");
+  } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
+});
+
 test("agent loop auto-compacts at the configured threshold and preserves the initial goal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-auto-compact-"));
   const events = new EventBus(path.join(root, "events.jsonl"));

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
+import ImageLightbox from "../ImageLightbox.vue";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
 const props = defineProps<{ file: {
@@ -29,6 +30,7 @@ const icon = computed(() => {
 });
 const thumbnail = computed(() => props.file.kind === "image" && props.file.dataBase64
   ? `data:${props.file.mime ?? "image/png"};base64,${props.file.dataBase64}` : null);
+const previewOpen = ref(false);
 const typeLabel = computed(() => extension.value.toUpperCase()
   || (category.value === "pdf" ? "PDF" : category.value === "image" ? "IMAGE" : "FILE"));
 const sizeLabel = computed(() => {
@@ -40,11 +42,10 @@ const sizeLabel = computed(() => {
 
 <template>
   <span class="composer-attachment" :data-category="category" :title="file.name">
-    <span class="composer-attachment__visual" :class="{ 'is-thumbnail': thumbnail }" aria-hidden="true">
+    <button v-if="thumbnail" class="composer-attachment__visual composer-attachment__preview" type="button" :aria-label="`Preview ${file.name}`" @click="previewOpen = true">
       <img v-if="thumbnail" :src="thumbnail" alt="" />
-      <img v-else-if="icon" :src="icon" alt="" />
-      <AppIcon v-else name="FileText" :size="25" />
-    </span>
+    </button>
+    <span v-else class="composer-attachment__visual" aria-hidden="true"><img v-if="icon" :src="icon" alt="" /><AppIcon v-else name="FileText" :size="25" /></span>
     <span class="composer-attachment__info">
       <b>{{ file.name }}</b>
       <small><span>{{ typeLabel }}</span><span aria-hidden="true">·</span>{{ sizeLabel }}</small>
@@ -52,6 +53,7 @@ const sizeLabel = computed(() => {
     <button class="composer-attachment__remove" type="button"
       :aria-label="`${t('app.removeAttachment')} ${file.name}`" :title="t('app.removeAttachment')"
       @click="emit('remove')"><AppIcon name="X" :size="13" /></button>
+    <ImageLightbox v-if="previewOpen && thumbnail" :images="[{ src: thumbnail, alt: file.name }]" @close="previewOpen = false" />
   </span>
 </template>
 
@@ -84,6 +86,7 @@ const sizeLabel = computed(() => {
   border: 1px solid color-mix(in srgb, var(--attachment-accent) 18%, transparent);
   overflow: hidden;
 }
+.composer-attachment__preview { padding: 0; cursor: zoom-in; }
 .composer-attachment__visual::after {
   content: "";
   position: absolute;

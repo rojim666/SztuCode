@@ -29,7 +29,7 @@ import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockIt
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
-import { detectVisionSupport } from "./utils/modelVision";
+import { canAddImageAttachments, detectVisionSupport, imageProcessingMode } from "./utils/modelVision";
 import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
@@ -449,6 +449,7 @@ const isDragOver = ref(false);
 let dragCounter = 0;
 const providerStatus = ref<ProviderStatus | null>(null);
 const runtimeSettings = ref<RuntimeSettings | null>(null);
+const imageProcessingLabel = computed(() => imageProcessingMode(runtimeSettings.value?.model ?? "", runtimeSettings.value?.supports_vision ?? null) === "direct" ? "图片将直接发送给当前视觉模型" : "图片将先通过 OCR 转为文本" );
 const settingsOpen = ref(false);
 const settingsInitialSection = ref<"appearance" | "agent">("appearance");
 const activeAppMenu = ref<AppMenu | null>(null);
@@ -2579,6 +2580,8 @@ function addReadAttachments(results: Attachment[]) {
   for (const item of results) {
     if (item.error) { skipped.push(`${item.name}：${friendlyError(item.error).message}`); continue; }
     if (item.mime_type?.startsWith("image/") && item.data_base64) {
+      const imageCount = attachedFiles.value.filter((file) => file.kind === "image").length + added.filter((file) => file.kind === "image").length;
+      if (!canAddImageAttachments(imageCount)) { skipped.push(`${item.name}：图片数量超过上限（20）`); continue; }
       added.push({ path: item.path, name: item.name, size: item.size, kind: "image", mime: item.mime_type, dataBase64: item.data_base64 });
     } else if (item.is_text && item.text_content != null) {
       added.push({ path: item.path, name: item.name, size: item.size, kind: "text", mime: item.mime_type ?? undefined, textContent: item.text_content });
@@ -2623,6 +2626,7 @@ async function addBrowserFile(file: File): Promise<string | null> {
   const limit = isImage ? 5 * 1024 * 1024 : 1024 * 1024;
   if (file.size > limit) return t("app.attachmentTooLarge", { name: file.name, limit: isImage ? "5MB" : "1MB" });
   if (isImage) {
+    if (!canAddImageAttachments(attachedFiles.value.filter((attachment) => attachment.kind === "image").length)) return `${file.name}：图片数量超过上限（20）`;
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result ?? ""));
@@ -3541,6 +3545,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                       <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
                       <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
                         <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
+                        <p v-if="attachedFiles.some((file) => file.kind === 'image')" class="image-processing-mode" aria-live="polite">{{ imageProcessingLabel }}</p>
                         <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="14" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                         <div v-if="ocrProgress" class="ocr-progress-bar">
                           <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
@@ -3587,6 +3592,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
               <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
               <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
+                <p v-if="attachedFiles.some((file) => file.kind === 'image')" class="image-processing-mode" aria-live="polite">{{ imageProcessingLabel }}</p>
                 <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="16" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                 <div v-if="ocrProgress" class="ocr-progress-bar">
                   <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />

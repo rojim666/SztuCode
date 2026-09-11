@@ -21,7 +21,7 @@ import { validateWorkflowGraph } from "@sztucode/protocol/workflow";
 import { runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 import type { OperationStore } from "./operation-store.js";
 
-type RunState = { runId: string; goal: string; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
+type RunState = { runId: string; goal: string; currentMessage?: ChatMessage; status: "running" | "completed" | "failed" | "cancelled"; startedAt: number; steps: number; controller: AbortController; generationController: AbortController; usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }; contextPct: number; steering: ChatMessage[] };
 
 /**
  * Compatibility runner for the legacy runtime API.
@@ -34,7 +34,7 @@ export class RunManager {
   private readonly runRoots = new Map<string, string>();
   private readonly executions = new Map<string, Promise<void>>();
   readonly permissions: PermissionManager;
-  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
+  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean; supportsVision?: boolean; provider?: string; model?: string }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
     this.permissions = new PermissionManager(events, 60_000, undefined, this.telemetry);
     this.events.subscribe((event) => {
       const root = ("workspace_path" in event && typeof event.workspace_path === "string" ? event.workspace_path : undefined) ?? ("run_id" in event ? this.runRoots.get(event.run_id) : undefined) ?? workspaceRoot;
@@ -42,9 +42,9 @@ export class RunManager {
     });
   }
 
-  start(goal: string, history: ChatMessage[] = [], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, onRunCreated?: (runId: string) => void): string {
+  start(goal: string, history: ChatMessage[] = [], onComplete?: (messages: ChatMessage[], usage: RunState["usage"]) => Promise<void>, workspaceRoot?: string, sessionId?: string, onRunCreated?: (runId: string) => void, currentMessage?: ChatMessage): string {
     const runId = randomUUID();
-    const run: RunState = { runId, goal, status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), generationController: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
+    const run: RunState = { runId, goal, ...(currentMessage ? { currentMessage } : {}), status: "running", startedAt: Date.now(), steps: 0, controller: new AbortController(), generationController: new AbortController(), usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, contextPct: 0, steering: [] };
     this.runs.set(runId, run);
     this.runRoots.set(runId, workspaceRoot ?? process.cwd());
     if (sessionId) this.sessionRuns.set(sessionId, runId);
@@ -121,7 +121,7 @@ export class RunManager {
       const initialHistory = [{ role: "system" as const, content: prompt }, ...(dynamicContext ? [{ role: "user" as const, content: dynamicContext }] : []), ...history];
       const checkpointInterval = positiveEnv("SZTU_CHECKPOINT_INTERVAL", 5);
       const loop = new AgentLoop(this.provider, tools, { workspace: new Workspace(root) }, this.events, this.permissions, { ...config, sessionId, workspaceRoot: root, extensions: this.extensions, telemetry: this.telemetry, onProgress: (progress) => { run.steps = progress.steps; run.usage = { ...progress.usage }; run.contextPct = progress.contextPct; }, onCheckpoint: sessionId && this.sessions ? async (checkpoint) => { if (checkpoint.phase === "tool_batch" && checkpoint.step % checkpointInterval !== 0) return; await this.sessions!.replaceModelHistory(sessionId, checkpoint.messages.filter((message) => message.role !== "system")); await this.sessions!.appendRunEvent(sessionId, { type: "run.checkpoint", run_id: run.runId, operation_id: run.runId, checkpoint_id: `${run.runId}:${checkpoint.sequence}`, sequence: checkpoint.sequence, step: checkpoint.step, phase: checkpoint.phase, input_tokens: checkpoint.usage.input_tokens, output_tokens: checkpoint.usage.output_tokens, ts: new Date().toISOString() }); } : undefined, onCompacted: sessionId && this.sessions ? async (messages, summary) => { await this.sessions!.replaceModelHistory(sessionId, messages.filter((message) => message.role !== "system")); if (summary) await this.sessions!.writeSummary(sessionId, summary); } : undefined });
-      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal);
+      result = await loop.run(run.runId, run.goal, maxSteps(), initialHistory, run.controller.signal, () => { const messages = run.steering.splice(0, run.steering.length); if (run.generationController.signal.aborted) run.generationController = new AbortController(); return messages; }, () => run.generationController.signal, run.currentMessage);
 
       // Recuris: 如果需要进化，触发记忆进化
       if (result.taskCanvas && shouldEvolve("interrupted")) {

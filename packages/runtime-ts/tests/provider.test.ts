@@ -2,13 +2,44 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import os from "node:os";
 import path from "node:path";
-import { rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { OpenAiCompatibleProvider } from "../src/providers/openai.js";
 import { AnthropicMessagesProvider, toAnthropicMessages } from "../src/providers/anthropic.js";
 import { ConfigurableProvider } from "../src/providers/configurable.js";
 import { ProviderError, ProviderTimeoutError } from "../src/providers/errors.js";
 import { SettingsStore } from "../src/settings.js";
 import { ToolRegistry } from "../src/tools.js";
+import { dataUrlFromBase64, getMimeTypeFromPath, imageToContentBlock, isSupportedImageType, validateBase64Image } from "../src/providers/image-utils.js";
+import sharp from "sharp";
+import { preprocessImage } from "../src/providers/image-utils.js";
+
+test("image utilities create validated provider-neutral base64 blocks", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-image-utils-"));
+  const file = path.join(root, "pixel.png");
+  await writeFile(file, Buffer.from("image-bytes"));
+  try {
+    assert.equal(getMimeTypeFromPath("photo.JPEG"), "image/jpeg");
+    assert.equal(isSupportedImageType("image/png"), true);
+    assert.equal(isSupportedImageType("image/svg+xml"), false);
+    assert.equal(dataUrlFromBase64("image/png", "aW1hZ2U="), "data:image/png;base64,aW1hZ2U=");
+    assert.deepEqual(validateBase64Image("image/png", "aW1hZ2U=", 16), { mediaType: "image/png", data: "aW1hZ2U=", decodedBytes: 5 });
+    assert.throws(() => validateBase64Image("image/png", "not base64", 16), /valid base64/);
+    assert.throws(() => validateBase64Image("image/png", "aW1hZ2U=", 4), /Image too large/);
+    assert.deepEqual(await imageToContentBlock(file), {
+      type: "image",
+      source: { media_type: "image/png", data: Buffer.from("image-bytes").toString("base64") },
+    });
+    await assert.rejects(() => imageToContentBlock(path.join(root, "pixel.svg")), /Unsupported image type/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("image preprocessing constrains dimensions while retaining aspect ratio", async () => {
+  const source = await sharp({ create: { width: 4000, height: 1000, channels: 3, background: "#336699" } }).png().toBuffer();
+  const result = await preprocessImage(source, "image/png", { maxLongEdge: 1000, maxShortEdge: 600, maxBytes: 1024 * 1024 });
+  assert.equal(result.width, 1000);
+  assert.equal(result.height, 250);
+  assert.ok(result.bytes.length <= 1024 * 1024);
+});
 
 test("OpenAI Responses provider uses /responses and parses text and function calls", async () => {
   const originalFetch = globalThis.fetch;
@@ -253,6 +284,87 @@ test("Anthropic messages provider groups tool results and repairs missing result
     { role: "assistant", content: [{ type: "tool_use", id: "call-3", name: "bash", input: { command: "pwd" } }] },
     { role: "user", content: [{ type: "tool_result", tool_use_id: "call-3", content: "Tool execution was interrupted before a result was recorded.", is_error: true }] },
   ]);
+});
+
+test("OpenAI chat provider serializes text and base64 images as image_url parts", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return Response.json({ choices: [{ message: { content: "seen" } }] });
+  }) as typeof fetch;
+  try {
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "qwen-vl" }).complete([{
+      role: "user",
+      content: [
+        { type: "text", text: "Compare these" },
+        { type: "image", source: { media_type: "image/png", data: "Zmlyc3Q=" } },
+        { type: "image", source: { media_type: "image/jpeg", data: "c2Vjb25k" } },
+      ],
+    }], new ToolRegistry());
+    assert.deepEqual(requestBody.messages[0].content, [
+      { type: "text", text: "Compare these" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,Zmlyc3Q=" } },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64,c2Vjb25k" } },
+    ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("OpenAI Responses provider serializes base64 images as input_image parts", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return Response.json({ output_text: "seen", status: "completed" });
+  }) as typeof fetch;
+  try {
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "http://mock/v1", model: "vision-model", apiFormat: "openai_responses" }).complete([{
+      role: "user",
+      content: [{ type: "text", text: "Read it" }, { type: "image", source: { media_type: "image/webp", data: "aW1hZ2U=" } }],
+    }], new ToolRegistry());
+    assert.deepEqual(requestBody.input[0].content, [
+      { type: "input_text", text: "Read it" },
+      { type: "input_image", image_url: "data:image/webp;base64,aW1hZ2U=" },
+    ]);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Anthropic messages provider converts neutral base64 images to Anthropic source blocks", () => {
+  const messages = toAnthropicMessages([{
+    role: "user",
+    content: [
+      { type: "text", text: "Read this image" },
+      { type: "image", source: { media_type: "image/png", data: "aW1hZ2U=" } },
+    ],
+  }]);
+
+  assert.deepEqual(messages, [{
+    role: "user",
+    content: [
+      { type: "text", text: "Read this image" },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+    ],
+  }]);
+});
+
+test("Anthropic messages provider converts neutral image URLs to URL source blocks", () => {
+  assert.deepEqual(toAnthropicMessages([{
+    role: "user",
+    content: [{ type: "image_url", image_url: "https://example.test/image.png" }],
+  }]), [{
+    role: "user",
+    content: [{ type: "image", source: { type: "url", url: "https://example.test/image.png" } }],
+  }]);
+});
+
+test("Anthropic messages provider converts neutral data URLs to base64 source blocks", () => {
+  assert.deepEqual(toAnthropicMessages([{
+    role: "user",
+    content: [{ type: "image_url", image_url: "data:image/gif;base64,R0lGODlh" }],
+  }]), [{
+    role: "user",
+    content: [{ type: "image", source: { type: "base64", media_type: "image/gif", data: "R0lGODlh" } }],
+  }]);
 });
 
 test("Anthropic messages provider streams and preserves signed thinking blocks", async () => {

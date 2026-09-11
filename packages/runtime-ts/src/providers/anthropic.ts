@@ -4,6 +4,7 @@ import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
+import { base64FromDataUrl, base64ImageSource } from "./image-utils.js";
 
 type AnthropicResponse = { content?: Array<{ type: string; text?: string; thinking?: string; signature?: string; id?: string; name?: string; input?: Record<string, unknown> }>; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
 export type AnthropicProviderOptions = { apiKey: string; baseUrl?: string; model: string; maxTokens?: number; timeoutMs?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; cacheControl?: boolean };
@@ -44,7 +45,7 @@ export class AnthropicMessagesProvider implements ModelProvider {
       timeout.reset();
       if (streaming && response.body) return await parseAnthropicStream(response.body, this.options.model, onToken, onThinking, timeout.reset);
       const data = await response.json() as AnthropicResponse; const content = data.content ?? []; const text = content.filter((block) => block.type === "text").map((block) => block.text ?? "").join(""); const calls = content.filter((block) => block.type === "tool_use" && block.id && block.name).map((block) => ({ id: block.id!, name: block.name!, input: block.input ?? {} }));
-      const thinking_blocks = content.filter((block) => block.type === "thinking").map((block) => ({ type: "thinking", thinking: block.thinking ?? "", signature: block.signature ?? "" }));
+      const thinking_blocks = content.filter((block) => block.type === "thinking").map((block) => ({ type: "thinking" as const, thinking: block.thinking ?? "", signature: block.signature ?? "" }));
       if (thinking_blocks.length) onThinking?.(thinking_blocks.map((block) => block.thinking).filter(Boolean).join("\n\n"));
       if (text) onToken?.(text);
       return { text, thinking_blocks, tool_calls: calls, stop_reason: normalizeStopReason(data.stop_reason, calls.length > 0), model: this.options.model, streamed: Boolean(onToken), usage: { input_tokens: Number(data.usage?.input_tokens ?? 0), output_tokens: Number(data.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(data.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(data.usage?.cache_creation_input_tokens ?? 0) } };
@@ -96,7 +97,22 @@ export function toAnthropicMessages(messages: ChatMessage[]): AnthropicMessage[]
 
 function contentBlocks(content: ChatMessage["content"]): AnthropicBlock[] {
   if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
-  return content.map((block) => ({ ...block }));
+  return content.map((block) => {
+    if (block.type === "image") {
+      const source = base64ImageSource(block);
+      if (!source) throw new Error("Anthropic image block requires a base64 source");
+      return { type: "image", source: { type: "base64", media_type: source.mediaType, data: source.data } };
+    }
+    if (block.type === "image_url") {
+      const candidate = block.image_url;
+      const imageUrl = typeof candidate === "string" ? candidate : candidate && typeof candidate === "object" && !Array.isArray(candidate) ? String((candidate as Record<string, unknown>).url ?? "") : "";
+      const embedded = base64FromDataUrl(imageUrl);
+      if (embedded) return { type: "image", source: { type: "base64", media_type: embedded.mediaType, data: embedded.data } };
+      if (!/^https?:\/\//i.test(imageUrl)) throw new Error("Anthropic image_url requires an http(s) URL");
+      return { type: "image", source: { type: "url", url: imageUrl } };
+    }
+    return { ...block };
+  });
 }
 
 function contentText(content: ChatMessage["content"]): string {
@@ -144,6 +160,6 @@ async function parseAnthropicStream(body: ReadableStream<Uint8Array>, model: str
   for await (const chunk of body) { onProgress?.(); buffer += decoder.decode(chunk, { stream: true }); flush(false); }
   buffer += decoder.decode(); flush(true);
   const tool_calls = [...state.calls.values()].filter((call) => call.id && call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.inputJson) }));
-  const thinking_blocks = [...state.thinking.values()].filter((block) => block.thinking || block.signature).map((block) => ({ type: "thinking", thinking: block.thinking, signature: block.signature }));
+  const thinking_blocks = [...state.thinking.values()].filter((block) => block.thinking || block.signature).map((block) => ({ type: "thinking" as const, thinking: block.thinking, signature: block.signature }));
   return { text: state.text, thinking_blocks, tool_calls, stop_reason: normalizeStopReason(state.stopReason, tool_calls.length > 0), model, streamed: true, usage: state.usage };
 }
