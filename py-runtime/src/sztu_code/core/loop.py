@@ -350,6 +350,9 @@ class AgentLoop:
 
     # 驱动 plan→act→observe 循环直到上下文终止；CancelledError 向上传播
     async def run(self, context: ExecutionContext) -> None:
+        # 直接使用 AgentLoop 的调用方也必须在 Run 入口固定起点，不能把
+        # 压缩等待、阶段切换或后续重入排除在同一个墙钟预算之外。
+        context.start()
         # Phase 2: 初始化任务画布（若未由外部注入）
         from sztu_code.core.compact.canvas import TaskCanvas
         if context.canvas is None:
@@ -368,17 +371,14 @@ class AgentLoop:
             if self._compactor is not None:
                 await self._compactor.wait_pending()
             self._drain_steering(context)
-            # 惰性记录 run 开始墙钟（runner/子 agent 都可能未设置）
-            if context.started_at <= 0.0:
-                context.started_at = time.monotonic()
 
             # [budget] 墙钟上限预检：超时直接终止，不再发起 LLM 调用
             # 若已有 result（上一步已产出内容），优先保留而非丢弃
             if context.wall_clock_exceeded():
                 if context.result:
-                    context.mark_interrupted("max_wall_clock_exceeded")
+                    context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
                 else:
-                    context.mark_failed("max_wall_clock_exceeded")
+                    context.mark_failed(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
                 break
 
             context.step += 1
@@ -745,20 +745,24 @@ class AgentLoop:
                     },
                 )
 
-            # Termination check — end_turn wins over everything if it hits
+            # A completed end_turn is successful only while the run is still within
+            # its wall-clock budget; preserve late text but expose the timeout.
             if response.stop_reason == "end_turn" and not steering_received:
                 base = response.text or ""
                 if pending_summaries:
                     base += "\n\n" + "\n".join(pending_summaries)
                 context.result = base
-                context.mark_success()
+                if context.wall_clock_exceeded():
+                    context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+                else:
+                    context.mark_success()
 
             # --- 终止检测 ---
             # 累计 Token 只用于统计，不再作为跨轮硬终止条件；否则大上下文任务
             # 会在真正完成前因重复计入 input tokens 而提前停止。
             # wall_clock: 累计时间已超限
             elif context.wall_clock_exceeded():
-                context.mark_interrupted("max_wall_clock_exceeded")
+                context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
 
             # token_budget: 累计消耗（全量 prompt + 输出）已达上限；
             # 估算误差导致的单步超支在此收口，下一步准入也会兜底阻断
