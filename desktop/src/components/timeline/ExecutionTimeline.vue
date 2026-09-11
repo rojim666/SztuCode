@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
+import ImageLightbox from "../ImageLightbox.vue";
 import ActivityDetails from "./ActivityDetails.vue";
 import ActivityPhase from "./ActivityPhase.vue";
 import ContextInjectionRow from "./ContextInjectionRow.vue";
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 }>();
 // 共享空数组：v-memo 依赖要求引用稳定，避免无注入时每次重算都触发全列表更新
 const EMPTY_CONTEXT: ContextInjectionEntry[] = [];
+const attachmentPreview = ref<{ images: Array<{ src: string; alt: string }>; index: number } | null>(null);
 
 type TurnState = "running" | "waiting" | "failed" | "interrupted" | "done";
 type TurnView = {
@@ -241,6 +243,14 @@ function attachmentThumbnail(att: UserAttachment): string | null {
   return att.kind === "image" && att.dataBase64
     ? `data:${att.mime ?? "image/png"};base64,${att.dataBase64}`
     : null;
+}
+function openAttachmentPreview(attachments: UserAttachment[], selected: UserAttachment) {
+  const images = attachments.flatMap((attachment) => {
+    const src = attachmentThumbnail(attachment);
+    return src ? [{ src, alt: attachment.name }] : [];
+  });
+  const index = images.findIndex((image) => image.alt === selected.name);
+  attachmentPreview.value = { images, index: Math.max(0, index) };
 }
 
 function formatSize(bytes: number): string {
@@ -522,10 +532,10 @@ watch(
           :data-category="attachmentCategory(att)"
           :title="`${att.name} · ${formatSize(att.size)}`"
         >
-          <span class="timeline-attachment-chip__visual" :class="{ 'is-thumbnail': attachmentThumbnail(att) }">
+          <button v-if="attachmentThumbnail(att)" class="timeline-attachment-chip__visual timeline-attachment-chip__preview" type="button" :aria-label="`Preview ${att.name}`" @click="openAttachmentPreview(turn.userAttachments, att)">
             <img v-if="attachmentThumbnail(att)" :src="attachmentThumbnail(att)!" alt="" />
-            <img v-else :src="attachmentIcon(att)" alt="" />
-          </span>
+          </button>
+          <span v-else class="timeline-attachment-chip__visual"><img :src="attachmentIcon(att)" alt="" /></span>
           <span class="timeline-attachment-chip__name">{{ att.name }}</span>
         </span>
       </div>
@@ -679,5 +689,6 @@ watch(
         </div>
       </div>
     </article>
+    <ImageLightbox v-if="attachmentPreview" :images="attachmentPreview.images" :index="attachmentPreview.index" @change="(index) => attachmentPreview && (attachmentPreview.index = index)" @close="attachmentPreview = null" />
   </section>
 </template>

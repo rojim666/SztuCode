@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rename, writeFile, cp } from "node:fs/promise
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ContentBlock, ContextMessage } from "./context.js";
+import { base64ImageSource } from "./providers/image-utils.js";
 
 export type SessionStatus = "active" | "waiting_for_input" | "closed";
 export type SessionMode = "one_shot" | "chat";
@@ -51,6 +52,7 @@ export class SessionStore {
         await writeFile(path.join(targetDir, "context.json"), `${JSON.stringify(raw.slice(0, contextCutoff + 1))}\n`, "utf8");
       }
     } catch { /* optional model context */ }
+    try { await cp(path.join(sourceDir, "images"), path.join(targetDir, "images"), { recursive: true }); } catch { /* session has no stored images */ }
     for (const name of ["kvcache.json", "kv-cache.json", "cache.json"]) {
       try { await cp(path.join(sourceDir, name), path.join(targetDir, name)); } catch { /* optional cache */ }
     }
@@ -84,15 +86,29 @@ export class SessionStore {
   }
   async appendMessage(id: string, message: Omit<SessionMessage, "ts"> & { ts?: string }): Promise<void> {
     await mkdir(path.join(this.root, id), { recursive: true });
-    const row = { ...message, ts: message.ts ?? new Date().toISOString() };
+    const row = { ...message, content: await this.offloadContent(id, message.content), ts: message.ts ?? new Date().toISOString() };
     await writeFile(path.join(this.root, id, "thread.jsonl"), `${JSON.stringify(row)}\n`, { encoding: "utf8", flag: "a" });
     const session = await this.get(id); session.updated_at = row.ts; if (message.role === "user" && session.title === "新会话") session.title = (typeof message.content === "string" ? message.content : "图片消息").slice(0, 80); await this.save(session);
   }
   async history(id: string): Promise<SessionMessage[]> {
-    try { return (await readFile(path.join(this.root, id, "thread.jsonl"), "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as SessionMessage); } catch { return []; }
+    try {
+      const rows = (await readFile(path.join(this.root, id, "thread.jsonl"), "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as SessionMessage);
+      return Promise.all(rows.map(async (message) => ({ ...message, content: await this.hydrateContent(id, message.content) })));
+    } catch { return []; }
   }
-  async modelHistory(id: string): Promise<ContextMessage[]> { try { const value = JSON.parse(await readFile(path.join(this.root, id, "context.json"), "utf8")); if (Array.isArray(value)) return value as ContextMessage[]; } catch { /* use visible history until a model context exists */ } return (await this.history(id)).map((message) => ({ role: message.role, content: message.content })); }
-  async replaceModelHistory(id: string, messages: ContextMessage[]): Promise<void> { const directory = path.join(this.root, id); await mkdir(directory, { recursive: true }); const file = path.join(directory, "context.json"); const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`; try { const { copyFile } = await import("node:fs/promises"); await copyFile(file, `${file}.bak`); } catch { /* no existing model context */ } await writeFile(temporary, `${JSON.stringify(messages)}\n`, "utf8"); await rename(temporary, file); }
+  async modelHistory(id: string): Promise<ContextMessage[]> {
+    try {
+      const value = JSON.parse(await readFile(path.join(this.root, id, "context.json"), "utf8"));
+      if (Array.isArray(value)) return Promise.all((value as ContextMessage[]).map(async (message) => ({ ...message, content: await this.hydrateContent(id, message.content) })));
+    } catch { /* use visible history until a model context exists */ }
+    return (await this.history(id)).map((message) => ({ role: message.role, content: message.content }));
+  }
+  async replaceModelHistory(id: string, messages: ContextMessage[]): Promise<void> {
+    const directory = path.join(this.root, id); await mkdir(directory, { recursive: true }); const file = path.join(directory, "context.json"); const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try { const { copyFile } = await import("node:fs/promises"); await copyFile(file, `${file}.bak`); } catch { /* no existing model context */ }
+    const stored = await Promise.all(messages.map(async (message) => ({ ...message, content: await this.offloadContent(id, message.content) })));
+    await writeFile(temporary, `${JSON.stringify(stored)}\n`, "utf8"); await rename(temporary, file);
+  }
   async appendRunEvent(id: string, event: SessionRunEvent): Promise<void> { await mkdir(path.join(this.root, id, "runs"), { recursive: true }); await writeFile(path.join(this.root, id, "runs", `${event.run_id ?? "unknown"}.jsonl`), `${JSON.stringify(event)}\n`, { encoding: "utf8", flag: "a" }); }
   async runEvents(id: string, runId: string, maxEvents = 2_000): Promise<SessionRunEvent[]> {
     try {
@@ -112,7 +128,7 @@ export class SessionStore {
   async replaceHistory(id: string, messages: Array<Omit<SessionMessage, "ts"> & { ts?: string }>): Promise<void> {
     const session = await this.get(id); const updatedAt = new Date().toISOString(); const file = path.join(this.root, id, "thread.jsonl");
     try { const { copyFile } = await import("node:fs/promises"); await copyFile(file, `${file}.${Date.now()}.bak`); } catch { /* no existing history */ }
-    const rows = messages.map((message) => ({ ...message, ts: message.ts ?? updatedAt }));
+    const rows = await Promise.all(messages.map(async (message) => ({ ...message, content: await this.offloadContent(id, message.content), ts: message.ts ?? updatedAt })));
     await writeFile(file, rows.length ? `${rows.map((row) => JSON.stringify(row)).join("\n")}\n` : "", "utf8");
     session.updated_at = updatedAt; await this.save(session);
   }
@@ -160,7 +176,48 @@ export class SessionStore {
     await writeFile(temporary, `${JSON.stringify({ ...session, run_stats: session.run_stats ?? {} }, null, 2)}\n`, "utf8");
     await rename(temporary, file);
   }
+  private async offloadContent(id: string, content: string | ContentBlock[]): Promise<string | ContentBlock[]> {
+    if (typeof content === "string") return content;
+    return Promise.all(content.map((block) => this.offloadBlock(id, block)));
+  }
+  private async offloadBlock(id: string, block: ContentBlock): Promise<ContentBlock> {
+    if (block.type === "tool_result" && Array.isArray(block.content)) return { ...block, content: await this.offloadContent(id, block.content) };
+    const source = base64ImageSource(block);
+    if (!source) return block;
+    const bytes = Buffer.from(source.data, "base64");
+    if (bytes.length <= SESSION_IMAGE_OFFLOAD_BYTES) return block;
+    const imageRef = await this.persistImage(id, source.mediaType, bytes, (block.source as Record<string, unknown>).image_ref);
+    return { ...block, source: { media_type: source.mediaType, image_ref: imageRef, bytes: bytes.length } } as ContentBlock;
+  }
+  private async persistImage(id: string, mediaType: string, bytes: Buffer, existingRef: unknown): Promise<string> {
+    const directory = path.join(this.root, id, "images"); await mkdir(directory, { recursive: true });
+    if (typeof existingRef === "string" && isSafeImageReference(existingRef)) {
+      try { await readFile(path.join(this.root, id, existingRef)); return existingRef; } catch { /* copy the hydrated image below */ }
+    }
+    const imageRef = path.posix.join("images", `${randomUUID()}.${imageExtension(mediaType)}`);
+    await writeFile(path.join(this.root, id, imageRef), bytes);
+    return imageRef;
+  }
+  private async hydrateContent(id: string, content: string | ContentBlock[]): Promise<string | ContentBlock[]> {
+    if (typeof content === "string") return content;
+    return Promise.all(content.map((block) => this.hydrateBlock(id, block)));
+  }
+  private async hydrateBlock(id: string, block: ContentBlock): Promise<ContentBlock> {
+    if (block.type === "tool_result" && Array.isArray(block.content)) return { ...block, content: await this.hydrateContent(id, block.content) };
+    if (block.type !== "image" || !block.source || typeof block.source !== "object" || Array.isArray(block.source)) return block;
+    const source = block.source as Record<string, unknown>; const imageRef = source.image_ref;
+    if (typeof imageRef !== "string") return block;
+    if (!isSafeImageReference(imageRef)) return { type: "text", text: "[Image unavailable: invalid stored image reference.]" };
+    try {
+      const bytes = await readFile(path.join(this.root, id, imageRef));
+      return { ...block, source: { ...source, data: bytes.toString("base64") } } as ContentBlock;
+    } catch { return { type: "text", text: `[Image unavailable: stored image reference is missing (${imageRef}).]` }; }
+  }
 }
+
+const SESSION_IMAGE_OFFLOAD_BYTES = 100 * 1024;
+const imageExtension = (mediaType: string) => ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" }[mediaType] ?? "bin");
+const isSafeImageReference = (imageRef: string) => imageRef.startsWith("images/") && !imageRef.includes("\\") && !imageRef.split("/").some((part) => !part || part === "." || part === "..");
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const compactTimestamp = () => new Date().toISOString().replace(/[-:]/g, "").replace("T", "_").slice(0, 15);

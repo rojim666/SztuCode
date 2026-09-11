@@ -2,7 +2,7 @@ import type { RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
 import { ToolRegistry, type Tool, type ToolContext, type ToolResult } from "./tools.js";
 import type { PermissionGate } from "./permissions.js";
-import { ContextManager, IncrementalContextSanitizer, microcompactToolResults, type ContentBlock, type ContextCompactionResult, type ContextMessage } from "./context.js";
+import { ContextManager, IncrementalContextSanitizer, microcompactToolResults, TokenCounter, type ContentBlock, type ContextCompactionResult, type ContextMessage } from "./context.js";
 import { DenialTracker } from "./denial-tracker.js";
 import { StuckLoopTracker, stuckSignature } from "./stuck-tracker.js";
 import { createPhaseTracker } from "./phase.js";
@@ -23,7 +23,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[]; taskCanvas?: TaskCanvas };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; cacheHitTarget?: number; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; supportsVision?: boolean; provider?: string; model?: string; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; cacheHitTarget?: number; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -132,7 +132,7 @@ export class AgentLoop {
       pendingCompaction = safeStartSpan(this.options.telemetry ?? NOOP_TELEMETRY_CONTEXT, { name: "context.compaction", attributes: { run_id: runId, step, compaction_count: compactionCount, background: compactBackground } }, async (span) => {
         try {
           // 使用快照上下文进行压缩
-          const snapshotContext = new ContextManager(messagesSnapshot, { maxTokens: context.budget.maxTokens, reservedOutputTokens: context.budget.reservedOutputTokens, maxToolResultChars: context.budget.maxToolResultChars });
+          const snapshotContext = new ContextManager(messagesSnapshot, { maxTokens: context.budget.maxTokens, reservedOutputTokens: context.budget.reservedOutputTokens, maxToolResultChars: context.budget.maxToolResultChars }, context.counter);
           const result = await snapshotContext.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
           span.setAttributes({ removed_messages: result.removedMessages, summary_tokens: result.summaryTokens, failed: Boolean(result.failed) });
           // 附加快照长度信息，用于后续应用时合并
@@ -607,7 +607,8 @@ export class AgentLoop {
           this.publish({ type: "tool.call_failed", run_id: runId, tool_use_id: call.id, tool_name: toolName, error_class: result.errorType ?? "runtime_error", error_message: result.error ?? "Tool failed", elapsed_ms: elapsedMs, ts: now() });
           if (tool && isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() });
         }
-        messages.push({ role: "tool", tool_call_id: call.id, content: contextOutput, is_error: !result.ok });
+        const contextContent = result.ok && result.content?.length ? this.options.supportsVision === false ? result.content.filter((block) => block.type !== "image").concat({ type: "text", text: "[Image omitted: this model does not support visual input; OCR or a vision-capable model is required for visual analysis.]" }) : result.content : contextOutput;
+        messages.push({ role: "tool", tool_call_id: call.id, content: contextContent, is_error: !result.ok });
       }
 
       // Recuris: 从工具结果吸收硬证据并更新 TaskCanvas 五元组
@@ -739,7 +740,7 @@ const safeRunId = (runId: string) => runId.replace(/[^A-Za-z0-9_.-]/g, "_") || "
 const isTestCommand = (command: string): boolean => /(^|\s)(pytest|vitest|jest|npm\s+test|pnpm\s+test|yarn\s+test|cargo\s+test)(\s|$)/i.test(command);
 const testSummary = (command: string, output: string): string => { const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean); const relevant = lines.filter((line) => /passed|failed|error|test/i.test(line)); return (relevant.at(-1) ?? lines.at(-1) ?? command).slice(0, 300); };
 const retryableToolErrors = new Set<ToolResult["errorType"]>(["runtime_error", "rate_limited"]);
-const responseContent = (response: ModelResponse): ChatMessage["content"] => response.thinking_blocks?.length ? [...response.thinking_blocks, ...(response.text ? [{ type: "text", text: response.text }] : [])] : response.text;
+const responseContent = (response: ModelResponse): ChatMessage["content"] => response.thinking_blocks?.length ? [...response.thinking_blocks, ...(response.text ? [{ type: "text" as const, text: response.text }] : [])] : response.text;
 const combineSignals = (first?: AbortSignal, second?: AbortSignal): AbortSignal | undefined => first && second ? AbortSignal.any([first, second]) : first ?? second;
 // 识别上下文溢出错误：400 且消息提示上下文过长，或任何错误消息含 context_length_exceeded
 const isContextOverflowError = (error: unknown): boolean => {

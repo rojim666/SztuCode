@@ -107,3 +107,15 @@ export function detectVisionSupport(model: string, explicitValue?: boolean | nul
   }
   return true;
 }
+
+export type ImageProcessingMode = "direct" | "ocr";
+
+/** Keep the UI wording tied to the same explicit capability used to build the daemon request. */
+export function imageProcessingMode(model: string, explicitValue?: boolean | null): ImageProcessingMode {
+  return detectVisionSupport(model, explicitValue) ? "direct" : "ocr";
+}
+
+export const MAX_IMAGE_ATTACHMENTS = 20;
+export function canAddImageAttachments(existing: number, incoming = 1): boolean {
+  return existing >= 0 && incoming >= 0 && existing + incoming <= MAX_IMAGE_ATTACHMENTS;
+}

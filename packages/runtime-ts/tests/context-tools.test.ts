@@ -3,10 +3,11 @@ import test from "node:test";
 import { ContextManager, IncrementalContextSanitizer, TokenCounter, microcompactToolResults, truncateText, sanitizeContextMessages } from "../src/context.js";
 import { createWorkspaceTools, ToolRegistry } from "../src/tools.js";
 import { Workspace } from "../src/workspace.js";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { WorkspaceChangeTracker, activeRunChanges, revertRunChanges } from "../src/changes.js";
+import sharp from "sharp";
 
 test("token counter handles CJK and uses the precise encoder when available", () => { const counter = new TokenCounter(); assert.ok(counter.count("中文内容测试") > counter.count("ab")); assert.equal(counter.preciseAvailable, true); });
 test("truncateText preserves a bounded result and marker", () => { const result = truncateText("a".repeat(200), 80); assert.ok(result.length <= 80); assert.match(result, /original=200/); });
@@ -38,6 +39,14 @@ test("automatic compaction threshold uses provider input tokens plus newly added
   assert.equal(context.needsCompaction(0.70, 60, 10), true);
   assert.equal(context.needsCompaction(0, 100, 100), false);
 });
+test("context budgets image blocks with a provider-specific estimator instead of base64 text", () => {
+  const image = { type: "image" as const, source: { media_type: "image/png", data: "a".repeat(400_000), width: 2048, height: 2048 } };
+  const generic = new ContextManager([{ role: "user", content: [image] }]);
+  const openai = new ContextManager([{ role: "user", content: [image] }], undefined, TokenCounter.forModel("openai", "gpt-4o"));
+  assert.ok(generic.tokenEstimate() >= 1_000);
+  assert.ok(openai.tokenEstimate() > generic.tokenEstimate());
+  assert.ok(openai.needsCompaction(0.01));
+});
 test("sliding compaction defers small old turns without dropping history", async () => {
   const history = [{ role: "user" as const, content: "goal" }, ...Array.from({ length: 8 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `short-${index}` }))];
   const context = new ContextManager(history); let calls = 0;
@@ -45,6 +54,10 @@ test("sliding compaction defers small old turns without dropping history", async
   assert.equal(result.deferred, true); assert.equal(calls, 0); assert.deepEqual(context.messages, history);
 });
 test("workspace tools support nested writes and grep", async () => { const root = await mkdtemp(path.join(os.tmpdir(), "sztu-ts-")); try { const tools = createWorkspaceTools(); const context = { workspace: new Workspace(root) }; assert.equal((await tools.get("write_file")!.invoke({ path: "src/a.ts", content: "needle" }, context)).ok, true); const result = await tools.get("grep_search")!.invoke({ pattern: "needle" }, context); assert.match(result.output, /src\/a.ts:1/); assert.equal(await readFile(path.join(root, "src/a.ts"), "utf8"), "needle"); } finally { await rm(root, { recursive: true, force: true }); } });
+test("view_image returns a preprocessed structured image block for a workspace PNG", async () => { const root = await mkdtemp(path.join(os.tmpdir(), "sztu-view-image-")); try { await writeFile(path.join(root, "pixel.png"), await sharp({ create: { width: 4, height: 2, channels: 3, background: "#123456" } }).png().toBuffer()); const result = await createWorkspaceTools().get("view_image")!.invoke({ path: "pixel.png" }, { workspace: new Workspace(root) }); assert.equal(result.ok, true); const image = result.content?.find((block) => block.type === "image") as any; assert.equal(image.source.media_type, "image/png"); assert.equal(image.source.width, 4); assert.equal(image.source.height, 2); } finally { await rm(root, { recursive: true, force: true }); } });
+test("read_file directs image files to view_image", async () => { const root = await mkdtemp(path.join(os.tmpdir(), "sztu-read-image-")); try { await writeFile(path.join(root, "pixel.png"), Buffer.from("image-bytes")); const result = await createWorkspaceTools().get("read_file")!.invoke({ path: "pixel.png" }, { workspace: new Workspace(root) }); assert.equal(result.ok, true); assert.match(result.output, /Use view_image to analyze this image/); } finally { await rm(root, { recursive: true, force: true }); } });
+test("view_image rejects unsupported files and paths outside its workspace", async () => { const root = await mkdtemp(path.join(os.tmpdir(), "sztu-view-image-boundary-")); const outside = await mkdtemp(path.join(os.tmpdir(), "sztu-view-image-outside-")); try { await writeFile(path.join(root, "image.svg"), "<svg/>"); await writeFile(path.join(outside, "outside.png"), "image-bytes"); const tool = createWorkspaceTools().get("view_image")!; const context = { workspace: new Workspace(root) }; assert.match((await tool.invoke({ path: "image.svg" }, context)).error ?? "", /Unsupported image type/); assert.match((await tool.invoke({ path: "missing.png" }, context)).error ?? "", /ENOENT|no such file/i); assert.match((await tool.invoke({ path: "../outside.png" }, context)).error ?? "", /Path escapes workspace/); assert.match((await tool.invoke({ path: path.join(outside, "outside.png") }, context)).error ?? "", /Path escapes workspace/); } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); } });
+test("view_image rejects a workspace junction that escapes to another directory", async () => { const root = await mkdtemp(path.join(os.tmpdir(), "sztu-view-image-link-")); const outside = await mkdtemp(path.join(os.tmpdir(), "sztu-view-image-link-outside-")); try { await writeFile(path.join(outside, "outside.png"), "image-bytes"); await symlink(outside, path.join(root, "outside-link"), "junction"); const result = await createWorkspaceTools().get("view_image")!.invoke({ path: "outside-link/outside.png" }, { workspace: new Workspace(root) }); assert.match(result.error ?? "", /Path escapes workspace/); } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); } });
 test("tool registry resolves built-in and tool-declared aliases without advertising duplicates", async () => {
   const tools = createWorkspaceTools();
   for (const [alias, canonical] of Object.entries({ read: "read_file", Read: "read_file", write: "write_file", Write: "write_file", edit: "edit_file", Edit: "edit_file", glob: "glob_search", Glob: "glob_search", grep: "grep_search", Grep: "grep_search", ls: "list_dir", List: "list_dir" })) {
