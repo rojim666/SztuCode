@@ -107,7 +107,7 @@ test("memory_consolidate appends active notes once and skips duplicates by note 
     assert.equal(consolidated.output, "Consolidated 2 note(s) into project context (0 skipped as duplicates).");
     const contextFile = path.join(workspace, ".sztu", "context.md");
     const text = await readFile(contextFile, "utf8");
-    assert.match(text, /## Consolidated notes \(\d{4}-\d{2}-\d{2}\)/);
+    assert.match(text, /^## Consolidated notes$/m);
     assert.match(text, /Use TypeScript strict mode/);
     assert.match(text, /Deploy via GitHub Actions/);
     const again = await invoke(tools, "memory_consolidate", {}, workspace);
@@ -116,7 +116,7 @@ test("memory_consolidate appends active notes once and skips duplicates by note 
     await invoke(tools, "note_save", { content: "Rotate API keys quarterly" }, workspace);
     await invoke(tools, "memory_consolidate", {}, workspace);
     const finalText = await readFile(contextFile, "utf8");
-    assert.equal(finalText.match(/## Consolidated notes \(/g)?.length, 1, "same-day consolidation reuses one section");
+    assert.equal(finalText.match(/^## Consolidated notes$/gm)?.length, 1, "consolidation reuses one stable section");
     assert.match(finalText, /Rotate API keys quarterly/);
     assert.match(first.output, /note-[a-f0-9]+/);
   } finally { await cleanup(home, workspace); }

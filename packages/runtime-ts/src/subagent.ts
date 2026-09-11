@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import type { HandoffArtifact, WorkflowGraph, WorkflowRole, WorkflowTask } from "@sztucode/protocol";
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { EventBus } from "./event-bus.js";
@@ -6,7 +6,7 @@ import { PermissionManager } from "./permissions.js";
 import { createPlanTools, createWorkspaceTools } from "./tools.js";
 import { Workspace } from "./workspace.js";
 import { WorkflowOrchestrator } from "./workflow.js";
-import { buildSystemPrompt, loadAgentProfile } from "./prompt-loader.js";
+import { buildDynamicContext, buildSystemPrompt, loadAgentProfile } from "./prompt-loader.js";
 import type { PermissionGate } from "./permissions.js";
 import type { ToolPermission } from "./tools.js";
 import { normalizeWorkflowPath, workflowPathIsAllowed } from "./workflow-scope.js";
@@ -67,6 +67,10 @@ export class SubagentManager {
     const basePermissions = profile.permissionMode ? this.permissions.scoped(profile.permissionMode) : this.permissions;
     const permissions = options.allowedPaths ? scopedWorkflowPermissions(basePermissions, options.allowedPaths) : basePermissions;
     const basePrompt = await buildSystemPrompt(this.workspaceRoot, role, { permissionMode: profile.permissionMode ?? this.permissions.getMode(), toolNames: tools.list().map((tool) => tool.name) });
+    // 动态上下文必须在子会话注册之前就绪：children.set → subagent.started → prompt 之间不允许再有 await，
+    // 否则中断请求会落在「已注册但 run 未启动」的窗口内被 SessionRuntime.abort 丢弃。
+    // workspaceFacts 缓存让同一 workflow burst 派发的多个子代理共享一次 git/instructions/skills 构建。
+    const reminder = await buildDynamicContext(this.workspaceRoot, { permissionMode: profile.permissionMode ?? this.permissions.getMode() });
     const context = { workspace: new Workspace(this.workspaceRoot), onFileChanged: (relativePath: string) => { const normalized = normalizeWorkflowPath(relativePath); options.changedPaths?.add(normalized); if (options.allowedPaths && !workflowPathIsAllowed(normalized, options.allowedPaths)) options.scopeEscalations?.add(normalized); } };
     const runtime = await this.createChildSession({ runId, sessionId, role, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, profile, tools, context, permissions, history });
     this.children.set(sessionId, { runId, sessionId, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, role, runtime });
@@ -75,7 +79,7 @@ export class SubagentManager {
     options.signal?.addEventListener("abort", stopOnParentAbort, { once: true });
     try {
       if (options.signal?.aborted) { await runtime.abort(); throw options.signal.reason ?? new Error("subagent cancelled"); }
-      await runtime.prompt(`${basePrompt}\n\n# Role instructions\n${rolePrompt}\n\n${goal}`);
+      await runtime.prompt(`${basePrompt}\n\n# Role instructions\n${rolePrompt}\n\n${goal}\n\n${reminder}`);
       const text = runtime.outputText;
       this.events.publish({ type: "subagent.finished", run_id: runId, parent_run_id: effectiveParentRunId, ...(options.parentSessionId ? { parent_session_id: options.parentSessionId } : {}), child_session_id: sessionId, status: "success", ts: new Date().toISOString() });
       return { runId, sessionId, text, tokens: runtime.usageTokens };

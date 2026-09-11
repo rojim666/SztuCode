@@ -35,10 +35,11 @@ test("session images reach the first model call exactly once and survive history
     assert.ok(calls.length > 0);
     const users = calls[0]!.filter((message) => message.role === "user" && JSON.stringify(message.content).includes("Describe this screenshot"));
     assert.equal(users.length, 1);
-    assert.deepEqual(users[0]!.content, [
-      { type: "text", text: "Describe this screenshot" },
-      { type: "image", source: { type: "base64", ...image } },
-    ]);
+    // 动态上下文以尾部 system-reminder 文本块追加到目标消息，不改变图像块的顺序与唯一性。
+    const blocks = users[0]!.content as Array<{ type: string; text?: string }>;
+    assert.deepEqual(blocks[0], { type: "text", text: "Describe this screenshot" });
+    assert.deepEqual(blocks[1], { type: "image", source: { type: "base64", ...image } });
+    for (const block of blocks.slice(2)) assert.equal(block.type, "text");
     const history = await client.request("session.get_history", { session_id: session.session_id });
     assert.ok(JSON.stringify(history.messages).includes(image.data));
   } finally {

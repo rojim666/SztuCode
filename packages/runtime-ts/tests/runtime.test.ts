@@ -5,7 +5,7 @@ import { Workspace, WorkspaceBoundaryError } from "../src/workspace.js";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildSystemPrompt, loadAgentProfile } from "../src/prompt-loader.js";
+import { buildDynamicContext, buildSystemPrompt, loadAgentProfile } from "../src/prompt-loader.js";
 import { parseRolePayload, scopedWorkflowPermissions, SubagentManager } from "../src/subagent.js";
 import { PermissionManager } from "../src/permissions.js";
 import { EventBus } from "../src/event-bus.js";
@@ -19,7 +19,7 @@ import { createMemoryTools, MemoryCatalog } from "../src/memory.js";
 import { SessionStore } from "../src/session-store.js";
 import { RunManager } from "../src/run-manager.js";
 import { StuckLoopTracker, stuckSignature } from "../src/stuck-tracker.js";
-import { runtimePromptEntries } from "../src/prompt-harness.js";
+import { dynamicRuntimePromptEntries, runtimePromptEntries } from "../src/prompt-harness.js";
 
 const task = (id: string, dependencies: string[] = []) => ({ id, title: id, description: id, owner: "coder" as const, dependencies, completion_criteria: ["done"], allowed_paths: ["src"], depth: 0, token_budget: 0, time_budget_s: 0, max_retries: null });
 const artifact = (workflowTask: WorkflowTask, status: HandoffArtifact["status"] = "succeeded", tokens = 0): HandoffArtifact => ({ workflow_id: "w", task_id: workflowTask.id, role: workflowTask.owner, status, summary: status === "succeeded" ? "done" : "failed", changed_paths: [], scope_escalations: [], commands: [], output: "", conclusion: status, diff_summary: "", test_summary: "", security_summary: "", review_decision: null, tokens, elapsed_s: 0, attempt: 0, child_run_id: "" });
@@ -547,8 +547,10 @@ test("system prompt loads TypeScript-owned prompts and project instructions", as
     await writeFile(path.join(root, "AGENTS.md"), "PROJECT_SENTINEL: follow repository rules", "utf8");
     const prompt = await buildSystemPrompt(root);
     assert.match(prompt, /SztuCode/);
-    assert.match(prompt, /PROJECT_SENTINEL/);
-    assert.match(prompt, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(prompt, /PROJECT_SENTINEL/);
+    const dynamicContext = await buildDynamicContext(root);
+    assert.match(dynamicContext, /PROJECT_SENTINEL/);
+    assert.match(dynamicContext, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -556,7 +558,7 @@ test("prompt harness injects only rules required by runtime capabilities", async
   const basic = await runtimePromptEntries({ toolNames: ["read_file"], taskText: "read config" });
   assert.ok(basic.some((entry) => /read_file|读取文件/i.test(entry)));
   assert.ok(!basic.some((entry) => /自动模式已激活/.test(entry)));
-  const dynamic = await runtimePromptEntries({ permissionMode: "auto", memoryEnabled: true, toolNames: ["bash", "task_get"], taskText: "删除旧分支并推送" });
+  const dynamic = [...await dynamicRuntimePromptEntries({ permissionMode: "auto", memoryEnabled: true }), ...await runtimePromptEntries({ permissionMode: "auto", memoryEnabled: true, toolNames: ["bash", "task_get"], taskText: "删除旧分支并推送" })];
   assert.ok(dynamic.some((entry) => /自动模式已激活/.test(entry)));
   assert.ok(dynamic.some((entry) => /自动内存管理/.test(entry)));
   assert.ok(dynamic.some((entry) => /谨慎执行操作/.test(entry)));

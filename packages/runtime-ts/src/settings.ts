@@ -4,7 +4,12 @@ import type { PermissionMode } from "@sztucode/protocol";
 import { validateReasoningEffort } from "./providers/reasoning.js";
 
 export type RuntimeSettings = { provider: "anthropic" | "openai"; api_format: "openai_chat_completions" | "anthropic_messages" | "openai_responses"; model: string; permission_mode: PermissionMode; base_url: string; context_window: number; max_output_tokens: number; temperature: number | null; top_p: number | null; reasoning_effort: string; timeout_s: number; max_retries: number; cache_control: boolean; supports_vision: boolean };
-type StoredSettings = RuntimeSettings & { api_key?: string; keyless?: boolean };
+/**
+ * 辅助模型（可选）：压缩摘要等后台调用路由到更便宜/更快的模型，主模型专注交互路径。
+ * aux_model 为空时不启用；其余字段缺省时回退 openai 兼容 + 环境变量 key。
+ */
+type AuxSettings = { aux_provider?: "anthropic" | "openai"; aux_api_format?: "openai_chat_completions" | "anthropic_messages" | "openai_responses"; aux_model?: string; aux_base_url?: string; aux_max_output_tokens?: number; aux_timeout_s?: number };
+type StoredSettings = RuntimeSettings & AuxSettings & { api_key?: string; keyless?: boolean; aux_api_key?: string };
 const provider = (process.env.SZTU_LLM_PROVIDER ?? process.env.SZTU_PROVIDER ?? "openai").toLowerCase() === "anthropic" ? "anthropic" : "openai";
 const defaults: StoredSettings = { provider, api_format: provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions", model: process.env.SZTU_LLM_DEFAULT_MODEL ?? process.env.SZTU_MODEL ?? "gpt-4o-mini", permission_mode: (process.env.SZTU_PERMISSION_MODE as PermissionMode | undefined) ?? "normal", base_url: provider === "anthropic" ? process.env.ANTHROPIC_BASE_URL ?? "" : process.env.OPENAI_BASE_URL ?? process.env.DEEPSEEK_BASE_URL ?? "", context_window: Number(process.env.SZTU_LLM_CONTEXT_WINDOW ?? 128_000), max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: !process.env.SZTU_LLM_DEFAULT_MODEL || /vision|gpt-4o|gpt-4v|claude-3|claude-4|gemini|qwen-vl|qvq|glm-4v|llava|moondream|cogvlm|internvl|phi-3-vision|pixtral|florence|yi-vl|minicpm-v/i.test(process.env.SZTU_LLM_DEFAULT_MODEL ?? process.env.SZTU_MODEL ?? ""), keyless: /^(1|true|yes)$/i.test(process.env.SZTU_LLM_KEYLESS ?? "") };
 
@@ -12,7 +17,7 @@ export class SettingsStore {
   private settings: StoredSettings = { ...defaults };
   private loaded = false;
   constructor(private readonly filePath = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "runtime-settings.json")) {}
-  async get(): Promise<RuntimeSettings> { await this.load(); const { api_key: _secret, keyless: _keyless, ...publicSettings } = this.settings; return publicSettings; }
+  async get(): Promise<RuntimeSettings> { await this.load(); const { api_key: _secret, keyless: _keyless, aux_api_key: _auxSecret, ...publicSettings } = this.settings; return publicSettings; }
   async getProviderConfig(): Promise<StoredSettings> { await this.load(); return { ...this.settings }; }
   async update(update: Partial<StoredSettings>): Promise<RuntimeSettings> { if (update.reasoning_effort !== undefined) validateReasoningEffort(update.reasoning_effort); await this.load(); this.settings = { ...this.settings, ...update }; await this.save(); return this.get(); }
   private async load(): Promise<void> { if (this.loaded) return; this.loaded = true; try { this.settings = { ...defaults, ...(JSON.parse(await readFile(this.filePath, "utf8")) as Partial<RuntimeSettings>) }; } catch { /* defaults */ } }

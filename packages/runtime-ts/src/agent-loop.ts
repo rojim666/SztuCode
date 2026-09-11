@@ -23,7 +23,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[]; taskCanvas?: TaskCanvas };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; cacheHitTarget?: number; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -52,7 +52,8 @@ export class AgentLoop {
     const initialSystem = messages.find((message) => message.role === "system");
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-    const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.70, 0, 1);
+    const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.90, 0, 1);
+    const cacheHitTarget = this.options.cacheHitTarget ?? numberEnv("SZTU_CACHE_HIT_TARGET", 0.99, 0, 0.999);
     const configuredMemoryMode = process.env.SZTU_MEMORY_MODE;
     const memoryMode = this.options.memoryMode ?? (configuredMemoryMode === "token_budget" ? "token_budget" : "compaction");
     const slidingWindowSize = this.options.slidingWindowSize ?? nonNegativeEnv("SZTU_SLIDING_WINDOW_SIZE", 5);
@@ -80,6 +81,9 @@ export class AgentLoop {
     const wallClockExceeded = (): boolean => maxWallClockMs > 0 && (Date.now() - runStartTime) >= maxWallClockMs;
     // Recuris: WorkingState 和任务画布
     const workingState = new WorkingState(goal);
+    let injectedWorkingStateVersion = 0;
+    let injectedWorkingStateFacts = 0;
+    let lastWorkingStateMessage: ChatMessage | undefined;
     const taskCanvas = new TaskCanvas();
     taskCanvas.recordStep({ label: "开始执行任务", summary: goal.slice(0, 100), toolNames: [], status: "done" });
     this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
@@ -215,7 +219,9 @@ export class AgentLoop {
         messages.push(...steering);
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Injected ${steering.length} steering message(s)`, ts: now() });
       }
-      if (lastContextPct >= compactThreshold * 0.8) {
+      // Rewriting cached tool results before the compaction threshold repeatedly
+      // invalidates history. Reclaim space only when compaction is due.
+      if (lastContextPct >= compactThreshold) {
         const microcompacted = microcompactToolResults(messages);
         if (microcompacted !== messages) { messages.splice(0, messages.length, ...microcompacted); context.notifyMutated(); }
       }
@@ -226,13 +232,18 @@ export class AgentLoop {
       }
       await extensions?.dispatch("context", { messages, contextPct: lastContextPct }, extensionRoot, { runId, sessionId: this.options.sessionId });
 
-      // Recuris: 注入 WorkingState（如果有内容且版本 > 0）
-      let injectedWorkingState = false;
-      if (workingState.version > 0 && workingState.hasContent) {
-        const wsRendered = workingState.render();
+      // Keep sent snapshots in history; removing one would invalidate the next
+      // request's prefix. Only append when new evidence changes the version.
+      const workingStateCompacted = lastWorkingStateMessage !== undefined && !messages.includes(lastWorkingStateMessage);
+      if ((workingState.version > injectedWorkingStateVersion || workingStateCompacted) && workingState.hasContent) {
+        // Old facts are already cached in history. Send only new evidence until
+        // compaction removes the snapshot, then restore the bounded full state.
+        const wsRendered = workingState.render(!lastWorkingStateMessage || workingStateCompacted ? undefined : injectedWorkingStateFacts);
         if (wsRendered) {
-          messages.push({ role: "user", content: wsRendered });
-          injectedWorkingState = true;
+          lastWorkingStateMessage = { role: "user", content: wsRendered };
+          messages.push(lastWorkingStateMessage);
+          injectedWorkingStateVersion = workingState.version;
+          injectedWorkingStateFacts = workingState.factCount;
           this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "working_state", message: "Injected working state", ts: now() });
         }
       }
@@ -248,30 +259,21 @@ export class AgentLoop {
       const requestTokens = context.tokenEstimate();
       let response: ModelResponse;
       let streamedText = "";
+      const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
       try {
-        const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
         const generationSignal = combineSignals(signal, steeringSignal?.());
         response = await this.provider.complete(messages, this.tools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
         tokenBuffer.flush();
         llmFailures = 0;
 
-        // Recuris: 移除临时注入的 WorkingState（如果存在）
-        if (injectedWorkingState && messages.length > 0) {
-          messages.pop();
-          context.notifyMutated();
-        }
       } catch (error) {
-        // Recuris: 移除临时注入的 WorkingState（如果存在）
-        if (injectedWorkingState && messages.length > 0) {
-          messages.pop();
-          context.notifyMutated();
-        }
-
-        // 用户主动取消不是故障，照常上抛
+        // 用户主动取消不是故障，照常上抛（丢弃未发的尾部帧）
         if (signal?.aborted) throw error;
         const interruptedSteering = takeSteering?.() ?? [];
         if (interruptedSteering.length) {
           if (streamedText) messages.push({ role: "assistant", content: streamedText });
+          // 中断续跑前补齐事件流尾部帧，UI 文本与 history 保持一致
+          tokenBuffer.flush();
           messages.push(...interruptedSteering);
           this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Interrupted generation and injected ${interruptedSteering.length} steering message(s)`, ts: now() });
           this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
@@ -309,6 +311,8 @@ export class AgentLoop {
       const responseTotalInputTokens = responseInputTokens
         + Number(response.usage?.cache_read_input_tokens ?? 0)
         + Number(response.usage?.cache_creation_input_tokens ?? 0);
+      const aggregateInput = usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
+      this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "prompt-cache", message: JSON.stringify({ step, input_tokens: responseTotalInputTokens, cache_read_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_read_ratio: responseTotalInputTokens ? Number(response.usage?.cache_read_input_tokens ?? 0) / responseTotalInputTokens : null, run_cache_read_ratio: aggregateInput ? usage.cache_read_input_tokens / aggregateInput : null }), ts: now() });
       // provider usage 校准：服务端真实输入 token 修正本地估算（只影响本地预判，contextPct 仍优先用服务端值）
       if (responseTotalInputTokens > 0) context.calibrate(responseTotalInputTokens);
       lastContextPct = context.contextPct(responseTotalInputTokens > 0 ? responseTotalInputTokens : requestTokens);
@@ -561,7 +565,13 @@ export class AgentLoop {
         await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });
         const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "Tool failed";
         let contextOutput = rawOutput;
-        if (offload.shouldOffload(toolName, rawOutput)) {
+        // A newly appended tool result is necessarily a cache miss on the next request.
+        // Keep that fresh suffix within the configured miss budget; the complete result
+        // remains available through read_ref. Four chars/token is deliberately conservative.
+        const cacheBudgetChars = cacheHitTarget > 0 && responseTotalInputTokens > 0
+          ? Math.max(600, Math.floor(responseTotalInputTokens * 4 * (1 - cacheHitTarget) / cacheHitTarget))
+          : Number.POSITIVE_INFINITY;
+        if (offload.shouldOffload(toolName, rawOutput) || rawOutput.length > cacheBudgetChars) {
           try {
             const record = await offload.offload(toolName, call.id, rawOutput, runId, !result.ok);
             contextOutput = offload.placeholder(record);
@@ -685,10 +695,30 @@ export class AgentLoop {
 
 const now = () => new Date().toISOString();
 // Coalesce provider deltas into short frames to keep the event bus affordable during streaming.
-function bufferedEmitter(emit: (text: string) => void, windowMs = 75): { push: (text: string) => void; flush: () => void } {
+// The flush window adapts to the observed token cadence so each model gets its own pacing:
+// dense streams (fast local/small models) widen the window to coalesce more per frame and calm
+// the event storm, while sparse streams (large reasoning models) shrink it so early tokens
+// surface with little added latency. A size threshold bounds the wait for bursty chunks.
+export function bufferedEmitter(emit: (text: string) => void, initialWindowMs = 75): { push: (text: string) => void; flush: () => void } {
   let pending = ""; let timer: ReturnType<typeof setTimeout> | undefined;
-  const flush = () => { if (timer) clearTimeout(timer); timer = undefined; if (pending) { const text = pending; pending = ""; emit(text); } };
-  return { push(text) { pending += text; if (!timer) timer = setTimeout(flush, windowMs); }, flush };
+  let windowMs = initialWindowMs; let intervalEma = initialWindowMs; let lastPushAt = 0;
+  const flush = () => { if (timer) clearTimeout(timer); timer = undefined; if (pending) { const text = pending; pending = ""; emit(text); } lastPushAt = 0; };
+  return {
+    push(text: string) {
+      pending += text;
+      const at = Date.now();
+      if (lastPushAt) {
+        // Token 间隔 EMA：间隔小（快流）→ 窗口放大合并更多；间隔大（慢流）→ 窗口收窄保首字延迟。
+        intervalEma = 0.3 * Math.max(0, at - lastPushAt) + 0.7 * intervalEma;
+        const target = Math.min(150, Math.max(24, Math.round(1200 / Math.max(intervalEma, 1))));
+        windowMs = Math.round(0.25 * target + 0.75 * windowMs);
+      }
+      lastPushAt = at;
+      if (pending.length >= 4096) { flush(); return; }
+      if (!timer) timer = setTimeout(flush, windowMs);
+    },
+    flush,
+  };
 }
 const nonNegativeEnv = (name: string, fallback: number): number => { const value = Number(process.env[name]); return Number.isInteger(value) && value >= 0 ? value : fallback; };
 const numberEnv = (name: string, fallback: number, minimum: number, maximum: number): number => { const value = Number(process.env[name]); return Number.isFinite(value) && value >= minimum && value <= maximum ? value : fallback; };

@@ -1,11 +1,13 @@
+import { createHash } from "node:crypto";
 import { openaiReasoningParams } from "./reasoning.js";
+import { detectModelCapabilities, type ModelCapabilities } from "./model-capabilities.js";
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
 
-type OpenAiResponse = { choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; input_tokens_details?: { cached_tokens?: number } } };
+type OpenAiResponse = { choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number; prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; input_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; summary?: Array<{ type?: string; text?: string }>; content?: Array<{ type?: string; text?: string }> };
 type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; status?: string; incomplete_details?: { reason?: string | null }; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
 /** 网关类与部分推理模型对标准 OpenAI 请求存在差异，compat 用于逐项修正而不影响默认行为。 */
@@ -106,7 +108,10 @@ function responseInputContent(content: ChatMessage["content"]): string | Array<R
 }
 
 export class OpenAiCompatibleProvider implements ModelProvider {
-  constructor(private readonly options: OpenAiProviderOptions) {}
+  private readonly capabilities: ModelCapabilities;
+  constructor(private readonly options: OpenAiProviderOptions) {
+    this.capabilities = detectModelCapabilities(options.model, options.apiFormat ?? "openai_chat_completions", options.baseUrl);
+  }
   stream(model: Model, context: ModelContext, options: StreamOptions = {}): AsyncIterable<ModelEvent> {
     return streamFromCompletion(async (_model, _context, streamOptions, callbacks): Promise<AssistantMessage> => {
       const response = await this.complete(_context.messages as ChatMessage[], { list: () => (_context.tools ?? []).map((tool) => ({ name: tool.name, description: tool.description ?? "", schema: tool.schema })) } as ToolRegistry, streamOptions.signal, callbacks.onToken, streamOptions.invocation as ModelInvocation | undefined, callbacks.onThinking);
@@ -121,7 +126,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     let timedOut = false; const timeout = createIdleTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
       const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
-      const definitions = tools.list().map((tool, index, all) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema, ...(this.cacheControl && index === all.length - 1 ? { cache_control: { type: "ephemeral" } } : {}) }));
+      const definitions = tools.list().slice().sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map((tool) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema }));
       const apiMessages = messages.map((message) => {
         const normalized = normalizeChatContent(message);
         return {
@@ -130,7 +135,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
           ...(message.role === "tool" && message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
           ...(message.role === "assistant" && normalized.reasoningContent ? { reasoning_content: normalized.reasoningContent } : {}),
           ...(message.role === "assistant" && message.tool_calls?.length ? { tool_calls: message.tool_calls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.input) } })) } : {}),
-          ...(message.role === "system" && this.cacheControl ? { cache_control: { type: "ephemeral" } } : {}),
+
         };
       });
       const responses = this.options.apiFormat === "openai_responses";
@@ -151,8 +156,14 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         return typeof content === "string" ? content : content.filter((block) => block.type === "input_text").map((block) => String(block.text ?? "")).join("\n");
       }).filter(Boolean).join("\n\n");
       const reasoning = isReasoningModel(this.options.model) || Boolean(this.options.reasoningEffort);
-      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions.map((tool) => Object.fromEntries(Object.entries(tool).filter(([key]) => key !== "cache_control"))), max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(reasoning), ...openaiReasoningParams(this.options.reasoningEffort, true) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters }, ...(tool.cache_control ? { cache_control: tool.cache_control } : {}) })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? (reasoning ? { max_completion_tokens: this.options.maxOutputTokens } : { max_tokens: this.options.maxOutputTokens }) : {}), ...this.samplingParams(reasoning), ...openaiReasoningParams(this.options.reasoningEffort, false) };
-      const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
+      // 采样抑制独立于字段选择：画像判定的思考型端点（如 deepseek-reasoner）同样拒绝采样参数。
+      const suppressSampling = reasoning || this.capabilities.suppressSampling;
+      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, true) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? (reasoning ? { max_completion_tokens: this.options.maxOutputTokens } : { max_tokens: this.options.maxOutputTokens }) : {}), ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, false) };
+      // Only endpoints with a known routing hint (official OpenAI) carry prompt_cache_key;
+      // everything else relies on server-side automatic prefix caching.
+      const cacheKey = this.cacheControl && this.capabilities.cache === "openai_prompt_cache_key"
+        ? { prompt_cache_key: createHash("sha256").update(JSON.stringify([this.options.model, system, definitions])).digest("hex") } : {};
+      const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...cacheKey, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
       if (!response.ok) throw await providerHttpError(response, "OpenAI-compatible");
       timeout.reset();
       if (this.options.stream && response.body && response.headers.get("content-type")?.includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking, timeout.reset);
@@ -167,7 +178,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         return [{ id: call.id, name: call.function.name, input }];
       });
       if (choice.reasoning_content) onThinking?.(choice.reasoning_content);
-      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? payload.usage?.prompt_tokens ?? 0), Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? payload.usage?.input_tokens_details?.cached_tokens ?? 0)), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.prompt_tokens_details?.cached_tokens ?? payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
+      return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(totalInputTokens(payload.usage), cacheReadTokens(payload.usage)), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(payload.usage) } };
     } catch (error) { if (timedOut) throw new ProviderTimeoutError("OpenAI-compatible", timeoutMs); throw error; } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
   }
 
@@ -193,7 +204,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     };
     while (true) { const { value, done } = await reader.read(); if (done) break; onProgress?.(); buffer += decoder.decode(value, { stream: true }); const rows = buffer.split(/\r?\n\r?\n/); buffer = rows.pop() ?? ""; for (const row of rows) { const data = row.split(/\r?\n/).find((line) => line.startsWith("data:")); if (data) consume(data.slice(5).trim()); } }
     const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.args) }));
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: netInputTokens(Number((usage as any).input_tokens ?? (usage as any).prompt_tokens ?? 0), Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0)), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: Number((usage as any).input_tokens_details?.cached_tokens ?? (usage as any).prompt_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: netInputTokens(totalInputTokens(usage), cacheReadTokens(usage)), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(usage) } };
   }
 
   private parseResponses(payload: ResponsesResponse, onThinking?: (thinking: string) => void): ModelResponse {
@@ -205,7 +216,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       const input = parseToolArguments(item.arguments);
       return { id: item.call_id || item.id || `call_${index}`, name: item.name!, input };
     });
-    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? 0), Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0)), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(payload.usage?.input_tokens_details?.cached_tokens ?? 0) } };
+    return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? 0), cacheReadTokens(payload.usage)), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(payload.usage) } };
   }
 }
 
@@ -218,4 +229,12 @@ function responsesStopReason(status?: string, details?: { reason?: string | null
 // 为未缓存净输入（与 Anthropic、计费与前端缓存命中率公式一致），故此处减去缓存读
 function netInputTokens(totalInputTokens: number, cacheReadTokens: number): number {
   return Math.max(totalInputTokens - cacheReadTokens, 0);
+}
+
+function cacheReadTokens(usage: OpenAiResponse["usage"]): number {
+  return Number(usage?.prompt_cache_hit_tokens ?? usage?.input_tokens_details?.cached_tokens ?? usage?.prompt_tokens_details?.cached_tokens ?? 0);
+}
+
+function totalInputTokens(usage: OpenAiResponse["usage"]): number {
+  return Number(usage?.input_tokens ?? usage?.prompt_tokens ?? (Number(usage?.prompt_cache_miss_tokens ?? 0) + cacheReadTokens(usage)));
 }
