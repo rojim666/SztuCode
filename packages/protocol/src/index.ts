@@ -287,7 +287,7 @@ export interface ToolCallStartedEvent { type: "tool.call_started"; run_id: strin
 export interface ToolCallFinishedEvent { type: "tool.call_finished"; run_id: string; tool_use_id: string; tool_name: string; elapsed_ms: number; output: string; ts: string }
 export interface ToolCallFailedEvent { type: "tool.call_failed"; run_id: string; tool_use_id: string; tool_name: string; error_class: string; error_message: string; elapsed_ms: number; ts: string }
 export interface LogLineEvent { type: "log.line"; run_id: string; level: string; source: string; message: string; ts: string }
-export interface ContextInjectedEvent { type: "context.injected"; run_id: string; source: "system" | "global" | "project" | "session" | "intervention" | "steering"; label: string; chars: number; preview: string; text: string; ts: string }
+export interface ContextInjectedEvent { type: "context.injected"; run_id: string; step?: number; source: "system" | "global" | "project" | "session" | "intervention" | "steering"; label: string; chars: number; preview: string; text: string; ts: string }
 export interface SessionMessageReceivedEvent { type: "session.message_received"; session_id: string; content: string; ts: string }
 export interface QuestionRequestedEvent { type: "question.requested"; rpc_id: string; session_id: string; run_id: string; questions: Array<Record<string, unknown>>; ts: string }
 export interface QuestionResolvedEvent { type: "question.resolved"; rpc_id: string; session_id: string; run_id: string; outcome: "answered" | "cancelled"; ts: string }

@@ -174,6 +174,7 @@ class TokenBudgetAdmissionEvent(BaseModel):
 class ContextInjectedEvent(BaseModel):
     type: Literal["context.injected"] = "context.injected"
     run_id: str
+    step: int = 0
     # 新事件统一为 system；其余值用于读取旧版分层注入事件。
     source: Literal["system", "global", "project", "session"]
     label: str  # 展示名（当前为 "上下文注入"）

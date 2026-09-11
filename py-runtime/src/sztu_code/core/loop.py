@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from sztu_code.core.budget import (
     evaluate_token_budget,
 )
 from sztu_code.core.bus.events import (
+    ContextInjectedEvent,
     StepFinishedEvent,
     StepStartedEvent,
     StuckLoopEvent,
@@ -327,6 +329,29 @@ class AgentLoop:
         system: str,
         admission: BudgetAdmission,
     ) -> LlmResponse:
+        # Record the exact logical context sent for this model turn.  The
+        # initial runner event only describes the static system prefix; this
+        # snapshot also exposes accumulated messages and tool definitions.
+        context_text = (
+            "## System prompt\n"
+            + system
+            + "\n\n## Messages\n"
+            + json.dumps(messages, ensure_ascii=False, default=str)
+            + "\n\n## Tools\n"
+            + json.dumps(tool_schemas, ensure_ascii=False, default=str)
+        )
+        await self._bus.publish(
+            ContextInjectedEvent(
+                run_id=context.run_id,
+                step=context.step,
+                source="system",
+                label=f"第 {context.step} 轮上下文",
+                chars=len(context_text),
+                preview=context_text[:160],
+                text=context_text,
+                ts=_now(),
+            )
+        )
         if admission.request_max_output_tokens is not None:
             return await self._provider.chat(
                 messages=messages,
