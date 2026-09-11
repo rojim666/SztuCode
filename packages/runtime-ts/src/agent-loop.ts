@@ -61,7 +61,7 @@ export class AgentLoop {
     const context = new ContextManager([...history, { role: "user", content: userContent }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
     const initialSystem = messages.find((message) => message.role === "system");
-    if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
+    if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, step: 0, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.90, 0, 1);
     const configuredMemoryMode = process.env.SZTU_MEMORY_MODE;
@@ -272,6 +272,13 @@ export class AgentLoop {
       const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
       try {
         const generationSignal = combineSignals(signal, steeringSignal?.());
+        const contextText = [
+          "## System prompt and conversation",
+          ...messages.map((message) => `${message.role}: ${typeof message.content === "string" ? message.content : JSON.stringify(message.content)}`),
+          "## Tools",
+          ...this.tools.list().map((tool) => JSON.stringify({ name: tool.name, description: tool.description, schema: tool.schema })),
+        ].join("\n\n");
+        this.publish({ type: "context.injected", run_id: runId, step, source: "system", label: `第 ${step} 轮上下文`, chars: contextText.length, preview: contextText.slice(0, 160), text: contextText, ts: now() });
         response = await this.provider.complete(messages, this.tools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
         tokenBuffer.flush();
         llmFailures = 0;
