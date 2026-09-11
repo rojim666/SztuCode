@@ -32,6 +32,34 @@ const sourceConfig = computed(() => {
 });
 
 const body = computed(() => entry.value.text ?? entry.value.preview);
+type ContextDiffRow = { kind: "added" | "removed" | "unchanged"; text: string };
+const previousBody = computed(() => {
+  if (selectedIndex.value <= 0) return "";
+  return props.entries[selectedIndex.value - 1]?.text ?? props.entries[selectedIndex.value - 1]?.preview ?? "";
+});
+const diffRows = computed<ContextDiffRow[]>(() => {
+  const currentLines = body.value.split(/\r?\n/);
+  const previousLines = previousBody.value.split(/\r?\n/);
+  const previousCounts = new Map<string, number>();
+  for (const line of previousLines) previousCounts.set(line, (previousCounts.get(line) ?? 0) + 1);
+  const currentCounts = new Map<string, number>();
+  for (const line of currentLines) currentCounts.set(line, (currentCounts.get(line) ?? 0) + 1);
+  const rows: ContextDiffRow[] = [];
+  for (const line of previousLines) {
+    const remaining = currentCounts.get(line) ?? 0;
+    if (remaining > 0) currentCounts.set(line, remaining - 1);
+    else rows.push({ kind: "removed", text: line });
+  }
+  for (const line of currentLines) {
+    const remaining = previousCounts.get(line) ?? 0;
+    if (remaining > 0) previousCounts.set(line, remaining - 1);
+    else rows.push({ kind: "added", text: line });
+  }
+  if (!rows.length && currentLines.length) return [{ kind: "unchanged", text: `${currentLines.length} 行内容未变化` }];
+  return rows.slice(0, 3000);
+});
+const addedCount = computed(() => diffRows.value.filter((row) => row.kind === "added").length);
+const removedCount = computed(() => diffRows.value.filter((row) => row.kind === "removed").length);
 const charLabel = computed(() =>
   latestEntry.value.chars >= 1000 ? `${(latestEntry.value.chars / 1000).toFixed(1)}k` : String(latestEntry.value.chars),
 );
@@ -161,9 +189,15 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: "上�
         <div v-if="body" class="ctx-row__section ctx-row__section--content">
           <div class="ctx-row__section-header">
             <AppIcon :name="sourceConfig.icon" :size="14" />
-            <span>{{ t('timeline.context.injectedContent') }}</span>
+            <span>本轮变化</span>
+            <span class="ctx-row__diff-stat ctx-row__diff-stat--added">+{{ addedCount }}</span>
+            <span class="ctx-row__diff-stat ctx-row__diff-stat--removed">-{{ removedCount }}</span>
           </div>
-          <pre class="ctx-row__content">{{ body }}</pre>
+          <div class="ctx-row__legend">
+            <span class="ctx-row__legend-item ctx-row__legend-item--added">新增上下文</span>
+            <span class="ctx-row__legend-item ctx-row__legend-item--removed">删除 / 压缩上下文</span>
+          </div>
+          <pre class="ctx-row__content ctx-row__diff-content"><code v-for="(row, index) in diffRows" :key="`${index}-${row.kind}`" :class="`ctx-diff-${row.kind}`">{{ row.kind === 'added' ? '+ ' : row.kind === 'removed' ? '- ' : '  ' }}{{ row.text }}{{ '\n' }}</code></pre>
         </div>
       </div>
     </transition>
@@ -315,6 +349,43 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: "上�
   font-size: 12px;
 }
 
+.ctx-row__diff-stat {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ctx-row__diff-stat--added,
+.ctx-row__legend-item--added {
+  color: #15803d;
+}
+
+.ctx-row__diff-stat--removed,
+.ctx-row__legend-item--removed {
+  color: #b91c1c;
+}
+
+.ctx-row__legend {
+  display: flex;
+  gap: 12px;
+  margin: -3px 0 7px;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.ctx-row__legend-item::before {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 4px 1px 0;
+  border-radius: 50%;
+  content: "";
+}
+
+.ctx-row__legend-item--added::before { background: #4ade80; }
+.ctx-row__legend-item--removed::before { background: #f87171; }
+
 .ctx-row__file-grid {
   display: flex;
   flex-wrap: wrap;
@@ -376,6 +447,31 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: "上�
   font: 12px/1.7 "SF Mono", "JetBrains Mono", Consolas, "Microsoft YaHei Mono", monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.ctx-row__diff-content code {
+  display: block;
+  min-height: 17px;
+  padding: 0 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ctx-row__diff-content .ctx-diff-added {
+  color: #166534;
+  background: #ecfdf3;
+  box-shadow: inset 3px 0 #4ade80;
+}
+
+.ctx-row__diff-content .ctx-diff-removed {
+  color: #991b1b;
+  background: #fff1f2;
+  box-shadow: inset 3px 0 #f87171;
+}
+
+.ctx-row__diff-content .ctx-diff-unchanged {
+  color: #9ca3af;
+  background: #f9fafb;
 }
 
 .ctx-row__content::-webkit-scrollbar {
