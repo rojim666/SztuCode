@@ -536,7 +536,7 @@ watch(
       <div v-if="turn.hasContent" class="timeline-assistant">
         <div class="timeline-step__content">
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
-          <ContextInjectionRow v-for="entry in turn.contextInjections" :key="entry.id" :entry="entry" />
+          <ContextInjectionRow v-if="turn.contextInjections?.length" :entries="turn.contextInjections" />
           <button
             v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"

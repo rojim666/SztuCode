@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
 import AgentLogo from "./AgentLogo.vue";
 import type { ContextInjectionEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 
-const props = defineProps<{ entry: ContextInjectionEntry }>();
+const props = defineProps<{ entries: ContextInjectionEntry[] }>();
 const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
+const selectedIndex = ref(Math.max(0, props.entries.length - 1));
+const entry = computed(() => props.entries[selectedIndex.value] ?? props.entries.at(-1)!);
+const latestEntry = computed(() => props.entries.at(-1)!);
+watch(() => props.entries.length, (length) => { selectedIndex.value = Math.max(0, length - 1); });
 
 // 来源标签取自语言包：computed 内调用 t，切换语言时自动重建。
 // 左侧内嵌 mini AgentLogo（带眨眼/眼珠跟随/随机表情），iconActive 控制顶部三点呼吸动效
 const sourceConfig = computed(() => {
-  switch (props.entry.source) {
+  switch (entry.value.source) {
     case "intervention":
       return { label: t("timeline.context.source.intervention"), icon: "ShieldAlert", iconActive: true };
     case "steering":
@@ -27,14 +31,15 @@ const sourceConfig = computed(() => {
   }
 });
 
-const body = computed(() => props.entry.text ?? props.entry.preview);
+const body = computed(() => entry.value.text ?? entry.value.preview);
 const charLabel = computed(() =>
-  props.entry.chars >= 1000 ? `${(props.entry.chars / 1000).toFixed(1)}k` : String(props.entry.chars),
+  latestEntry.value.chars >= 1000 ? `${(latestEntry.value.chars / 1000).toFixed(1)}k` : String(latestEntry.value.chars),
 );
+const turnLabel = computed(() => `${props.entries.length} 轮`);
 
 // 解析文件列表
 const files = computed(() => {
-  const explicit = props.entry.files?.map((file) => file.trim()).filter(Boolean) ?? [];
+  const explicit = entry.value.files?.map((file) => file.trim()).filter(Boolean) ?? [];
   const inferred = [...body.value.matchAll(/^##\s+([^\n]+)$/gm)]
     .map((match) => match[1].trim())
     .filter((value) => /(?:^|[\\/])[^\\/]+\.[a-z0-9]{1,12}$/i.test(value));
@@ -87,7 +92,7 @@ const fileItems = computed(() => {
   });
 });
 
-const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.entry.label, source: sourceConfig.value.label }));
+const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: "上下文演进", source: sourceConfig.value.label }));
 </script>
 
 <template>
@@ -102,14 +107,28 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
       <span class="ctx-row__icon">
         <AgentLogo :active="sourceConfig.iconActive" size="mini" />
       </span>
-      <span class="ctx-row__title">{{ entry.label }}</span>
+      <span class="ctx-row__title">上下文演进</span>
       <span class="ctx-row__badge">{{ t('timeline.context.chars', { count: charLabel }) }}</span>
+      <span class="ctx-row__badge">{{ turnLabel }}</span>
       <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
       <AppIcon name="ChevronDown" class="ctx-row__chevron" :size="13" />
     </button>
 
     <transition name="ctx-expand">
       <div v-if="open" class="ctx-row__body">
+        <div class="ctx-row__turns" role="list" aria-label="上下文轮次">
+          <button
+            v-for="(item, index) in props.entries"
+            :key="item.id"
+            type="button"
+            class="ctx-row__turn"
+            :class="{ selected: index === selectedIndex }"
+            @click="selectedIndex = index"
+          >
+            <span>第 {{ index + 1 }} 轮</span>
+            <small>{{ item.chars >= 1000 ? `${(item.chars / 1000).toFixed(1)}k` : item.chars }} 字符</small>
+          </button>
+        </div>
         <div v-if="files.length" class="ctx-row__section">
           <div class="ctx-row__section-header">
             <AppIcon name="Folder" :size="14" />
@@ -237,6 +256,45 @@ const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: props.
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.ctx-row__turns {
+  display: flex;
+  gap: 5px;
+  padding-bottom: 10px;
+  overflow-x: auto;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.ctx-row__turn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 8px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ctx-row__turn small {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.ctx-row__turn:hover {
+  color: #374151;
+  background: #e5e7eb;
+}
+
+.ctx-row__turn.selected {
+  color: #111827;
+  background: #ffffff;
+  border-color: #d1d5db;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
 }
 
 .ctx-row__section-header {
