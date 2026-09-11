@@ -317,7 +317,7 @@ def test_uninstall_plugin_removes_only_managed_plugin_directory(
 
     assert not plugin.exists()
     assert (config_root / "plugins").is_dir()
-    assert loader.list_plugins() == []
+    assert all(item.source == "builtin" for item in loader.list_plugins())
 
 
 # 功能：内置插件应与个人/工作区插件一起出现在插件目录中且不可卸载

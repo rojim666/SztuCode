@@ -1,25 +1,59 @@
-<!-- # Creating a pull request -->
-# 创建拉取请求
+## Context
 
-<!-- 1. Run `git status`, `git diff`, the remote tracking check, and `git log` in -->
-<!--    parallel. Determine the full branch diff against the intended base branch. -->
-1. 并行运行 `git status`、`git diff`、远程跟踪检查和 `git log`。确定相对于目标基础分支的完整分支差异。
-<!-- 2. Analyze all changes in `<pr_analysis>` tags: -->
-2. 在 `<pr_analysis>` 标签中分析所有更改：
-<!--    - Summarize the problem and solution. -->
-   - 总结问题和解决方案。
-<!--    - Identify the important implementation decisions. -->
-   - 识别重要的实现决策。
-<!--    - Record tests and verification performed. -->
-   - 记录已执行的测试和验证。
-<!--    - Check for unrelated changes, generated artifacts, and sensitive data. -->
-   - 检查不相关的更改、生成的工件和敏感数据。
-<!--    - Draft a concise title and a structured pull request body. -->
-   - 起草简洁的标题和结构化的拉取请求正文。
-<!-- 3. Create a branch only when needed, push it with the appropriate upstream, and -->
-<!--    create the pull request with `gh pr create`. -->
-3. 仅在需要时创建分支，使用适当的上游推送它，并使用 `gh pr create` 创建拉取请求。
+- `git status`: !`git status`
+- `git diff HEAD`: !`git diff HEAD`
+- `git branch --show-current`: !`git branch --show-current`
+- `git diff origin/HEAD...HEAD` (commits since diverged from default): !`git diff origin/HEAD...HEAD`
+- `gh pr view --json number 2>/dev/null || true`: !`gh pr view --json number 2>/dev/null || true`
 
-<!-- Do not update git configuration, force-push, bypass hooks, or include unrelated -->
-<!-- changes. Return the created pull request URL and a concise summary of its scope. -->
-不要更新 git 配置、强制推送、绕过钩子或包含不相关的更改。返回创建的拉取请求 URL 及其范围的简洁摘要。
+## Git Safety Protocol
+
+- NEVER update the git config
+- NEVER run destructive/irreversible git commands (like push --force, hard reset, etc) unless the user explicitly requests them
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- NEVER run force push to main/master, warn the user if they request it
+- Do not commit files that likely contain secrets (.env, credentials.json, etc)
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported
+
+## Your task
+
+Analyze all changes that will be included in the pull request, making sure to look at all relevant commits (NOT just the latest commit, but ALL commits that will be included — use the `git diff origin/HEAD...HEAD` output above).
+
+Based on the above changes:
+
+1. Create a new branch if currently on the default branch (use a descriptive name like `feature-name` or `fix-xxx`).
+
+2. Create a single commit with an appropriate message using HEREDOC syntax:
+
+```
+git commit -m "$(cat <<'EOF'
+Commit message here.{% if settings.includeCoAuthoredBy %}
+
+🤖 Generated with [SztuCode]
+
+Co-Authored-By: SztuCode{% endif %}
+EOF
+)"
+```
+
+3. Push the branch to origin (use `-u` on first push).
+
+4. If a PR already exists for this branch (check the `gh pr view` output above), update the PR title and body using `gh pr edit` to reflect the current diff. Otherwise, create a pull request using `gh pr create` with HEREDOC syntax for the body.
+   - IMPORTANT: Keep PR titles short (under 70 characters). Use the body for details.
+
+```
+gh pr create --title "Short, descriptive title" --body "$(cat <<'EOF'
+## Summary
+<1-3 bullet points>
+
+## Test plan
+[Bulleted markdown checklist of TODOs for testing the pull request...]{% if settings.includeCoAuthoredBy %}
+
+🤖 Generated with [SztuCode]{% endif %}
+EOF
+)"
+```
+
+You have the capability to call multiple tools in a single response. You MUST do all of the above in a single message.
+
+Return the PR URL when you're done, so the user can see it.

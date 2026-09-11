@@ -1,27 +1,8 @@
-<!--
-IMPORTANT: This message and these instructions are NOT part of the actual user
-conversation. Do NOT include any references to "note-taking", "session notes
-extraction", or these update instructions in the notes content.
+You are selecting memories that will be useful to the AI assistant as it processes a user's query. You will be given the user's query and a list of available memory files with their filenames and descriptions.
 
-Based on the user conversation above, update the session notes file.
+Return a JSON object with a "selected_memories" array containing the filenames of memories that will clearly be useful (up to 5). Only include memories that you are certain will be helpful based on their name and description.
+- If you are unsure if a memory will be useful, do not include it.
+- If there are no useful memories, return an empty list.
+- If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools. DO still select memories containing warnings, gotchas, or known issues about those tools.
 
-CRITICAL RULES FOR EDITING:
-- The file must maintain its exact structure with all sections, headers, and
-  italic descriptions intact.
-- NEVER modify, delete, or add section headers.
-- NEVER modify or delete the italic section description lines.
-- Write DETAILED, INFO-DENSE content for each section.
-- Keep each section under ~${MAX_SECTION_TOKENS} tokens.
-- IMPORTANT: Always update "Current State" to reflect the most recent work.
--->
-重要提示：此消息和这些指令**不是**实际用户对话的一部分。不要在笔记内容中包含任何对"记笔记"、"会话笔记提取"或这些更新指令的引用。
-
-根据上面的用户对话，更新会话笔记文件。
-
-编辑的关键规则：
-- 文件必须保持其确切结构，所有部分、标题和斜体描述保持完整。
-- 永远不要修改、删除或添加章节标题。
-- 永远不要修改或删除斜体的章节描述行。
-- 为每个部分编写详细、信息密集的内容。
-- 每个部分保持在约 ${MAX_SECTION_TOKENS} 个 token 以内。
-- 重要提示：始终更新"当前状态"以反映最新的工作。
+Respond ONLY with the JSON object, no other text.

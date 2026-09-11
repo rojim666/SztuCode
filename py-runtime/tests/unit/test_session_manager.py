@@ -436,6 +436,22 @@ async def test_builtin_slash_command_loads_indexed_prompt(tmp_path: Path) -> Non
     assert runner.goal == "origin/main"
     assert runner.system_prompt_override is not None
     assert "## Active slash command: /security-review" in runner.system_prompt_override
-    assert "高可信度安全漏洞" in runner.system_prompt_override
+    assert "senior security engineer" in runner.system_prompt_override
     assert "# Environment" in runner.system_prompt_override
     assert runner.tool_whitelist is None
+
+
+async def test_project_skill_overrides_imported_command(tmp_path: Path, monkeypatch) -> None:
+    local = tmp_path / ".sztu/skills"
+    local.mkdir(parents=True)
+    (local / "security-review.md").write_text(
+        "---\nname: security-review\ndescription: Local review\n---\nLOCAL_REVIEW $ARGUMENTS\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    runner = _Runner()
+    manager = SessionManager(SessionStore(tmp_path / "sessions"), lambda: runner, EventBus())
+    session = await manager.create("chat")
+    await manager.send_message(session.id, "/security-review origin/main")
+    assert "LOCAL_REVIEW origin/main" in runner.system_prompt_override
+    assert "senior security engineer" not in runner.system_prompt_override

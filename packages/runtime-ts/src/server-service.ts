@@ -199,11 +199,12 @@ export class ServerService {
         const session = await this.sessions.get(params.session_id);
         const workspaceRoot = session.workspace_id ? (await this.workspaces.get(session.workspace_id)).path : undefined;
         let goal = params.content;
-        const slash = /^\/([A-Za-z0-9_.-]+)(?:\s+([\s\S]*))?$/.exec(params.content.trim());
+        const slash = /^\/([^\s/\\]+)(?:\s+([\s\S]*))?$/.exec(params.content.trim());
         let invokedSkill: { name: string; arguments: string; prompt: string } | null = null;
         if (slash) {
-          const skill = (await new SkillLoader(workspaceRoot ?? process.cwd()).list()).find((item) => item.enabled && item.name === slash[1]);
-          if (skill) { invokedSkill = { name: skill.name, arguments: slash[2] ?? "", prompt: skill.system_prompt_template }; history.push({ role: "system", content: skill.system_prompt_template }); goal = slash[2] ?? ""; }
+          const skill = (await new SkillLoader(workspaceRoot ?? process.cwd()).list()).find((item) => item.name === slash[1]);
+          if (skill && !skill.enabled) throw new Error(`Skill is disabled: ${skill.name}`);
+          if (skill) { const prompt = skill.system_prompt_template.replaceAll("$ARGUMENTS", slash[2] ?? ""); invokedSkill = { name: skill.name, arguments: slash[2] ?? "", prompt }; history.push({ role: "system", content: prompt }); goal = slash[2] ?? ""; }
         }
         let runId = "";
         runId = this.runs.start(goal, history, async (messages: import("./agent-loop.js").ChatMessage[], usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) => {

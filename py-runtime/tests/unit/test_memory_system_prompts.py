@@ -62,10 +62,10 @@ def test_memory_prompt_is_not_in_static_base() -> None:
 # 功能：验证 reference-only 记忆提示词可按稳定 ID 独立读取
 # 设计：抽查自动更新、私有反馈和 CLAUDE.md 创建的唯一标记，确认索引映射正确
 def test_reference_memory_prompts_are_loadable() -> None:
-    assert "Current State" in load_memory_system_prompt("memory-update")
-    assert "<description>" in load_memory_system_prompt("private-feedback")
-    assert "Analyze the codebase" not in load_memory_system_prompt("claude-md-creation")
-    assert "分析代码库" in load_memory_system_prompt("claude-md-creation")
+    assert "selecting memories" in load_memory_system_prompt("memory-update")
+    assert "friction points" in load_memory_system_prompt("private-feedback")
+    assert "analyze this codebase" in load_memory_system_prompt("claude-md-creation")
+    assert "SZTUCODE.md" in load_memory_system_prompt("claude-md-creation")
 
 
 # 功能：验证不存在的第十二章提示词 ID 会返回明确索引错误

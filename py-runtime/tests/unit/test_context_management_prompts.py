@@ -50,8 +50,9 @@ def test_compactor_uses_context_compaction_prompt() -> None:
     compact_prompt = _compact_prompt()
 
     assert compact_prompt == prompt
-    assert "任务概述" in compact_prompt
-    assert "<summary></summary>" in compact_prompt
+    assert "Primary Request and Intent" in compact_prompt
+    assert "<conversation_history_summary>" in compact_prompt
+    assert "Never mark unfinished work completed" in compact_prompt
 
 
 # 功能：验证 reference-only 上下文提示词仍可按 ID 读取但不改变压缩器提示词
@@ -60,9 +61,8 @@ def test_reference_context_prompts_are_not_in_compactor_prompt() -> None:
     compact_prompt = _compact_prompt()
 
     assert "<analysis>" in load_context_management_prompt("full-compaction-analysis")
-    assert "委托流程" in load_context_management_prompt("subagent-delegation-examples")
-    assert "<analysis>" not in compact_prompt
-    assert "委托流程" not in compact_prompt
+    assert "Launch a new agent" in load_context_management_prompt("subagent-delegation-examples")
+    assert "Launch a new agent" not in compact_prompt
 
 
 # 功能：验证不存在的第十一章提示词 ID 会返回明确索引错误

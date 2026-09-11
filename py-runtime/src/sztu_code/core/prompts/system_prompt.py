@@ -9,6 +9,7 @@ from sztu_code.core.prompts.catalog import (
     PromptCatalog,
 )
 from sztu_code.core.prompts.catalog import PromptIndexError as PromptIndexError
+from sztu_code.core.prompts.workbuddy import build_base
 
 # 静态/动态段分界哨兵，供 /system-prompt 定位动态上下文起点
 DYNAMIC_BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"
@@ -44,36 +45,9 @@ def load_prompt_sections(group: str, *, prompt_root: Path | None = None) -> tupl
     )
 
 
-WORK_PROTOCOL = (
-    # 工作流程
-    # 环境已预配置，安装或更新命令会被阻止；不要尝试 pip/npm/apt/brew/conda/ensurepip。
-    # 完成修改后应执行可用的测试或命令进行验证；达到任务完成标准后立即停止，不要继续无谓优化。
-    # 优先采用小而集中的修复；某种方案多次失败后，应重新规划，而不是只改变措辞继续重试。
-    "# Work protocol\n"
-    " - The environment is provisioned: install/update commands are blocked and will fail. "
-    "Never attempt pip/npm/apt/brew/conda/ensurepip.\n"
-    " - Finish by verifying: if a test or command can confirm your work, run it. Stop as "
-    "soon as the stated completion criterion is met — do not keep refining.\n"
-    " - Prefer a small, focused fix. If an approach fails a few times, re-plan instead of "
-    "retrying the same call with different wording."
-)
-
-_LEGACY_STATIC_SECTIONS = (WORK_PROTOCOL,)
-
-
 # 常驻基座只保留身份、安全和最小执行约束；详细规则由 Harness 按场景注入
 def _static_sections() -> tuple[str, ...]:
-    return (
-        DEFAULT_PROMPT_CATALOG.get("main", "workbuddy-system").content,
-        DEFAULT_PROMPT_CATALOG.get("safety-prompts", "malicious-code-protection").content,
-        DEFAULT_PROMPT_CATALOG.get("doing-tasks", "software-engineering-focus").content,
-        DEFAULT_PROMPT_CATALOG.get("doing-tasks", "read-before-modifying").content,
-        DEFAULT_PROMPT_CATALOG.get("doing-tasks", "security").content,
-        DEFAULT_PROMPT_CATALOG.get("doing-tasks", "blocked-approach").content,
-        *load_prompt_sections("output-efficiency"),
-        DEFAULT_PROMPT_CATALOG.get("tone-and-style", "concise-output-short").content,
-        *_LEGACY_STATIC_SECTIONS,
-    )
+    return (build_base(),)
 
 
 # 在指定目录执行 git 命令，失败或非 git 目录返回空字符串
@@ -101,9 +75,7 @@ def build_static_base() -> str:
 # 渲染环境上下文段：模型家族、工作目录、平台
 # 注意：日期不在这里——它每天变化，写进 system 会击穿前缀缓存；
 # 改由 runner 注入到消息尾部。
-def _environment_section(
-    *, cwd: str, model_family: str, os_name: str, os_version: str
-) -> str:
+def _environment_section(*, cwd: str, model_family: str, os_name: str, os_version: str) -> str:
     return (
         "# Environment context\n"
         f" - Model family: {model_family}\n"

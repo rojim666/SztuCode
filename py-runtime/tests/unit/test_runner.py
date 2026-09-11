@@ -358,8 +358,9 @@ def test_main_registry_includes_dedicated_search_tools(tmp_path: Path) -> None:
 
     assert registry.get("glob_search") is not None
     assert registry.get("grep_search") is not None
-    assert schemas["glob_search"]["description"] == load_tool_descriptions()["glob_search"]
-    assert schemas["grep_search"]["description"] == load_tool_descriptions()["grep_search"]
+    assert schemas["glob_search"]["description"].startswith(load_tool_descriptions()["glob_search"])
+    assert schemas["grep_search"]["description"].startswith(load_tool_descriptions()["grep_search"])
+    assert "Host tool behavior:" in schemas["glob_search"]["description"]
 
 
 # 功能：验证 run 开始时发布携带正确 goal 的 run.started 事件

@@ -142,8 +142,12 @@ class AgentRunner:
         def _ok(name: str) -> bool:
             return allowed is None or name in allowed
 
+        from sztu_code.core.tools.builtin.prompt_resource import PromptResourceTool, SkillTool
+
         registry = ToolRegistry()
         for t in [
+            PromptResourceTool(),
+            SkillTool(workspace_root),
             ReadFileTool(workspace_root),
             ReadDocumentTool(workspace_root),
             CreateDocumentTool(workspace_root),
@@ -438,6 +442,10 @@ class AgentRunner:
                     offload_manager=offload_manager,
                     memory_catalog=memory_catalog,
                 )
+                if registry.get("skill") is not None:
+                    from sztu_code.core.skills.loader import SkillLoader
+
+                    context.prepend_goal_reminder(SkillLoader(project_root).render_catalog())
                 runtime_prompt_context = PromptRuntimeContext(
                     permission_mode=permission_mode,
                     memory_enabled=memory_enabled,
@@ -509,9 +517,7 @@ class AgentRunner:
                     contract = build_completion_contract(run_id, profile, project_root)
                     if contract is not None:
                         executor = VerificationExecutor(project_root, run_path)
-                        breaker = RepairCircuitBreaker(
-                            self._config.agent.max_repair_attempts
-                        )
+                        breaker = RepairCircuitBreaker(self._config.agent.max_repair_attempts)
                         repair_attempts = 0
                         stop_reason = ""
                         previous_result = None
@@ -524,15 +530,11 @@ class AgentRunner:
                         )
                         while True:
                             change_records = (
-                                change_tracker.finalize()
-                                if change_tracker is not None
-                                else None
+                                change_tracker.finalize() if change_tracker is not None else None
                             )
                             current_digests = digests_from_change_records(change_records)
                             if previous_result is not None:
-                                mark_stale_evidence(
-                                    previous_result, contract, current_digests
-                                )
+                                mark_stale_evidence(previous_result, contract, current_digests)
                             verification_result = await executor.verify(
                                 contract, workspace_digests=current_digests
                             )
@@ -546,12 +548,8 @@ class AgentRunner:
                                 break
 
                             previous_result = verification_result
-                            repair_prompt = build_repair_prompt(
-                                verification_result, contract
-                            )
-                            context.messages.append(
-                                {"role": "user", "content": repair_prompt}
-                            )
+                            repair_prompt = build_repair_prompt(verification_result, contract)
+                            context.messages.append({"role": "user", "content": repair_prompt})
                             context.status = "running"
                             context.reason = None
                             breaker.note_attempt()
@@ -603,9 +601,7 @@ class AgentRunner:
                     cancel_reason = "parent_interrupted"
                 else:
                     cancel_reason = "parent_failed"
-                await self._task_registry.cancel_descendants(
-                    run_id, reason=cancel_reason
-                )
+                await self._task_registry.cancel_descendants(run_id, reason=cancel_reason)
 
             if change_tracker is not None:
                 changes = change_tracker.finalize()
@@ -670,9 +666,7 @@ class AgentRunner:
                 try:
                     await run_memory_evolution(
                         provider=provider,
-                        trajectory=(
-                            context.canvas.export() if context.canvas is not None else []
-                        ),
+                        trajectory=(context.canvas.export() if context.canvas is not None else []),
                         memory_root=project_root / ".sztu" / "memory",
                         bus=bus,
                         run_id=run_id,

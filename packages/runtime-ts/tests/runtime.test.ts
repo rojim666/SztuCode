@@ -557,12 +557,12 @@ test("system prompt loads TypeScript-owned prompts and project instructions", as
 test("prompt harness injects only rules required by runtime capabilities", async () => {
   const basic = await runtimePromptEntries({ toolNames: ["read_file"], taskText: "read config" });
   assert.ok(basic.some((entry) => /read_file|读取文件/i.test(entry)));
-  assert.ok(!basic.some((entry) => /自动模式已激活/.test(entry)));
+  assert.ok(!basic.some((entry) => /Automatic mode still obeys/.test(entry)));
   const dynamic = [...await dynamicRuntimePromptEntries({ permissionMode: "auto", memoryEnabled: true }), ...await runtimePromptEntries({ permissionMode: "auto", memoryEnabled: true, toolNames: ["bash", "task_get"], taskText: "删除旧分支并推送" })];
-  assert.ok(dynamic.some((entry) => /自动模式已激活/.test(entry)));
-  assert.ok(dynamic.some((entry) => /自动内存管理/.test(entry)));
-  assert.ok(dynamic.some((entry) => /谨慎执行操作/.test(entry)));
-  assert.ok(dynamic.some((entry) => /任务管理/.test(entry)));
+  assert.ok(dynamic.some((entry) => /Automatic mode still obeys/.test(entry)));
+  assert.ok(dynamic.some((entry) => /injected working and user memory/.test(entry)));
+  assert.ok(dynamic.some((entry) => /personal_files_safety/.test(entry)));
+  assert.ok(dynamic.some((entry) => /task_management/.test(entry)));
   assert.ok(dynamic.some((entry) => /并行|parallel/i.test(entry)));
 });
 
@@ -629,7 +629,7 @@ test("planner subagents receive the task tools declared by their profile", async
     const provider: ModelProvider = { complete: async (_messages, tools) => { names = tools.list().map((tool) => tool.name).sort(); return { text: "done", tool_calls: [], stop_reason: "end_turn" }; } };
     const events = new EventBus(path.join(root, "events.jsonl"));
     await new SubagentManager(provider, root, events, new PermissionManager(events, 20)).run("planner", "plan");
-    assert.deepEqual(names, ["read_ref", "task_create", "task_get", "task_list", "task_update"]);
+    assert.deepEqual(names, ["task_create", "task_get", "task_list", "task_update"]);
     await events.flush();
   } finally { await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 }); }
 });

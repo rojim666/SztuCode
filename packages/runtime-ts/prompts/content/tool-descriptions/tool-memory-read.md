@@ -1,9 +1,1 @@
-
-当系统提示仅显示内存索引而非完整内容时，从渐进式披露的代理内存中读取摘录。
-
-使用方法：
-- `layer` 是必需的，必须为 `global`、`project` 或 `session`。
-- 优先使用特定的不区分大小写的 `query` 来查找相关文本。
-- 仅当需要确切的周围内容时使用 `offset` 分页。
-- `limit` 默认为 1600 个字符，最多 4000 个字符。
-- 此工具读取当前运行的内存快照；它不会修改内存。
+read_file a bounded excerpt of injected global, project or session memory.

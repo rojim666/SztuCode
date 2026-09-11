@@ -4,7 +4,7 @@
     {
       "id": "output-efficiency",
       "file": "system-prompt-output-efficiency.md",
-      "source": "docs/Prompt.md#4"
+      "source": "workbuddy:output-efficiency/output-efficiency"
     }
   ]
 }

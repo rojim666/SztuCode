@@ -216,7 +216,35 @@ async def test_default_role_is_coder(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "干活"})
     assert not result.is_error
-    assert "你是 SztuCode 的智能体" in captured["system"]
+    assert "# Doing tasks" in captured["system"]
+
+
+async def test_imported_no_tool_agent_cannot_gain_tools_from_skill(tmp_path: Path) -> None:
+    from sztu_code.core.bus.events import ContextInjectedEvent
+    from sztu_code.core.prompts.workbuddy import manifest
+
+    agent = next(a for a in manifest()["agents"] if not a["tools"])
+    captured: dict[str, Any] = {}
+
+    async def _chat(*args: Any, **kwargs: Any) -> LlmResponse:
+        captured.update(kwargs)
+        return LlmResponse(stop_reason="end_turn", tool_calls=[], text="ok", usage=UsageStats(0, 0, 0, 0, 0.0))
+
+    provider = MagicMock()
+    provider.chat = _chat
+    tool, _, bus = _make_tool(tmp_path, provider)
+    events: list[Any] = []
+
+    async def collect(event: Any) -> None:
+        events.append(event)
+
+    bus.subscribe(collect)
+    result = await tool.invoke({"description": "summarize", "prompt": "Summarize supplied text", "subagent_type": agent["name"], "skill": "orchestrate"})
+    assert not result.is_error
+    assert not captured.get("tools")
+    injected = next(e for e in events if isinstance(e, ContextInjectedEvent))
+    assert injected.text == captured["system"]
+    assert "# SztuCode runtime contract" in injected.text
 
 
 # 功能：subagent_type 指定角色时 system prompt 使用第八章对应原子提示词
@@ -236,8 +264,8 @@ async def test_explicit_role_uses_profile(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "探索", "subagent_type": "explore"})
     assert not result.is_error
-    assert "你是 SztuCode 的文件搜索专家" in captured["system"]
-    assert "禁止文件修改" in captured["system"]
+    assert "file search specialist" in captured["system"]
+    assert "Do not create any files" in captured["system"]
 
 
 # 功能：spawn 时应用 skill，skill 系统提示合并进子 agent 的 system prompt
@@ -257,8 +285,8 @@ async def test_skill_merge(tmp_path: Path) -> None:
     tool, _, _ = _make_tool(tmp_path, provider)
     result = await tool.invoke({"description": "任务", "prompt": "分析 X", "skill": "orchestrate"})
     assert not result.is_error
-    assert "你是 SztuCode 的智能体" in captured["system"]  # coder 基础提示
-    assert "Multi-agent 协调者" in captured["system"]  # orchestrate 技能提示
+    assert "# Doing tasks" in captured["system"]
+    assert "Coordinate planning, execution, independent testing and review" in captured["system"]
 
 
 # 功能：后台 spawn 会把 child_run_id 登记进父 context 的 pending 集合
@@ -356,7 +384,7 @@ async def test_foreground_child_waits_for_grandchild(tmp_path: Path) -> None:
              if m["role"] == "user" and isinstance(m["content"], str)),
             "",
         )
-        if first_user == "grandchild work":
+        if str(first_user).endswith("grandchild work"):
             return _end("grandchild done")
         if any(
             m["role"] == "assistant"

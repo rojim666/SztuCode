@@ -1,2 +1,1 @@
-
-使用 `write_file` 而不是 cat heredoc 或 echo 来创建或覆盖文件。
+Create files only when they contribute to the requested deliverable. Use write_file.

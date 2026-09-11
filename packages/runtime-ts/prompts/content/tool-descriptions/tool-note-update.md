@@ -1,7 +1,1 @@
-
-当先前保存的会话笔记的事实或决策发生变化时，替换该笔记。旧笔记将被归档，以避免矛盾的活动笔记共存。
-
-使用方法：
-- `note_id` 必须来自先前的 `note_save` 或 `note_update` 结果。
-- `content` 是完整的更新后事实，必须非空。
-- 使用此工具更正或取代现有的会话知识。对于独立的新事实使用 `note_save`。
+Update an existing session note using the registered identifiers.

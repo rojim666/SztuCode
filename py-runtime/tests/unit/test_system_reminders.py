@@ -45,10 +45,10 @@ def test_chapter_thirteen_active_status_matches_runtime() -> None:
 # 功能：验证六类系统提醒均可按稳定 ID 独立读取
 # 设计：抽查计划、文件、Hook 和预算唯一标记，确认索引映射到对应原子文件
 def test_system_reminders_are_loadable_by_id() -> None:
-    assert "计划模式" in load_system_reminder("plan-mode")
-    assert "文件存在但为空" in load_system_reminder("file-related")
-    assert "钩子执行成功" in load_system_reminder("hooks")
-    assert "当前令牌使用量" in load_system_reminder("session-and-budget")
+    assert "Plan mode is active" in load_system_reminder("plan-mode")
+    assert "<tool_use>" in load_system_reminder("file-related")
+    assert "evaluating a hook" in load_system_reminder("hooks")
+    assert "ultra_effort_active" in load_system_reminder("session-and-budget")
 
 
 # 功能：验证不存在的第十三章提醒 ID 会返回明确索引错误

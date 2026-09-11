@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from sztu_code.core.skills.loader import SkillLoader
+from sztu_code.core.prompts.workbuddy import manifest
 
 
 def test_six_bundled_plugins_have_real_skills_and_provenance(tmp_path: Path) -> None:
@@ -17,8 +18,10 @@ def test_six_bundled_plugins_have_real_skills_and_provenance(tmp_path: Path) -> 
         "frontend-design": {"frontend-design", "uicraft"},
         "github": {"github", "gh-address-comments", "gh-fix-ci"},
     }
-    assert set(plugins) == set(expected)
+    assert set(plugins) == set(expected) | {s["plugin"] for s in manifest()["skills"] if s["plugin"]}
+    imported_names = {s["name"] for s in manifest()["skills"]}
     for name, names in expected.items():
+        names = names - imported_names
         plugin = plugins[name]
         assert set(plugin.skills) == names
         assert plugin.publisher and plugin.homepage and plugin.license

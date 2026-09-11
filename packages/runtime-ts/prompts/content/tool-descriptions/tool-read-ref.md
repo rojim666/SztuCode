@@ -1,8 +1,1 @@
-
-读取从对话上下文中卸载的工具结果的完整内容。使用 `[上下文卸载: refs/...]` 标记中显示的 `ref_path`。
-
-使用方法：
-- `ref_path` 必须是引用的相对卸载路径。
-- `offset` 是字符偏移量，默认为 0。
-- `limit` 默认为 4000 个字符，最多 8000 个字符。
-- 结果报告返回的字符范围，当还有更多内容时返回下一个偏移量。
+read_file a bounded chunk from an offloaded tool result using the returned ref identifier.

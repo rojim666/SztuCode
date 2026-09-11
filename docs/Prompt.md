@@ -1,3 +1,5 @@
+> 本文是旧提示词的参考资料。当前运行时采用 [WorkBuddy 提示词集成](reference/workbuddy-prompts.md) 中的资源与加载机制。
+
 ### 一、主系统提示词 (Main System Prompt)
 
 ### 1.1 身份与角色声明

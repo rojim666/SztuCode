@@ -23,7 +23,7 @@ test("PluginManager discovers builtin plugins with builtin source and brand meta
     await createBuiltinPlugin(builtinRoot, "demo", "hello");
     const manager = new PluginManager(projectRoot, configRoot, builtinRoot);
     const plugins = await manager.list();
-    assert.equal(plugins.length, 1);
+    assert.equal(plugins.length, 6);
     const demo = plugins[0];
     assert.equal(demo.id, "builtin:demo");
     assert.equal(demo.source, "builtin");

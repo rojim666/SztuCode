@@ -102,18 +102,25 @@ class ToolRegistry:
                 input_schema["properties"] = properties
                 raw_required = input_schema.get("required", [])
                 required = (
-                    [str(item) for item in raw_required]
-                    if isinstance(raw_required, list)
-                    else []
+                    [str(item) for item in raw_required] if isinstance(raw_required, list) else []
                 )
                 if "description" not in required:
                     required.append("description")
                 input_schema["required"] = required
-                schemas.append({
-                    "name": tool.name,
-                    "description": indexed_descriptions.get(tool.name, tool.description),
-                    "input_schema": input_schema,
-                })
+                schemas.append(
+                    {
+                        "name": tool.name,
+                        "description": (
+                            indexed_descriptions[tool.name]
+                            + "\n\nHost tool behavior: "
+                            + tool.description
+                            + "\nUse the exact parameters in this tool's JSON schema."
+                            if tool.name in indexed_descriptions
+                            else tool.description
+                        ),
+                        "input_schema": input_schema,
+                    }
+                )
             self._schema_cache = schemas
         return deepcopy(self._schema_cache)
 

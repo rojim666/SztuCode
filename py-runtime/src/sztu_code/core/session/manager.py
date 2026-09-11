@@ -168,9 +168,19 @@ class SessionManager:
             skill_loader = SkillLoader(project_root=workspace_root)
             if content.startswith("/"):
                 parts = content[1:].split(None, 1)
-                skill_name = parts[0]
+                skill_name = parts[0] if parts else ""
                 arguments = parts[1] if len(parts) > 1 else ""
-                slash_prompt = resolve_slash_command_prompt(f"/{skill_name}")
+                known_skill = next(
+                    (s for s in skill_loader.list_all_skills(include_disabled=True)
+                     if s.name == skill_name), None,
+                )
+                if known_skill is not None and not known_skill.enabled:
+                    raise HandlerError(-32602, f"Skill is disabled: {skill_name}")
+                slash_prompt = (
+                    resolve_slash_command_prompt(f"/{skill_name}")
+                    if known_skill is None or known_skill.source in {"builtin", "workbuddy"}
+                    else None
+                )
                 if slash_prompt is not None:
                     _prompt_id, prompt = slash_prompt
                     goal = arguments or content

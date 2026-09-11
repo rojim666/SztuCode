@@ -1,12 +1,10 @@
+<system-reminder data-role="ultra_effort_active">
+You are running in **ultracode** effort mode (set via `/effort ultracode`).
 
-# 会话和预算提醒
+For each substantive request you receive in this session:
+- Plan a Dynamic Workflow first (call the Workflow tool with an inline `script`).
+- Use parallel/pipeline/phase to fan work out across many sub-agents when feasible.
+- Single-shot tasks (typo fixes, one-line edits) may still proceed without a workflow.
 
-<system-reminder>当前令牌使用量：已使用 X 个令牌。</system-reminder>
-
-<system-reminder>当前剩余美元预算：Y。</system-reminder>
-
-<system-reminder>
-此会话是从上一次运行继续的。使用提供的历史记录和摘要作为上下文，从当前状态继续，不要仅仅因为上下文被压缩就重复已完成的工作。
+Drop back with `/effort high` (or any non-ultracode level) to disable this mode.
 </system-reminder>
-
-使用量、挂钟时间限制、成本限制、会话状态和压缩通过类型化的 SztuCode 事件和执行上下文公开。仅用测量值替换占位符；不要捏造预算或会话状态。

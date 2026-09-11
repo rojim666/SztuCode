@@ -3,7 +3,7 @@ import type { HandoffArtifact, WorkflowGraph, WorkflowRole, WorkflowTask } from 
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { EventBus } from "./event-bus.js";
 import { PermissionManager } from "./permissions.js";
-import { createPlanTools, createWorkspaceTools } from "./tools.js";
+import { createPlanTools, createSkillTool, createWorkspaceTools } from "./tools.js";
 import { Workspace } from "./workspace.js";
 import { WorkflowOrchestrator } from "./workflow.js";
 import { buildDynamicContext, buildSystemPrompt, loadAgentProfile } from "./prompt-loader.js";
@@ -16,8 +16,8 @@ import type { SessionBackend, SessionHeader, SessionSnapshot } from "@sztucode/s
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
+import { importedAgent } from "./workbuddy-resources.js";
 
-const roleNames: Record<WorkflowRole, string> = { planner: "planner", coder: "coder", tester: "tester", reviewer: "reviewer" };
 const workflowCoderTools = ["read_file", "write_file", "edit_file", "list_dir", "grep_search", "glob_search"];
 export type SubagentRunOptions = { signal?: AbortSignal; parentSessionId?: string; parentRunId?: string; allowedPaths?: string[]; changedPaths?: Set<string>; scopeEscalations?: Set<string> };
 
@@ -34,7 +34,7 @@ export interface SubagentHandle {
   error?: string;
 }
 
-export interface ChildSessionInfo { runId: string; sessionId: string; parentRunId: string; parentSessionId: string | null; role: WorkflowRole; runtime: AgentSession }
+export interface ChildSessionInfo { runId: string; sessionId: string; parentRunId: string; parentSessionId: string | null; role: string; runtime: AgentSession }
 
 export interface PersistedWorkflowState {
   workflow_id: string;
@@ -53,16 +53,16 @@ export class SubagentManager {
   private readonly workflowRoot: string;
   private workflowWrite = Promise.resolve();
   constructor(private readonly provider: ModelProvider, private readonly workspaceRoot: string, private readonly events: EventBus, private readonly permissions: PermissionManager, private readonly sessionBackend: SessionBackend = new JsonlSessionBackend(), workflowRoot = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.cwd(), ".sztu"), "workflows"), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT) { this.workflowRoot = workflowRoot; }
-  async run(role: WorkflowRole, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
+  async run(role: string, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
     return safeStartSpan(this.telemetry, { name: "subagent.run", attributes: { role, parent_run_id: options.parentRunId ?? parentRunId, parent_session_id: options.parentSessionId } }, (span) => { span.addEvent("subagent.started"); return this.runInternal(role, goal, history, parentRunId, options); });
   }
-  private async runInternal(role: WorkflowRole, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
+  private async runInternal(role: string, goal: string, history: ChatMessage[] = [], parentRunId = "", options: SubagentRunOptions = {}): Promise<{ runId: string; sessionId: string; text: string; tokens: number }> {
     if (options.signal?.aborted) throw options.signal.reason ?? new Error("subagent cancelled");
     const runId = randomUUID(); const sessionId = randomUUID(); const effectiveParentRunId = options.parentRunId ?? parentRunId; const ts = new Date().toISOString();
-    const profile = await loadAgentProfile(this.workspaceRoot, roleNames[role]);
+    const profile = await loadAgentProfile(this.workspaceRoot, role);
     const rolePrompt = profile.systemPrompt || `Act as the ${role} role for this task.`;
-    const tools = createWorkspaceTools([...createPlanTools(this.events, runId, sessionId)]);
-    if (profile.allowedTools?.length) tools.restrictTo(profile.allowedTools);
+    const tools = createWorkspaceTools([createSkillTool(this.workspaceRoot), ...createPlanTools(this.events, runId, sessionId)]);
+    if (profile.allowedTools !== null && (profile.allowedTools.length || importedAgent(role))) tools.restrictTo(profile.allowedTools, true);
     if (options.allowedPaths) tools.restrictTo(workflowCoderTools);
     const basePermissions = profile.permissionMode ? this.permissions.scoped(profile.permissionMode) : this.permissions;
     const permissions = options.allowedPaths ? scopedWorkflowPermissions(basePermissions, options.allowedPaths) : basePermissions;
@@ -72,14 +72,15 @@ export class SubagentManager {
     // workspaceFacts 缓存让同一 workflow burst 派发的多个子代理共享一次 git/instructions/skills 构建。
     const reminder = await buildDynamicContext(this.workspaceRoot, { permissionMode: profile.permissionMode ?? this.permissions.getMode() });
     const context = { workspace: new Workspace(this.workspaceRoot), onFileChanged: (relativePath: string) => { const normalized = normalizeWorkflowPath(relativePath); options.changedPaths?.add(normalized); if (options.allowedPaths && !workflowPathIsAllowed(normalized, options.allowedPaths)) options.scopeEscalations?.add(normalized); } };
-    const runtime = await this.createChildSession({ runId, sessionId, role, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, profile, tools, context, permissions, history });
+    const childHistory: ChatMessage[] = [{ role: "system", content: `${basePrompt}\n\n# Role instructions\n${rolePrompt}` }, ...history.filter(message => message.role !== "system")];
+    const runtime = await this.createChildSession({ runId, sessionId, role, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, profile, tools, context, permissions, history: childHistory });
     this.children.set(sessionId, { runId, sessionId, parentRunId: effectiveParentRunId, parentSessionId: options.parentSessionId ?? null, role, runtime });
     this.events.publish({ type: "subagent.started", run_id: runId, parent_run_id: effectiveParentRunId, ...(options.parentSessionId ? { parent_session_id: options.parentSessionId } : {}), child_session_id: sessionId, description: `${role}: ${goal.slice(0, 200)}`, ts });
     const stopOnParentAbort = () => { void runtime.abort(); };
     options.signal?.addEventListener("abort", stopOnParentAbort, { once: true });
     try {
       if (options.signal?.aborted) { await runtime.abort(); throw options.signal.reason ?? new Error("subagent cancelled"); }
-      await runtime.prompt(`${basePrompt}\n\n# Role instructions\n${rolePrompt}\n\n${goal}\n\n${reminder}`);
+      await runtime.prompt(`${goal}\n\n${reminder}`);
       const text = runtime.outputText;
       this.events.publish({ type: "subagent.finished", run_id: runId, parent_run_id: effectiveParentRunId, ...(options.parentSessionId ? { parent_session_id: options.parentSessionId } : {}), child_session_id: sessionId, status: "success", ts: new Date().toISOString() });
       return { runId, sessionId, text, tokens: runtime.usageTokens };
@@ -102,10 +103,10 @@ export class SubagentManager {
   }
 
   // 异步后台子代理：立即返回句柄，结果/错误写入 handles 记录，不 await 也不产生 unhandled rejection
-  spawn(role: WorkflowRole, goal: string, context?: string, opts: SubagentRunOptions = {}): { handle: string } {
+  spawn(role: string, goal: string, context?: string, opts: SubagentRunOptions = {}): { handle: string } {
     const handle = randomUUID();
     const startedAt = new Date().toISOString();
-    const record: SubagentHandle = { handle, role: roleNames[role], goal, startedAt, status: "running" };
+    const record: SubagentHandle = { handle, role, goal, startedAt, status: "running" };
     this.handles.set(handle, record);
     const controller = new AbortController();
     this.handleControllers.set(handle, controller);
@@ -153,7 +154,7 @@ export class SubagentManager {
   // 本次仅交付工具面控制（spawn_agent / subagent_status / subagent_result / subagent_cancel）；
   // agent.subagent_status 之类 RPC 暂不实现，待 ServerService 需要跨进程暴露时再在此接出。
 
-  private async createChildSession(input: { runId: string; sessionId: string; role: WorkflowRole; parentRunId: string; parentSessionId: string | null; profile: Awaited<ReturnType<typeof loadAgentProfile>>; tools: import("./tools.js").ToolRegistry; context: import("./tools.js").ToolContext; permissions: PermissionGate; history: ChatMessage[] }): Promise<AgentSession> {
+  private async createChildSession(input: { runId: string; sessionId: string; role: string; parentRunId: string; parentSessionId: string | null; profile: Awaited<ReturnType<typeof loadAgentProfile>>; tools: import("./tools.js").ToolRegistry; context: import("./tools.js").ToolContext; permissions: PermissionGate; history: ChatMessage[] }): Promise<AgentSession> {
     const now = new Date().toISOString();
     const header: SessionHeader = { type: "session", version: 1, id: input.sessionId, parentSessionId: input.parentSessionId, createdAt: now, updatedAt: now, title: `${input.role}: ${input.profile.name ?? input.role}`, workspaceId: this.workspaceRoot, metadata: { parentRunId: input.parentRunId, childRunId: input.runId, role: input.role } };
     await this.sessionBackend.create(header);

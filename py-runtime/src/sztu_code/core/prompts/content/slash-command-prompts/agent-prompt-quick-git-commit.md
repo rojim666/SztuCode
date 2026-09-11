@@ -1,38 +1,40 @@
-<!-- # Committing changes with git -->
-# 使用 git 提交更改
+## Context
 
-<!-- 1. Run `git status`, `git diff`, and `git log` in parallel. -->
-1. 并行运行 `git status`、`git diff` 和 `git log`。
-<!-- 2. Analyze all changes that will be committed and draft a commit message in -->
-<!--    `<commit_analysis>` tags: -->
-2. 分析所有将要提交的更改，并在 `<commit_analysis>` 标签中起草提交消息：
-<!--    - List the files changed. -->
-   - 列出更改的文件。
-<!--    - Summarize the nature of the changes. -->
-   - 总结更改的性质。
-<!--    - Identify the purpose and motivation. -->
-   - 识别目的和动机。
-<!--    - Check for sensitive information. -->
-   - 检查敏感信息。
-<!--    - Draft a concise one- or two-sentence commit message. -->
-   - 起草简洁的一到两句话的提交消息。
-<!-- 3. Stage only the intended files, create the commit, and run `git status` to -->
-<!--    verify the resulting state. -->
-3. 仅暂存预期的文件，创建提交，并运行 `git status` 验证结果状态。
-<!-- 4. If a pre-commit hook fails, fix issues caused by the intended changes and -->
-<!--    retry once. Do not bypass hooks. -->
-4. 如果 pre-commit 钩子失败，修复预期更改导致的问题并重试一次。不要绕过钩子。
+- Current git status: !`git status`
+- Current git diff (staged and unstaged changes): !`git diff HEAD`
+- Current branch: !`git branch --show-current`
+- Recent commits: !`git log --oneline -10`
 
-<!-- Important: -->
-重要提示：
-<!-- - NEVER update git configuration. -->
-- 绝对不要更新 git 配置。
-<!-- - NEVER use interactive git commands or commands with the `-i` flag. -->
-- 绝对不要使用交互式 git 命令或带有 `-i` 标志的命令。
-<!-- - Pass a multi-line commit message non-interactively using a heredoc when the -->
-<!--   active shell supports it. -->
-- 当活动 shell 支持时，使用 heredoc 以非交互方式传递多行提交消息。
-<!-- - Do not amend an existing commit unless the user explicitly requests it. -->
-- 除非用户明确要求，否则不要修改现有提交。
-<!-- - Do not stage unrelated user changes. -->
-- 不要暂存不相关的用户更改。
+## Git Safety Protocol
+
+- NEVER update the git config
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- CRITICAL: ALWAYS create NEW commits. NEVER use git commit --amend, unless the user explicitly requests it
+- Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
+- If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported
+
+## Your task
+
+Based on the above changes, create a single git commit:
+
+1. Analyze all staged changes and draft a commit message:
+   - Look at the recent commits above to follow this repository's commit message style
+   - Summarize the nature of the changes (new feature, enhancement, bug fix, refactoring, test, docs, etc.)
+   - Ensure the message accurately reflects the changes and their purpose (i.e. "add" means a wholly new feature, "update" means an enhancement to an existing feature, "fix" means a bug fix, etc.)
+   - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
+
+2. Stage relevant files and create the commit using HEREDOC syntax:
+
+```
+git commit -m "$(cat <<'EOF'
+Commit message here.{% if settings.includeCoAuthoredBy %}
+
+🤖 Generated with [SztuCode]
+
+Co-Authored-By: SztuCode{% endif %}
+EOF
+)"
+```
+
+You have the capability to call multiple tools in a single response. Stage and create the commit using a single message. Do not use any other tools or do anything else. Do not send any other text or messages besides these tool calls.

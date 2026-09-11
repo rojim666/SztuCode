@@ -1,4 +1,10 @@
+## Web Content to Analyze
+```
+{{ webContent }}
+```
 
-一个小型、快速的模型，用于根据用户的提示处理获取的网页内容。
-获取转换后的 markdown 内容，并根据提示提取相关信息。
+## User Request
+{{ userPrompt }}
 
+## Instructions
+Please analyze the web content above and provide a response that directly addresses the user's request. Focus on extracting relevant information and presenting it in a well-structured, helpful format.

@@ -20,6 +20,7 @@ import { WorkspaceIndexer } from "./indexing/index.js";
 import { JsonlVectorStore } from "./vector-store/index.js";
 import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
 import { inspectAsset } from "./asset-inspector.js";
+import { importedToolDescription, readPromptResource, workbuddyManifest } from "./workbuddy-resources.js";
 
 export type { ToolPermission } from "./tools-types.js";
 /** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */
@@ -397,12 +398,14 @@ export class BashJobManager {
 export class ToolRegistry {
   private readonly tools = new Map<string, Tool>();
   private readonly aliases = new Map<string, string>();
+  private allowedNames?: Set<string>;
+  permits(name: string): boolean { return !this.allowedNames || this.allowedNames.has(name); }
   register(tool: Tool): void { if (this.tools.has(tool.name)) throw new Error(`Tool already registered: ${tool.name}`); this.tools.set(tool.name, tool); this.registerAliases(tool); }
   replace(tool: Tool): void { this.tools.set(tool.name, tool); for (const [alias, target] of this.aliases) if (target === tool.name) this.aliases.delete(alias); this.registerAliases(tool); }
   get(name: string): Tool | undefined { const canonical = this.tools.has(name) ? name : this.aliases.get(name) ?? builtinAliases[name]; return canonical ? this.tools.get(canonical) : undefined; }
   canonicalName(name: string): string | undefined { return this.get(name)?.name; }
   list(): Tool[] { return [...this.tools.values()]; }
-  restrictTo(names: string[]): this { if (!names.length) return this; const allowed = new Set(names.map((name) => this.canonicalName(name) ?? name)); for (const name of this.tools.keys()) if (!allowed.has(name)) this.tools.delete(name); return this; }
+  restrictTo(names: string[], allowEmpty = false): this { if (!names.length && !allowEmpty) return this; const allowed = new Set(names.map((name) => this.canonicalName(name) ?? name).filter(name => this.permits(name))); this.allowedNames = allowed; for (const name of this.tools.keys()) if (!allowed.has(name)) this.tools.delete(name); return this; }
   private registerAliases(tool: Tool): void { for (const alias of tool.aliases ?? []) this.aliases.set(alias, tool.name); }
 }
 
@@ -411,7 +414,8 @@ export function registerQuestionTool(registry: ToolRegistry, ask: (questions: Ar
 }
 
 export function createSpawnAgentTool(subagents: SubagentHandleSource): Tool {
-  return { name: "spawn_agent", description: "Delegate a focused task to a background subagent and poll its result by handle", permission: "workspace_write", schema: { type: "object", properties: { role: { type: "string", enum: ["planner", "coder", "tester", "reviewer"] }, goal: { type: "string", minLength: 1 }, context: { type: "string" } }, required: ["role", "goal"] }, async invoke(params) { const role = String(params.role ?? ""); const goal = String(params.goal ?? ""); if (!/^(planner|coder|tester|reviewer)$/.test(role) || !goal.trim()) return fail("role and goal are required", "schema_error"); try { const { handle } = subagents.spawn(role, goal, typeof params.context === "string" ? params.context : undefined); return ok(`Started subagent ${role} in background. Handle: ${handle}. Poll subagent_result("${handle}") for its output; subagent_status lists all; subagent_cancel stops one.`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } };
+  const roles = ["planner", "coder", "tester", "reviewer", ...workbuddyManifest().agents.map(agent => agent.name)];
+  return { name: "spawn_agent", description: "Delegate a focused task to a background subagent and poll its result by handle", permission: "workspace_write", schema: { type: "object", properties: { role: { type: "string", enum: roles }, goal: { type: "string", minLength: 1 }, context: { type: "string" } }, required: ["role", "goal"] }, async invoke(params) { const role = String(params.role ?? ""); const goal = String(params.goal ?? ""); if (!roles.includes(role) || !goal.trim()) return fail("role and goal are required", "schema_error"); try { const { handle } = subagents.spawn(role, goal, typeof params.context === "string" ? params.context : undefined); return ok(`Started subagent ${role} in background. Handle: ${handle}. Poll subagent_result("${handle}") for its output; subagent_status lists all; subagent_cancel stops one.`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } };
 }
 
 export function createSubagentStatusTool(subagents: SubagentHandleSource): Tool {
@@ -955,5 +959,10 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
     return killed ? ok(`Killed background job ${jobId}.`) : fail(`No running background job with id ${jobId} (it may have already finished).`);
   }});
   for (const tool of extraTools) registry.register(tool);
+  registry.register({ name: "prompt_resource", description: "Read bundled product prompts, agent definitions and skill reference documents by bundle-relative path. Omit path for the catalog.", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 1000 } } }, async invoke(params) { try { return ok(readPromptResource(String(params.path ?? ""), Number(params.offset ?? 0), Number(params.limit ?? 200))); } catch (error) { return fail(String(error), "schema_error"); } } });
+  for (const tool of registry.list()) {
+    const description = importedToolDescription(tool.name);
+    if (description) registry.replace({ ...tool, description: `${description}\n\nHost tool behavior: ${tool.description}\nUse the exact parameters in this tool's JSON schema.` });
+  }
   return registry;
 }

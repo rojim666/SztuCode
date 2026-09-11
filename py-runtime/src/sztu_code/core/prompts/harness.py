@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from sztu_code.core.prompts.catalog import DEFAULT_PROMPT_CATALOG, PromptCatalog
+from sztu_code.core.prompts.workbuddy import mode_prompt
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,7 @@ class PromptRuntimeContext:
     memory_enabled: bool = False
     tool_names: frozenset[str] = frozenset()
     task_text: str = ""
+    interaction_mode: str = ""
 
 
 _TOOL_PROMPT_RULES: tuple[tuple[frozenset[str], tuple[str, ...]], ...] = (
@@ -43,6 +45,11 @@ class PromptHarness:
     # 根据当前运行能力选择真正需要注入的动态原子提示词
     def runtime_entries(self, context: PromptRuntimeContext) -> tuple[str, ...]:
         entries: list[str] = []
+        mode = context.interaction_mode or (
+            "plan" if context.permission_mode == "plan" else "craft"
+        )
+        if mode != "craft":
+            entries.append(mode_prompt(mode))
         selected_tool_prompts: list[str] = []
         for tool_names, prompt_ids in _TOOL_PROMPT_RULES:
             if context.tool_names & tool_names:

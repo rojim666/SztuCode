@@ -25,6 +25,7 @@ dependencies = [
     "openpyxl>=3.1.5,<4",
     "python-pptx>=1.0.2,<2",
     "defusedxml>=0.7.1",
+    "jinja2>=3.1.6",
 ]
 
 # Keep the Python command distinct from the TypeScript `sztu-ts` command so

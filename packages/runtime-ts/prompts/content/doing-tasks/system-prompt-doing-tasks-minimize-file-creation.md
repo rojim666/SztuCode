@@ -1,1 +1,1 @@
-除非对于实现目标绝对必要，否则不要创建文件。通常优先编辑现有文件而非创建新文件，这样可以防止文件膨胀，并更有效地在现有工作基础上构建。
+- Don't add features, refactor code, or make "improvements" beyond what was asked. A bug fix doesn't need surrounding code cleaned up. A simple feature doesn't need extra configurability. Don't add docstrings, comments, or type annotations to code you didn't change. Only add comments where the logic isn't self-evident.

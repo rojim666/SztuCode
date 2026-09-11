@@ -4,67 +4,67 @@
     {
       "id": "software-engineering-focus",
       "file": "system-prompt-doing-tasks-software-engineering-focus.md",
-      "source": "docs/Prompt.md#2.1"
+      "source": "workbuddy:doing-tasks/software-engineering-focus"
     },
     {
       "id": "read-before-modifying",
       "file": "system-prompt-doing-tasks-read-before-modifying.md",
-      "source": "docs/Prompt.md#2.2"
+      "source": "workbuddy:doing-tasks/read-before-modifying"
     },
     {
       "id": "security",
       "file": "system-prompt-doing-tasks-security.md",
-      "source": "docs/Prompt.md#2.3"
+      "source": "workbuddy:doing-tasks/security"
     },
     {
       "id": "avoid-over-engineering",
       "file": "system-prompt-doing-tasks-avoid-over-engineering.md",
-      "source": "docs/Prompt.md#2.4"
+      "source": "workbuddy:doing-tasks/avoid-over-engineering"
     },
     {
       "id": "no-unnecessary-additions",
       "file": "system-prompt-doing-tasks-no-unnecessary-additions.md",
-      "source": "docs/Prompt.md#2.5"
+      "source": "workbuddy:doing-tasks/no-unnecessary-additions"
     },
     {
       "id": "no-unnecessary-error-handling",
       "file": "system-prompt-doing-tasks-no-unnecessary-error-handling.md",
-      "source": "docs/Prompt.md#2.6"
+      "source": "workbuddy:doing-tasks/no-unnecessary-error-handling"
     },
     {
       "id": "no-premature-abstractions",
       "file": "system-prompt-doing-tasks-no-premature-abstractions.md",
-      "source": "docs/Prompt.md#2.7"
+      "source": "workbuddy:doing-tasks/no-premature-abstractions"
     },
     {
       "id": "no-compatibility-hacks",
       "file": "system-prompt-doing-tasks-no-compatibility-hacks.md",
-      "source": "docs/Prompt.md#2.8"
+      "source": "workbuddy:doing-tasks/no-compatibility-hacks"
     },
     {
       "id": "minimize-file-creation",
       "file": "system-prompt-doing-tasks-minimize-file-creation.md",
-      "source": "docs/Prompt.md#2.9"
+      "source": "workbuddy:doing-tasks/minimize-file-creation"
     },
     {
       "id": "no-time-estimates",
       "file": "system-prompt-doing-tasks-no-time-estimates.md",
-      "source": "docs/Prompt.md#2.10"
+      "source": "workbuddy:doing-tasks/no-time-estimates"
     },
     {
       "id": "help-and-feedback",
       "file": "system-prompt-doing-tasks-help-and-feedback.md",
-      "source": "docs/Prompt.md#2.11"
+      "source": "workbuddy:doing-tasks/help-and-feedback"
     },
     {
       "id": "ambitious-tasks",
       "file": "system-prompt-doing-tasks-ambitious-tasks.md",
-      "source": "docs/Prompt.md#2.12"
+      "source": "workbuddy:doing-tasks/ambitious-tasks"
     },
     {
       "id": "blocked-approach",
       "file": "system-prompt-doing-tasks-blocked-approach.md",
-      "source": "docs/Prompt.md#2.13"
+      "source": "workbuddy:doing-tasks/blocked-approach"
     }
   ]
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +21,7 @@ class AgentProfile:
     skill: str = ""
     # 角色步数上限；0=继承全局 agent.max_steps
     max_steps: int = 0
+    restrict_tools: bool = False
 
 
 # 按两级优先级（项目本地 > 用户全局 > 内建）查找并解析角色配置
@@ -28,7 +30,29 @@ class AgentProfileLoader:
 
     # 查找指定角色配置；未找到返回 None
     def load(self, name: str) -> AgentProfile | None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            return None
         for path in self._search_paths(name):
+            if path.parent == self._BUILTIN_DIR:
+                from sztu_code.core.prompts.workbuddy import (
+                    imported_agent,
+                    load_resource,
+                    runtime_contract,
+                )
+
+                imported = imported_agent(name)
+                if imported:
+                    return AgentProfile(
+                        name=name,
+                        description=imported["description"],
+                        system_prompt=load_resource(imported["template"])
+                        + "\n\n"
+                        + runtime_contract(),
+                        allowed_tools=imported["tools"],
+                        restrict_tools=True,
+                        permission_mode="plan" if name in {"Explore", "Plan"} else "normal",
+                        max_steps=20,
+                    )
             if path.exists():
                 try:
                     return self._parse(path, name)
@@ -54,6 +78,19 @@ class AgentProfileLoader:
             from sztu_code.core.prompts.subagent_prompts import load_subagent_prompt
 
             system_prompt = load_subagent_prompt(prompt_id)
+        if resource := agent.get("workbuddy_template", ""):
+            from sztu_code.core.prompts.workbuddy import load_resource, runtime_contract
+
+            system_prompt = "\n\n".join(
+                filter(
+                    None,
+                    (
+                        load_resource(resource),
+                        agent.get("host_contract", ""),
+                        runtime_contract(),
+                    ),
+                )
+            )
         return AgentProfile(
             name=name,
             description=agent.get("description", ""),

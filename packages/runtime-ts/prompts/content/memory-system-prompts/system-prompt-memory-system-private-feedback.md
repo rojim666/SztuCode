@@ -1,5 +1,18 @@
-<description>
-这是用户提供的指导或纠正。这类内存很重要，因为它有助于保持一致的方法，并避免用户需要重复相同的纠正。
+Analyze this SztuCode usage data and identify friction points for this user. Use second person ("you").
+{%- if language %}
 
-在保存私有反馈内存之前，请检查它是否与现有团队或项目指导冲突。如果存在冲突，要么不保存它，要么明确记录其范围和优先级，以便覆盖关系清晰明确。保留用户的原意，不要添加他们未明确说明的推断性偏好。
-</description>
+IMPORTANT: write_file ALL content in {{ language }}. The entire response must be in {{ language }}.
+{%- endif %}
+
+RESPOND WITH ONLY A VALID JSON OBJECT:
+{
+  "intro": "1 sentence summarizing friction patterns",
+  "categories": [
+    {"category": "Concrete category name", "description": "1-2 sentences explaining this category and what could be done differently. Use 'you' not 'the user'.", "examples": ["Specific example with consequence", "Another example"]}
+  ]
+}
+
+Include 3 friction categories with 2 examples each.
+
+DATA:
+{{ data }}

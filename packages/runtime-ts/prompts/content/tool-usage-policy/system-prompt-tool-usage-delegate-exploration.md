@@ -1,2 +1,1 @@
-
-对于更广泛的代码库探索和深度研究，请使用 `spawn_agent` 并设置 `subagent_type="explore"`。这比直接使用 `glob_search` 或 `grep_search` 要慢，因此仅在简单的定向搜索证明不够充分时，或者当任务明确需要三个以上的搜索查询时才使用它。请给子代理一个自包含的提示词，因为它不会继承父对话历史。
+Use an exploration subagent for broad searches; scope its request and collect its result.

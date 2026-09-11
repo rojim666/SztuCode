@@ -30,6 +30,7 @@
 | [架构决策记录](adr/README.md) | 现行 | 重大技术决策、背景和替代方案 |
 | [Wire Protocol](reference/wire-protocol.md) | 自动生成 | JSON-RPC 命令、事件和 Schema |
 | [系统提示词架构](reference/system-prompts.html) | 参考 | 分层提示词结构的可视化说明 |
+| [WorkBuddy 提示词集成](reference/workbuddy-prompts.md) | 现行 | 完整资源、技能、插件、子代理和产品模板的接入方式 |
 | [评估指南](guides/evaluation.md) | 指南 | SWE-bench 与轨迹质量评估方法 |
 | [Terminal-Bench 评测指南](guides/terminal-bench.md) | 指南 | 通过 Harbor 接入 Terminal-Bench 的运行、模型与成本控制 |
 | [微信接入指南](guides/wechat-openclaw-acp.md) | 指南 | 通过 OpenClaw 微信插件，以 ACP 将 SztuCode 接入微信 |

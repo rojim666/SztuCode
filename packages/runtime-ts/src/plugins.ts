@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import fsSync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { workbuddyPlugins } from "./workbuddy-resources.js";
 
 export type PluginScope = "personal" | "workspace";
 export type PluginSource = PluginScope | "builtin";
@@ -59,6 +60,10 @@ export class PluginManager {
         }
       } catch { /* optional root */ }
     }
+    for (const plugin of workbuddyPlugins()) {
+      const id = `builtin:${plugin.name}`;
+      output.push({ ...plugin, id, source: "builtin", version: "", description: "Imported WorkBuddy skill collection; external services require configured connectors.", installed: true, display_name: plugin.name, brand_color: null, enabled: enabled[id] ?? true, publisher: "", homepage: "", license: "" });
+    }
     return output;
   }
   async install(sourcePath: string, scope: PluginScope): Promise<PluginSummary> { const source = path.resolve(sourcePath); if (!(await stat(source)).isDirectory()) throw new Error("plugin source must be a directory"); const manifest = await this.readManifest(source); if (!manifest) throw new Error("plugin.json or .codex-plugin/plugin.json is required"); const name = manifest.name || path.basename(source); if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error("invalid plugin name"); const destination = path.join(this.parent(scope), name); await mkdir(path.dirname(destination), { recursive: true }); await rm(destination, { recursive: true, force: true }); await cp(source, destination, { recursive: true }); const plugin = (await this.list()).find((item) => item.id === `${scope}:${name}`); if (!plugin) throw new Error("installed plugin could not be loaded"); return plugin; }
@@ -67,6 +72,7 @@ export class PluginManager {
   async skillRoots(includeDisabled = false): Promise<Array<{ root: string; source: string; scope: "system" | "personal" | "workspace"; enabled: boolean }>> {
     const result: Array<{ root: string; source: string; scope: "system" | "personal" | "workspace"; enabled: boolean }> = [];
     for (const plugin of await this.list()) {
+      if (workbuddyPlugins().some(item => item.path === plugin.path)) continue;
       if (!plugin.enabled && !includeDisabled) continue;
       const manifest = await this.readManifest(plugin.path);
       const directories = Array.isArray(manifest?.skills) ? manifest!.skills : [manifest?.skills ?? "skills"];

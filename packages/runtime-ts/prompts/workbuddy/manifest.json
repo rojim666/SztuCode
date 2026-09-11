@@ -1,0 +1,3069 @@
+{
+  "version": 1,
+  "source": "WorkBuddy 5.4.7/5.5.4 prompt collection",
+  "files": [
+    {
+      "path": "main/ask-mode-reminder.tpl",
+      "source": "01-主提示词-单体tpl/ask-mode-reminder.tpl",
+      "sha256": "53c71dcaca0f87fbacbf9bf15a634206952b20789b6e2d47d5d8b7acb7822abd"
+    },
+    {
+      "path": "main/craft-mode-reminder.tpl",
+      "source": "01-主提示词-单体tpl/craft-mode-reminder.tpl",
+      "sha256": "fe5af49d93d4f5e00fc106b651ca9243f0fc144dc6e63db2fcbaf9c9655513cd"
+    },
+    {
+      "path": "main/system-reminder.tpl",
+      "source": "01-主提示词-单体tpl/system-reminder.tpl",
+      "sha256": "56b64f4112180564ddd483801f3d2ab633f73ff1be02fc5ffe1106bc10b19c78"
+    },
+    {
+      "path": "main/user-context-expert-identity.tpl",
+      "source": "01-主提示词-单体tpl/user-context-expert-identity.tpl",
+      "sha256": "dd431a578e3bc91280e40f2b5e3cf2efc4a26e26eba3dc8f07cceaffb83f0c89"
+    },
+    {
+      "path": "main/user-context-identity.tpl",
+      "source": "01-主提示词-单体tpl/user-context-identity.tpl",
+      "sha256": "36a0513e9359297ea9c3bde84439722951999552d3ec8c293e37c84e70438700"
+    },
+    {
+      "path": "main/workbuddy-ask-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-ask-code-prompt.tpl",
+      "sha256": "7c7481ffab03643f2ce58999e0e96336e82f74266a6ca07a56996e6fa18bff48"
+    },
+    {
+      "path": "main/workbuddy-ask-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-ask-coding-prompt.tpl",
+      "sha256": "022b3c1ed5cfaca61a12b6ccebf780f5f6845e20ca6dae0fff40b50671261390"
+    },
+    {
+      "path": "main/workbuddy-ask-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-ask-prompt.tpl",
+      "sha256": "4e0152913e0be15c3cc6f3305ec76e17eb32298c36214939719b97de86925c51"
+    },
+    {
+      "path": "main/workbuddy-craft-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-craft-code-prompt.tpl",
+      "sha256": "f7837bf9f799c1866ce0e21c84380d055b2e322fc554a184446ed4d94d6fad2f"
+    },
+    {
+      "path": "main/workbuddy-craft-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-craft-coding-prompt.tpl",
+      "sha256": "aa49541669aae5c98001d358c58171eeaf3b13dbd1eeb3613d25465ce0f1971b"
+    },
+    {
+      "path": "main/workbuddy-craft-design-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-craft-design-prompt.tpl",
+      "sha256": "b1ecd4c9796f76772c9205b5903d5121af72fa31995c5be1c4f3ec6521d26fe1"
+    },
+    {
+      "path": "main/workbuddy-expert-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-expert-code-prompt.tpl",
+      "sha256": "b07933647e3065c050eb260581fae82c8009fa25a4baed74819d900c77493417"
+    },
+    {
+      "path": "main/workbuddy-expert-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-expert-coding-prompt.tpl",
+      "sha256": "94f9009240596b4708b880a3c43902ae6016aa6ee22ec4eb2a2b84f21a60e440"
+    },
+    {
+      "path": "main/workbuddy-expert-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-expert-prompt.tpl",
+      "sha256": "a9559693f97e66fced3cf832d1284dfb6979fc8a7bcbc53b3c99462ff7021101"
+    },
+    {
+      "path": "main/workbuddy-prompt.tpl",
+      "source": "01-主提示词-单体tpl/workbuddy-prompt.tpl",
+      "sha256": "f3041b74502816d85f8fb49ba5d577f1255afe8a738fd043a48938329ef1ab8b"
+    },
+    {
+      "path": "styles/style-creative.md",
+      "source": "02-风格style/style-creative.md",
+      "sha256": "148b369b0881a7211e157c1e73af9e375e26ed3c84b242d2dcf024f4d943f343"
+    },
+    {
+      "path": "styles/style-efficient.md",
+      "source": "02-风格style/style-efficient.md",
+      "sha256": "bf010e758bb04c00c1e07eb9f36205d1c35bec406a1978d58166453a4a70573e"
+    },
+    {
+      "path": "styles/style-friendly.md",
+      "source": "02-风格style/style-friendly.md",
+      "sha256": "75444a3780e4a09faa78d80a39e71a868ba1f0ea94d704019ed34d9ce9262417"
+    },
+    {
+      "path": "styles/style-professional.md",
+      "source": "02-风格style/style-professional.md",
+      "sha256": "c3e99168c4c2aa148db68d5d927e241735d8f7d6a9b098f12103ff324437e816"
+    },
+    {
+      "path": "styles/style-sarcastic.md",
+      "source": "02-风格style/style-sarcastic.md",
+      "sha256": "bc4821fdf983ff84dd2c0fb8f6a918ad4343ae30e7c712dfbf2880354d4889aa"
+    },
+    {
+      "path": "styles/style-socratic.md",
+      "source": "02-风格style/style-socratic.md",
+      "sha256": "879c83bb0d75e98def91560590be5391f1794af576786ccd8acbb4ed762fceca"
+    },
+    {
+      "path": "styles/style-straightforward.md",
+      "source": "02-风格style/style-straightforward.md",
+      "sha256": "249a414fb31d482130e39ce0bb6fb062eea3fbcbb6b7ee72fa0ab0d77b5d5bfd"
+    },
+    {
+      "path": "modes/ask/.workbuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/ask/.workbuddy-plugin/plugin.json",
+      "sha256": "b703848e17843fe6b0285e5067d3b0da0c45f2f4edbf058deef44329fcc25509"
+    },
+    {
+      "path": "modes/ask/fragments/agent-loop.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/agent-loop.md",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "modes/ask/fragments/current-mode.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/current-mode.md",
+      "sha256": "755d9a0099da7786b8fd7fa737893cacdc1ff7980c67767fac6eb41711dee58d"
+    },
+    {
+      "path": "modes/ask/fragments/interaction.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/interaction.md",
+      "sha256": "0c103333f1c44fd88dbf41ef7727b824dbb7aa1baa2019812b25e3f019ebe8de"
+    },
+    {
+      "path": "modes/ask/fragments/mode-behavior.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/mode-behavior.md",
+      "sha256": "f4de8643b6f189f61248b4f4d964dd18d8112726e35e08eafbe39d81cb952b59"
+    },
+    {
+      "path": "modes/ask/fragments/result-presentation.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/result-presentation.md",
+      "sha256": "91c2c3a88b759e68d54a29dc2e949f7e54af437c6d8ec53ae2404db1c16be737"
+    },
+    {
+      "path": "modes/ask/fragments/tool-use.md",
+      "source": "03-组合式fragments-interactionmode/ask/fragments/tool-use.md",
+      "sha256": "be0e99c9a96d24ba8ac5c2ffa3e6481ef55a6d065fbe7e60e7ae76ce58d1020e"
+    },
+    {
+      "path": "modes/craft/.workbuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/craft/.workbuddy-plugin/plugin.json",
+      "sha256": "acd5192af80e6ec019294414c8ccb0cb8ec14f0bc173073afaff9f6eadc2555a"
+    },
+    {
+      "path": "modes/craft/fragments/agent-loop.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/agent-loop.md",
+      "sha256": "c57d78ea97be2aa17ec11f9b672b91975681af74aa9130d0d3b0f76d39ead51b"
+    },
+    {
+      "path": "modes/craft/fragments/current-mode.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/current-mode.md",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "modes/craft/fragments/interaction-tool-use.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/interaction-tool-use.md",
+      "sha256": "434183c025201499e1e3db21d42a8034c364eebe2b3df703c21f71349ef30991"
+    },
+    {
+      "path": "modes/craft/fragments/interaction.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/interaction.md",
+      "sha256": "ee218fbbb6845a8f71ccaab9bb9192b66497b3a2b7a772f25f4efd80e446e228"
+    },
+    {
+      "path": "modes/craft/fragments/plugin-recommendation.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/plugin-recommendation.md",
+      "sha256": "cbccbd935321da4efce2d7bdc16f5d9459a31ad48b2ef2524779739594e026bd"
+    },
+    {
+      "path": "modes/craft/fragments/result-presentation.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/result-presentation.md",
+      "sha256": "4f89c992d8bbd241b76ff872b13b5ca7ba97b3a950ca8857d0a002f1d080e182"
+    },
+    {
+      "path": "modes/craft/fragments/task-management.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/task-management.md",
+      "sha256": "206025aa7631dbaaa4ed2fd7f23843c95ec356b2a1213a94aa219d16cf0bf0a1"
+    },
+    {
+      "path": "modes/craft/fragments/tool-use.md",
+      "source": "03-组合式fragments-interactionmode/craft/fragments/tool-use.md",
+      "sha256": "434183c025201499e1e3db21d42a8034c364eebe2b3df703c21f71349ef30991"
+    },
+    {
+      "path": "modes/expert/.workbuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/expert/.workbuddy-plugin/plugin.json",
+      "sha256": "da1daa0b8e5f54c8ffae623a532cbe65175ce57de73d56af34418d390b01397f"
+    },
+    {
+      "path": "modes/expert/fragments/agent-loop.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/agent-loop.md",
+      "sha256": "fad74734e0e55fa7a8a0d4382286ed7c8a6122b067732c65d358c59dacb5400f"
+    },
+    {
+      "path": "modes/expert/fragments/current-mode.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/current-mode.md",
+      "sha256": "a2f46720bcf53caafac954910a3e5e8af0ec811f115411e1682d1c558f30a96c"
+    },
+    {
+      "path": "modes/expert/fragments/interaction.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/interaction.md",
+      "sha256": "a6df4968e73135d3b7fc8d6f27dcaaa9a309019ea7da1a5d9119eaecebcc4f34"
+    },
+    {
+      "path": "modes/expert/fragments/result-presentation.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/result-presentation.md",
+      "sha256": "4f89c992d8bbd241b76ff872b13b5ca7ba97b3a950ca8857d0a002f1d080e182"
+    },
+    {
+      "path": "modes/expert/fragments/task-management.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/task-management.md",
+      "sha256": "206025aa7631dbaaa4ed2fd7f23843c95ec356b2a1213a94aa219d16cf0bf0a1"
+    },
+    {
+      "path": "modes/expert/fragments/tool-use.md",
+      "source": "03-组合式fragments-interactionmode/expert/fragments/tool-use.md",
+      "sha256": "5095a41207816d2d61f9bb7e3d0106d3b5fff6e4251d46adf052ddb6664fd869"
+    },
+    {
+      "path": "modes/plan/.workbuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/plan/.workbuddy-plugin/plugin.json",
+      "sha256": "ad58a32d09a96563ab36d029d0e3be6b7b4d5943813a7b6f72863708eb6b557c"
+    },
+    {
+      "path": "modes/plan/fragments/agent-loop.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/agent-loop.md",
+      "sha256": "c57d78ea97be2aa17ec11f9b672b91975681af74aa9130d0d3b0f76d39ead51b"
+    },
+    {
+      "path": "modes/plan/fragments/current-mode.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/current-mode.md",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "modes/plan/fragments/interaction.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/interaction.md",
+      "sha256": "c5ba385627631c62d9849702a3efe0f869caf642311c58aa3d7cba9d852baee4"
+    },
+    {
+      "path": "modes/plan/fragments/result-presentation.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/result-presentation.md",
+      "sha256": "4f89c992d8bbd241b76ff872b13b5ca7ba97b3a950ca8857d0a002f1d080e182"
+    },
+    {
+      "path": "modes/plan/fragments/task-management.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/task-management.md",
+      "sha256": "8cec721749b38bf1a2ffb7648fe8ff9df268dfe2c1bd3378ce608b1d9de8e6fc"
+    },
+    {
+      "path": "modes/plan/fragments/tool-use.md",
+      "source": "03-组合式fragments-interactionmode/plan/fragments/tool-use.md",
+      "sha256": "434183c025201499e1e3db21d42a8034c364eebe2b3df703c21f71349ef30991"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/agents/sheet-agent.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/agents/sheet-agent.md",
+      "sha256": "8bb874c05e27aa9d68ea7ed248a52b08800850bb5e577d123bbf6b0941e69c26"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/commands/excel.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/commands/excel.md",
+      "sha256": "cf05e6473fcb1ce3a8972bec6f764bc97b74aba2d7087420e82b06e3be1039f1"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/commands/generation.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/commands/generation.md",
+      "sha256": "ba468d7e6d7042a6a41e2de8885d5e0aed66a56d848147cf2fd004fabc9a11fa"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/invoke-sheet-agent.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/invoke-sheet-agent.md",
+      "sha256": "0919e6a0ca0a0494d8427df4baae1b9aa2f1108e86dbebd670ff137dc22df0f4"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-agent-prompt.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-agent-prompt.md",
+      "sha256": "aae0d078a3e74188d6603f566aaa2f27e89d7631509817d4cb24fc8a0f48119f"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/audit-spreadsheet.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/audit-spreadsheet.md",
+      "sha256": "78c01e3b427e54e9cd0791ca2395cbb27de8dfdbec7fa54ea7d2f7759507aab2"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-create.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-create.md",
+      "sha256": "a17966276e121a02f858d61007b10332ac6248a8bad6c9e69ee64271129ba484"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-delete.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-delete.md",
+      "sha256": "6ce8c12d7fcc0b45ad0cf29bf32c5f3e2aa98d32b3d708ccf1fe24dffa9d5162"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-edit.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-edit.md",
+      "sha256": "3a174b54574bb9cb2a0250a5abed891e0f922d22b98ed3dba25775bb0a700c4d"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-visual.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/charts-visual.md",
+      "sha256": "441ce70f9e6ecdc636bf861075a6cb8d4e9c3edfec7490a871e551913f97565b"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/featured-formulas.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/featured-formulas.md",
+      "sha256": "c41fb0415227fec04c705731737214910f3e0f28dcf36a702f995eafab4578e9"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/index.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/index.md",
+      "sha256": "75a276c461283dbc8a3c75f613a867b476da2c62feee70af188e4af4489f1829"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-api-reference.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-api-reference.md",
+      "sha256": "d90360669bb54c4bee93402c75df14330f67de5b666d5cfeba0f45b432215915"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-pivot-tables.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-pivot-tables.md",
+      "sha256": "0d0eb4baf75a2d04a97fdb583810bac15007d85f76d0bb0832a720b62a307074"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-replicate-template-layout.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/prompt/sheet-references/sheet-replicate-template-layout.md",
+      "sha256": "b019980bbf1147d2877f8fac3a920af017a30b7a1da28bea296c5f18df1ae493"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/SKILL.md",
+      "sha256": "e329a0642f16977e5f1cbb95e6ab2dd6ee42790192ecb6ab835de60aa2773590"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/calendar.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/calendar.md",
+      "sha256": "2b5326623bbc6aca2d2cf5f8fb500da0192b031ac002128c109b05b83198f027"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/dashboard.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/dashboard.md",
+      "sha256": "305c8dd2b63dd72ee2e7c729a88eff8b76e79ae4e215e64c6de505e74479c849"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/form_print.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/form_print.md",
+      "sha256": "15d0a561ffa3082096688f412f77df75f0617c8662cfe84b9d43fafd0e4061fe"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/model.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/model.md",
+      "sha256": "b0647588ace80c2525fda43109214f957a6d50cf28f2ee9eb27a272bcdb8af02"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/plan.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/plan.md",
+      "sha256": "16b269b1ef802a5c7e2cb085fb1841610d3c926eb4d4d8e1837c383c9796772f"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/progress.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/progress.md",
+      "sha256": "f8d5998b87be8c704779d47dbec435f11f59b44305b082d6ee0b558bfce270f6"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/stats.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/design_patterns/stats.md",
+      "sha256": "15514ab44a2af4549900d25cf72376a2e88c601ebe47e775333eaecac5cfe9ef"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/references/schema_principle.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-generation/references/schema_principle.md",
+      "sha256": "bede9a3bebba4fadbf3409a6dfe6278228c57cf5c139709538eb6c01138662c7"
+    },
+    {
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-handler/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/sheetagent/skills/excel-handler/SKILL.md",
+      "sha256": "e0fbe6dc1c2c26877a0dd8f34b01a3d1ce4cb264e3a9893152718849d15eb050"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/PLUGIN.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/PLUGIN.md",
+      "sha256": "809ad3a6c2b9c12abfac695f4129f4aa70b3f85a7eaa77d4aaa7652cef83e1b6"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/SKILL.md",
+      "sha256": "a306930a8b7b86a6e86cf5eb23d48e1951c6f4ff9a7088ce6ac44f5bad162c36"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/create.md",
+      "sha256": "3890ef3e126e199bd4736b1832252741356d44056648709d71186147427faf44"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/doc_format/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/doc_format/README.md",
+      "sha256": "5e7345f926cbc3a839c8b4e9940b0663de96c1c01515f65e6a6c2f7fc1ffae87"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/doc/edit.md",
+      "sha256": "545c62bd22df8107c9151723f4f1a3e87b572dbd0be6c5c2e38f3cb462d85589"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/manage.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/manage.md",
+      "sha256": "3424357bebfbc0b652011154994113058c9ac5b408fffa89e8d3beddafc81c40"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/aipage_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/aipage_references.md",
+      "sha256": "063afc37afd14effea1d9a3eb52a4637f394cf455fcfb6a4858c56ad220ec7c5"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/auth.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/auth.md",
+      "sha256": "68d68c1f3b9be1e0bab66c784b1d326396fbfc981d00086bf077782ea1923e01"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/diagram_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/diagram_references.md",
+      "sha256": "f4dda85e60ab6f9b34d5dd3c2bbc12519f9b05a28e63e3095444c37a0f2d14cc"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/ocr_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/ocr_references.md",
+      "sha256": "d696e4a2857255a0eec2ee1e503797a2df25b75da66b747a201b4f6143c16f3a"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/space_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/references/space_references.md",
+      "sha256": "8aa3a3f7daafb344b77a4d74776edf805afaa67c77d15bcc07a6d0bf81e00580"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/sheet/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/sheet/create.md",
+      "sha256": "a423be0802b8f9d5f0352162accedafdf2ba5250528b4337e3889a75846207dd"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/sheet/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/sheet/edit.md",
+      "sha256": "2bf7a34ec83976815c4f9c736920edb91e4d9820b53589ea3b305d8b2ca57eb1"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/slide/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/slide/create.md",
+      "sha256": "db3676aef265127b72785ff67ce0596687989b18cd18191daf554f94be2c323b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/slide/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/slide/edit.md",
+      "sha256": "a01a7fb16f936391f0e17c71c3ab77f7d0c494a5168a414fc4f1e1ff7ddd6278"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartcanvas.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartcanvas.md",
+      "sha256": "26027aa50cc374329bb4ea97d6f54ff6186ad0373e498396e5f09e49d2d0d564"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartcanvas/mdx_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartcanvas/mdx_references.md",
+      "sha256": "3fe6fab7b656d669c51f9ed44d00ba203581efdd2ab4fde03490515b5837dafc"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartsheet.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/smartsheet.md",
+      "sha256": "365d09e4c5fc88ef3d95286bb8a1e20ecd604d1b70de2f9af996f5277fdea59f"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/SKILL.md",
+      "sha256": "c5ca3c79b59f273f22b74a9e1261694b4f0620e638cbba43b00b9c3eb4259fad"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/doc/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/doc/create.md",
+      "sha256": "20a3e76e3ca701e523a07b997c7afba6a151db32bc2cbc8bc5a0d1bc94f39db5"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/doc/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/doc/edit.md",
+      "sha256": "959a2fc23049b85d717b6bddff2ddd345b1a7cf2960e4631d8549599217a6890"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/manage.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/manage.md",
+      "sha256": "b15846f8c8fc9ca1832f1d95160f1694429df3e86d121a0357061312b210dffb"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/auth.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/auth.md",
+      "sha256": "860b6a9a62bda4f311e938e4cac32db8d04b9c13544339189500bee694c5cc04"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/diagram_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/diagram_references.md",
+      "sha256": "ee67b5c57b348b3c751e8b9edc561b86a7d8b1075bfb69c91921bd0cf9cde536"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/space_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/references/space_references.md",
+      "sha256": "affa82356962490b7baf8094f1c91daa1aaf7049e60dce512e423b0cff657e87"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/sheet/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/sheet/create.md",
+      "sha256": "27aa5578bb62e4d268127a97db4b5e730c842b7a0ac019270076298ecce425ea"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/sheet/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/sheet/edit.md",
+      "sha256": "7e9c0257a79c0d8e756d7f10b351d3430ca8bfac45196f609e0f6ce0d338bb0b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/slide/create.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/slide/create.md",
+      "sha256": "db3676aef265127b72785ff67ce0596687989b18cd18191daf554f94be2c323b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/slide/edit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/slide/edit.md",
+      "sha256": "e10251c074e74b6f908fe45768b8720b5565cc3b906addd50b6fec3816ff0eed"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartcanvas.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartcanvas.md",
+      "sha256": "8d7fbc325d8349acccbf31d638593a7e0dd1fb076a74a0d302974cc5fc00d1c9"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartcanvas/mdx_references.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartcanvas/mdx_references.md",
+      "sha256": "df1953969b802d55b34b4d954a75b41441fee396f7dbf6777f070050529db438"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartsheet.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/smartsheet.md",
+      "sha256": "06e918b6cf094418226673463390be2fcdc4c5ad088cdeda08ac8190e582ab41"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/SKILL.md",
+      "sha256": "e440dab7f4a86dee4bb3529c532a00b8486a8900192cba918133dcbb31ecc206"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/agents/doc-converter.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/agents/doc-converter.md",
+      "sha256": "7a88924e14fd6e9404769baac987d4f7dabc704f5e5f3319130c9a3c39843b87"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/agents/doc-formatter.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/agents/doc-formatter.md",
+      "sha256": "a6381b9cacdf20a606b0f7b8613018a217f9c92254cffdc4ef6c2962eb208f72"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/agents/doc-writer.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/agents/doc-writer.md",
+      "sha256": "f70f453a10e81556cc95ecb0caac7230a189bc4935ef5811e97b22928fadadc4"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/core/engines/critic-generator/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/core/engines/critic-generator/README.md",
+      "sha256": "8bf43d5c2321a17d0de4bb168fc618903d84a2aaeeac6eafdc1b155846299412"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/core/engines/critic-generator/engine.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/core/engines/critic-generator/engine.md",
+      "sha256": "3586c25ad43a095477b11f439069a37bf45054e8b6ceee2381f031680df813aa"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/core/engines/deep-research/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/core/engines/deep-research/README.md",
+      "sha256": "d7fa159c7ad9d4e6948c573f3a1e52464c162a97ca0b72b45646ed957ac4e27d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/core/engines/deep-research/engine.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/core/engines/deep-research/engine.md",
+      "sha256": "7c9f1bd91466fbffc4177ba5c984af63abdc5560ecc904bad2a8e8da072e1e04"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/academic-paper-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/academic-paper-expert/SKILL.md",
+      "sha256": "fa577860ec6e5c76bc1f871210e93d13fe25b1aa263e620c204c208e0ff95b46"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/SKILL.md",
+      "sha256": "ceedcbc5df8c5cb7f35be2f2b994a7ab2901ead75173835894017c9c3d35e148"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/anti-patterns.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/anti-patterns.md",
+      "sha256": "806d6dc8347ca3c41f0fc8448415a79ffce36af033f4f67587b277d6a4ca41e7"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/brand-copy.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/brand-copy.md",
+      "sha256": "52c7929420761649869b0a768da772350844796ed1000a351c026a311fa441b1"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/copy-diagnosis.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/copy-diagnosis.md",
+      "sha256": "e6130f4e0b286f6b72132d29459dc89b39dea8c8c624c7707215555082be3467"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/email-marketing.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/email-marketing.md",
+      "sha256": "09e497b34f17d4736523fe6aed60757575d5a5cfa0077ce51aaf397443e79685"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/brand-functional.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/brand-functional.md",
+      "sha256": "29f43a9e66fb444176c60a1b4d967bb0ce4ebfdf3194a8e7f765022ba0d45c29"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/email-cold.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/email-cold.md",
+      "sha256": "2402f4a695b6c5ab0893db3f34cccf06cbfac0ea4b5cb545949a0ade69c5b8b0"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/index.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/index.md",
+      "sha256": "bbb2df6b3ade537cd2a6ae07e1792507adeda61f300d26ba580ac5757d92137a"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/product-premium.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/product-premium.md",
+      "sha256": "95870868c8f0607a254ca7cde17608b4b1ccd84c41fc646eea3ed99b4664fd4d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/social-xiaohongshu.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/examples/social-xiaohongshu.md",
+      "sha256": "d3820bcc5683ac73a5316e2e39bc4a51f69ff07e1c5014b6deee76609b76a48d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/product-copy.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/product-copy.md",
+      "sha256": "7b0c693e993cc16a4a51d7cfbf531711b64a5c10fcf09e8fce8f5e9bc22774ba"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/social-media.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/references/social-media.md",
+      "sha256": "a106192f75e57015bcc26e4a3ad03f00607f0cc14ff61372a6ec71008bfca7a4"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/general-writer/SKILL.md",
+      "sha256": "567043caf2cc03ce2a257b68f25b1a6c752df5695530365e03660011ffae65ba"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/assets/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/general-writer/assets/README.md",
+      "sha256": "f4d991d3ab4b687cf233078ae650b3688bf1660df18abfa2c07e8f2ee0ef0010"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/references/doc-type-matrix.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/general-writer/references/doc-type-matrix.md",
+      "sha256": "254eb7cb73603daa9acde00547556a1718e9867be9db2175a6e7b39e247029f9"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/references/quality-framework.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/general-writer/references/quality-framework.md",
+      "sha256": "5eeab7c64e53eaa9bdec0c096f1a14a1e01116ef79918797b5b95a501817ef64"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/scripts/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/general-writer/scripts/README.md",
+      "sha256": "6b43dc82fb17089f689c8df63323d817dd9407cbcbc49b306c9093b29aa9364e"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/SKILL.md",
+      "sha256": "0552cd90f767925afe7700e41739a5f3f45c6ca79103a6c48db1a5e022c54595"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/assets/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/assets/README.md",
+      "sha256": "00d6408ae919fecc8553727d4d77550f190cb1d5888402a39e6bfaec5207095d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/references/anti-patterns.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/references/anti-patterns.md",
+      "sha256": "79f834094a6c85596dca055982df07bbd314c747f593efc623936899f05a7879"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/references/terms-library.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/references/terms-library.md",
+      "sha256": "aab9bd0c8f9c58e1bf02dd7b973676e8632cbb216dc8a491a4bc115dbf3eb3df"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/scripts/README.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/scripts/README.md",
+      "sha256": "8e1bb13349c8c89d8b5ce494d6b489bc6dfee66fc9e1befe2e91be04283f0cc6"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/poetry-prose-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/poetry-prose-expert/SKILL.md",
+      "sha256": "13d5fc29af28cc573f2ea7b7eee996c15bd63651d912897f5a88d33055f04b61"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/science-writing-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/science-writing-expert/SKILL.md",
+      "sha256": "0e1e94b0705a86c9fd75b42271ca382c14f8fc4a0c639fffa9efadd6572098f8"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/stock-research-report-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/stock-research-report-expert/SKILL.md",
+      "sha256": "d03b4a5fd9f6a21e4f128d1287fb77f26fc01c00c280c2c59270f50cf2efa34b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/stock-research-report-expert/references/structure_contract.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/stock-research-report-expert/references/structure_contract.md",
+      "sha256": "fece3e0413ead00e6c32bc190f5f562fb8e3ad52ab5823b61d4c436f72a81eed"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/SKILL.md",
+      "sha256": "5987d572cdc34d20e15b40c64530f6d915bc551c9766042a5be5383311725cb8"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/anti-patterns.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/anti-patterns.md",
+      "sha256": "046e7ff5346bc520b44f15aaccc8f4e9cb3f38c722499aa1356c5748de82832a"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/arch-design.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/arch-design.md",
+      "sha256": "f6d1b24040cd8d0fa92f63e3ac1e64899195ae79c300e84d38396820b345b866"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/article-diagnosis.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/article-diagnosis.md",
+      "sha256": "fb595769b9468c39c7fa0d93d874fa6b46c245c27bf4e8cc645692483d169ca1"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-comparison.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-comparison.md",
+      "sha256": "0323c7fec87874dea87cd3a031d8e33774fe42211d702483590ecb739d34ca9d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-deep-dive.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-deep-dive.md",
+      "sha256": "e04d5a04825eca780200b71c189642a21aab0f1be3a0ed0997cf04d872377cfc"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-experience.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/article-experience.md",
+      "sha256": "45184c0167c3da2c5eee592ad06e6887cfaf4d1e805ed32a383e2ecc7aba3b3a"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/index.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/examples/index.md",
+      "sha256": "7c69bc0f108297e1a6c93dda7b3032ccac934b5f532470ba5af8a02b898684b1"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/project-docs.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/project-docs.md",
+      "sha256": "ede4982f844544da7ceb07d0d68afa256d9903d0c08afefad6e7d1df93bdf8a1"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/tech-article.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/tech-article.md",
+      "sha256": "329b509433ef088f57a7cdb22bc9e7ed80150eb91fad7be6ad9e780a4b362dd5"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/tech-tutorial.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/references/tech-tutorial.md",
+      "sha256": "1c1f33b48176ca457de1899a2492d8963247a601a49a9973898dab89f42abade"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/experts/work-report-expert/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/experts/work-report-expert/SKILL.md",
+      "sha256": "2aa230767e52a109abdcff7ace1750f39e39e67ca72cbe7895a4cf8a9c9ba2fa"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/brief-compose/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/brief-compose/SKILL.md",
+      "sha256": "5ea36b278833f9d26da70b396b0877725c8146f22614aa2672ab3239e91a598c"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/design-token/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/design-token/SKILL.md",
+      "sha256": "19677edd28ca0a2adc9e6b2e7a5ebff5e77622e4345d4dcd5d3273a929957910"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-7713-academic.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-7713-academic.md",
+      "sha256": "c2fe469ab23671d6083b7bf0486deecac02d4246e8bab8a527c2de0cdcb6d067"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-7714-citation.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-7714-citation.md",
+      "sha256": "1c53895beed7abd874fc731e2de0144824a123c9302ae6706b2c551d97af934d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-9704-government.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/design-token/tokens/rules/gb-t-9704-government.md",
+      "sha256": "6b76cd4cef6da89266db68a0b0646ee5692be5643b86b28a5fa5f58bf4cccd4d"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/SKILL.md",
+      "sha256": "8e8b7c4270bdfd08feb0573d8e6745ee4c2d9572f02a41131912292415e8e425"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/academic-paper.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/academic-paper.md",
+      "sha256": "2f2ef47b00484cb5f2e996bb52a5ab4c54e0a76db41d60d240ba8988d2b2afc4"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/annual-report.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/annual-report.md",
+      "sha256": "50143c2f86a463eb65c88ba1a0678499482ca24cd05bb5b835e449f5d3a148cb"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/base.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/base.md",
+      "sha256": "50ad2485b61c5046876884eba0bf733ef935450f65335fc54092ba616d92c6e2"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/business-report.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/business-report.md",
+      "sha256": "69df66eb9cb375b0bc417917cbd2eb37320eae4fc77deefcbeb39b1d4fdc28fa"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/government-doc.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/government-doc.md",
+      "sha256": "67128412fe49de504cc5cd8c3eb22cc38f249ffa6232ec505a82120ad714f0e2"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/legal-contract.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/legal-contract.md",
+      "sha256": "2f4ca1d6b07ca98bb3af70b2255ef9fe0a0436a92c0bd6bea17b79182fe43d96"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/meeting-minutes.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/meeting-minutes.md",
+      "sha256": "49b0a06f898d1409d8e2074ebefb047f22b02bc4701b0fc27fcccd5ce5539824"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/stock-research.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/doc-typeset/prompts/stock-research.md",
+      "sha256": "3b092664aa99e4b0d4584dae2c38bfe542244b930b5104046d9aff30e9cc3996"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/format-extract/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/format-extract/SKILL.md",
+      "sha256": "712f689b4fb1cdf1dd683cae784e8a0e2089da030a5a0055417bf94c15927e20"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/format-extract/references/cli-reference.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/format-extract/references/cli-reference.md",
+      "sha256": "63a361195702057284714141828712063a01ac4a91bb6b69734c3dcf2314791c"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/format-extract/references/node-install.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/format-extract/references/node-install.md",
+      "sha256": "f402c4934225bcba3dd56632285c435bcb1bd2072bc67061286af767a9616648"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/generate-fillable-contract-html/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/generate-fillable-contract-html/SKILL.md",
+      "sha256": "9ba033cbf0f89c48050d6175011c0693de4c2a54153f2cbccc5ab69aecc4700f"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/SKILL.md",
+      "sha256": "7eba67dbde710e82bf8be49fc0092ce18b5f7b0a2d6768cee40c348edcd4665b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/decoration-usage.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/decoration-usage.md",
+      "sha256": "6355b1c9b58625588e993c012ca73c489f60cc8d03dacc5db31030b1d76db12e"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/design-token-compliance.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/design-token-compliance.md",
+      "sha256": "c876ebd06b942f4b387dd2542eec3e7696a9a6cd44eef816fe755d95234cd875"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/genre-fit.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/genre-fit.md",
+      "sha256": "f02aeb70d4fc756a1100e0c58794bdc34a809446523fd13a148ce05aee0adf49"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/security-check.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/security-check.md",
+      "sha256": "ca6a0b70081320dfc394b7b0e236ba42cadaa238050e16d240e2aa7d5482048f"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/structural-integrity.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/structural-integrity.md",
+      "sha256": "ca8c385b269c6718143a987747b291b1b463e0ca614de71366aa4f9a98ac5ecd"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/references/typographic-quality.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-review/references/typographic-quality.md",
+      "sha256": "60150157825d8d11b9aeb66274a14081f96b82d9600dbf58dfb07611baf01b97"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-to-docx/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/html-to-docx/SKILL.md",
+      "sha256": "3a0001bf341c107284804555e01887ce8fda5102275453fd1c26eea4961493b5"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/SKILL.md",
+      "sha256": "333476ab53432af1af9cbf0dd16116b38897f93a45d534b939d860080aa9dc0a"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/references/log-schema.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/references/log-schema.md",
+      "sha256": "3ca78b09a0f0eaa177383da6c6f6460aa367e97a0cca44898e0de176b433a204"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/references/pipeline-state-protocol.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/references/pipeline-state-protocol.md",
+      "sha256": "aa0a3ac03d391d0a4992a7793f663f01e2ec9980b860673571503e8a90d62e60"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/SKILL.md",
+      "sha256": "2ae279ac39a204c48f48f8393ff57e9f15edca6bbbdd1b37ef6cd11d88e4d86c"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-animation.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-animation.md",
+      "sha256": "abd37f74275c2bc3b1a3de28d98730d557308130776930a86763200c7a6319a8"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-box.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-box.md",
+      "sha256": "284419f576d92d9a4f5135723bb55d428b7f346b6656a691fc4e5b6f2626e897"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-chart.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-chart.md",
+      "sha256": "e2a56caadb9aa0ad24083914141ab046cd14fb19318adf30fdc802b1d69e75b4"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-codeblock.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-codeblock.md",
+      "sha256": "fe0619374d2adfece7deca932c404b35883c9a0f0f65992ffcd7136bfc34b179"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-diagram.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-diagram.md",
+      "sha256": "61376dd5e994542f0bfb584121b1bb53a217d8a3a19826bbe3121a9e06eb6197"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-faicon.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-faicon.md",
+      "sha256": "3a5b8017bbbf1056e93211cf35e114ce892bb2db71f68cd7ab281374f390074e"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-hyperlink.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-hyperlink.md",
+      "sha256": "c1954ba14dc894cdc55c75c186cbe2d67e403dca47d24194f596efce5e633b3e"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-image.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-image.md",
+      "sha256": "cc18aa79316908c61c88c3106da65fb7139f9bbe96c66a31d7c6c9d442f3b380"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-math.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-math.md",
+      "sha256": "c54e984def12818c129b5937784d94e6f67645bc20e7523506c6afd62e1aefb4"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-qrcode.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-qrcode.md",
+      "sha256": "463c45f74eb36c9d449696b8ef0679cacba005c2691ad3b8885b8e2d80a327e6"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-slide.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-slide.md",
+      "sha256": "71e750e34c95ff62fa87cffcd5748f78e96c61bb1fe36c00639619c64be2bf3b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-svg.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-svg.md",
+      "sha256": "8a394de5b4a4d41db141297ac2f272e29af50b51c6c25a39b6a5268e0ea786fc"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-table.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-table.md",
+      "sha256": "65e5e62cf62c8d217f94fb0aa195735f54d7e5d47d6890850afc8f4f96881a1b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-text.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/component-text.md",
+      "sha256": "9a704cfd73027c73e7f4b22156512844f255de75ee7a58ac85effb283207cf78"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/create-from-material.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/create-from-material.md",
+      "sha256": "b7e9f1529ec52eb1c5dc712c15052cf68ea129825fb248b0ddc77133f1993e6b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/create-from-scratch.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/create-from-scratch.md",
+      "sha256": "65f6c3a255346ba11bdb049371bee83a2560dd01998d294583c5fc77ce8727fb"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/design-principle.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/design-principle.md",
+      "sha256": "c5eee64d5de98e78f3d02277b08a3ea5aeb0f07872eea6af92fc4f3c4f010921"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.academic.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.academic.md",
+      "sha256": "47d8a00d9afb0f890172330c172c0d406b937a14d3f07228df2d879fb385a20c"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.consulting.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.consulting.md",
+      "sha256": "eac53637724445b27e97b07186b11eb7edb1e30201edf73dc166650af4a3c397"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.redgold.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/designs/design-principle.redgold.md",
+      "sha256": "ce98d63509b420e47c794f9354a2c884a6c2dc50460aae11b1857032b2a3419b"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/human-alignment.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/human-alignment.md",
+      "sha256": "32f0bd25e1045a94b19463d156d28664dfa4133e5ded07449e3c7c2ae7e33cb7"
+    },
+    {
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/story-principle.md",
+      "source": "04-技能skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/references/story-principle.md",
+      "sha256": "3ba1b66b977abd1847795828bfd9495e40bfd1aede4a94bc210f42fe82dd9006"
+    },
+    {
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-feedback/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/weixinpay/skills/weixinpay-feedback/SKILL.md",
+      "sha256": "de1f797a31e6fda3ce0dcd3dea5da0471bfe3c43940b501604955e941e4d3544"
+    },
+    {
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-pay/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/weixinpay/skills/weixinpay-pay/SKILL.md",
+      "sha256": "cf681d0667334103985da9c9bc57db503e374be576a638438a17b59921f05700"
+    },
+    {
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-register/SKILL.md",
+      "source": "04-技能skills/_builtin-plugins/weixinpay/skills/weixinpay-register/SKILL.md",
+      "sha256": "a822186e8cfde03b331720f7493368ba4c7d61e2dbd30536aaf360c2d22a9421"
+    },
+    {
+      "path": "skills/ardot-design-core/SKILL.md",
+      "source": "04-技能skills/ardot-design-core/SKILL.md",
+      "sha256": "85065095f3f1eb6ba71fd3072dc64c3531ba75538f57c6366b5ac9b0b34e1d20"
+    },
+    {
+      "path": "skills/ardot-design-core/func-rule/component-instance/SKILL.md",
+      "source": "04-技能skills/ardot-design-core/func-rule/component-instance/SKILL.md",
+      "sha256": "06e1fce6c742580ff475316830c41fe868f5284297fdf11eae72c4239cb0e19f"
+    },
+    {
+      "path": "skills/ardot-design-core/func-rule/design-variables/SKILL.md",
+      "source": "04-技能skills/ardot-design-core/func-rule/design-variables/SKILL.md",
+      "sha256": "d837190e33ae85a20b41ad2265f1853479a54f9f2c5fe6c682a435fc1be2258a"
+    },
+    {
+      "path": "skills/ardot-design-core/func-rule/shared-styles/SKILL.md",
+      "source": "04-技能skills/ardot-design-core/func-rule/shared-styles/SKILL.md",
+      "sha256": "25b9f7d918602c10a6fedef7de98cba3ef3d9ea37fcfab772714c6ddb2e55a10"
+    },
+    {
+      "path": "skills/ardot-design-core/references/ardot-schema.md",
+      "source": "04-技能skills/ardot-design-core/references/ardot-schema.md",
+      "sha256": "179284e3577b4965fd153132a3aac829c81c102540c49ae91b895b9fb7e0d39c"
+    },
+    {
+      "path": "skills/ardot-design-core/rules/design-rules.md",
+      "source": "04-技能skills/ardot-design-core/rules/design-rules.md",
+      "sha256": "7efceaf033bcc06f63570aa3b846b9220fa1fdfa1339cd6526cfac55724b0d9c"
+    },
+    {
+      "path": "skills/ardot-design-core/rules/effects-guide.md",
+      "source": "04-技能skills/ardot-design-core/rules/effects-guide.md",
+      "sha256": "011b057601d0cdad44e1baffa44772b2b08c4c5199c389e2db395dfa3601e884"
+    },
+    {
+      "path": "skills/ardot-design-core/rules/style-guide.md",
+      "source": "04-技能skills/ardot-design-core/rules/style-guide.md",
+      "sha256": "9a5343b53ed93f457b52584e7dae88a381cda6b63e8854e848ab4cfc2be71863"
+    },
+    {
+      "path": "skills/ardot-design-core/tool-usage/apply-variables.md",
+      "source": "04-技能skills/ardot-design-core/tool-usage/apply-variables.md",
+      "sha256": "b2e5d44bcbd1bae1a918b52c3d1743bf147369b6ad8e4d1caa8f8148e98912c6"
+    },
+    {
+      "path": "skills/ardot-design-core/tool-usage/batch-edit.md",
+      "source": "04-技能skills/ardot-design-core/tool-usage/batch-edit.md",
+      "sha256": "23d4af3dd86f4f35be371807ad0cb44f793fb280fd086f2523b005c832b61991"
+    },
+    {
+      "path": "skills/ardot-design-core/workflows/ardot-workflow.md",
+      "source": "04-技能skills/ardot-design-core/workflows/ardot-workflow.md",
+      "sha256": "de6eccbfba05bccebd08b010bef75cdd1ab9cfc1c362e4626698ab39e0c82636"
+    },
+    {
+      "path": "skills/ardot-design-router/SKILL.md",
+      "source": "04-技能skills/ardot-design-router/SKILL.md",
+      "sha256": "9692dfe4c37eee6bbcd48dab610153051b9f19d66c5d972f7ca8c9a0340d891a"
+    },
+    {
+      "path": "skills/ardot-design-to-code/SKILL.md",
+      "source": "04-技能skills/ardot-design-to-code/SKILL.md",
+      "sha256": "231525b4ef7b7073fe2c69c2c933cc362035ee4d322d01111d024067ee0c1aac"
+    },
+    {
+      "path": "skills/ardot-design-to-code/references/guidelines-code.md",
+      "source": "04-技能skills/ardot-design-to-code/references/guidelines-code.md",
+      "sha256": "684a674f6ce3eded37598cc10f50d1ac03a2c9c10c30b22e13eaf06a249af534"
+    },
+    {
+      "path": "skills/ardot-design-to-code/references/guidelines-tailwind.md",
+      "source": "04-技能skills/ardot-design-to-code/references/guidelines-tailwind.md",
+      "sha256": "7f178272be6c8acd9e1fa0f527c51766f8bd6d11cbfca80164a4a80004aecbe1"
+    },
+    {
+      "path": "skills/ardot-design-to-code/workflows/design-to-code-workflow.md",
+      "source": "04-技能skills/ardot-design-to-code/workflows/design-to-code-workflow.md",
+      "sha256": "80e5afcee012e979dcacfb2633b26745ee52f0787100c718d3be4b66a3647be4"
+    },
+    {
+      "path": "skills/ardot-design-to-code/workflows/extract-style-guide-from-web.md",
+      "source": "04-技能skills/ardot-design-to-code/workflows/extract-style-guide-from-web.md",
+      "sha256": "06b9958e3aabfc980b4f15add4cc6384d7b778982c4f4ee9aa39fb481529cac0"
+    },
+    {
+      "path": "skills/ardot-poster/SKILL.md",
+      "source": "04-技能skills/ardot-poster/SKILL.md",
+      "sha256": "289bba15ae53e8aa68bf3ba6ed360b6ae8157c935a1553f6e0b5631f179b7e17"
+    },
+    {
+      "path": "skills/ardot-poster/references/guidelines-poster.md",
+      "source": "04-技能skills/ardot-poster/references/guidelines-poster.md",
+      "sha256": "8b28ca326f6894ddfa7805e923aa95c5b91eb73194ad8da6060485b9b304767a"
+    },
+    {
+      "path": "skills/ardot-slides/SKILL.md",
+      "source": "04-技能skills/ardot-slides/SKILL.md",
+      "sha256": "aa79c8797060124b71560d7f2c4d576535fb4c3d7e22918aa55dc0f8ccca8327"
+    },
+    {
+      "path": "skills/ardot-slides/references/guidelines-slides.md",
+      "source": "04-技能skills/ardot-slides/references/guidelines-slides.md",
+      "sha256": "55385c69b134c4aafe245bf301a4a696706494a9806f07ca88f065ea30b2d01f"
+    },
+    {
+      "path": "skills/ardot-slides/workflows/slides-workflow.md",
+      "source": "04-技能skills/ardot-slides/workflows/slides-workflow.md",
+      "sha256": "131ce10670894e5cfe8a2666e84d2ce827459b4e34a8a17e0096f15692bb1ac4"
+    },
+    {
+      "path": "skills/ardot-ui-design/SKILL.md",
+      "source": "04-技能skills/ardot-ui-design/SKILL.md",
+      "sha256": "0bf67f4855133137e6f2546b9318c7af80770704252c6f8efd5263ff964b78fa"
+    },
+    {
+      "path": "skills/ardot-ui-design/references/guidelines-landing-page.md",
+      "source": "04-技能skills/ardot-ui-design/references/guidelines-landing-page.md",
+      "sha256": "5990cd9a2c57ca4d49dd0a304b9cdccde064830f0a733d40012496000690cb5b"
+    },
+    {
+      "path": "skills/ardot-ui-design/references/guidelines-mobile-app.md",
+      "source": "04-技能skills/ardot-ui-design/references/guidelines-mobile-app.md",
+      "sha256": "70bb5c6195bec27a91c7192f340ee8b71a1988ffb5fa22bd4c92fa45bb9d359a"
+    },
+    {
+      "path": "skills/ardot-ui-design/references/guidelines-table.md",
+      "source": "04-技能skills/ardot-ui-design/references/guidelines-table.md",
+      "sha256": "bfb5854b619cd0d7a9bfc41f2bfc3f3a3b6b81876f266b17114e2779993ab016"
+    },
+    {
+      "path": "skills/ardot-ui-design/references/guidelines-web-app.md",
+      "source": "04-技能skills/ardot-ui-design/references/guidelines-web-app.md",
+      "sha256": "35c9e127958d4455b9cb0b59ea87ea2ce0b71aee4f0194ddd95110c66d1e6b1c"
+    },
+    {
+      "path": "skills/buddy-multimodal-generation/SKILL.md",
+      "source": "04-技能skills/buddy-multimodal-generation/SKILL.md",
+      "sha256": "ce5754fdab6f10552c70a7ab4d6e1efad523b37fe38f8c0dc949be5c6c84a931"
+    },
+    {
+      "path": "skills/expert-manager/SKILL.md",
+      "source": "04-技能skills/expert-manager/SKILL.md",
+      "sha256": "14b02ef951b9da8bf58788ff1a70e65cd1d28bbe8d7b9e25b7e917cd5482be89"
+    },
+    {
+      "path": "skills/expert-manager/references/agent-md-spec.md",
+      "source": "04-技能skills/expert-manager/references/agent-md-spec.md",
+      "sha256": "a0f89c6c2d8e542bb4502994cef6ba3131028a985a3917d4200cc6652420841c"
+    },
+    {
+      "path": "skills/expert-manager/references/avatar-spec.md",
+      "source": "04-技能skills/expert-manager/references/avatar-spec.md",
+      "sha256": "bcf875587b105d5e3b11e7c84cf1d62e487b812b2055582075b59adf2b380a4a"
+    },
+    {
+      "path": "skills/expert-manager/references/plugin-json-spec.md",
+      "source": "04-技能skills/expert-manager/references/plugin-json-spec.md",
+      "sha256": "f0c184581a3f64f173431f9f77206b1734f90fb25a09292b9a43e4818d925421"
+    },
+    {
+      "path": "skills/expert-manager/references/team-spec.md",
+      "source": "04-技能skills/expert-manager/references/team-spec.md",
+      "sha256": "03eab08ccb7b7e78e01262c06b1e355713ad1dcab9721199aa16e654a51a2215"
+    },
+    {
+      "path": "skills/geo-map-compliance-guard/SKILL.md",
+      "source": "04-技能skills/geo-map-compliance-guard/SKILL.md",
+      "sha256": "40d647fdf0a912e2270bc36d67f8d1c559797a448afe6fe283be5f572341ffd1"
+    },
+    {
+      "path": "skills/library/SKILL.md",
+      "source": "04-技能skills/library/SKILL.md",
+      "sha256": "a15b191b0d71e137f10ee32534428495cd3b9ff3a4c582a3eb6b55933addc0e6"
+    },
+    {
+      "path": "skills/library/attachment/entry.md",
+      "source": "04-技能skills/library/attachment/entry.md",
+      "sha256": "fdea8df478b13f6e144545a02979fb129dd3ec11db578fa17368205e4df42a17"
+    },
+    {
+      "path": "skills/library/database/csv-import-flow.md",
+      "source": "04-技能skills/library/database/csv-import-flow.md",
+      "sha256": "000d464744ce33e5815089650519b1f44771fb2a59c22f6c964af2f5397e1222"
+    },
+    {
+      "path": "skills/library/database/entry.md",
+      "source": "04-技能skills/library/database/entry.md",
+      "sha256": "59645563fdc1930158aa8eccbee2465a36a3d4db0ec5e648d512c63bdb703bb2"
+    },
+    {
+      "path": "skills/library/database/params-reference.md",
+      "source": "04-技能skills/library/database/params-reference.md",
+      "sha256": "5b255150c9fd6e82672a0ee565631ec6d1cc4dca17fe746b3292ec793d28ec9f"
+    },
+    {
+      "path": "skills/library/doc/action_decision.md",
+      "source": "04-技能skills/library/doc/action_decision.md",
+      "sha256": "e2c500d2e27c2e0c49ef50ac0719ec8404b83ce85599a5ba0e0f0ad2eb6df98b"
+    },
+    {
+      "path": "skills/library/doc/batch_replace_sop.md",
+      "source": "04-技能skills/library/doc/batch_replace_sop.md",
+      "sha256": "49c6449fe5dccc4ed6be05836c4339ee7308dff67a5bb4e6e35b55ca0fdded4c"
+    },
+    {
+      "path": "skills/library/doc/content_contract.md",
+      "source": "04-技能skills/library/doc/content_contract.md",
+      "sha256": "8d111c1804441114140b66f10da7aa0981083700b36982b025d2175f50e14bdb"
+    },
+    {
+      "path": "skills/library/doc/doc_references.md",
+      "source": "04-技能skills/library/doc/doc_references.md",
+      "sha256": "1d3d9b40ade9074f2c3c936a02e766da150ce52495331de517c968d4f80c756a"
+    },
+    {
+      "path": "skills/library/doc/edit_core.md",
+      "source": "04-技能skills/library/doc/edit_core.md",
+      "sha256": "40d5b77d8e7e8c079dc9e92400a7ce03a1513754c831354607f1c1bed51eb3a3"
+    },
+    {
+      "path": "skills/library/doc/entry.md",
+      "source": "04-技能skills/library/doc/entry.md",
+      "sha256": "20535dd4f02d77a62a16af8afe01f5b269c61c208e7daab5375e7547d65fca14"
+    },
+    {
+      "path": "skills/library/doc/error_handling.md",
+      "source": "04-技能skills/library/doc/error_handling.md",
+      "sha256": "73878338f215a066d02d4dd21f62f85ace0ad368cb7866dc58bd65e122ea9aea"
+    },
+    {
+      "path": "skills/library/doc/revision_flows.md",
+      "source": "04-技能skills/library/doc/revision_flows.md",
+      "sha256": "9705d8742c2bd899878522cd62fd5246f4189b55a8277d3bc2f82b9b1a2b52bf"
+    },
+    {
+      "path": "skills/library/doc/scripts/examples/README.md",
+      "source": "04-技能skills/library/doc/scripts/examples/README.md",
+      "sha256": "f4f3583620a4e40a285603bb1626d68137966d737d6b125bfe2519db56f995ae"
+    },
+    {
+      "path": "skills/library/doc/server_pitfalls.md",
+      "source": "04-技能skills/library/doc/server_pitfalls.md",
+      "sha256": "b8d52f337e1ab0067e9bbd147b932b35cc7b0986e85fcf8714003996a98c5b8c"
+    },
+    {
+      "path": "skills/library/doc/tasks/complex_edit.md",
+      "source": "04-技能skills/library/doc/tasks/complex_edit.md",
+      "sha256": "e45a84705ce56361c52f8fb49f40567f9846aca96bad6a466e5af0e4fc9e518f"
+    },
+    {
+      "path": "skills/library/doc/tasks/read_create.md",
+      "source": "04-技能skills/library/doc/tasks/read_create.md",
+      "sha256": "a1d3802fd6d4888b20ad29dfbe647462187a32973e87fcef96bafcfe9e050119"
+    },
+    {
+      "path": "skills/library/doc/tasks/revision.md",
+      "source": "04-技能skills/library/doc/tasks/revision.md",
+      "sha256": "d7f59d066874be73acfa13c751f0fb03da564b4e6444a1ce5d690387416038ed"
+    },
+    {
+      "path": "skills/library/doc/tasks/table_edit.md",
+      "source": "04-技能skills/library/doc/tasks/table_edit.md",
+      "sha256": "70db114646070cdd37d9c5b8181b4933e33366adba1c4a932692dec1e246c0c3"
+    },
+    {
+      "path": "skills/library/doc/tasks/text_block_edit.md",
+      "source": "04-技能skills/library/doc/tasks/text_block_edit.md",
+      "sha256": "6c7a84c3c1778cbc5a75433d4e0a38f7e3cc2203374ff3d705bd4f9fe1fca01b"
+    },
+    {
+      "path": "skills/library/doc/workflows.md",
+      "source": "04-技能skills/library/doc/workflows.md",
+      "sha256": "8db7a2a4eedc15c9838d373023a83598383acb1c5c7703f918090b98c0ca97f1"
+    },
+    {
+      "path": "skills/library/drive/entry.md",
+      "source": "04-技能skills/library/drive/entry.md",
+      "sha256": "2b0f9c8b8752a3bad83a6029b4558ec17b600083d3504694266dc79f8f17ac3d"
+    },
+    {
+      "path": "skills/library/error_handling.md",
+      "source": "04-技能skills/library/error_handling.md",
+      "sha256": "432b2c6750a252559591f26a2afc51dfe3c84363f6b4d402949a43f8cb165735"
+    },
+    {
+      "path": "skills/library/link/entry.md",
+      "source": "04-技能skills/library/link/entry.md",
+      "sha256": "01e5d85514efc0f1bc9002e650b6093d5518e8550d12377a0b168418daea9a30"
+    },
+    {
+      "path": "skills/library/manage/entry.md",
+      "source": "04-技能skills/library/manage/entry.md",
+      "sha256": "52f048a2902de36c97b7f514036fef4c9b15932ce6d16727f9c9b612fb9d4a68"
+    },
+    {
+      "path": "skills/library/mutation.md",
+      "source": "04-技能skills/library/mutation.md",
+      "sha256": "0b702836ff5db05978e4416936774b4faa58f74fea00447b8e379eeea14fa8ed"
+    },
+    {
+      "path": "skills/library/page/beautify-flow.md",
+      "source": "04-技能skills/library/page/beautify-flow.md",
+      "sha256": "81cd4a4a4548e0982cf352fdb0fa215b672a7825e5cc94144286a760d241ce23"
+    },
+    {
+      "path": "skills/library/page/clone-flow.md",
+      "source": "04-技能skills/library/page/clone-flow.md",
+      "sha256": "cd6fbb5f01ab72ea9745e76906a5db621adc2e8f8a055dc08ecd58fce8ea0c95"
+    },
+    {
+      "path": "skills/library/page/data-page-flow.md",
+      "source": "04-技能skills/library/page/data-page-flow.md",
+      "sha256": "cebbf25cbcae85f6f5e32e5736aeb435fc1c3d4b204c68ad9bde8013c53ab450"
+    },
+    {
+      "path": "skills/library/page/database-sdk-contract.md",
+      "source": "04-技能skills/library/page/database-sdk-contract.md",
+      "sha256": "2dbc36bd7cb25f502d0760261d4f772e31dab192a41b42b41024805b7f44aa76"
+    },
+    {
+      "path": "skills/library/page/edit-flow.md",
+      "source": "04-技能skills/library/page/edit-flow.md",
+      "sha256": "aa8be2e5a11c615f5ba55eaad4a8f1c1c46492e06e8d905c533bd1f32a2d33d4"
+    },
+    {
+      "path": "skills/library/page/entry.md",
+      "source": "04-技能skills/library/page/entry.md",
+      "sha256": "514d4811e25e1e55f8bc8f189053bb32952ddc49c0108b97a5c19ac934bc7f3b"
+    },
+    {
+      "path": "skills/library/page/html-parse-spec.md",
+      "source": "04-技能skills/library/page/html-parse-spec.md",
+      "sha256": "d5707a6630f473900c34da96a21b82649853f50121f265084105f4753a154551"
+    },
+    {
+      "path": "skills/library/page/import-flow.md",
+      "source": "04-技能skills/library/page/import-flow.md",
+      "sha256": "c91505474dec4a048282194ff924ddab03ec3c4b2051c0a8146228259c8a6f46"
+    },
+    {
+      "path": "skills/library/page/md-to-html-flow.md",
+      "source": "04-技能skills/library/page/md-to-html-flow.md",
+      "sha256": "5173b28256fa8459f1b777d92aa69b57a50f76d82cccdaaa066232d58d7ae3ff"
+    },
+    {
+      "path": "skills/library/page/wbp-presentation-contract.md",
+      "source": "04-技能skills/library/page/wbp-presentation-contract.md",
+      "sha256": "7b436157407b4e3235a593559ccb7851c0575f7466302d896dee3cd4e67242f0"
+    },
+    {
+      "path": "skills/library/smh/entry.md",
+      "source": "04-技能skills/library/smh/entry.md",
+      "sha256": "0937b5d970cb550fc84e1e8da0eef6a349b44cd221438eac0ff2ff17a258fe2e"
+    },
+    {
+      "path": "skills/livestream-poster/SKILL.md",
+      "source": "04-技能skills/livestream-poster/SKILL.md",
+      "sha256": "c9f4a7cc8af28f3d43c47435ec6793da7f94f34802990b702cc0cbedc06b343d"
+    },
+    {
+      "path": "skills/livestream-poster/references/adaptive-sizing.md",
+      "source": "04-技能skills/livestream-poster/references/adaptive-sizing.md",
+      "sha256": "0cd2ab5b7a2ae2a3d53ab74be07d271a04f673157e8298f5ea5005cbd5d2087c"
+    },
+    {
+      "path": "skills/livestream-poster/references/person-size-control.md",
+      "source": "04-技能skills/livestream-poster/references/person-size-control.md",
+      "sha256": "76392a1ea5139a820027c20a56cd279b139e4d0d1a646b5aaf07ef4f4c1e87f9"
+    },
+    {
+      "path": "skills/livestream-poster/references/prompt-examples.md",
+      "source": "04-技能skills/livestream-poster/references/prompt-examples.md",
+      "sha256": "3bf285123815af6eee657fcaca07206c72d95054f2bbe6d1539497998fd1fee5"
+    },
+    {
+      "path": "skills/livestream-poster/references/render-and-compose.md",
+      "source": "04-技能skills/livestream-poster/references/render-and-compose.md",
+      "sha256": "2d821f237a62c00ad09190ec671c600a550ad413301d47b622a5b0e49d803f5f"
+    },
+    {
+      "path": "skills/livestream-poster/workflows/style-reference.md",
+      "source": "04-技能skills/livestream-poster/workflows/style-reference.md",
+      "sha256": "1de3628759dbfb4ceb8f9bc158897a51cd7ca947ed7c5897b3ab9c59670f443a"
+    },
+    {
+      "path": "skills/livestream-poster/workflows/style-selection.md",
+      "source": "04-技能skills/livestream-poster/workflows/style-selection.md",
+      "sha256": "63ddcabf1da25f0738485db875c3f555750c73cfbcdad9a299fb52b39d13f708"
+    },
+    {
+      "path": "skills/marketplace-skill-installer/SKILL.md",
+      "source": "04-技能skills/marketplace-skill-installer/SKILL.md",
+      "sha256": "1b0e7cfdf19dbba961930e12674d7f2a35595401b944e824d675cc3a6508802a"
+    },
+    {
+      "path": "skills/recommend-connectors/SKILL.md",
+      "source": "04-技能skills/recommend-connectors/SKILL.md",
+      "sha256": "d2a40c6d729bf85ff71d48c6e3c72b531fc5fe3e447473fe1e857d4aeefccee8"
+    },
+    {
+      "path": "skills/recommend-experts/SKILL.md",
+      "source": "04-技能skills/recommend-experts/SKILL.md",
+      "sha256": "0481a4d3f33507070e98e40f722c2db65c20c543611d1d0e0015ef52a52def17"
+    },
+    {
+      "path": "skills/sites/SKILL.md",
+      "source": "04-技能skills/sites/SKILL.md",
+      "sha256": "64a33b61f20a559b6b56ac690e5008061569633752ee0c295d3a06ed884c1d16"
+    },
+    {
+      "path": "skills/skill-creator/SKILL.md",
+      "source": "04-技能skills/skill-creator/SKILL.md",
+      "sha256": "13a63e5eb87f2215fb09a0af6238b08966708b202ef77b5c8666744028bbbed4"
+    },
+    {
+      "path": "skills/tencent-docs-routing/SKILL.md",
+      "source": "04-技能skills/tencent-docs-routing/SKILL.md",
+      "sha256": "88916af3af42a4d5ae3d4e98228ba8779d7e20e45c8f3754402d6f5c15aad7cf"
+    },
+    {
+      "path": "skills/tencent-local-office-edit/SKILL.md",
+      "source": "04-技能skills/tencent-local-office-edit/SKILL.md",
+      "sha256": "787615017dfad0826898c385622f8448572846aca7d6b8b60b70726e631f72e5"
+    },
+    {
+      "path": "skills/tencent-local-office-edit/doc.md",
+      "source": "04-技能skills/tencent-local-office-edit/doc.md",
+      "sha256": "4c6929506069c43c9750413bdd73520d9648219a4892230b7fd72daf14bcc8ea"
+    },
+    {
+      "path": "skills/tencent-local-office-edit/doc/table.md",
+      "source": "04-技能skills/tencent-local-office-edit/doc/table.md",
+      "sha256": "8b933c8b936d274764ef9dbc7d434c57a86253da4c4ddd73990bf06ac93d9bc3"
+    },
+    {
+      "path": "skills/tencent-local-office-edit/sheet.md",
+      "source": "04-技能skills/tencent-local-office-edit/sheet.md",
+      "sha256": "c64e4669f40eaf8f687ab84095fe6cd1a27af34bb784e98fcc2330aec310d787"
+    },
+    {
+      "path": "skills/tencent-local-office-edit/slide.md",
+      "source": "04-技能skills/tencent-local-office-edit/slide.md",
+      "sha256": "850df5bc490a60c3a898c5ec6eccfeefcdf4d9a91cbb4406f269eab1a5270936"
+    },
+    {
+      "path": "skills/wb-finance-skill/SKILL.md",
+      "source": "04-技能skills/wb-finance-skill/SKILL.md",
+      "sha256": "a0441f732c75c1e6db49a21e3a0f840e261172cdb2721c64d8c7bc04bb59c41e"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/abnormal-detection.md",
+      "source": "04-技能skills/wb-finance-skill/references/abnormal-detection.md",
+      "sha256": "6dcd3620fae78c0da28d26b65406dd3b5c96c499178c5bbe7150068fb0554b62"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/announcement-impact.md",
+      "source": "04-技能skills/wb-finance-skill/references/announcement-impact.md",
+      "sha256": "79144ffae894f9cf2fb4bcb55ea409cd7eaf0afb426a11fff0cdf1a215b78b3c"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/breakout-patterns.md",
+      "source": "04-技能skills/wb-finance-skill/references/breakout-patterns.md",
+      "sha256": "f5eb235669966b64fa202ec0d1aff5837b758a2e15b265e2b8ad84a37297a824"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/business-model.md",
+      "source": "04-技能skills/wb-finance-skill/references/business-model.md",
+      "sha256": "eaabf5cae44d16aae9ef404a076fbb2763f0b598d6cdd282aaac7e5d269667b9"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/crisis-event.md",
+      "source": "04-技能skills/wb-finance-skill/references/crisis-event.md",
+      "sha256": "2d1ddf68411a662e55d55cbe1231e862abc0d74d822f1bedf354c0490a3f2c93"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/crypto-derivatives.md",
+      "source": "04-技能skills/wb-finance-skill/references/crypto-derivatives.md",
+      "sha256": "12a71bba9fbf370c09e78424109c5d24940db66a977374553cd5dbed2bfa4262"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/daily-briefing.md",
+      "source": "04-技能skills/wb-finance-skill/references/daily-briefing.md",
+      "sha256": "9094bd83093742b45a35eeba5f050d09e119ce73f91f81281befad9a2025e17e"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/dividend-buyback.md",
+      "source": "04-技能skills/wb-finance-skill/references/dividend-buyback.md",
+      "sha256": "18964a5f19e6afbc0151e179b1905ef70d73ed97ac5fe85fdef1c778c5f1f928"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/earnings-preview.md",
+      "source": "04-技能skills/wb-finance-skill/references/earnings-preview.md",
+      "sha256": "52e742dcba5a088a9d482cdf3364fa22c634ff80278ef2a4c6ccff0f728d6366"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/earnings-review.md",
+      "source": "04-技能skills/wb-finance-skill/references/earnings-review.md",
+      "sha256": "2bbc827e0f1131553f9aa9478bef61eb6222e5af98105d0cef701e7365a7ff5c"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/event-catalyst.md",
+      "source": "04-技能skills/wb-finance-skill/references/event-catalyst.md",
+      "sha256": "164dc1ea606a68054d6284b59a1a912d1f057dcb9b252c4b8226dc24b9df13ca"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/fixed-income.md",
+      "source": "04-技能skills/wb-finance-skill/references/fixed-income.md",
+      "sha256": "b8ef772adbd5772c2dab84cb77ac28e8717ced00ed4a966f4dd492693d7e21f3"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/forex-commodity.md",
+      "source": "04-技能skills/wb-finance-skill/references/forex-commodity.md",
+      "sha256": "1e017d9b93cf66d5ffbb16ace11b68559770eff6e092d7560b0f42f4a1e812f0"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/fund-flow.md",
+      "source": "04-技能skills/wb-finance-skill/references/fund-flow.md",
+      "sha256": "af694a3de3baf6738ce32f1042f699474db78c5de1c6c85ed9ad050c44c45939"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/going-global.md",
+      "source": "04-技能skills/wb-finance-skill/references/going-global.md",
+      "sha256": "ba1c247dc3bd75d767cf63c5825b723093a8b810c2eb19315bae9eafc731944c"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/html-report-style.md",
+      "source": "04-技能skills/wb-finance-skill/references/html-report-style.md",
+      "sha256": "a2eb9fa77d1c5b2a4236243a872638e7f1ee7f9b3627338000780fd9e5e015d7"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/ib-deal-prep.md",
+      "source": "04-技能skills/wb-finance-skill/references/ib-deal-prep.md",
+      "sha256": "2ba85008db2a0d82289490b9815c7d9edd55e8ee331f50efaa1502196d30366d"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/ib-models.md",
+      "source": "04-技能skills/wb-finance-skill/references/ib-models.md",
+      "sha256": "55d68188f2b9077de898649f3c5621ec998212335b7e8fbb06749263b2bc8766"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/industry-chain.md",
+      "source": "04-技能skills/wb-finance-skill/references/industry-chain.md",
+      "sha256": "b9972a734be7d37af6ebf33ac8a55e92210b2c6c99e815949b0c3ed56218dbcd"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/institutional-holding.md",
+      "source": "04-技能skills/wb-finance-skill/references/institutional-holding.md",
+      "sha256": "8151986f96f01b7b0c51a1b477bfc7e52a7ac1e259ede6a5329f173761153c46"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/leader-game.md",
+      "source": "04-技能skills/wb-finance-skill/references/leader-game.md",
+      "sha256": "e644b76c2fa50879ba9f2d6a59bfc711f74e585b7351fe5ce5dec785374b84b0"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/macro-transmission.md",
+      "source": "04-技能skills/wb-finance-skill/references/macro-transmission.md",
+      "sha256": "3eac041e5621ac1667bf3990cbb569485efc3ebca805012a55c96819f5e76112"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/management-assessment.md",
+      "source": "04-技能skills/wb-finance-skill/references/management-assessment.md",
+      "sha256": "0e18022665374d8f3bcd931ccb6d097db50c133b3676bc070e9df87c7cf739d1"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/market-mainline.md",
+      "source": "04-技能skills/wb-finance-skill/references/market-mainline.md",
+      "sha256": "996f9d2f8f1fac34447a72ba6cfe502a00c9ba8e795278e448ceb6ca137f7c0a"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/market-state.md",
+      "source": "04-技能skills/wb-finance-skill/references/market-state.md",
+      "sha256": "84a84b3fdaee36be92813ffcc741e2804924765c19d8ea4c6708fe36fed55a75"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/moat-quality.md",
+      "source": "04-技能skills/wb-finance-skill/references/moat-quality.md",
+      "sha256": "4321c9d70416886319cf621a342ab2089b7df3cf6feb5cc88ca6a5ecf849f8e7"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/monitor-alert.md",
+      "source": "04-技能skills/wb-finance-skill/references/monitor-alert.md",
+      "sha256": "685c34c2c6911153a7e981888b743790b343163a43b60c26c0114caf586f3943"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/options-strategies.md",
+      "source": "04-技能skills/wb-finance-skill/references/options-strategies.md",
+      "sha256": "cc77a2258be7ab2c663f2b62ee7a6c71df0f87e88ae1c9233aa8b82a37e931d0"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/peer-comparison.md",
+      "source": "04-技能skills/wb-finance-skill/references/peer-comparison.md",
+      "sha256": "c23defe76aba269c9684088ed7323677a0f53b5a326407a82b22c1687fc522d9"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/policy-impact.md",
+      "source": "04-技能skills/wb-finance-skill/references/policy-impact.md",
+      "sha256": "f94bae028a9fad28a24cc26451124ab158cbeedf810fcd0c085a45528ba813f2"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/portfolio-checkup.md",
+      "source": "04-技能skills/wb-finance-skill/references/portfolio-checkup.md",
+      "sha256": "207c823d84f66cf699235e47c995f66e1e98863aa683f36a01dd1d09748f61ae"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/portfolio-optimization.md",
+      "source": "04-技能skills/wb-finance-skill/references/portfolio-optimization.md",
+      "sha256": "600b969ce0a337c3a34a29409ec287095c44290084e37d4208afb5d536d0384f"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/position-sizing.md",
+      "source": "04-技能skills/wb-finance-skill/references/position-sizing.md",
+      "sha256": "dfc48bd8af9f6128916648463c9394701f38bbcb4f2b49a15462aa2a8efe36c8"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/price-action-tools.md",
+      "source": "04-技能skills/wb-finance-skill/references/price-action-tools.md",
+      "sha256": "40d0379ec24b3614a405b2369faf1786b20a27fdbd2b8518c8f8e59623f4b42c"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/quality-growth.md",
+      "source": "04-技能skills/wb-finance-skill/references/quality-growth.md",
+      "sha256": "f778360e2f48dcf0697af974d9f1c4fddcde6950f4023c554d271e2c8a0aeb57"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/quant-factor-research.md",
+      "source": "04-技能skills/wb-finance-skill/references/quant-factor-research.md",
+      "sha256": "47ca13d18136ff186949412f292a04eb92b257af8990324341e2c0d7cb454fdd"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/risk-stress.md",
+      "source": "04-技能skills/wb-finance-skill/references/risk-stress.md",
+      "sha256": "285a2f334324a75fd9f61f87d98a388531149a51d77d694711a76cc41c50aaf4"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/sector-comparison.md",
+      "source": "04-技能skills/wb-finance-skill/references/sector-comparison.md",
+      "sha256": "ac8651ecbd606d6f24e6e2d415a74d36546ef75b112b6c3f900576134a07b3b7"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/stock-deep-research.md",
+      "source": "04-技能skills/wb-finance-skill/references/stock-deep-research.md",
+      "sha256": "f8c96db568ccf4c824a9d0812c56fde11e606e5c268e7647aef5ccf8ee1f28ba"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/stock-first-look.md",
+      "source": "04-技能skills/wb-finance-skill/references/stock-first-look.md",
+      "sha256": "85da32f97143e7220f59c3fb01c88ae967b95352c4811d9e3a7185e4c5621f43"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/stop-discipline.md",
+      "source": "04-技能skills/wb-finance-skill/references/stop-discipline.md",
+      "sha256": "a420cc3357eee62942b1a17eae30ba1fa665e1a0ff2d7d0f9c1ad47106a04a52"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/systematic-strategies.md",
+      "source": "04-技能skills/wb-finance-skill/references/systematic-strategies.md",
+      "sha256": "9b3f15fe4e42c52a0b28779c8c99caa84c12a424ef3d12a7da4a7c17c77d6abd"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/tdx-mcp-quick-reference.md",
+      "source": "04-技能skills/wb-finance-skill/references/tdx-mcp-quick-reference.md",
+      "sha256": "78b771904c9b73e1867fa245220fe8e898abebe0befd74ae20b78f9db44c2070"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/theme-lifecycle.md",
+      "source": "04-技能skills/wb-finance-skill/references/theme-lifecycle.md",
+      "sha256": "c5cce52e6017cd249fc85cdaa4cfad23bd43b77d4b59181098d7576a1efc375a"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/trade-plan.md",
+      "source": "04-技能skills/wb-finance-skill/references/trade-plan.md",
+      "sha256": "add0ab8ff30fb2b605bf2597e9eebee2bdec084da85b5fdb8390b1feadaf54bc"
+    },
+    {
+      "path": "skills/wb-finance-skill/references/valuation-pricing.md",
+      "source": "04-技能skills/wb-finance-skill/references/valuation-pricing.md",
+      "sha256": "bc81192a58c4d215f105541f2aa54b70085a872bdc9f9a61923a3e03df730f0e"
+    },
+    {
+      "path": "product/agent-explore-instructions.tpl",
+      "source": "05-product模板-prompts/agent-explore-instructions.tpl",
+      "sha256": "55ea4db834f8c2af8da0613c9d32c9226ad12b363eb9d62cd5368a560f998a70"
+    },
+    {
+      "path": "product/agent-instructions.tpl",
+      "source": "05-product模板-prompts/agent-instructions.tpl",
+      "sha256": "ed5814acd694fbab00a57ac48d9449bc1b922e5dbb7c33e1dd76cb9b339b93cb"
+    },
+    {
+      "path": "product/agent-plan-instructions.tpl",
+      "source": "05-product模板-prompts/agent-plan-instructions.tpl",
+      "sha256": "cf7b806b2d784907c678d6186734da12975be16a554de84365b831d5ba856635"
+    },
+    {
+      "path": "product/agent-statusline-instructions.tpl",
+      "source": "05-product模板-prompts/agent-statusline-instructions.tpl",
+      "sha256": "f7cc355566a54dfc1b8a15f97cf72ec047e6dbade503d30ee1537d83649d4efd"
+    },
+    {
+      "path": "product/auto-mode-classifier-instructions.tpl",
+      "source": "05-product模板-prompts/auto-mode-classifier-instructions.tpl",
+      "sha256": "cd372efb844d3c37e57d204b8458073435130e258b3981624a11c7e029bc9cfa"
+    },
+    {
+      "path": "product/auto-mode-critique-instructions.tpl",
+      "source": "05-product模板-prompts/auto-mode-critique-instructions.tpl",
+      "sha256": "4dd956a1a499f54bb538a395f3a5c896fdd76c02c51741126909cf58784f3d82"
+    },
+    {
+      "path": "product/base-agent-instructions.tpl",
+      "source": "05-product模板-prompts/base-agent-instructions.tpl",
+      "sha256": "57e9a9699caef9892fb540d0e257c21145087f9161e7e163064652b3fc1a5699"
+    },
+    {
+      "path": "product/cli-agent-prompt.tpl",
+      "source": "05-product模板-prompts/cli-agent-prompt.tpl",
+      "sha256": "79e2d7556f94452e23e3a0fa11f655ba2dcb7bf131b732616124c2e319e4e999"
+    },
+    {
+      "path": "product/cli-output-style-description.tpl",
+      "source": "05-product模板-prompts/cli-output-style-description.tpl",
+      "sha256": "139f6a090aa1b11a34d435f135506f45a5281ba0d19a25cd65753fc9cb406735"
+    },
+    {
+      "path": "product/code-review-trigger-reminder.tpl",
+      "source": "05-product模板-prompts/code-review-trigger-reminder.tpl",
+      "sha256": "82f63b9ac6a87ded05f40ba9f87ab8db4f59fb104f1b288acec67dfd6e291285"
+    },
+    {
+      "path": "product/command-commit-prompt.tpl",
+      "source": "05-product模板-prompts/command-commit-prompt.tpl",
+      "sha256": "3c1c44280493ceab0dfecad52b52b1ce0170709dfa3af11978a677645d323b7c"
+    },
+    {
+      "path": "product/command-commit-push-pr-prompt.tpl",
+      "source": "05-product模板-prompts/command-commit-push-pr-prompt.tpl",
+      "sha256": "be5909e6d524a0229899a21825d4580eef6622ab259c11037a5d3e9cba2a13c6"
+    },
+    {
+      "path": "product/command-insights-prompt.tpl",
+      "source": "05-product模板-prompts/command-insights-prompt.tpl",
+      "sha256": "5446f3c3550df81384da7a6ca22f4f72dcdd11e585a6a65648cb5b61ee59650a"
+    },
+    {
+      "path": "product/command-security-review-prompt.tpl",
+      "source": "05-product模板-prompts/command-security-review-prompt.tpl",
+      "sha256": "709d457ba3b2ed19f30daa5d7ecf90028a4021afb018cf044f83899a569a9bbb"
+    },
+    {
+      "path": "product/command-statusline-prompt.tpl",
+      "source": "05-product模板-prompts/command-statusline-prompt.tpl",
+      "sha256": "9e17d79f8a37961d278fd4d4730b6c63a462539f1f23d1e272f881267303cfa7"
+    },
+    {
+      "path": "product/compact-agent-prompt.tpl",
+      "source": "05-product模板-prompts/compact-agent-prompt.tpl",
+      "sha256": "a2bf0c059d7513dd999d549eb25e59aa2d59ed18886c01010072b11c97355644"
+    },
+    {
+      "path": "product/compact-prompt.tpl",
+      "source": "05-product模板-prompts/compact-prompt.tpl",
+      "sha256": "fc9774518cea7a224d23aef028e885d3c6adc660f723b8a6df3fe0936363b497"
+    },
+    {
+      "path": "product/content-analyzer-agent-instructions.tpl",
+      "source": "05-product模板-prompts/content-analyzer-agent-instructions.tpl",
+      "sha256": "09f74907a2a2e90780c5562f8b9ff151f40964515210742c5e3775d24e8d7c87"
+    },
+    {
+      "path": "product/content-analyzer-prompt.tpl",
+      "source": "05-product模板-prompts/content-analyzer-prompt.tpl",
+      "sha256": "fc1ccece84a707972f85c64e76e5da6c90e058d26796d8d6be04404aa642deb1"
+    },
+    {
+      "path": "product/context-summary-agent-prompt.tpl",
+      "source": "05-product模板-prompts/context-summary-agent-prompt.tpl",
+      "sha256": "a2bf0c059d7513dd999d549eb25e59aa2d59ed18886c01010072b11c97355644"
+    },
+    {
+      "path": "product/context-summary-max-token-prompt.tpl",
+      "source": "05-product模板-prompts/context-summary-max-token-prompt.tpl",
+      "sha256": "4cd9e1fc88bd83408ca02695e20a4e38b3a8ae38001a4db00846ca39086af311"
+    },
+    {
+      "path": "product/context-summary-prompt.tpl",
+      "source": "05-product模板-prompts/context-summary-prompt.tpl",
+      "sha256": "f74f049bab1f177121ca13cea173de7c9fabaee49ac46be477d0cf34fd104f8a"
+    },
+    {
+      "path": "product/deep-research-pending-reminder.tpl",
+      "source": "05-product模板-prompts/deep-research-pending-reminder.tpl",
+      "sha256": "a749d3f2f87d5e42daf75bf958ae720615c3ef693833f580cd58abdbbaf3d910"
+    },
+    {
+      "path": "product/deep-research-trigger-reminder.tpl",
+      "source": "05-product模板-prompts/deep-research-trigger-reminder.tpl",
+      "sha256": "9729bb2127736b4b291f2f2e2e230ce44b5a25f072851689e35f5f0a376165f8"
+    },
+    {
+      "path": "product/deep-research-user-prompt.tpl",
+      "source": "05-product模板-prompts/deep-research-user-prompt.tpl",
+      "sha256": "ccfeed32c48da2e9b93d17a7773d573de04151b09c644a1f941784dacbff5a9f"
+    },
+    {
+      "path": "product/enhance-prompt-system-prompt.tpl",
+      "source": "05-product模板-prompts/enhance-prompt-system-prompt.tpl",
+      "sha256": "ad99f0e3769fa2f2ba6287a9cdb81d412a6db9f7d8ffd2b9b360f62d2f810066"
+    },
+    {
+      "path": "product/handoff-summary-agent-prompt.tpl",
+      "source": "05-product模板-prompts/handoff-summary-agent-prompt.tpl",
+      "sha256": "c7505e82ff0cb278507add4707a7774b7c648217e645aa511e4f67319f817502"
+    },
+    {
+      "path": "product/init-prompt.tpl",
+      "source": "05-product模板-prompts/init-prompt.tpl",
+      "sha256": "e4d38cd7c82a692f088ebeec199cdd53b6f25d565c5ba177ad8ab3430529466b"
+    },
+    {
+      "path": "product/insights-facet-at-a-glance.tpl",
+      "source": "05-product模板-prompts/insights-facet-at-a-glance.tpl",
+      "sha256": "4842ec6d655dcf073476700069f722b2826829fa3eeca73a7854e2fba73ce54e"
+    },
+    {
+      "path": "product/insights-facet-friction.tpl",
+      "source": "05-product模板-prompts/insights-facet-friction.tpl",
+      "sha256": "fee29f02e84a687192c499f48f4bd024ade39e3668c3ab543f12c03304b57276"
+    },
+    {
+      "path": "product/insights-facet-interaction-style.tpl",
+      "source": "05-product模板-prompts/insights-facet-interaction-style.tpl",
+      "sha256": "7408299ac1942e0eed88d142757f4ca7b5a9b806bafb3a9b5df5fc2c8a384f86"
+    },
+    {
+      "path": "product/insights-facet-memorable-moment.tpl",
+      "source": "05-product模板-prompts/insights-facet-memorable-moment.tpl",
+      "sha256": "ae565ae5880b5206a7e2dc12354c192addd1d0423866cb1e4ad607d65bb7ee27"
+    },
+    {
+      "path": "product/insights-facet-opportunities.tpl",
+      "source": "05-product模板-prompts/insights-facet-opportunities.tpl",
+      "sha256": "7cf0df637cd82a63518aed28136d154eca3fa9bac2c015e6201e5ded8ed782d6"
+    },
+    {
+      "path": "product/insights-facet-project-areas.tpl",
+      "source": "05-product模板-prompts/insights-facet-project-areas.tpl",
+      "sha256": "38b048517c0edc80cc0e4c05f49c555e4f14f20d2222b3cec748a83c7e7db5a9"
+    },
+    {
+      "path": "product/insights-facet-suggestions.tpl",
+      "source": "05-product模板-prompts/insights-facet-suggestions.tpl",
+      "sha256": "4cd508564075a5dbc96134213752af9b80f83bcda227ad4cf0ec19f7bc282eb7"
+    },
+    {
+      "path": "product/insights-facet-what-works.tpl",
+      "source": "05-product模板-prompts/insights-facet-what-works.tpl",
+      "sha256": "838166e6ecbde567ca202601040ceda2369fbbf23f9e4cc213852528fe0e7fe6"
+    },
+    {
+      "path": "product/insights-session-facet.tpl",
+      "source": "05-product模板-prompts/insights-session-facet.tpl",
+      "sha256": "153172b8756e5fb12b8838fbd92be5d8ea38e52d8c7c8664c8dbd295c492d8c5"
+    },
+    {
+      "path": "product/memory-selector-instructions.tpl",
+      "source": "05-product模板-prompts/memory-selector-instructions.tpl",
+      "sha256": "33468110a297020f8552ca1a0b0e4614d9d70c758cafadf84fa8150bb4281276"
+    },
+    {
+      "path": "product/output-style-explanatory.tpl",
+      "source": "05-product模板-prompts/output-style-explanatory.tpl",
+      "sha256": "5ce80d5e8c3b1c3a50633f2960755bcb0540621bcfebad30a063c2d505733f28"
+    },
+    {
+      "path": "product/output-style-learning.tpl",
+      "source": "05-product模板-prompts/output-style-learning.tpl",
+      "sha256": "4be28bb73aaf7f14ab2a496ef81394c69f104e420e2e62805b3131c8ca963b35"
+    },
+    {
+      "path": "product/prompt-hook-evaluator-instructions.tpl",
+      "source": "05-product模板-prompts/prompt-hook-evaluator-instructions.tpl",
+      "sha256": "b4bea76270d97d25e7ad6755df76e489091df6e5797539c82ae006f74b405f2f"
+    },
+    {
+      "path": "product/prompt-suggestion-instructions.tpl",
+      "source": "05-product模板-prompts/prompt-suggestion-instructions.tpl",
+      "sha256": "33d94282dcad62ba3c542f7a5c4c75a8cfbaad78cdfa8e5fa620ec23d592059b"
+    },
+    {
+      "path": "product/pulse-agent-prompt.tpl",
+      "source": "05-product模板-prompts/pulse-agent-prompt.tpl",
+      "sha256": "670a5df42176fcc0d67b43a83d7cff6922c33f0c2147317d2db348a9c7da6df5"
+    },
+    {
+      "path": "product/simplify-trigger-reminder.tpl",
+      "source": "05-product模板-prompts/simplify-trigger-reminder.tpl",
+      "sha256": "2f38a70c079a7e6879ad4009dcd8c5f56e9bd0b7ca64b17c78d885ff5d27f6bd"
+    },
+    {
+      "path": "product/skill-loop-prompt.tpl",
+      "source": "05-product模板-prompts/skill-loop-prompt.tpl",
+      "sha256": "64ef29dbf94bee77cb72429adf51cafb419110e4bdbaf4e286707f6a1ae56abc"
+    },
+    {
+      "path": "product/summary-generator-instructions.tpl",
+      "source": "05-product模板-prompts/summary-generator-instructions.tpl",
+      "sha256": "fe37379e20c77b7f9d344bf11ab2860444f8862dd95664ce4a4cbc84034f8246"
+    },
+    {
+      "path": "product/system-reminder-delegate.tpl",
+      "source": "05-product模板-prompts/system-reminder-delegate.tpl",
+      "sha256": "4cd5818d98a48642c1a6b72ed5544b5afd5d1b07e6b5970dcd9396f630a8bced"
+    },
+    {
+      "path": "product/system-reminder-md.tpl",
+      "source": "05-product模板-prompts/system-reminder-md.tpl",
+      "sha256": "f3bb9f639c375e6e10b31c62f48cd750139f42e00812e2938661d9f64cfbb673"
+    },
+    {
+      "path": "product/system-reminder-planmode.tpl",
+      "source": "05-product模板-prompts/system-reminder-planmode.tpl",
+      "sha256": "198739422b7bbfbde1c7e99447b207db2b68e0702476054228b60bf52faf5f67"
+    },
+    {
+      "path": "product/system-reminder-todo-list.tpl",
+      "source": "05-product模板-prompts/system-reminder-todo-list.tpl",
+      "sha256": "ea8166734328e07a282916bd81260344a95f6f558b427a4917b0ec6a9da65f6b"
+    },
+    {
+      "path": "product/team-lead-prompt.tpl",
+      "source": "05-product模板-prompts/team-lead-prompt.tpl",
+      "sha256": "a1359f2990cc26d166877f2cc53f2872eba76282ad484c92b45304704bd77b78"
+    },
+    {
+      "path": "product/team-sys-prompt.tpl",
+      "source": "05-product模板-prompts/team-sys-prompt.tpl",
+      "sha256": "c0afb4147686249c630021febfa508c48538ef8cad8b6a82538efc060ae799e2"
+    },
+    {
+      "path": "product/terminal-title-generator-instructions.tpl",
+      "source": "05-product模板-prompts/terminal-title-generator-instructions.tpl",
+      "sha256": "084856b75daa5b1f8e8f197c02f4072d432c4890af0803f285334b2a29c516e2"
+    },
+    {
+      "path": "product/tool-agent-description.tpl",
+      "source": "05-product模板-prompts/tool-agent-description.tpl",
+      "sha256": "2418d58f21b8ddca74e6d54733d29ed6dcdb7060d7de685d0a870de6b6fb931b"
+    },
+    {
+      "path": "product/tool-artifact-description.tpl",
+      "source": "05-product模板-prompts/tool-artifact-description.tpl",
+      "sha256": "5909b93e86f34e76fd7dc7e3e7966945d92aa08dba6bc1b9b8606e9addecf79f"
+    },
+    {
+      "path": "product/tool-artifactcontrol-description.tpl",
+      "source": "05-product模板-prompts/tool-artifactcontrol-description.tpl",
+      "sha256": "b4f7e058bf596c161129dc3c6989ffd71e5bad41d15d4e2d91fa4fff43cae328"
+    },
+    {
+      "path": "product/tool-ask-user-question-description.tpl",
+      "source": "05-product模板-prompts/tool-ask-user-question-description.tpl",
+      "sha256": "9190adf6c52ab22d48d3e8e0e40036fb9a869d318da84cde892f4ea6ec21c9e8"
+    },
+    {
+      "path": "product/tool-bash-description.tpl",
+      "source": "05-product模板-prompts/tool-bash-description.tpl",
+      "sha256": "1c36756d10e705d2e98b6bd92ed244d6e0d38a8e2e6ad98ff202646901df865f"
+    },
+    {
+      "path": "product/tool-bashoutput-description.tpl",
+      "source": "05-product模板-prompts/tool-bashoutput-description.tpl",
+      "sha256": "2a243deb427f9f76056d24f28cfc98c8d844ac357b80010d4c0a7e8e1d9388a8"
+    },
+    {
+      "path": "product/tool-computeruse-description.tpl",
+      "source": "05-product模板-prompts/tool-computeruse-description.tpl",
+      "sha256": "3e20a6b02ce1bb32cba024fbdd043cb56bca1ee81619d374d7fdf56092ad7087"
+    },
+    {
+      "path": "product/tool-croncreate-description.tpl",
+      "source": "05-product模板-prompts/tool-croncreate-description.tpl",
+      "sha256": "2b59e32051b8a9e86b8d9e5d9a13353218eae428779a26cd027c165946f2a0f6"
+    },
+    {
+      "path": "product/tool-crondelete-description.tpl",
+      "source": "05-product模板-prompts/tool-crondelete-description.tpl",
+      "sha256": "504fc8eedfc1dadaf6125a999b087012e7933be71a313dc2e9b89359fd7f603b"
+    },
+    {
+      "path": "product/tool-cronlist-description.tpl",
+      "source": "05-product模板-prompts/tool-cronlist-description.tpl",
+      "sha256": "f06be7da81adc316064ca4eb977f5ed4bb9fabeadaec19ad1dc3615446b82bca"
+    },
+    {
+      "path": "product/tool-deferexecutetool-description.tpl",
+      "source": "05-product模板-prompts/tool-deferexecutetool-description.tpl",
+      "sha256": "295c2e12dbcd2e2158cc287e87e325dfd7202ad874201c1f34351d0a5ca53f9a"
+    },
+    {
+      "path": "product/tool-delegatetool-description.tpl",
+      "source": "05-product模板-prompts/tool-delegatetool-description.tpl",
+      "sha256": "7b9aa1ca9ff6aae1109abd886443434af8dd4b3e25e724103957ad2499422d18"
+    },
+    {
+      "path": "product/tool-describetool-description.tpl",
+      "source": "05-product模板-prompts/tool-describetool-description.tpl",
+      "sha256": "12e8c1195f9dc180cb1657bf25a096e6e33e12ffaabd3698e924d8bee6b3cacd"
+    },
+    {
+      "path": "product/tool-edit-description.tpl",
+      "source": "05-product模板-prompts/tool-edit-description.tpl",
+      "sha256": "559ca11e883e1b8a1f9e56c0bb78068a9fd01e4175b07485f992d5e9f6626f27"
+    },
+    {
+      "path": "product/tool-enterplanmode-description.tpl",
+      "source": "05-product模板-prompts/tool-enterplanmode-description.tpl",
+      "sha256": "8fb6fbdecef6fb00eedcded18ae6f2adfe27c211728c6161af4606f232258619"
+    },
+    {
+      "path": "product/tool-enterplanmode-rejected.tpl",
+      "source": "05-product模板-prompts/tool-enterplanmode-rejected.tpl",
+      "sha256": "b77ef0d783229ee91352c88d9e46b9fd99051701ddf716e2063e8de4141a7fd4"
+    },
+    {
+      "path": "product/tool-enterplanmode-result.tpl",
+      "source": "05-product模板-prompts/tool-enterplanmode-result.tpl",
+      "sha256": "4db57e567c7a56e083ed3fdfefe563aa28dd9ddb4ce36bc1556552836a1810c6"
+    },
+    {
+      "path": "product/tool-enterworktree-description.tpl",
+      "source": "05-product模板-prompts/tool-enterworktree-description.tpl",
+      "sha256": "e12c9c9691f429415ab0a7fce24034ea9990d8bd9ee8cbf8c98625e3e5b7682f"
+    },
+    {
+      "path": "product/tool-exit-planmode-description.tpl",
+      "source": "05-product模板-prompts/tool-exit-planmode-description.tpl",
+      "sha256": "0e2dff67d2e7cee50dde2a192b8b4293d0f078c62614a702b154c37c1d7bfab3"
+    },
+    {
+      "path": "product/tool-exit-planmode-exited.tpl",
+      "source": "05-product模板-prompts/tool-exit-planmode-exited.tpl",
+      "sha256": "b84d2d002230a30038e83281d21502a61c4e99c84a09bb449342f20e46fccb13"
+    },
+    {
+      "path": "product/tool-exit-planmode-rejected.tpl",
+      "source": "05-product模板-prompts/tool-exit-planmode-rejected.tpl",
+      "sha256": "d9d3801134112b9185db4018474de31ac661f14bbcc93bdd980e97c11cf13eaf"
+    },
+    {
+      "path": "product/tool-exit-planmode-resolve.tpl",
+      "source": "05-product模板-prompts/tool-exit-planmode-resolve.tpl",
+      "sha256": "9538cf84136bc810c7b6f23da2c9752955259c2c249554066fca276b3b502192"
+    },
+    {
+      "path": "product/tool-glob-description.tpl",
+      "source": "05-product模板-prompts/tool-glob-description.tpl",
+      "sha256": "80d1fcac9a5299323c25d23191f534eb8c2ac2cfeeed19f34c8b3b2ae0c32f05"
+    },
+    {
+      "path": "product/tool-grep-description.tpl",
+      "source": "05-product模板-prompts/tool-grep-description.tpl",
+      "sha256": "0e4b0fba3c4f5d62e5e285fffe98afa2675b0fafdf042a4d16634d0ae6432074"
+    },
+    {
+      "path": "product/tool-imageedit-description.tpl",
+      "source": "05-product模板-prompts/tool-imageedit-description.tpl",
+      "sha256": "76b45005a26b334978a6ed3662950bac53c889f561105e16b784dce7ab619ada"
+    },
+    {
+      "path": "product/tool-imagegen-description.tpl",
+      "source": "05-product模板-prompts/tool-imagegen-description.tpl",
+      "sha256": "507ee9cd0306fd13798e728e13c73754226d9eff1288efb5b3ce1bf722151e7f"
+    },
+    {
+      "path": "product/tool-killshell-description.tpl",
+      "source": "05-product模板-prompts/tool-killshell-description.tpl",
+      "sha256": "5a456505eaafb23093bcd5c869306abca2b43a2ac9e68caa6ea61b24d0515991"
+    },
+    {
+      "path": "product/tool-listmcpresources-description.tpl",
+      "source": "05-product模板-prompts/tool-listmcpresources-description.tpl",
+      "sha256": "e13f04557881c2ba614314994f5a7cd02c945cdf754b55e3e3b0175e5f62e215"
+    },
+    {
+      "path": "product/tool-ls-description.tpl",
+      "source": "05-product模板-prompts/tool-ls-description.tpl",
+      "sha256": "ec42aaa7db82b2e65b92320845c45e759a56bffb5dd17f89eb51e9a8d3e51819"
+    },
+    {
+      "path": "product/tool-lsp-description.tpl",
+      "source": "05-product模板-prompts/tool-lsp-description.tpl",
+      "sha256": "367005e8490d561e97c3f935189dcf3ef8b11e044f171f38029e47490fd10dc8"
+    },
+    {
+      "path": "product/tool-multiedit-description.tpl",
+      "source": "05-product模板-prompts/tool-multiedit-description.tpl",
+      "sha256": "263d07c1109e3178b37b91e4866cb8df501b6351e6d21595b728adec66165c2e"
+    },
+    {
+      "path": "product/tool-notebookedit-description.tpl",
+      "source": "05-product模板-prompts/tool-notebookedit-description.tpl",
+      "sha256": "cb81fe891d193a7c88648a65f4a90fed4ce35696d959f384b1ab575c647a5d57"
+    },
+    {
+      "path": "product/tool-notebookread-description.tpl",
+      "source": "05-product模板-prompts/tool-notebookread-description.tpl",
+      "sha256": "0a5e9354aaa6ec4d38d1c805be187cfc531b19a041ded63461ce51d93fa95bfe"
+    },
+    {
+      "path": "product/tool-powershell-description.tpl",
+      "source": "05-product模板-prompts/tool-powershell-description.tpl",
+      "sha256": "d26f71a55b66e122030c344760868fc527b075400170270271246bd4500e4ddd"
+    },
+    {
+      "path": "product/tool-read-description.tpl",
+      "source": "05-product模板-prompts/tool-read-description.tpl",
+      "sha256": "3df0e796835acd3fa683075fda5590468e98805b70db2f0207b4502e4f3d29c8"
+    },
+    {
+      "path": "product/tool-readmcpresource-description.tpl",
+      "source": "05-product模板-prompts/tool-readmcpresource-description.tpl",
+      "sha256": "2ee8155a316b67eab4f67c5a5fcef0dacc2c4eb3f0bdc820409d496489c5cfdc"
+    },
+    {
+      "path": "product/tool-repl-description.tpl",
+      "source": "05-product模板-prompts/tool-repl-description.tpl",
+      "sha256": "7ca20c907872eb2f93d4a3add75307939b98ac439c9c660bcc89c07e09015394"
+    },
+    {
+      "path": "product/tool-sendmessage-description.tpl",
+      "source": "05-product模板-prompts/tool-sendmessage-description.tpl",
+      "sha256": "b0d3c0b7d2fd897ea0186a2d65e3661043d59ebf6c68e0e8eb54da1d1de70070"
+    },
+    {
+      "path": "product/tool-skill-description.tpl",
+      "source": "05-product模板-prompts/tool-skill-description.tpl",
+      "sha256": "7eda5f36d59d006f0637c22e2dc97754ea97890ea804c7255249850733cd3bb2"
+    },
+    {
+      "path": "product/tool-skillmanage-description.tpl",
+      "source": "05-product模板-prompts/tool-skillmanage-description.tpl",
+      "sha256": "d89a61feea8cb4562706e8ee6a1b11d4c31a6c202f63a80952d39adf14ca431d"
+    },
+    {
+      "path": "product/tool-slashcommand-description.tpl",
+      "source": "05-product模板-prompts/tool-slashcommand-description.tpl",
+      "sha256": "b22e40b88d901db3933ed691638c694c53696cfd6ae6ccd13c722fb27ad6151f"
+    },
+    {
+      "path": "product/tool-structuredoutput-description.tpl",
+      "source": "05-product模板-prompts/tool-structuredoutput-description.tpl",
+      "sha256": "9800bd9ea5fbad07d46dd69f3c9aacde1f49536de8992e9fc32d6c7b77330e30"
+    },
+    {
+      "path": "product/tool-taskcreate-description.tpl",
+      "source": "05-product模板-prompts/tool-taskcreate-description.tpl",
+      "sha256": "e0090de284ce6e3e63502a86e151bfd71ffd6d718c06df56836d5c17deda9ea9"
+    },
+    {
+      "path": "product/tool-taskget-description.tpl",
+      "source": "05-product模板-prompts/tool-taskget-description.tpl",
+      "sha256": "0da71a3fddc316020306449c20f17b09a82ce81c3447c8bc6ea1959b3c73bca4"
+    },
+    {
+      "path": "product/tool-tasklist-description.tpl",
+      "source": "05-product模板-prompts/tool-tasklist-description.tpl",
+      "sha256": "36be6056a5aa738246f75718069ac70548af7576179b280c810f89658c344e50"
+    },
+    {
+      "path": "product/tool-taskoutput-description.tpl",
+      "source": "05-product模板-prompts/tool-taskoutput-description.tpl",
+      "sha256": "63a428ccdcac039fc32f774719a6a454bcc2ec80e37d41423316d74bdaf028ad"
+    },
+    {
+      "path": "product/tool-taskstop-description.tpl",
+      "source": "05-product模板-prompts/tool-taskstop-description.tpl",
+      "sha256": "21347e803764cb7656a6aa16c0c52fead0528686e1ac8c5e57e38e346102f2bc"
+    },
+    {
+      "path": "product/tool-taskupdate-description.tpl",
+      "source": "05-product模板-prompts/tool-taskupdate-description.tpl",
+      "sha256": "402f7057b4ee97058e47844ba1b0e8847d3bb7772911607a405a5e2bde80cee1"
+    },
+    {
+      "path": "product/tool-teamcreate-description.tpl",
+      "source": "05-product模板-prompts/tool-teamcreate-description.tpl",
+      "sha256": "9f79c901c49fc2ae853194dd5da36aa42d5f4389eba83fc0d96162d781d55777"
+    },
+    {
+      "path": "product/tool-teamdelete-description.tpl",
+      "source": "05-product模板-prompts/tool-teamdelete-description.tpl",
+      "sha256": "b7912a213fe3abfc3e8387f9652cc4c7fb1bf038f353b5a6f7131a6df0fb7c2a"
+    },
+    {
+      "path": "product/tool-todowrite-description.tpl",
+      "source": "05-product模板-prompts/tool-todowrite-description.tpl",
+      "sha256": "1ae6ff1727f3826263d028959c1cec886fa14d7a7a4b794f0da9af81a85cd92f"
+    },
+    {
+      "path": "product/tool-todowrite-planmode-result.tpl",
+      "source": "05-product模板-prompts/tool-todowrite-planmode-result.tpl",
+      "sha256": "ae67b803c1667fad01b7969fd661aba99cb3854424f54da9909c00a97cdae9e9"
+    },
+    {
+      "path": "product/tool-toolsearch-description.tpl",
+      "source": "05-product模板-prompts/tool-toolsearch-description.tpl",
+      "sha256": "1221e30c62f4666435ec3b0ecda2b13cba618f659e29ef6c3b13df8140f325ad"
+    },
+    {
+      "path": "product/tool-videogen-description.tpl",
+      "source": "05-product模板-prompts/tool-videogen-description.tpl",
+      "sha256": "4d7b2f0babe2d8979bdc63b912b3fb2ea2c8e0886139f6a867bf63ceb499e6ce"
+    },
+    {
+      "path": "product/tool-waitformcpservers-description.tpl",
+      "source": "05-product模板-prompts/tool-waitformcpservers-description.tpl",
+      "sha256": "de025d77c9ca4dcf8d9133ae583d16f19aeb1138dba60d35f0e208dc3ce27941"
+    },
+    {
+      "path": "product/tool-webfetch-description.tpl",
+      "source": "05-product模板-prompts/tool-webfetch-description.tpl",
+      "sha256": "c4ccd7751d9104b8348fa305e338457fb0a5333f0ecee16f23e3628fff2ad439"
+    },
+    {
+      "path": "product/tool-websearch-description.tpl",
+      "source": "05-product模板-prompts/tool-websearch-description.tpl",
+      "sha256": "32a58b743ff5badd18c68d11f951c5f17734f646aa29d7914da2d0168a226575"
+    },
+    {
+      "path": "product/tool-write-description.tpl",
+      "source": "05-product模板-prompts/tool-write-description.tpl",
+      "sha256": "30d61766b02688b7747edf9bdb61cdaced227b62d2708fa3fe8d547f6f637038"
+    },
+    {
+      "path": "product/verify-trigger-reminder.tpl",
+      "source": "05-product模板-prompts/verify-trigger-reminder.tpl",
+      "sha256": "1e4e0d5efba53c4fb75ae83d3e899fbf74fc744ecabc2056618b4382d330c3c5"
+    },
+    {
+      "path": "product/workflow-keyword-reminder.tpl",
+      "source": "05-product模板-prompts/workflow-keyword-reminder.tpl",
+      "sha256": "a5ae756a7b988bb5da0d50cf750a4da204d158890958fa9d6331e86f73c14911"
+    },
+    {
+      "path": "product/workflow-subagent-system-preamble.tpl",
+      "source": "05-product模板-prompts/workflow-subagent-system-preamble.tpl",
+      "sha256": "c6138e886855f84386c7f6c324a3939e1b87f921967197da74c7e13b74385122"
+    },
+    {
+      "path": "product/workflow-tool-description.tpl",
+      "source": "05-product模板-prompts/workflow-tool-description.tpl",
+      "sha256": "da8405021e5b7eba302f5bddf340e2f96b4d83cde3b968a773b63029603269a0"
+    },
+    {
+      "path": "product/workflow-ultra-effort-active.tpl",
+      "source": "05-product模板-prompts/workflow-ultra-effort-active.tpl",
+      "sha256": "95fbbced686127db891987167cb179b663fccd02c07268c62936813e8763829c"
+    },
+    {
+      "path": "product/workflow-ultra-effort-enter.tpl",
+      "source": "05-product模板-prompts/workflow-ultra-effort-enter.tpl",
+      "sha256": "402a53cdf3986e00951e44b1518f4c2236da6e5b31d9aab6d28513fec2513fde"
+    },
+    {
+      "path": "product/workflow-ultra-effort-exit.tpl",
+      "source": "05-product模板-prompts/workflow-ultra-effort-exit.tpl",
+      "sha256": "2f9038e6437abfcfd883c295736a6e18512dd882aba9e618b0d0920319f569c0"
+    },
+    {
+      "path": "agents/Explore.md",
+      "source": "06-内置子代理-agents/Explore.md",
+      "sha256": "d921516cee040f2fca04a5a158808423acaac476ada5729f56c87a06a51d10e7"
+    },
+    {
+      "path": "agents/Plan.md",
+      "source": "06-内置子代理-agents/Plan.md",
+      "sha256": "d0b0ce6b0ce7f740d67c3b42b7f101a18c475abaec254f0d0d86d7e3ef055208"
+    },
+    {
+      "path": "agents/agentInstructions.md",
+      "source": "06-内置子代理-agents/agentInstructions.md",
+      "sha256": "283490a12c2f93450e1a7850e76818d85cd6ec361a961bcacd323133cbb20c14"
+    },
+    {
+      "path": "agents/autoModeClassifier.md",
+      "source": "06-内置子代理-agents/autoModeClassifier.md",
+      "sha256": "29df4bdb94a835da0a930105db01a64d9cfa9c1ff4ba558858e7a5be4e9b4310"
+    },
+    {
+      "path": "agents/cli.md",
+      "source": "06-内置子代理-agents/cli.md",
+      "sha256": "e2e9ecd0ad213e613d264102645e62f8eeaf563c86cbba9398e2aa7f9c9777e8"
+    },
+    {
+      "path": "agents/compact.md",
+      "source": "06-内置子代理-agents/compact.md",
+      "sha256": "33370148d22132705925f187ef122774a80c18feb99d264bbe2c25621b880481"
+    },
+    {
+      "path": "agents/contentAnalyzer.md",
+      "source": "06-内置子代理-agents/contentAnalyzer.md",
+      "sha256": "5bfcfb87526ad1aabedf5596be8760005e4c8ae3de5ff193ce499ff69990938e"
+    },
+    {
+      "path": "agents/contextSummary.md",
+      "source": "06-内置子代理-agents/contextSummary.md",
+      "sha256": "554f563095f9d7bbf6bf8df609dc0c207f8e316be44c24e4adb40a0a3cddf1ab"
+    },
+    {
+      "path": "agents/enhance-prompt.md",
+      "source": "06-内置子代理-agents/enhance-prompt.md",
+      "sha256": "4ba01ea75ddcfac01661be4a78a7a824054f1e90ac93afff422977be30e9c1aa"
+    },
+    {
+      "path": "agents/general-purpose.md",
+      "source": "06-内置子代理-agents/general-purpose.md",
+      "sha256": "b46e103930abfe5cfa78405b5c71603ca77060718e4f53f755d61c1d29d7cc68"
+    },
+    {
+      "path": "agents/handoff-summary.md",
+      "source": "06-内置子代理-agents/handoff-summary.md",
+      "sha256": "eb5a6cf9b154517aad49b475dc26441f9edee2951e529fbc529b131135923833"
+    },
+    {
+      "path": "agents/insightsAnalyzer.md",
+      "source": "06-内置子代理-agents/insightsAnalyzer.md",
+      "sha256": "f452266ea1deb3911e76ee95d6ce232111b394fab734427435f36c71057d7309"
+    },
+    {
+      "path": "agents/memorySelector.md",
+      "source": "06-内置子代理-agents/memorySelector.md",
+      "sha256": "97350fe724fae95ce5f0122bbe4f0959b65c999d3456e418ad17f3c8ac650c4f"
+    },
+    {
+      "path": "agents/promptHookEvaluator.md",
+      "source": "06-内置子代理-agents/promptHookEvaluator.md",
+      "sha256": "3eb499572f01a25bae0a0411be3f19b0845df644edfec7dde2381cc1b3e9f941"
+    },
+    {
+      "path": "agents/promptSuggestion.md",
+      "source": "06-内置子代理-agents/promptSuggestion.md",
+      "sha256": "e7d12cbd7b40a8a6a82c79d911a73c482d06ce841a1e7795d9164b09499ba4a6"
+    },
+    {
+      "path": "agents/pulse.md",
+      "source": "06-内置子代理-agents/pulse.md",
+      "sha256": "29152cb8eda3004b5052afd8858762bf0c9bb5731d9cb363c42fc0ee981d9d32"
+    },
+    {
+      "path": "agents/statusline-setup.md",
+      "source": "06-内置子代理-agents/statusline-setup.md",
+      "sha256": "7cd483f1a283b5dce9d4d561e60e4174c30c27d41e1e72ece4ce5ef680ec0376"
+    },
+    {
+      "path": "agents/summaryGenerator.md",
+      "source": "06-内置子代理-agents/summaryGenerator.md",
+      "sha256": "fd35f24581398231d6de3b58008fef424d170827ab3a4690ded8987f3d5c334e"
+    },
+    {
+      "path": "agents/terminalTitleGenerator.md",
+      "source": "06-内置子代理-agents/terminalTitleGenerator.md",
+      "sha256": "b928bc37218a83275a2eeb117e815af8fcfdfebdb201f06d33d5516d2491f5ce"
+    },
+    {
+      "path": "INDEX.md",
+      "source": "INDEX.md",
+      "sha256": "7a7c7c1f461c5505bedc31c4ca14de397350654e10fef870f9d1cd5571f050b7"
+    }
+  ],
+  "skills": [
+    {
+      "name": "tencent-docs-sheet-generation",
+      "description": "从零生成 Excel/xlsx 工作簿。当用户请求\"创建/生成/新建/做一份/from scratch\" 一个 XLSX 文件、且**没有源 .xlsx/.csv 文件**时使用。支持纯文字需求，也支持 以 pdf/docx/pptx 附件作为内容参考（由 `extract.py` 抽取为 markdown）。 本 skill 引导主代理读设计准则后直接写 openpyxl 脚本生成本地 xlsx，并用 recalc 校验公式零错误。\n",
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-generation/SKILL.md",
+      "allowedTools": [],
+      "plugin": "sheetagent"
+    },
+    {
+      "name": "tencent-docs-sheetagent",
+      "description": "处理 Excel/xlsx/xls/csv 表格文件的读写、查询、数据分析、公式构造、 图表生成、透视表、行列增删、合并/排序/筛选、格式设置、清洗整理等一切表格操作。 当用户上传、引用或需要创建/编辑/分析任何 .xlsx/.xls/.csv 表格文件时使用。 提供比 openpyxl 更强大的表格处理能力，支持复杂数据分析和可视化。\n",
+      "path": "skills/_builtin-plugins/sheetagent/skills/excel-handler/SKILL.md",
+      "allowedTools": [],
+      "plugin": "sheetagent"
+    },
+    {
+      "name": "tencent-docs",
+      "description": "【仅个人版账号可用】腾讯文档个人版（docs.qq.com）-在线云文档平台。适用前提：当前用户以个人 QQ / 微信登录腾讯文档；企业版（SaaS）账号请改用 tencent-saas-docs skill，本 skill 会直接返回 ERROR:identity_mismatch。是个人账号下创建、编辑、管理文档的首选 skill。涉及\"新建/创建/编辑/读取/查看/搜索文档\"、\"保存文件\"、\"云文档\"、\"腾讯文档\"、\"docs.qq.com\"等操作，请优先使用本 skill。支持能力：(1) 创建各类在线文档（文档/Word/Excel/幻灯片/思维导图/流程图/智能表格/收集表）(2) 管理知识库空间（创建空间、查询空间列表）(3) 管理空间节点、文件夹结构 (4) 读取/搜索文档内容 (5) 编辑操作智能表 (6) 编辑操作在线文档 (7) 文件管理（重命名、移动、删除、复制、导入导出）(8) 网页剪藏、本地文件/html/文档上云、图片 OCR。",
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-docs/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docs-plugin"
+    },
+    {
+      "name": "tencent-saas-docs",
+      "description": "【仅企业版账号可用】腾讯文档企业版（saas.docs.qq.com）-在线云文档平台。适用前提：当前用户已开通腾讯文档企业版（SaaS / OneID）；个人 QQ / 微信账号请改用 tencent-docs skill，本 skill 会直接返回 ERROR:identity_mismatch。是企业账号下创建、编辑、管理文档的首选 skill。涉及\"新建/创建/编辑/读取/查看/搜索文档\"、\"企业文档\"、\"团队文档\"、\"saas.docs.qq.com\"等操作，请优先使用本 skill。支持能力：(1) 创建各类在线文档（文档/Word/Excel/幻灯片/思维导图/流程图/智能表格/收集表）(2) 管理知识库空间（创建空间、查询空间列表）(3) 管理空间节点、文件夹结构 (4) 读取/搜索文档内容 (5) 编辑操作智能表 (6) 编辑操作在线文档 (7) 文件管理（重命名、移动、删除、复制、导入导出）(8) 网页剪藏、本地文件/文档上云。",
+      "path": "skills/_builtin-plugins/tencent-docs-plugin/skills/tencent-saas-docs/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docs-plugin"
+    },
+    {
+      "name": "tencent-docx",
+      "description": "专业 Word 文档（.docx）创作与美化助手。用于生成研报、论文、公文、合同等垂类专业 Word 文档，或对已有 .docx 进行排版美化。当用户需要写文档、生成 Word、排版或美化 .docx 时调用。",
+      "path": "skills/_builtin-plugins/tencent-docx/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "academic-paper-expert",
+      "description": "学术论文写作专家。精通社科/理工科论文结构、APA/GB-T7714引用规范、学术表达范式。\n提供论文结构设计、文献综述、摘要撰写、学术语言润色等全流程指导。\n当用户提到「写论文」「学术写作」「文献综述」「论文润色」「摘要」时触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/academic-paper-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "business-copy-expert",
+      "description": "商业文案写作专家。精通品牌文案、营销邮件、产品描述、广告策划、社交媒体内容。\n基于 AIDA 模型和广告法合规要求，提供高转化率的文案创作与诊断。\n「写文案」「营销文案」「品牌Slogan」「广告语」「产品描述」「推广文案」「文案优化」触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/business-copy-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "general-writer",
+      "description": "L1 通用写作兜底专家。覆盖公文、周报、方案、邮件、文案、散文、新媒体稿件等场景，采用 7 维质量评分框架（事实/逻辑/结构/语言/风格/受众/洞察）与 10 种文体适配矩阵。当 L0 路由未命中任何 L2 专家时作为兜底触发。适用于没有特定领域严格规范的通用写作任务。",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/general-writer/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "legal-contract-expert",
+      "description": "L2 法律合同专家。覆盖各类合同、协议、条款、契约的起草与审查，包含必备条款完整性检查（标的/价款/违约/争议解决/生效条件）、权利义务对称性审核、高风险点防范（不可抗力/知识产权归属/保密期限）。采用严格 Critic 审查，涉及法律责任任务**强制**走 per-section 模式分章审查。触发关键词：合同、契约、协议、条款、甲乙方、违约金、不可抗力、争议解决。",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/legal-contract-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "poetry-prose-expert",
+      "description": "诗歌与散文写作专家。精通现代诗、古体诗词、散文、随笔、文学评论等文学创作。\n基于中国现代诗歌美学和散文艺术理论，帮助作者提升文学表达力。\n当用户提到「写诗」「写散文」「诗歌」「随笔」「文学评论」时触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/poetry-prose-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "science-writing-expert",
+      "description": "科普写作专家。精通面向大众的科学解释、科技评测、深度报道、科普文章等。\n基于科学传播理论和费曼学习法，将复杂科学概念转化为人人能懂的精彩内容。\n当用户提到「科普文章」「科学解释」「科技评测」「深度报道」「科普」时触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/science-writing-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "stock-research-report-expert",
+      "description": "L2 证券/行业研究报告专家。生成专业的行业深度报告、个股研究、动态点评等金融研究文档。内置标准化报告结构框架，覆盖深度研报、常规点评、商业计划书、咨询交付物四档体量。触发关键词：行业研究、深度报告、个股研究、研报、券商报告、产业分析、行业跟踪、投资分析。",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/stock-research-report-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "tech-blog-expert",
+      "description": "技术博客写作专家。精通技术文章、教程、架构解析、源码分析、开源项目文档。\n基于 Developer Experience (DX) 和技术传播最佳实践，帮助开发者写出清晰、准确、有深度的技术内容。\n「写技术文章」「写博客」「写教程」「技术分享」「架构文档」「README」触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/tech-blog-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "work-report-expert",
+      "description": "年终总结与汇报写作专家。精通工作总结、述职报告、项目汇报、竞聘演讲、周报月报等职场写作。\n基于金字塔原理和STAR法则，帮助职场人写出结构清晰、数据有力、亮点突出的汇报材料。\n当用户提到「年终总结」「述职报告」「工作汇报」「竞聘演讲」「周报」「月报」时触发。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/experts/work-report-expert/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "brief-compose",
+      "description": "短篇文档创作（目标篇幅 <1000 字）：从零撰稿 → 生成 HTML → html-to-docx 转 .docx → present_files 预览。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/brief-compose/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "design-token",
+      "description": "按文档类型（genre）选择主题并输出标准化设计令牌（Design Tokens），驱动 doc-typeset skill 的所有样式决策。\n支持公文、学术论文、商务报告、创意营销、通用五大场景，输出含 typography/color/spacing/layout 的 W3C DTCG 格式 JSON 和 CSS 变量映射。\n当 doc-formatter 流水线需要确定排版风格、需要字体/颜色/间距/页边距决策时，必须调用此 skill；\n不要跳过它直接写裸值——所有样式决策的唯一入口就是这里。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/design-token/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "doc-typeset",
+      "description": "消费 design tokens + 文档内容，输出排版美化的 HTML。\n内置 7 种垂类模板（合同/学术论文/公文/商务报告/会议纪要/研报/年报）和 4 个装饰组件，所有样式通过 CSS 变量引用 Token，禁止裸值。\n在 doc-formatter 流水线中每当需要将文本内容转化为结构化美化 HTML 时，必须使用此 skill；\n不要自己写 HTML 或内联 CSS——doc-typeset 是内容→HTML 的唯一标准转换路径。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/doc-typeset/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "format-extract",
+      "description": "把 .docx 文档转为语义化 HTML + 提取内嵌图片（标题层级、表格样式、段落缩进、字体颜色等结构信息），供调用方做后续格式分析；也可独立评估 HTML 转换质量。适用场景（**技术性底层调用**）：\"docx 转 HTML\"、\"提取 docx 结构为 HTML\"、\"HTML 转换质量评估\"。本 Skill 是底层格式提取工具，**不自行判断是否应被触发**、**不猜测输出位置**——是否调用、何时调用、产物落在哪一律由上层调用方（如 doc-formatter）决定，调用时必须显式传入 `--output-dir`。用户关于\"文档排版 / 套模板 / 参考这份 docx 生成\"等需求，应由 orchestrator 统一编排入口接管，**不要旁路直点本 Skill**。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/format-extract/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "generate-fillable-contract-html",
+      "description": "生成适于 HTML 转 DOCX 的中文待填合同、报价单和授权委托书 HTML。用户要求创建待填业务文档模板、合同填空或可按书签填写的 HTML 时使用。",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/generate-fillable-contract-html/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "html-review",
+      "description": "HTML 质量门禁 skill（路线 A + 路线 B 共享）。对 doc-typeset（路线 A）或 doc-edit（路线 B）输出的 HTML 进行 5 维度质量检测（design-token 合规性、结构完整性、排版合理性、文体契合度、装饰使用合理性），输出结构化检测报告，不通过则打回上游做一次定向修正（不循环）。\n在 doc-formatter 路线 A 和路线 B 流水线中，每次 HTML 输出后必须调用此 skill；\n当需要检查 HTML 是否存在裸样式值、标题跳级、缺少必需文体元素、装饰过度等问题时，都应使用此 skill 而非手动检查。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-review/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "html-to-docx",
+      "description": "将 HTML 字符串或文件高保真转换为 Microsoft Word (.docx) 文档。\n支持 CSS 变量预处理、10+ 种 HTML 元素精确映射、14 种 CSS 属性映射、中文字体、4 种装饰组件、TOC 目录、页眉页脚、图片嵌入。\n提供 CLI（subprocess）和 Python API 双模式调用；在需要将 HTML 文档转为可编辑 Word 文件时使用此 skill。\n",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/html-to-docx/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "tdoc-orchestrator",
+      "description": "文档创作与美化的统一编排入口（本地通道）。当用户意图涉及文档写作或排版美化时调用。职责：识别意图 → 编排 stage 能力链（S1 创作 / S2 美化 / S3 HTML→DOCX 转换）→ 委派 doc-writer/doc-formatter/doc-converter 执行；S3 产出 .docx 后**强制 `present_files` 打开预览**，本 skill 调用结束。⚠️ 文档编辑不在本 skill 内承接，由 `tencent-docs-routing` skill 处理。不适用：纯代码文件、非文档类操作。",
+      "path": "skills/_builtin-plugins/tencent-docx/skills/tdoc-orchestrator/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-docx"
+    },
+    {
+      "name": "tencent-pptx",
+      "description": "创建专业的 PowerPoint 演示文稿。适用于根据主题、大纲、文档、数据或参考材料生成完整 .pptx；在新建演示文稿时参考上传PPTX 的视觉风格；也可基于材料或旧 PPT 内容重新生成一版演示文稿。",
+      "path": "skills/_builtin-plugins/tencent-pptx/skills/tencent-pptx/SKILL.md",
+      "allowedTools": [],
+      "plugin": "tencent-pptx"
+    },
+    {
+      "name": "weixinpay-feedback",
+      "description": "【微信支付官方】问题反馈。当用户使用微信AI支付/AI专属卡的开通/绑定或支付/管理过程遇到异常或错误（尤其是同一环节连续/反复报错、重试仍失败），主动引导用户上报问题。开通/绑定过程的问题通过反馈收集表链接反馈；支付/管理问题或用户直接想要反馈时通过工具反馈。关键词：微信AI支付反馈、Agent支付反馈、AI专属卡反馈、微信支付反馈。",
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-feedback/SKILL.md",
+      "allowedTools": [],
+      "plugin": "weixinpay"
+    },
+    {
+      "name": "weixinpay-pay",
+      "description": "【微信支付官方】微信支付AI专属卡支付能力。普通支付在商户下单后由系统自动触发工程化支付卡片，无需智能体介入；本技能主要指导「重新支付」：用户取消/关闭支付后想对同一笔订单再付一次时，智能体须先询问并确认订单，再用上次相同凭据（payUrls 或 WeixinPay-Required 的值）调用 mcp__weixinpay__weixinpay_retry_pay 重新触发支付，无需重新下单。关键词：重新支付、再次支付、重新付款、重付、取消后再付一次、微信AI支付、微信Agent支付。",
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-pay/SKILL.md",
+      "allowedTools": [],
+      "plugin": "weixinpay"
+    },
+    {
+      "name": "weixinpay-register",
+      "description": "【微信支付官方】用于用户开通/绑定微信AI支付或者AI专属卡功能，或查询开通/绑定状态。用于用户要开通、绑定、激活在 AI 对话中使用微信支付的能力。也用于回答用户\"我是否已开通、如何查看或管理微信AI支付\"等开通状态咨询。关键词：微信支付AI专属卡、微信AI支付、开通微信支付、绑定微信支付、激活AI支付、开通/绑定AI专属卡、绑定智能体钱包、是否开通AI支付、是否开通AI专属卡、查询开通状态、管理AI支付、管理AI专属卡。",
+      "path": "skills/_builtin-plugins/weixinpay/skills/weixinpay-register/SKILL.md",
+      "allowedTools": [],
+      "plugin": "weixinpay"
+    },
+    {
+      "name": "ardot-design-core",
+      "description": "Foundational workflow and hard rules shared by ALL Ardot canvas design tasks (UI screens, slides, posters, livestream posters, design systems, design-to-code). This skill carries the canvas schema, editing principles, the standard step-by-step workflow, visual style guide, and composite effects. It is injected automatically alongside a domain-specific Ardot skill (ardot-ui-design / ardot-slides / ardot-poster / livestream-poster / ardot-design-to-code). It does NOT cover any single deliverable type on its own — always pair it with the matching domain skill. Not for PowerPoint .pptx file output (that is the pptx skill).",
+      "path": "skills/ardot-design-core/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "component-instance",
+      "description": "Create/update component instances; set componentProperties; switch VARIANT / 变体 via variantOptions. Triggers: instance, COMPONENT_SET, variant, 变体, componentProperties.",
+      "path": "skills/ardot-design-core/func-rule/component-instance/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "design-variables",
+      "description": "Bind/unbind design variables (tokens) on node props with `$:<Set>:<Name>` or `$<id>`; create via apply_variables; switch node variable modes via batch_edit variableModes",
+      "path": "skills/ardot-design-core/func-rule/design-variables/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "shared-styles",
+      "description": "Bind/unbind shared styles via textStyleId/fillStyleId/strokeStyleId/effectStyleId (bare nodeId or Style:key,ver; never `$`)",
+      "path": "skills/ardot-design-core/func-rule/shared-styles/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "ardot-design-router",
+      "description": "Dispatcher for WorkBuddy's Ardot design assistant. Use this when a design task is in Craft/design mode but the specific deliverable type is not yet determined from UI signals. It classifies intent (UI screen / slides / poster / livestream poster / design-to-code) and tells you which domain Ardot skill to load, then defers to that skill plus ardot-design-core. Carries the always-on hard rules for canvas design. Not for PowerPoint .pptx file output (pptx skill).",
+      "path": "skills/ardot-design-router/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "ardot-design-to-code",
+      "description": "Use this skill for Ardot canvas tasks that convert a design into frontend code, or extract a design system / style guide from a website. Covers: design-to-code, design → HTML/CSS/JS, export as webpage, pixel-perfect reproduction, generate an Application from a design, slide transitions, responsive scaling; and website → design-guide / design-token extraction. Trigger phrases: convert design to code, design to HTML, export as webpage, pixel-perfect reproduction, design to App, generate Application, create design system from website, extract design tokens, 设计稿转代码, 转为前端代码, 生成HTML, 导出为网页, 一比一还原, 复刻设计稿, 设计稿出码, 设计稿转应用, 转应用, 网站风格转设计稿, 提取设计风格, 生成设计指南, 提取设计 token. Pairs with ardot-design-core (injected alongside).",
+      "path": "skills/ardot-design-to-code/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "ardot-poster",
+      "description": "Use this skill for Ardot canvas design tasks whose deliverable is a visual poster — posters, flyers, billboards, banners, event posters, promotional single-page graphics, e-commerce banners, brand visuals, logos, icons & illustrations rendered on the Ardot canvas. Trigger phrases: design a poster, create a banner, make a flyer, event poster, product launch poster, e-commerce banner, 设计海报, 海报设计, 宣传单, 横幅, banner, 封面, 双十一Banner, 活动海报, 图标设计, 品牌设计, 插画, Logo 设计, VI 设计, 视觉识别系统. Pairs with ardot-design-core (injected alongside). NOT for full UI screens (ardot-ui-design), slides (ardot-slides), or PowerPoint .pptx files (pptx skill).",
+      "path": "skills/ardot-poster/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "ardot-slides",
+      "description": "Use this skill for Ardot canvas design tasks whose deliverable is a slide deck / presentation design (NOT a PowerPoint .pptx file). Covers presentations, decks, pitch decks, keynote-style slides, launch-event slides, roadshow decks, proposal/pitch slides rendered as Ardot design canvases. Trigger phrases: design a presentation, create a deck, generate slides, design slides, create a pitch deck, design a keynote, slide deck mockup, presentation mockup, pitch deck design, 幻灯片设计稿, 演示文稿设计, 发布会幻灯片, 路演 PPT 设计稿, keynote 设计, 提案稿, 宣讲稿, 制作 PPT, 做一份幻灯片. Pairs with ardot-design-core (injected alongside). IMPORTANT boundary: this skill OWNS slide/deck/幻灯片 requests whose output is a DESIGN (Ardot canvas, 设计稿, mockup). Defer to the pptx skill ONLY when the user explicitly requires a PowerPoint .pptx file (导出 pptx / 生成 PPT 文件 / references an existing .pptx). Words like 'slides', '幻灯片', 'PPT' alone do NOT trigger pptx.",
+      "path": "skills/ardot-slides/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "ardot-ui-design",
+      "description": "Use this skill for Ardot canvas design tasks whose deliverable is a UI / interface design — web pages, web apps, dashboards, landing pages, marketing sites, official sites, homepages, mobile app screens (iOS / Android / 小程序), forms, tables, components, and design systems / design tokens / component libraries. Trigger phrases: generate/create/design a page, design a screen, create a landing page, make a dashboard, design a login screen, build a UI, generate homepage, design a form, design an App, WebApp, 设计页面, 创建界面, 生成页面, 生成网站, 设计App, 做一个页面, 画一个页面, 设计后台, 组件库规范, 设计系统, Design System, Design Token, 移动端, 手机App, 小程序. Pairs with ardot-design-core (injected alongside). NOT for slides/posters/design-to-code (separate Ardot skills) and NOT for PowerPoint .pptx files (pptx skill).",
+      "path": "skills/ardot-ui-design/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "3D模型与视频特效",
+      "description": "3D模型生成和基于模板的视频特效能力。仅支持：文生3D模型、图生3D模型、基于模板的图片视频特效（video-fx）。 适用于用户需要 AI 创作 3D 模型或对图片应用模板特效（如拥抱、变身、万物归尘等动效模板）的场景。 当用户提出以下意图时触发：生成/制作3D模型、对图片应用特效模板或动效模板。 注意：本技能不处理图片生成、视频生成任务。生成图片请用 ImageGen 工具，生成视频请用 VideoGen 工具。\n",
+      "path": "skills/buddy-multimodal-generation/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "expert-manager",
+      "description": "专家包的全生命周期运营：转化(从开源仓库/本地项目创建专家包)、修改已有专家、合规检查、批量更新、质量审查。\n触发词：创建专家、转化专家、转成专家、生成专家包、导入专家、convert expert、修改专家、编辑专家、更新专家、modify expert、检查专家、审查专家包、专家合规、专家运营、expert ops。\n",
+      "path": "skills/expert-manager/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "geo-map-compliance-guard",
+      "description": "ALWAYS TRIGGER map compliance skill for any map generation, visualization, routing, or location service request to enforce strict China map data compliance rules, including approved data-source whitelist, key safety controls, territorial integrity requirements, privacy protection, and Tencent Maps GL JS scenario-based integration guidelines.\n",
+      "path": "skills/geo-map-compliance-guard/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "资料库",
+      "description": "当要写/整理在线文档、建数据表增删改查、导入 CSV·Excel、做看板/dashboard/运营页/汇报页、md 转网页或演示 HTML 发布、建目录、上传下载网盘文件、审阅修订、分享协作，以及提到资料库/知识库/网盘/空间/workbuddy.cn/space 链接时使用。资料库是 WorkBuddy 原生的内容管理、分享协作与轻发布模块，覆盖在线文档（doc）、网页链接（link）、结构化数据表（database）、数据/汇报页面（page）、网盘文件（drive）与空间管理（manage）；凡说资料库/知识库或出现 space 链接、未显式点名腾讯文档/飞书/Notion/乐享/金山文档/iWiki 等外部产品时一律走本 skill，默认落原生库、不反问存到哪个产品。",
+      "path": "skills/library/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "livestream-poster",
+      "description": "生成直播宣传海报：支持风格文件/视觉大类和用户风格参考图两种工作流，收集人物、Logo、文案与比例后，用 ImageGen 生成底图并在 Ardot 画布完成排版。 当用户提到「直播海报」「直播宣传图」「直播预告海报」「线上直播海报」「livestream poster」，或引用直播海报风格文件时使用。\n",
+      "path": "skills/livestream-poster/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "marketplace-skill-installer",
+      "description": "在 WorkBuddy 对话中通过一句话从推荐市场（BuiltinMarket）搜索并安装 Skill。\n触发词：安装 skill、安装技能、install skill、添加技能、装个 X 技能、帮我安装 X、find skill、install marketplace skill、search skill。\n",
+      "path": "skills/marketplace-skill-installer/SKILL.md",
+      "allowedTools": [
+        "workbuddy_marketplace_skill"
+      ],
+      "plugin": null
+    },
+    {
+      "name": "recommend-connectors",
+      "description": "When a user task requires an external app, service, API, MCP server, authorization, or third-party data and no connected tool covers it, search for real Connectors and recommend them with an inline card.\n",
+      "path": "skills/recommend-connectors/SKILL.md",
+      "allowedTools": [
+        "search_plugins",
+        "suggest_plugin_install"
+      ],
+      "plugin": null
+    },
+    {
+      "name": "recommend-experts",
+      "description": "When a task needs professional judgment, deep research, a specialist role, or multi-role collaboration and no Expert is selected in the current session, search for real Experts or Expert Teams and recommend them with an inline card.\n",
+      "path": "skills/recommend-experts/SKILL.md",
+      "allowedTools": [
+        "search_plugins",
+        "suggest_plugin_install"
+      ],
+      "plugin": null
+    },
+    {
+      "name": "发布为应用",
+      "description": "将生成内容发布为在线链接，或取消发布已上线的应用。适合网站、小游戏等交互式内容，支持任意可作为单端口 HTTP 服务运行的项目（静态站点 / PDF / Node.js / Python / Go）。当用户想把本地项目部署、发布、上线、生成分享链接、在云端预览或下线分享链接时使用。",
+      "path": "skills/sites/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "skill-creator",
+      "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends CodeBuddy's capabilities with specialized knowledge, workflows, or tool integrations.",
+      "path": "skills/skill-creator/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "tencent-docs-routing",
+      "description": "Load this Skill before handling local Office/WPS files such as doc/docx/dot/wps/wpt, xls/xlsx/xlt/csv/tsv, or ppt/pptx/pps/pot, and before creating a new local document, spreadsheet, or presentation. Load first whenever the user uploads, mentions, previews, edits, or asks to create such a local file, to decide whether to use the local office editing Skill, the local spreadsheet agent, the spreadsheet generation Skill, or the PPT generation Skill. Text-based outputs such as speech scripts, talking points, copywriting, summaries, reports, or meeting minutes should default to local DOCX unless the user explicitly specifies another local format such as markdown or plain text. Other file types are out of scope.",
+      "path": "skills/tencent-docs-routing/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "tencent-local-office-edit",
+      "description": "通过本地 editor_sdk 实时读写本机磁盘上的 Office/WPS 类型文件——文件打开后用户在编辑器中实时可见，编辑所见即所得，保存用 save_file 即可、不要主动 close_file。适用于本地 doc/docx/dot/wps/wpt、xls/xlsx/xlt/csv/tsv、ppt/pptx/pps/pot 等文件的打开、编辑、保存与新建；含宏格式可打开但宏不执行，et/ett/dps/dpt 不支持。按 doc/sheet/slide 三类调用对应工具，调用任一编辑工具前先用 edsdk.py schema 查它单个的参数、不要凭摘要猜参数。所有操作经本目录 edsdk.py（python3 edsdk.py list/schema/call）封装，端点自动发现、上层无需关心底层细节。触发词：本地文档、本机 docx/xlsx/pptx/wps、Office/WPS 文件、editor_sdk、edsdk.py、本地编辑、实时编辑。",
+      "path": "skills/tencent-local-office-edit/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "wb-finance-skill",
+      "description": "金融/投资/股票/基金/ETF/板块/指数/宏观/外汇/大宗商品/财报/估值/持仓/交易/量化/选股/期权/衍生品/投行建模/技术指标/行情等——金融场景总入口，优先级高于其他金融skill。涉及任一上述领域和相关金融场景时（包括字面未明说但本质相关），都务必**第一时间优先加载本skill**。",
+      "path": "skills/wb-finance-skill/SKILL.md",
+      "allowedTools": [],
+      "plugin": null
+    }
+  ],
+  "agents": [
+    {
+      "name": "Explore",
+      "description": "Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. \"src/components/**/*.tsx\"), search code for keywords (eg. \"API endpoints\"), or answer questions about the codebase (eg. \"how do API endpoints work?\"). When calling this agent, specify the desired thoroughness level: \"quick\" for basic searches, \"medium\" for moderate exploration, or \"very thorough\" for comprehensive analysis across multiple locations and naming conventions.",
+      "template": "product/agent-explore-instructions.tpl",
+      "tools": [
+        "read_file",
+        "bash",
+        "bash",
+        "glob_search",
+        "grep_search",
+        "task_create",
+        "task_get",
+        "task_update",
+        "task_list",
+        "WebFetch",
+        "WebSearch",
+        "skill",
+        "SendMessage",
+        "ToolSearch",
+        "DeferExecuteTool"
+      ]
+    },
+    {
+      "name": "Plan",
+      "description": "Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. \"src/components/**/*.tsx\"), search code for keywords (eg. \"API endpoints\"), or answer questions about the codebase (eg. \"how do API endpoints work?\"). When calling this agent, specify the desired thoroughness level: \"quick\" for basic searches, \"medium\" for moderate exploration, or \"very thorough\" for comprehensive analysis across multiple locations and naming conventions. (Tools: All tools)",
+      "template": "product/agent-plan-instructions.tpl",
+      "tools": [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "bash",
+        "glob_search",
+        "grep_search",
+        "task_create",
+        "task_get",
+        "task_update",
+        "task_list",
+        "WebFetch",
+        "WebSearch",
+        "skill",
+        "ToolSearch",
+        "DeferExecuteTool",
+        "TeamCreate",
+        "TeamDelete",
+        "SendMessage"
+      ]
+    },
+    {
+      "name": "agentInstructions",
+      "description": "generating agent instructions",
+      "template": "product/agent-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "autoModeClassifier",
+      "description": "Classify auto mode tool permission risk.",
+      "template": "product/auto-mode-classifier-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "cli",
+      "description": "cli agent",
+      "template": "product/cli-agent-prompt.tpl",
+      "tools": [
+        "spawn_agent",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "bash",
+        "glob_search",
+        "grep_search",
+        "bash",
+        "EnterPlanMode",
+        "ExitPlanMode",
+        "task_create",
+        "task_get",
+        "task_update",
+        "task_list",
+        "WebFetch",
+        "WebSearch",
+        "task_stop",
+        "agent_result",
+        "skill",
+        "ask_user_question",
+        "StructuredOutput",
+        "ToolSearch",
+        "DeferExecuteTool",
+        "SendMessage",
+        "TeamCreate",
+        "TeamDelete",
+        "DelegateTool",
+        "WeChatReply",
+        "WeComReply",
+        "ImageGen",
+        "VideoGen",
+        "SkillManage",
+        "ListMcpResources",
+        "ReadMcpResource"
+      ]
+    },
+    {
+      "name": "compact",
+      "description": "compact agent",
+      "template": "product/compact-agent-prompt.tpl",
+      "tools": []
+    },
+    {
+      "name": "contentAnalyzer",
+      "description": "content analyzer agent",
+      "template": "product/content-analyzer-agent-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "contextSummary",
+      "description": "Context summary agent for conversation compaction and max-token recovery",
+      "template": "product/context-summary-agent-prompt.tpl",
+      "tools": []
+    },
+    {
+      "name": "enhance-prompt",
+      "description": "Prompt enhancement agent for refining user input in WorkBuddy Desktop chat input box",
+      "template": "product/enhance-prompt-system-prompt.tpl",
+      "tools": []
+    },
+    {
+      "name": "general-purpose",
+      "description": "general-purpose agent",
+      "template": "product/cli-agent-prompt.tpl",
+      "tools": [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "bash",
+        "bash",
+        "glob_search",
+        "grep_search",
+        "task_create",
+        "task_get",
+        "task_update",
+        "task_list",
+        "WebFetch",
+        "WebSearch",
+        "task_stop",
+        "agent_result",
+        "skill",
+        "ask_user_question",
+        "ToolSearch",
+        "DeferExecuteTool",
+        "SendMessage",
+        "ImageGen",
+        "VideoGen",
+        "ListMcpResources",
+        "ReadMcpResource"
+      ]
+    },
+    {
+      "name": "handoff-summary",
+      "description": "Local task handoff summary generation agent",
+      "template": "product/handoff-summary-agent-prompt.tpl",
+      "tools": []
+    },
+    {
+      "name": "insightsAnalyzer",
+      "description": "Analyzes user usage data facets for the /insights command",
+      "template": "product/base-agent-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "memorySelector",
+      "description": "Select relevant memories for the current query.",
+      "template": "product/memory-selector-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "promptHookEvaluator",
+      "description": "Evaluates prompt hooks using LLM to determine if conditions are met",
+      "template": "product/prompt-hook-evaluator-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "promptSuggestion",
+      "description": "Suggest the user's next prompt after a conversation turn.",
+      "template": "product/prompt-suggestion-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "pulse",
+      "description": "Pulse recommendation agent with WebSearch for fetching latest information",
+      "template": "product/pulse-agent-prompt.tpl",
+      "tools": [
+        "WebSearch",
+        "WebFetch"
+      ]
+    },
+    {
+      "name": "statusline-setup",
+      "description": "Use this agent to configure the user's Codebuddy Code status line setting.",
+      "template": "product/agent-statusline-instructions.tpl",
+      "tools": [
+        "read_file",
+        "write_file",
+        "edit_file",
+        "ToolSearch",
+        "DeferExecuteTool"
+      ]
+    },
+    {
+      "name": "summaryGenerator",
+      "description": "Generate session summaries from conversation content.",
+      "template": "product/summary-generator-instructions.tpl",
+      "tools": []
+    },
+    {
+      "name": "terminalTitleGenerator",
+      "description": "Generate terminal window titles from conversation topics.",
+      "template": "product/terminal-title-generator-instructions.tpl",
+      "tools": []
+    }
+  ],
+  "toolMapping": {
+    "read_file": "read",
+    "write_file": "write",
+    "edit_file": "edit",
+    "list_dir": "ls",
+    "glob_search": "glob",
+    "grep_search": "grep",
+    "bash": "bash",
+    "spawn_agent": "agent",
+    "agent_result": "taskoutput",
+    "ask_user_question": "ask-user-question",
+    "task_create": "taskcreate",
+    "task_update": "taskupdate",
+    "task_list": "tasklist",
+    "task_get": "taskget"
+  },
+  "commands": [
+    {
+      "name": "commit",
+      "path": "product/command-commit-prompt.tpl",
+      "description": "WorkBuddy commit workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "create-pr",
+      "path": "product/command-commit-push-pr-prompt.tpl",
+      "description": "WorkBuddy create-pr workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "security-review",
+      "path": "product/command-security-review-prompt.tpl",
+      "description": "WorkBuddy security-review workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "insights",
+      "path": "product/command-insights-prompt.tpl",
+      "description": "WorkBuddy insights workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "statusline",
+      "path": "product/command-statusline-prompt.tpl",
+      "description": "WorkBuddy statusline workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "init",
+      "path": "product/init-prompt.tpl",
+      "description": "WorkBuddy init workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    },
+    {
+      "name": "loop",
+      "path": "product/skill-loop-prompt.tpl",
+      "description": "WorkBuddy loop workflow adapted for SztuCode",
+      "allowedTools": [],
+      "plugin": null
+    }
+  ],
+  "limitations": [
+    "This collection contains prompt/reference text, not the Tencent service implementations.",
+    "Referenced scripts and assets absent from the collection remain unavailable.",
+    "Only registered tools may execute. Templates alone do not install connectors or grant permissions."
+  ]
+}

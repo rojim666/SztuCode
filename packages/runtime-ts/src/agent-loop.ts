@@ -50,8 +50,14 @@ export class AgentLoop {
       || this.options.offloadMinLines !== undefined
       || this.options.offloadRoot !== undefined
       || booleanEnv("SZTU_OFFLOAD_ENABLED", false);
-    const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), { enabled: this.options.offloadEnabled ?? offloadExplicitlyConfigured, minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 20_000), minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 200) });
-    this.tools.replace(createReadRefTool(offload));
+    const cacheTargetForceOffload = (this.options.cacheHitTarget ?? 0) >= 0.99;
+    const offload = new OffloadManager(this.options.offloadRoot ?? path.join(dataRoot(), "runs", safeRunId(runId)), {
+      enabled: this.options.offloadEnabled ?? offloadExplicitlyConfigured,
+      minChars: this.options.offloadMinChars ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_CHARS", 20_000),
+      minLines: this.options.offloadMinLines ?? nonNegativeEnv("SZTU_OFFLOAD_MIN_LINES", 200),
+      forceTools: cacheTargetForceOffload ? new Set(this.tools.list().map(tool => tool.name)) : undefined,
+    });
+    if (this.tools.permits("read_ref")) this.tools.replace(createReadRefTool(offload));
     const context = new ContextManager([...history, { role: "user", content: userContent }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
     const initialSystem = messages.find((message) => message.role === "system");

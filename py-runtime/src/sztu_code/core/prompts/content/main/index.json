@@ -3,28 +3,28 @@
   "sections": [
     {
       "id": "workbuddy-system",
-      "source": "prompts-合集/01-主提示词-单体tpl/workbuddy-prompt.tpl",
+      "source": "workbuddy:main/workbuddy-system",
       "file": "workbuddy-system.md"
     },
     {
       "id": "identity-and-role",
       "file": "system-prompt-identity-and-role.md",
-      "source": "docs/Prompt.md#1.1"
+      "source": "workbuddy:main/identity-and-role"
     },
     {
       "id": "system-section",
       "file": "system-prompt-system-section.md",
-      "source": "docs/Prompt.md#1.2"
+      "source": "workbuddy:main/system-section"
     },
     {
       "id": "deliver-editable-results",
       "file": "system-prompt-deliver-editable-results.md",
-      "source": "product/core-capabilities"
+      "source": "workbuddy:main/deliver-editable-results"
     },
     {
       "id": "malicious-activities-safety",
       "file": "system-prompt-censoring-assistance-with-malicious-activities.md",
-      "source": "docs/Prompt.md#1.3"
+      "source": "workbuddy:main/malicious-activities-safety"
     }
   ]
 }

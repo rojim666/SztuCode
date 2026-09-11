@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, ConfigDict
 
 from sztu_code.core.agents.loader import AgentProfile, AgentProfileLoader
-from sztu_code.core.bus.events import SubagentFinishedEvent, SubagentStartedEvent
+from sztu_code.core.bus.events import (
+    ContextInjectedEvent,
+    SubagentFinishedEvent,
+    SubagentStartedEvent,
+)
 from sztu_code.core.config import BudgetConfig
 from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
@@ -49,7 +53,6 @@ if TYPE_CHECKING:
     from sztu_code.core.session.store import SessionStore
 
 _profile_loader = AgentProfileLoader()
-_skill_loader = SkillLoader()
 
 
 def _now() -> str:
@@ -139,6 +142,11 @@ class SpawnAgentTool(BaseTool):
         # 与父 run 一致的默认单次输出上限，供子 AgentLoop 预算收缩时参考
         default_max_output_tokens: int = 8_192,
     ) -> None:
+        from sztu_code.core.prompts.workbuddy import manifest
+
+        self.description = type(self).description + "\nImported agent profiles: " + ", ".join(
+            agent["name"] for agent in manifest()["agents"]
+        )
         self._provider = provider
         self._parent_bus = parent_bus
         self._parent_run_id = parent_run_id
@@ -188,16 +196,19 @@ class SpawnAgentTool(BaseTool):
 
         # 解析并合并 skill：角色白名单非空时 union，否则只合并系统提示不缩窄工具集
         skill_name = (p.skill or (profile.skill if profile else "")).strip()
-        skill = _skill_loader.resolve(skill_name) if skill_name else None
+        skill_loader = SkillLoader(self._workspace_root)
+        skill = skill_loader.resolve(skill_name) if skill_name else None
         role_prompt = (profile.system_prompt if profile else "").strip()
         allowed_tools: set[str] | None = (
-            set(profile.allowed_tools) if profile and profile.allowed_tools else None
+            set(profile.allowed_tools)
+            if profile and (profile.allowed_tools or profile.restrict_tools)
+            else None
         )
         skill_prompt = ""
         if skill is not None:
-            if allowed_tools is not None:
+            if allowed_tools is not None and not (profile and profile.restrict_tools):
                 allowed_tools |= set(skill.allowed_tools)
-            skill_prompt = _skill_loader.render_prompt(skill, p.prompt).strip()
+            skill_prompt = skill_loader.render_prompt(skill, p.prompt).strip()
         if p.allowed_tools is not None:
             workflow_tools = set(p.allowed_tools)
             allowed_tools = (
@@ -283,6 +294,8 @@ class SpawnAgentTool(BaseTool):
                 task_text=p.prompt,
             ),
         )
+        if child_registry.get("skill") is not None:
+            child_context.prepend_goal_reminder(skill_loader.render_catalog())
         # 子 agent 使用独立的 DenialTracker，避免父子 agent 拒绝计数互相干扰
         from sztu_code.core.permissions.denial_tracker import DenialTracker
 
@@ -313,6 +326,19 @@ class SpawnAgentTool(BaseTool):
             )
         )
 
+        injected = child_context.system_prompt("")
+        await child_bus.publish(
+            ContextInjectedEvent(
+                run_id=child_run_id,
+                source="system",
+                label="上下文注入",
+                chars=len(injected),
+                preview=injected[:160],
+                text=injected,
+                ts=_now(),
+            )
+        )
+
         child_run_path = self._runs_dir / child_run_id
         child_run_path.mkdir(parents=True, exist_ok=True)
 
@@ -328,7 +354,10 @@ class SpawnAgentTool(BaseTool):
             # 注册时记录所有权（parent_run_id 直接父 + owner_run_id root owner），
             # 使取消可递归遍历后代树，且终态事件按 owner 路由到 root sink
             self._task_registry.register(
-                child_run_id, self._parent_run_id, task, child_context,
+                child_run_id,
+                self._parent_run_id,
+                task,
+                child_context,
                 owner_run_id=self._owner_run_id,
             )
             return ToolResult(
@@ -449,7 +478,11 @@ class SpawnAgentTool(BaseTool):
             return allowed is None or name in allowed
 
         registry = ToolRegistry()
+        from sztu_code.core.tools.builtin.prompt_resource import PromptResourceTool, SkillTool
+
         _all_tools = [
+            PromptResourceTool(),
+            SkillTool(self._workspace_root),
             ReadFileTool(self._workspace_root),
             ReadDocumentTool(self._workspace_root),
             CreateDocumentTool(self._workspace_root, allowed_paths, scope_audit),
@@ -549,8 +582,7 @@ class AgentResultTool(BaseTool):
             if query.reason == "unknown":
                 return ToolResult(
                     content=(
-                        f"Unknown run_id: {p.run_id}. "
-                        "Only background subagents can be queried."
+                        f"Unknown run_id: {p.run_id}. Only background subagents can be queried."
                     ),
                     is_error=True,
                     error_type="runtime_error",

@@ -1,8 +1,12 @@
-# 用户权限模式
+<working_modes>
+Three modes are available. The user can switch between them depending on their needs:
 
-- 建议模式（`normal`）：操作遵循正常的策略评估，在不被自动允许时请求确认。
-- 自动编辑模式（`accept_edits`）：工作区编辑操作自动被允许；其他操作继续通过正常权限检查。
-- YOLO / 全自动模式（`auto`）：工具调用由权限管理器自动批准。
-- 规划模式（`plan`，SztuCode 扩展）：只允许只读工具；写入和命令执行被阻止。
+spawn_agent (You say, I do):
+Take action immediately to complete the task. Can read and write files, run commands, generate content, and deliver results directly.
 
-这些描述解释了各个模式。对于工具调用是否被允许，确定性的 `PermissionManager`（权限管理器）而非语言模型才是权威依据。
+Plan (Think first, do second):
+Analyze the request, design a solution, and break it into a step-by-step plan. Execute only after the user reviews and confirms the plan.
+
+Ask (Talk only, hands off):
+Only answer questions, read files, and analyze information. No files are modified and no commands are executed. When the user is ready to act, suggest switching to spawn_agent mode.
+</working_modes>

@@ -1,3 +1,23 @@
-分析代码库并创建项目特定的 CLAUDE.md 指令。检查仓库结构、依赖项、构建和测试工具、架构、编码规范以及常见工作流程。仅包含经验证的指导内容，以帮助未来的编码代理在此仓库中高效工作。
+Please analyze this codebase and create a SZTUCODE.md file, which will be given to future instances of SztuCode to operate in this repository.
 
-保持文档简洁且具有可操作性。优先使用已由仓库文件确认的命令和规范。在未先读取并保留相关内容之前，请勿重复通用软件工程建议、虚构项目规则、泄露机密或覆盖现有指令。
+What to add:
+1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
+2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand
+
+Usage notes:
+- First check if there's already an AGENTS.md file in the current directory. If it exists, DO NOT create a new SZTUCODE.md file. Instead, suggest improvements to the existing AGENTS.md file.
+- If there's already a SZTUCODE.md but no AGENTS.md, suggest improvements to the existing SZTUCODE.md.
+- If there's already a AGENTS.md but no SZTUCODE.md, suggest improvements to the existing AGENTS.md.
+- When creating a new file, create SZTUCODE.md (not AGENTS.md) if neither exists.
+- When you make the initial file, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "write_file unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
+- Don't include generic development practices
+- If there are Claude Code rules (in ./CLAUDE.md) or Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (in .github/copilot-instructions.md) or ./AGENTS.md, make sure to include the important parts.
+- If there is a README.md, make sure to include the important parts.
+- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
+- Be sure to prefix the file with the following text:
+
+```
+# SZTUCODE.md
+
+This file provides guidance to SztuCode when working with code in this repository.
+```

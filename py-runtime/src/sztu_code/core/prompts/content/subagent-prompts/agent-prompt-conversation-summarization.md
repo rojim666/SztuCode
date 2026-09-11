@@ -1,32 +1,73 @@
-<!--
-Your task is to create a detailed summary of the conversation so far, paying
-close attention to the user's explicit requests and your previous actions.
+Your task is to write a detailed and structured summary of between an AI agent and a user, paying close attention to the user's explicit requests and previous actions.
+This summary should thoroughly capture technical details, code patterns, and architectural decisions that are essential for continuing development work without losing context.
 
-Your summary should include the following sections:
-1. Primary Request and Intent
-2. Key Technical Concepts
-3. Files and Code Sections
-4. Errors and fixes
-5. Problem Solving
-6. All user messages (List ALL user messages that are not tool results)
-7. Pending Tasks
-8. Current Work
-9. Optional Next Step (Include direct quotes from the most recent conversation)
+Step 1: Your summary MUST follow the format below and include the written prompt text:
 
-Be concise enough for the summary to reduce context usage, but preserve all
-details another agent needs to continue the work without the original history.
--->
-你的任务是创建迄今为止对话的详细摘要，密切关注用户的明确请求和你之前的操作。
+<conversation_history_summary>
+Summary of the conversation between an AI agent and a user.
+Record completed work and pending work separately. Never mark unfinished work completed.
+**Do not repeat completed work. Preserve pending tasks and the next action for continuation.**
+Use this summary only for context understanding.
 
-你的摘要应包含以下部分：
-1. 主要请求和意图
-2. 关键技术概念
-3. 文件和代码部分
-4. 错误和修复
-5. 问题解决
-6. 所有用户消息（列出所有非工具结果的用户消息）
-7. 待处理任务
-8. 当前工作
-9. 可选的下一步（包含最近对话中的直接引用）
+<analysis>
+[organize your thoughts and ensure you've covered all necessary points and put them in this tag. no more than 300 words.]
+</analysis>
 
-摘要应足够简洁以减少上下文使用，但要保留另一个智能体在没有原始历史记录的情况下继续工作所需的所有细节。
+<summary>
+[put your structured summary content in this tag]
+</summary>
+
+</conversation_history_summary>
+
+Step 2: Your <analysis> content should refer to the following aspects:
+
+1. Chronologically analyze each message and section of the conversation.
+2. For each section thoroughly identify:
+   - The user's explicit requests and intents
+   - Your approach to addressing the user's requests
+   - Key decisions, technical concepts and code patterns
+   - Specific details like:
+     - file names
+     - full code snippets
+     - function signatures
+     - file edits
+  - Errors that you ran into and how you fixed them
+  - Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+3. Double-check for technical accuracy and completeness, addressing each required element thoroughly.
+
+Step 3: Your <summary> content should refer to the following aspects:
+
+1. Primary Request and Intent: Capture all of the user's explicit requests and intents in detail
+2. Key Technical Concepts: List all important technical concepts, technologies, and frameworks discussed.
+3. Files and Code Sections: Enumerate specific files and code sections examined, modified, or created. Pay special attention to the most recent messages and include full code snippets where applicable and include a summary of why this file read or edit is important.
+4. Errors and fixes: List all errors that you ran into, and how you fixed them. Pay special attention to specific user feedback that you received, especially if the user told you to do something differently.
+5. Problem Solving: Document problems solved and any ongoing troubleshooting efforts.
+6. All user messages: List all messages actually sent by the user and preserve the original content whenever possible. However, if a message is excessively long or contains unreadable segments (such as garbled text, Base64, large logs), you must safely compress those parts by using placeholders such as: …[content truncated]… …[non-human-readable content omitted]… Ensure that the message itself is still recorded, but presented in a compact and readable form.
+
+Step 4: Special Notes
+- Keep the total output under 1000 words (≈2600 tokens).
+- Follow the language of the user's query (<user_query>) where possible.
+- Always verify technical accuracy and alignment with user intent.
+- Do not re-execute or continue any prior task; this summary is for contextual documentation only.
+
+Here's an example of how your output should be structured:
+
+<example>
+
+<conversation_history_summary>
+Summary of the conversation between an AI agent and a user.
+Record completed work and pending work separately. Never mark unfinished work completed.
+**Do not repeat completed work. Preserve pending tasks and the next action for continuation.**
+Use this summary only for context understanding.
+
+<analysis>
+[put the content here]
+</analysis>
+
+<summary>
+[put the content here]
+</summary>
+
+</conversation_history_summary>
+
+</example>

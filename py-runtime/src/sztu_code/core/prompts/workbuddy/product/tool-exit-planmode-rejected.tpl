@@ -1,0 +1,1 @@
+The user doesn't want to proceed with this plan yet. They want to keep planning. Please continue refining your plan based on the user's feedback, then call ExitPlanMode again when you have an updated plan ready.

@@ -4,9 +4,20 @@ import json
 import re
 import shutil
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
+
+from sztu_code.core.prompts.workbuddy import (
+    RESOURCE_ROOT,
+    adapt_text,
+    imported_plugins,
+    imported_skills,
+    load_resource,
+    render_text,
+    resource_path,
+    runtime_contract,
+)
 
 SkillScope = Literal["system", "personal", "workspace"]
 
@@ -147,7 +158,7 @@ def _parse_skill_file(
     match = _FRONTMATTER_RE.match(text)
     if match:
         front = match.group(1)
-        body = text[match.end():]
+        body = text[match.end() :]
         lines = front.splitlines()
         index = 0
         reading_allowed_tools = False
@@ -156,10 +167,10 @@ def _parse_skill_file(
             stripped = line.strip()
             if stripped.startswith("name:"):
                 reading_allowed_tools = False
-                name = _yaml_scalar(stripped[len("name:"):])
+                name = _yaml_scalar(stripped[len("name:") :])
             elif stripped.startswith("description:"):
                 reading_allowed_tools = False
-                value = stripped[len("description:"):].strip()
+                value = stripped[len("description:") :].strip()
                 if value in (">", "|"):
                     fold = value == ">"
                     parts: list[str] = []
@@ -178,6 +189,14 @@ def _parse_skill_file(
                 reading_allowed_tools = False
             index += 1
 
+    if (
+        include_body
+        and source == "builtin"
+        and path.parent == SkillLoader._BUILTIN_DIR
+        and match
+        and re.search(r"^workbuddy: true$", match.group(1), re.MULTILINE)
+    ):
+        body = render_text(body)
     metadata = _read_openai_metadata(path)
     scope, plugin = _source_metadata(source)
     display_name = str(metadata.get("display_name", ""))
@@ -224,16 +243,13 @@ class SkillLoader:
         roots = [
             (self._BUILTIN_DIR, "builtin"),
         ]
-        roots.extend(
-            self._plugin_skill_roots(self._BUILTIN_PLUGINS_DIR, "builtin-plugin")
-        )
+        roots.extend(self._plugin_skill_roots(self._BUILTIN_PLUGINS_DIR, "builtin-plugin"))
         roots.append((self._config_root / "skills", "user"))
+        roots.insert(len(roots) - 1, (RESOURCE_ROOT / "skills", "workbuddy"))
         roots.extend(self._plugin_skill_roots(self._config_root / "plugins", "user-plugin"))
         roots.append((self._project_root / ".sztu" / "skills", "project"))
         roots.extend(
-            self._plugin_skill_roots(
-                self._project_root / ".sztu" / "plugins", "project-plugin"
-            )
+            self._plugin_skill_roots(self._project_root / ".sztu" / "plugins", "project-plugin")
         )
         return roots
 
@@ -284,9 +300,7 @@ class SkillLoader:
                 skills_by_plugin.setdefault((skill.scope, skill.plugin), []).append(skill.name)
         result: list[Plugin] = []
         enabled_overrides = self._plugin_enabled_overrides()
-        locations: list[
-            tuple[Path, Literal["personal", "workspace", "builtin"]]
-        ] = [
+        locations: list[tuple[Path, Literal["personal", "workspace", "builtin"]]] = [
             (self._BUILTIN_PLUGINS_DIR, "builtin"),
             (self._config_root / "plugins", "personal"),
             (self._project_root / ".sztu" / "plugins", "workspace"),
@@ -307,15 +321,15 @@ class SkillLoader:
                     else name
                 )
                 brand_value = (
-                    str(interface.get("brandColor") or "")
-                    if isinstance(interface, dict)
-                    else ""
+                    str(interface.get("brandColor") or "") if isinstance(interface, dict) else ""
                 )
                 brand_color = brand_value if _HEX_COLOR_RE.fullmatch(brand_value) else None
                 scope: SkillScope = (
                     "personal"
                     if source == "personal"
-                    else "workspace" if source == "workspace" else "system"
+                    else "workspace"
+                    if source == "workspace"
+                    else "system"
                 )
                 plugin_id = f"{source}:{name}"
                 result.append(
@@ -336,6 +350,23 @@ class SkillLoader:
                         license=str(value.get("license") or ""),
                     )
                 )
+        for item in imported_plugins():
+            plugin_id = f"builtin:{item['name']}"
+            result.append(
+                Plugin(
+                    id=plugin_id,
+                    name=item["name"],
+                    description="Imported WorkBuddy skill collection; "
+                    "external services require configured connectors.",
+                    version="",
+                    source="builtin",
+                    path=item["path"],
+                    manifest_path=RESOURCE_ROOT / "manifest.json",
+                    skills=tuple(item["skills"]),
+                    display_name=item["name"],
+                    enabled=enabled_overrides.get(plugin_id, True),
+                )
+            )
         return result
 
     # 返回插件启停状态文件，作用域规则与插件安装目录保持一致
@@ -440,9 +471,7 @@ class SkillLoader:
         self._write_enabled_override(settings_path, skill.id, enabled)
         self.invalidate()
         updated = next(
-            item
-            for item in self.list_all_skills(include_disabled=True)
-            if item.id == skill_id
+            item for item in self.list_all_skills(include_disabled=True) if item.id == skill_id
         )
         return updated
 
@@ -462,6 +491,28 @@ class SkillLoader:
 
     # 按优先级查找技能文件；禁用的高优先级技能不会回退到同名低优先级版本
     def resolve(self, name: str) -> Skill | None:
+        imported = next(
+            (s for s in self.list_all_skills(include_disabled=True) if s.name == name), None
+        )
+        if imported is not None and imported.source == "workbuddy":
+            if not imported.enabled or imported.path is None:
+                return None
+            item = next(s for s in imported_skills() if s["name"] == name)
+            body = (
+                load_resource(item["path"])
+                if item["path"].startswith("product/")
+                else adapt_text(_parse_skill_file(imported.path).system_prompt_template)
+            )
+            imported = replace(imported, allowed_tools=item["allowedTools"])
+            imported.plugin = item["plugin"]
+            imported.system_prompt_template = (
+                f"Skill directory: {Path(item['path']).parent.as_posix()} "
+                "(use prompt_resource for relative references).\n\n"
+                + body
+                + "\n\n"
+                + runtime_contract()
+            )
+            return imported
         overrides = self._enabled_overrides()
         for path, source in self._search_paths(name):
             if path.exists():
@@ -487,6 +538,14 @@ class SkillLoader:
     def list_all(self) -> list[str]:
         return [skill.name for skill in self.list_all_skills()]
 
+    def render_catalog(self) -> str:
+        skills = self.list_all_skills()
+        return (
+            "# Available skills\n"
+            + "\n".join(f"- {s.name}: {' '.join(s.description.split())[:240]}" for s in skills)
+            + "\nUse the skill tool to load full instructions when relevant."
+        )
+
     # 扫描技能目录并只加载目录元数据，完整正文留到 resolve 时再读取
     def list_all_skills(self, *, include_disabled: bool = False) -> list[Skill]:
         now = time.monotonic()
@@ -494,6 +553,24 @@ class SkillLoader:
             overrides = self._enabled_overrides()
             seen: dict[str, Skill] = {}
             for directory, source in self._roots():
+                if source == "workbuddy":
+                    for item in imported_skills():
+                        skill = Skill(
+                            name=item["name"],
+                            description=item["description"],
+                            system_prompt_template="",
+                            source="workbuddy",
+                            path=resource_path(item["path"]),
+                            plugin=item["plugin"],
+                        )
+                        skill.allow_implicit_invocation = not item["path"].startswith("product/")
+                        skill.enabled = overrides.get(
+                            skill.id, True
+                        ) and self._plugin_enabled_overrides().get(
+                            f"builtin:{item['plugin']}", True
+                        )
+                        seen[skill.name] = skill
+                    continue
                 if not directory.exists():
                     continue
                 files = [*sorted(directory.glob("*.md")), *sorted(directory.glob("*/SKILL.md"))]
@@ -558,7 +635,9 @@ class SkillLoader:
         try:
             target.relative_to(root)
         except ValueError as error:
-            raise ValueError("refusing to uninstall a skill outside its installation root") from error
+            raise ValueError(
+                "refusing to uninstall a skill outside its installation root"
+            ) from error
         if target == root:
             raise ValueError("refusing to uninstall the skill installation root")
         if target.is_dir():

@@ -1,0 +1,1 @@
+The user has exited plan mode. You are no longer in plan mode - you have returned to normal mode where you can make edits, run tools, and take actions. The user does not want to proceed with this plan. STOP what you are doing and wait for the user to tell you how to proceed.

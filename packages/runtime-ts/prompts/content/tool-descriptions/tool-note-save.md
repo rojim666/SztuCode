@@ -1,6 +1,1 @@
-将简洁的持久事实或决策保存到当前会话笔记中，以便在同一会话的后续轮次中保持可用。
-
-使用方法：
-- 存储稳定的事实、决策、约束或未解决的后续上下文，而不是暂时的进度叙述。
-- `content` 必须非空且简洁。
-- 结果包含一个笔记 ID。当事实稍后可能需要使用 `note_update` 更正时，请保留该 ID。
+Save a verified reusable fact to session notes. Never save credentials.

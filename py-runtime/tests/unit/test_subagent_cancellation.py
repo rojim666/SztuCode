@@ -591,11 +591,11 @@ async def test_interrupt_cancels_recursive_descendants(tmp_path: Path) -> None:
              if m["role"] == "user" and isinstance(m["content"], str)), ""
         )
         # grandchild：永久阻塞
-        if first_user == "gc work":
+        if first_user.endswith("gc work"):
             await asyncio.Event().wait()
             return LlmResponse(stop_reason="end_turn", text="", usage=UsageStats(0, 0, 0, 0, 0.0))
         # child：首步派生 grandchild 后阻塞
-        if first_user == "child work":
+        if first_user.endswith("child work"):
             if not any(
                 isinstance(b, dict) and b.get("name") == "spawn_agent"
                 for m in messages if m["role"] == "assistant" and isinstance(m["content"], list)
@@ -762,10 +762,10 @@ async def test_recursive_cancel_emits_finished_for_all_descendants(tmp_path: Pat
             (str(m["content"]) for m in messages
              if m["role"] == "user" and isinstance(m["content"], str)), ""
         )
-        if first_user == "gc work":
+        if first_user.endswith("gc work"):
             await asyncio.Event().wait()
             return LlmResponse(stop_reason="end_turn", text="", usage=UsageStats(0, 0, 0, 0, 0.0))
-        if first_user == "child work":
+        if first_user.endswith("child work"):
             if not any(
                 isinstance(b, dict) and b.get("name") == "spawn_agent"
                 for m in messages if m["role"] == "assistant" and isinstance(m["content"], list)
@@ -841,13 +841,13 @@ async def test_recursive_success_emits_finished_for_all_descendants(tmp_path: Pa
              if m["role"] == "user" and isinstance(m["content"], str)), ""
         )
         # grandchild：立即完成
-        if first_user == "gc work":
+        if first_user.endswith("gc work"):
             return LlmResponse(
                 stop_reason="end_turn", text="grandchild done",
                 usage=UsageStats(0, 0, 0, 0, 0.0),
             )
         # child：首步 spawn 后台 grandchild，第二步 end_turn 成功
-        if first_user == "child work":
+        if first_user.endswith("child work"):
             if not any(
                 isinstance(b, dict) and b.get("name") == "spawn_agent"
                 for m in messages if m["role"] == "assistant" and isinstance(m["content"], list)

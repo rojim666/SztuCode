@@ -16,6 +16,7 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.prompts.context_management_prompts import (
     load_context_management_prompt,
 )
+from sztu_code.core.prompts.workbuddy import load_resource
 
 if TYPE_CHECKING:
     from sztu_code.core.context import ExecutionContext
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 _token_counter = TokenCounter()
 
 # 压缩摘要请求的固定 system prompt（三个调用点共用，保持前缀缓存稳定）
-_COMPACT_SYSTEM_PROMPT = "You are a helpful assistant that summarizes conversations."
+_COMPACT_SYSTEM_PROMPT = load_resource("product/context-summary-agent-prompt.tpl")
 
 
 # Token 预算准入（Issue #72）：压缩请求的输入为全量历史，余额不足以覆盖
@@ -47,8 +48,7 @@ def _admit_compaction_request(
     output_room = remaining_token_budget - estimate
     if output_room < MIN_OUTPUT_RESERVE_TOKENS:
         logger.warning(
-            "compactor: skip compaction, token budget insufficient "
-            "(estimate=%d remaining=%d)",
+            "compactor: skip compaction, token budget insufficient (estimate=%d remaining=%d)",
             estimate,
             remaining_token_budget,
         )
@@ -220,9 +220,7 @@ class Compactor:
         context.total_output_tokens += usage.output_tokens
         context.total_cache_read_input_tokens += usage.cache_read_input_tokens
         context.total_prompt_tokens += (
-            usage.input_tokens
-            + usage.cache_read_input_tokens
-            + usage.cache_creation_input_tokens
+            usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
         )
 
     async def compact(

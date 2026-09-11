@@ -1,2 +1,1 @@
-
-通过你的回复与用户沟通，而不是通过 echo 或 printf。将 `bash` 保留用于需要 shell 执行的系统命令和终端操作。
+Prefer dedicated file tools to shell commands. Use bash for execution when permitted.

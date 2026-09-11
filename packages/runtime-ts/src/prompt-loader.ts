@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PermissionMode } from "@sztucode/protocol";
 import { composeRuntimePrompt, dynamicRuntimePromptEntries, type PromptRuntimeContext } from "./prompt-harness.js";
 import type { ChatMessage } from "./agent-loop.js";
 import { SkillLoader } from "./skills.js";
+import { buildWorkbuddyBase, importedAgent, loadWorkbuddyResource, renderWorkbuddyText, workbuddyContract } from "./workbuddy-resources.js";
 
 const execFileAsync = promisify(execFile);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -21,22 +22,6 @@ function stripHtmlComments(text: string): string {
 }
 
 export type AgentProfile = { name: string; description: string; systemPrompt: string; allowedTools: string[] | null; permissionMode: PermissionMode | null; maxSteps: number };
-
-async function markdownGroup(group: string): Promise<string[]> {
-  const root = path.join(promptRoot, group);
-  try {
-    const entries = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isFile() && entry.name.endsWith(".md")).sort((a, b) => a.name.localeCompare(b.name));
-    return Promise.all(entries.map(async (entry) => stripHtmlComments(await readFile(path.join(root, entry.name), "utf8"))));
-  } catch { return []; }
-}
-
-async function firstPrompt(group: string, fragment: string): Promise<string> {
-  const root = path.join(promptRoot, group);
-  try {
-    const name = (await readdir(root)).find((entry) => entry.endsWith(".md") && entry.includes(fragment));
-    return name ? stripHtmlComments(await readFile(path.join(root, name), "utf8")) : "";
-  } catch { return ""; }
-}
 
 async function gitSnapshot(root: string): Promise<string> {
   try {
@@ -77,14 +62,7 @@ export async function buildSystemPrompt(workspaceRoot: string, role = "coder", r
   if (memoized) return memoized;
   const building = (async () => {
     const sections = [
-      await firstPrompt("main", "workbuddy-system"),
-      await firstPrompt("safety-prompts", "malicious-code-protection"),
-      await firstPrompt("doing-tasks", "software-engineering-focus"),
-      await firstPrompt("doing-tasks", "read-before-modifying"),
-      await firstPrompt("doing-tasks", "security"),
-      await firstPrompt("doing-tasks", "blocked-approach"),
-      ...(await markdownGroup("output-efficiency")),
-      await firstPrompt("tone-and-style", "concise-output-short"),
+      buildWorkbuddyBase(),
       `# Runtime context\n- Agent role: ${role}`,
     ].filter(Boolean);
     return composeRuntimePrompt(sections.join("\n\n"), runtime);
@@ -146,17 +124,25 @@ function parseTomlProfile(text: string, name: string): AgentProfile {
   const allowedMatch = text.match(/^allowed_tools\s*=\s*\[([\s\S]*?)\]/m);
   const allowedTools = allowedMatch ? [...allowedMatch[1].matchAll(/["']([^"']+)["']/g)].map((match) => match[1]) : null;
   const inlinePrompt = text.match(/system_prompt\s*=\s*"""([\s\S]*?)"""/)?.[1]?.trim() ?? "";
-  return { name, description, systemPrompt: promptId || inlinePrompt, allowedTools, permissionMode, maxSteps };
+  const resource = text.match(/^workbuddy_template\s*=\s*["']([^"']*)["']/m)?.[1];
+  const hostContract = text.match(/host_contract\s*=\s*"""([\s\S]*?)"""/)?.[1]?.trim() ?? "";
+  const systemPrompt = resource ? [loadWorkbuddyResource(resource), hostContract, workbuddyContract()].filter(Boolean).join("\n\n") : promptId || inlinePrompt;
+  return { name, description, systemPrompt, allowedTools, permissionMode, maxSteps };
 }
 
 export async function loadAgentProfile(workspaceRoot: string, name: string): Promise<AgentProfile> {
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error("Invalid agent name");
   const candidates = [path.join(workspaceRoot, ".sztu", "agents", `${name}.toml`), path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu", "agents", `${name}.toml`), path.join(agentRoot, `${name}.toml`)];
   for (const file of candidates) {
+    if (file === candidates[2]) {
+      const agent = importedAgent(name);
+      if (agent) return { name, description: agent.description, systemPrompt: loadWorkbuddyResource(agent.template) + "\n\n" + workbuddyContract(), allowedTools: agent.tools, permissionMode: name === "Explore" || name === "Plan" ? "plan" : null, maxSteps: 20 };
+    }
     try {
       const profile = parseTomlProfile(await readFile(file, "utf8"), name);
       if (profile.systemPrompt) {
         const promptFile = path.join(promptRoot, "subagent-prompts", `agent-prompt-${profile.systemPrompt}.md`);
-        try { profile.systemPrompt = stripHtmlComments(await readFile(promptFile, "utf8")); } catch { /* inline/system prompt fallback */ }
+        try { profile.systemPrompt = renderWorkbuddyText(stripHtmlComments(await readFile(promptFile, "utf8"))); } catch { /* inline/system prompt fallback */ }
       }
       return profile;
     } catch { /* try lower-priority profile */ }

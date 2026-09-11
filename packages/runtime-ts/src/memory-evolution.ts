@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { ToolRegistry } from "./tools.js";
 import type { CanvasNode } from "./task-canvas.js";
+import { loadWorkbuddyResource } from "./workbuddy-resources.js";
 
 // --- Working State ---
 
@@ -210,8 +211,10 @@ function buildEvolutionPrompt(trajectory: CanvasNode[], goal: string = ""): stri
 }
 
 function memoryEvolutionSystemPrompt(): string {
-  return `[memory-evolution]
-You are the Recuris Memory Evolution Meta-Agent.
+  return `${loadWorkbuddyResource("product/insights-facet-friction.tpl")}
+
+[memory-evolution]
+For this invocation replace the report schema above with the SztuCode memory patch schema below.
 
 Your job: analyze a structured trajectory of a failed or stuck agent run, and propose targeted memory patches.
 
@@ -356,7 +359,7 @@ export async function runMemoryEvolution(
   const prompt = buildEvolutionPrompt(trajectory, options?.goal ?? "");
   try {
     const response = await provider.complete(
-      [{ role: "user", content: prompt }],
+      [{ role: "system", content: memoryEvolutionSystemPrompt() }, { role: "user", content: prompt }],
       new ToolRegistry(),
       undefined,
       undefined,
