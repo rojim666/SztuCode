@@ -368,8 +368,17 @@ class AgentRunner:
             max_tokens=self._config.budget.max_tokens,
             max_wall_clock_s=self._config.budget.max_wall_clock_s,
         )
-        if workspace_snapshot:
-            context.prepend_goal_reminder(workspace_snapshot)
+        dynamic_reminder = "\n\n".join(
+            part
+            for part in (
+                f"Today's date is {datetime.now(UTC).date().isoformat()}.",
+                workspace_snapshot,
+                context.dynamic_context_reminder(),
+            )
+            if part.strip()
+        )
+        if dynamic_reminder:
+            context.prepend_goal_reminder(dynamic_reminder)
         prefill_len = len(history)
         compactor = None  # 在 try 块外初始化，避免 UnboundLocalError
         # 同上：provider 在 try 内赋值；失败路径下进化循环需判空跳过

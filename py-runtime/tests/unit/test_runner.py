@@ -531,7 +531,8 @@ async def test_session_history_and_notes_injected(tmp_path: Path) -> None:
     assert provider.messages[0]["content"].endswith("remember python")
     assert provider.messages[0]["ts"]
     assert provider.system is not None
-    assert "Python 3.12" in provider.system
+    # 记忆层已注入到消息尾部（system prompt 只保留稳定前缀）
+    assert "Python 3.12" in provider.messages[0]["content"]
     assert (store.runs_dir("sess-1") / "run-new" / "events.jsonl").exists()
     assert not (tmp_path / "runs" / "run-new").exists()
 
@@ -565,8 +566,9 @@ async def test_project_profile_is_injected_into_system_prompt(
     assert outcome.status == "success"
     assert detected_roots == [workspace_root.resolve()]
     assert provider.system is not None
-    assert "## Project Profile" in provider.system
-    assert "Recommended unit test: uv run pytest" in provider.system
+    injected = provider.messages[0]["content"]
+    assert "## Project Profile" in injected
+    assert "Recommended unit test: uv run pytest" in injected
 
 
 # 功能：验证 runner 的最终 system prompt 会注入工作区 CLAUDE.md
@@ -661,7 +663,7 @@ async def test_project_profile_detection_errors_do_not_block_run(
 
         assert outcome.status == "success"
         assert provider.system is not None
-        assert "## Project Profile" not in provider.system
+        assert "## Project Profile" not in provider.messages[0]["content"]
 
 
 # 功能：验证真实工作区画像会进入 Agent prompt，且 package script 正文不会被注入。
@@ -679,11 +681,12 @@ async def test_workspace_project_profile_is_injected_into_agent_context(tmp_path
     await runner.run_and_capture("inspect", run_id="run-profile", workspace_root=workspace)
 
     assert provider.system is not None
-    assert "## Project Profile" in provider.system
-    assert "Detected Project Profile" in provider.system
-    assert "npm run build" in provider.system
-    assert "advisory only" in provider.system
-    assert "unsafe-build --all" not in provider.system
+    injected = provider.messages[0]["content"]
+    assert "## Project Profile" in injected
+    assert "Detected Project Profile" in injected
+    assert "npm run build" in injected
+    assert "advisory only" in injected
+    assert "unsafe-build --all" not in injected
 
 
 # 功能：验证桌面端收到 run.finished 时本轮耗时与 token 已经持久化

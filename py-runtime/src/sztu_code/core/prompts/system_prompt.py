@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import platform
 import subprocess
 from pathlib import Path
@@ -99,15 +98,16 @@ def build_static_base() -> str:
     return "\n\n".join(_static_sections())
 
 
-# 渲染环境上下文段：模型家族、工作目录、日期、平台
+# 渲染环境上下文段：模型家族、工作目录、平台
+# 注意：日期不在这里——它每天变化，写进 system 会击穿前缀缓存；
+# 改由 runner 注入到消息尾部。
 def _environment_section(
-    *, cwd: str, date: str, model_family: str, os_name: str, os_version: str
+    *, cwd: str, model_family: str, os_name: str, os_version: str
 ) -> str:
     return (
         "# Environment context\n"
         f" - Model family: {model_family}\n"
         f" - Working directory: {cwd}\n"
-        f" - Date: {date}\n"
         f" - Platform: {os_name} {os_version}"
     )
 
@@ -186,12 +186,10 @@ def discover_instruction_files(root: Path) -> list[tuple[str, str]]:
 def _project_sections(
     *,
     cwd: str,
-    date: str,
     instruction_entries: list[tuple[str, str]],
 ) -> list[str]:
     sections: list[str] = [
         "# Project context\n"
-        f" - Today's date is {date}.\n"
         f" - Working directory: {cwd}\n"
         f" - Project instruction files discovered: {len(instruction_entries)}."
     ]
@@ -207,13 +205,11 @@ def _project_sections(
 def build_system_prompt(
     *,
     workspace_root: Path | None = None,
-    date: str | None = None,
     model_family: str = "an AI assistant",
     platform_name: str | None = None,
     platform_version: str | None = None,
 ) -> str:
     cwd = str((workspace_root or Path.cwd()).resolve())
-    today = date or datetime.date.today().isoformat()
     os_name = platform_name or platform.system()
     os_version = platform_version or platform.release()
 
@@ -226,7 +222,6 @@ def build_system_prompt(
     sections.append(
         _environment_section(
             cwd=cwd,
-            date=today,
             model_family=model_family,
             os_name=os_name,
             os_version=os_version,
@@ -235,7 +230,6 @@ def build_system_prompt(
     sections.extend(
         _project_sections(
             cwd=cwd,
-            date=today,
             instruction_entries=instruction_entries,
         )
     )

@@ -36,7 +36,7 @@ def test_system_prompt_excludes_git_snapshot(tmp_path: Path) -> None:
     _make_repo(tmp_path)
     (tmp_path / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
 
-    prompt = build_system_prompt(workspace_root=tmp_path, date="2026-01-01")
+    prompt = build_system_prompt(workspace_root=tmp_path)
 
     assert "Git diff snapshot" not in prompt
     assert "Git branch:" not in prompt
@@ -50,12 +50,12 @@ def test_system_prompt_excludes_git_snapshot(tmp_path: Path) -> None:
 def test_system_prompt_is_byte_stable_across_workspace_changes(tmp_path: Path) -> None:
     _make_repo(tmp_path)
 
-    first = build_system_prompt(workspace_root=tmp_path, date="2026-01-01")
-    second = build_system_prompt(workspace_root=tmp_path, date="2026-01-01")
+    first = build_system_prompt(workspace_root=tmp_path)
+    second = build_system_prompt(workspace_root=tmp_path)
     assert first == second
 
     (tmp_path / "a.txt").write_text("changed\n", encoding="utf-8")
-    third = build_system_prompt(workspace_root=tmp_path, date="2026-01-01")
+    third = build_system_prompt(workspace_root=tmp_path)
     assert third == first
 
 
@@ -88,3 +88,27 @@ def test_prepend_goal_reminder_keeps_goal_and_prepends_snapshot() -> None:
     assert content.startswith("<system-reminder>")
     assert "Git branch: main" in content
     assert content.endswith("do the thing")
+
+
+# 功能：日期与记忆层不再写入 system prompt
+# 设计：断言 system_prompt 只返回 base，动态内容改走 dynamic_context_reminder
+def test_system_prompt_excludes_date_and_memory_layers(tmp_path: Path) -> None:
+    prompt = build_system_prompt(workspace_root=tmp_path)
+    assert "Today's date is" not in prompt
+    assert " - Date: " not in prompt
+
+    context = ExecutionContext(
+        run_id="run-1",
+        goal="g",
+        max_steps=5,
+        global_context="GLOBAL-MEMO",
+        project_context="PROJECT-MEMO",
+        project_profile_context="PROFILE-MEMO",
+        session_notes="NOTE-MEMO",
+    )
+    system = context.system_prompt("BASE-PROMPT")
+    assert system == "BASE-PROMPT"
+    reminder = context.dynamic_context_reminder()
+    for marker in ("GLOBAL-MEMO", "PROJECT-MEMO", "PROFILE-MEMO", "NOTE-MEMO"):
+        assert marker in reminder
+        assert marker not in system

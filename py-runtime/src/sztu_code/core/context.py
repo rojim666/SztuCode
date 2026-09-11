@@ -89,22 +89,28 @@ class ExecutionContext:
         elif not self.messages:
             self.messages.append({"role": "user", "content": self.goal})
 
-    # 返回当前 run 的 system prompt；有 override 时跳过 base，直接注入记忆层
+    # 返回当前 run 的 system prompt：只含字节稳定的静态前缀。
+    # 动态记忆层（global/project/profile/notes）见 dynamic_context_reminder，
+    # 由 runner 注入到消息尾部，避免记忆更新击穿前缀缓存。
     def system_prompt(self, base: str) -> str:
-        parts = [self.system_prompt_override if self.system_prompt_override else base]
+        return self.system_prompt_override if self.system_prompt_override else base
+
+    # 动态记忆层，注入到消息尾部而非 system prompt
+    def dynamic_context_reminder(self) -> str:
+        parts: list[str] = []
         if self.global_context.strip():
-            parts.append("\n\n## Global Context\n" + self.global_context.strip())
+            parts.append("## Global Context\n" + self.global_context.strip())
         if self.project_context.strip():
-            parts.append("\n\n## Project Context\n" + self.project_context.strip())
+            parts.append("## Project Context\n" + self.project_context.strip())
         if self.project_profile_context.strip():
-            parts.append("\n\n## Project Profile\n" + self.project_profile_context.strip())
+            parts.append("## Project Profile\n" + self.project_profile_context.strip())
         if self.session_notes.strip():
             parts.append(
-                "\n\n## Session Notes\n"
+                "## Session Notes\n"
                 + self.session_notes.strip()
                 + "\n\nRemember important durable facts by calling note_save."
             )
-        return "".join(parts)
+        return "\n\n".join(parts)
 
     # 将动态任务状态追加到消息尾部，保持 system prompt 字节级稳定以命中前缀缓存
     def add_canvas_update(self) -> None:
