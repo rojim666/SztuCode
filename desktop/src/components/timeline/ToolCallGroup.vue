@@ -145,7 +145,7 @@ const detailPath = computed(() => {
 }
 
 .tool-call-group:not(.running) .tool-call-group__status {
-  color: #16a34a;
+  color: #6b7280;
 }
 
 .tool-call-group__summary {

@@ -132,7 +132,10 @@
   border-radius: 50%;
   background: #d1d5db;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease;
+  --wave-offset: 0px;
+  --wave-scale: 1;
+  transition: background 0.24s ease, transform 0.34s cubic-bezier(.22,.8,.3,1), box-shadow 0.24s ease;
+  transform: translateX(var(--wave-offset)) scale(var(--wave-scale));
 }
 
 .turn-dot::after {
@@ -148,7 +151,7 @@
 
 .turn-dot:hover {
   background: #6b7280;
-  transform: scale(1.25);
+  transform: translateX(calc(var(--wave-offset) + 2px)) scale(calc(var(--wave-scale) + .12));
   box-shadow: 0 0 0 3px rgba(107,114,128,.12);
 }
 
@@ -158,7 +161,7 @@
 
 .turn-dot.active {
   background: #374151;
-  transform: scale(1.5);
+  transform: translateX(var(--wave-offset)) scale(var(--wave-scale));
 }
 
 /* 气泡tooltip：rail的兄弟节点，绝对定位在wrap中，完全不受overflow裁剪 */

@@ -3575,6 +3575,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                         type="button"
                         role="tab"
                         class="turn-dot"
+                        :style="{ '--wave-offset': `${Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 9}px`, '--wave-scale': `${1 + Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 0.55}` }"
                         :class="{ active: turnDotActive === idx }"
                         :aria-selected="turnDotActive === idx"
                         :aria-label="t('app.turnAria', { n: idx + 1, label })"

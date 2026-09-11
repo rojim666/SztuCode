@@ -338,7 +338,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 
 .step-badge--done {
   color: #fff;
-  background: #16a34a;
+  background: #6b7280;
 }
 
 @keyframes pulse-blue {
@@ -355,7 +355,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 /* 完成：绿色圆形背景对勾 */
 .activity-phase.done .activity-phase__status {
   color: #fff;
-  background: #16a34a;
+  background: #6b7280;
 }
 
 /* 失败：橙色圆形背景叉号（warning 语义） */
@@ -381,7 +381,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 }
 
 .activity-phase.done .activity-phase__purpose {
-  color: #16a34a;
+  color: #4b5563;
 }
 
 /* 分隔符 - 目的描述后面的点 */
@@ -397,7 +397,7 @@ watch([thinkingPreview, thinkingRunning], () => {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
-  color: #16a34a;
+  color: #6b7280;
   font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
