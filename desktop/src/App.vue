@@ -2,6 +2,8 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
+import WeChatBridge from "./components/WebBridge/WeChatBridge.vue";
+import WeChatConnectionPanel from "./components/WebBridge/WeChatConnectionPanel.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
@@ -476,6 +478,9 @@ const attachedFiles = ref<PendingAttachment[]>([]);
 const isDragOver = ref(false);
 let dragCounter = 0;
 const providerStatus = ref<ProviderStatus | null>(null);
+// 微信连接面板：内嵌 OpenClaw Control UI，扫码/状态在该页面完成
+const wechatPanelOpen = ref(false);
+const wechatControlUiUrl = "http://127.0.0.1:18789/";
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const settingsOpen = ref(false);
 const settingsInitialSection = ref<"appearance" | "agent">("appearance");
@@ -524,6 +529,14 @@ const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
+const wechatSessions = computed(() => {
+  const workspaceById = new Map(workspaces.value.map((item) => [item.workspace_id, item]));
+  return sessions.value.map((session) => ({
+    session_id: session.session_id,
+    title: session.title,
+    projectName: session.workspace_id ? workspaceById.get(session.workspace_id)?.name ?? null : null,
+  }));
+});
 const operations = ref<DurableOperation[]>([]);
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
@@ -3738,7 +3751,12 @@ watch(activeId, () => { streamScrolledUp.value = false; });
 
       <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
 
-      <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p></section>
+      <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p>
+        <!-- 微信 OpenClaw 接入功能暂时隐藏，保留代码待后续恢复。
+        <WeChatBridge :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" :panel-open="wechatPanelOpen" @open-panel="wechatPanelOpen = !wechatPanelOpen" />
+        <WeChatConnectionPanel v-if="wechatPanelOpen" :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" @close="wechatPanelOpen = false" />
+        -->
+      </section>
     </main>
 
     <Teleport to="body">

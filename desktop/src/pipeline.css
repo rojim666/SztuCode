@@ -19,8 +19,8 @@
 .phase-rail__dot { display: grid; width: 13px; height: 13px; flex: 0 0 auto; place-items: center; color: var(--text-faint); border: 1.5px solid currentColor; border-radius: 50%; }
 .phase-rail__item.is-reached { color: var(--text-muted); }
 .phase-rail__item.is-reached .phase-rail__dot { color: var(--surface); background: var(--text-muted); border-color: var(--text-muted); }
-.phase-rail__item.is-active { color: var(--text); background: var(--surface-soft); }
-.phase-rail__item.is-active .phase-rail__dot { color: var(--surface); background: var(--text); border-color: var(--text); }
+.phase-rail__item.is-active { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.phase-rail__item.is-active .phase-rail__dot { color: var(--surface); background: var(--text); border-color: var(--text); box-shadow: 0 0 0 4px color-mix(in srgb, var(--text) 10%, transparent); }
 /* 提示语只给当前阶段显示，避免四个阶段同时铺开占满一行 */
 .phase-rail__hint { display: none; }
 .phase-rail__item.is-active .phase-rail__hint { display: inline; color: var(--text-faint); }

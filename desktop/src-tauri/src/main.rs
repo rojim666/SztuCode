@@ -30,6 +30,8 @@ use tokio::{
 #[cfg(target_os = "macos")]
 mod macos_work_area;
 
+mod wechat_bridge;
+
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -477,7 +479,10 @@ fn daemon_candidates(app: &tauri::AppHandle) -> Vec<(PathBuf, Vec<String>, Optio
     if let Ok(executable) = std::env::var("SZTU_DAEMON_EXECUTABLE") {
         candidates.push((PathBuf::from(executable), Vec::new(), None));
     }
-    if let Ok(runtime) = app.path().resolve("resources/runtime/main.js", BaseDirectory::Resource) {
+    if let Ok(runtime) = app
+        .path()
+        .resolve("resources/runtime/main.js", BaseDirectory::Resource)
+    {
         if runtime.exists() {
             let runtime = child_path(&runtime);
             let bundled_node = runtime
@@ -499,24 +504,24 @@ fn daemon_candidates(app: &tauri::AppHandle) -> Vec<(PathBuf, Vec<String>, Optio
     }
     #[cfg(debug_assertions)]
     {
-    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|desktop| desktop.parent())
-        .map(PathBuf::from);
-    if let Some(root) = repository {
-        let runtime = root
-            .join("packages")
-            .join("runtime-ts")
-            .join("dist")
-            .join("main.js");
-        if runtime.exists() {
-            candidates.push((
-                PathBuf::from("node"),
-                vec![runtime.to_string_lossy().into_owned()],
-                Some(root.clone()),
-            ));
+        let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|desktop| desktop.parent())
+            .map(PathBuf::from);
+        if let Some(root) = repository {
+            let runtime = root
+                .join("packages")
+                .join("runtime-ts")
+                .join("dist")
+                .join("main.js");
+            if runtime.exists() {
+                candidates.push((
+                    PathBuf::from("node"),
+                    vec![runtime.to_string_lossy().into_owned()],
+                    Some(root.clone()),
+                ));
+            }
         }
-    }
     }
     candidates
 }
@@ -524,7 +529,12 @@ fn daemon_candidates(app: &tauri::AppHandle) -> Vec<(PathBuf, Vec<String>, Optio
 fn daemon_log_path() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
-        .map(|home| PathBuf::from(home).join(".sztu").join("logs").join("desktop-daemon.log"))
+        .map(|home| {
+            PathBuf::from(home)
+                .join(".sztu")
+                .join("logs")
+                .join("desktop-daemon.log")
+        })
 }
 
 fn child_path(path: &PathBuf) -> PathBuf {
@@ -544,12 +554,24 @@ fn child_path(path: &PathBuf) -> PathBuf {
 fn daemon_log_tail(path: &PathBuf) -> String {
     std::fs::read_to_string(path)
         .ok()
-        .map(|text| text.lines().rev().take(12).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | "))
+        .map(|text| {
+            text.lines()
+                .rev()
+                .take(12)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ")
+        })
         .unwrap_or_default()
 }
 
 #[tauri::command]
-async fn daemon_start(app: tauri::AppHandle, state: State<'_, DaemonProcess>) -> Result<DaemonStartResult, String> {
+async fn daemon_start(
+    app: tauri::AppHandle,
+    state: State<'_, DaemonProcess>,
+) -> Result<DaemonStartResult, String> {
     if TcpStream::connect(("127.0.0.1", 7438)).await.is_ok() {
         return Ok(DaemonStartResult {
             status: "already_running".into(),
@@ -591,7 +613,11 @@ async fn daemon_start(app: tauri::AppHandle, state: State<'_, DaemonProcess>) ->
             .env("SZTU_TS_PORT", "7438")
             .stdin(Stdio::null());
         if let Some(path) = log_path.as_ref() {
-            match std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            match std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 Ok(mut log) => {
                     let _ = writeln!(log, "starting {} {}", executable.display(), args.join(" "));
                     match log.try_clone() {
@@ -634,7 +660,15 @@ async fn daemon_start(app: tauri::AppHandle, state: State<'_, DaemonProcess>) ->
                     };
                     if exited {
                         let tail = log_path.as_ref().map(daemon_log_tail).unwrap_or_default();
-                        errors.push(format!("{} exited during startup{}", executable.display(), if tail.is_empty() { String::new() } else { format!(": {tail}") }));
+                        errors.push(format!(
+                            "{} exited during startup{}",
+                            executable.display(),
+                            if tail.is_empty() {
+                                String::new()
+                            } else {
+                                format!(": {tail}")
+                            }
+                        ));
                         *state.child.lock().await = None;
                         break;
                     }
@@ -754,13 +788,22 @@ fn is_path_only_asset(mime: &str) -> bool {
     mime.starts_with("audio/")
         || mime.starts_with("video/")
         || mime.starts_with("model/")
-        || matches!(mime,
-            "application/zip" | "application/x-7z-compressed" | "application/vnd.rar"
-            | "application/x-tar" | "application/gzip" | "application/x-bzip2"
-            | "application/x-xz" | "application/vnd.autodesk.fbx"
-            | "application/vnd.android.package-archive"
-            | "application/vnd.microsoft.portable-executable" | "application/x-msi"
-            | "application/x-apple-diskimage" | "application/vnd.debian.binary-package")
+        || matches!(
+            mime,
+            "application/zip"
+                | "application/x-7z-compressed"
+                | "application/vnd.rar"
+                | "application/x-tar"
+                | "application/gzip"
+                | "application/x-bzip2"
+                | "application/x-xz"
+                | "application/vnd.autodesk.fbx"
+                | "application/vnd.android.package-archive"
+                | "application/vnd.microsoft.portable-executable"
+                | "application/x-msi"
+                | "application/x-apple-diskimage"
+                | "application/vnd.debian.binary-package"
+        )
 }
 
 // 前 8KB 出现 NUL 字节即视为二进制
@@ -795,13 +838,19 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
     let mut signature = [0; 5];
     let pdf_header = std::fs::File::open(&pb)
         .and_then(|mut file| file.read_exact(&mut signature))
-        .is_ok() && &signature == b"%PDF-";
+        .is_ok()
+        && &signature == b"%PDF-";
     if pdf_header {
         mime = Some("application/pdf".into());
     }
     let is_img = mime.as_deref().is_some_and(is_image);
     let is_document = mime.as_deref() == Some("application/pdf")
-        || pb.extension().is_some_and(|ext| matches!(ext.to_string_lossy().to_lowercase().as_str(), "docx" | "xlsx" | "pptx"));
+        || pb.extension().is_some_and(|ext| {
+            matches!(
+                ext.to_string_lossy().to_lowercase().as_str(),
+                "docx" | "xlsx" | "pptx"
+            )
+        });
     if size > ATTACHMENT_MAX_BYTES {
         return failed(size, mime, "附件超过 512MB 限制".into());
     }
@@ -862,14 +911,21 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
         };
     }
     let mut data = Vec::new();
-    let read_limit = if is_img { IMAGE_MAX_BYTES as usize } else { TEXT_READ_LIMIT + 1 };
+    let read_limit = if is_img {
+        IMAGE_MAX_BYTES as usize
+    } else {
+        TEXT_READ_LIMIT + 1
+    };
     if let Err(error) = std::fs::File::open(&pb)
         .and_then(|file| file.take(read_limit as u64).read_to_end(&mut data))
     {
         return failed(size, mime, format!("读取失败：{error}"));
     }
     if !is_img && !looks_binary(&data) {
-        let text: String = String::from_utf8_lossy(&data).chars().take(TEXT_READ_LIMIT).collect();
+        let text: String = String::from_utf8_lossy(&data)
+            .chars()
+            .take(TEXT_READ_LIMIT)
+            .collect();
         return AttachmentData {
             path: path.to_string(),
             name,
@@ -878,7 +934,8 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
             is_text: true,
             text_content: Some(text),
             data_base64: None,
-            warning: (size > TEXT_READ_LIMIT as u64).then(|| "仅内联前 32KB，完整文件已保留在项目中。".into()),
+            warning: (size > TEXT_READ_LIMIT as u64)
+                .then(|| "仅内联前 32KB，完整文件已保留在项目中。".into()),
             error: None,
         };
     }
@@ -897,19 +954,37 @@ async fn read_one_attachment(path: &str, parser: &(PathBuf, Vec<String>)) -> Att
 }
 
 fn document_parser(app: &tauri::AppHandle) -> (PathBuf, Vec<String>) {
-    let executable = if cfg!(windows) { "document-parser.exe" } else { "document-parser" };
-    let bundled = app.path().resolve(
-        format!("resources/runtime/document-parser/{executable}"), BaseDirectory::Resource,
-    ).unwrap_or_else(|_| PathBuf::from(executable));
+    let executable = if cfg!(windows) {
+        "document-parser.exe"
+    } else {
+        "document-parser"
+    };
+    let bundled = app
+        .path()
+        .resolve(
+            format!("resources/runtime/document-parser/{executable}"),
+            BaseDirectory::Resource,
+        )
+        .unwrap_or_else(|_| PathBuf::from(executable));
     if bundled.is_file() {
         return (child_path(&bundled), Vec::new());
     }
     #[cfg(debug_assertions)]
     {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../py-runtime");
-        let python = root.join(if cfg!(windows) { ".venv/Scripts/python.exe" } else { ".venv/bin/python" });
+        let python = root.join(if cfg!(windows) {
+            ".venv/Scripts/python.exe"
+        } else {
+            ".venv/bin/python"
+        });
         if python.is_file() {
-            return (python, vec![root.join("src/sztu_code/core/documents.py").to_string_lossy().into_owned()]);
+            return (
+                python,
+                vec![root
+                    .join("src/sztu_code/core/documents.py")
+                    .to_string_lossy()
+                    .into_owned()],
+            );
         }
     }
     (bundled, Vec::new())
@@ -921,12 +996,19 @@ struct DocumentResult {
     error: Option<String>,
 }
 
-async fn document_to_text(path: &PathBuf, parser: &(PathBuf, Vec<String>)) -> Result<String, String> {
+async fn document_to_text(
+    path: &PathBuf,
+    parser: &(PathBuf, Vec<String>),
+) -> Result<String, String> {
     let mut command = Command::new(&parser.0);
-    command.args(&parser.1).arg(child_path(path)).kill_on_drop(true);
+    command
+        .args(&parser.1)
+        .arg(child_path(path))
+        .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    let output = tokio::time::timeout(Duration::from_secs(30), command.output()).await
+    let output = tokio::time::timeout(Duration::from_secs(30), command.output())
+        .await
         .map_err(|_| "资料解析超时，请拆分文件后重试。".to_string())?
         .map_err(|error| format!("无法启动内置资料解析器，请重新构建或安装完整客户端：{error}"))?;
     if !output.status.success() {
@@ -934,14 +1016,21 @@ async fn document_to_text(path: &PathBuf, parser: &(PathBuf, Vec<String>)) -> Re
     }
     let result: DocumentResult = serde_json::from_slice(&output.stdout)
         .map_err(|_| "资料解析器返回了无效结果。".to_string())?;
-    if let Some(error) = result.error { return Err(error); }
-    result.text.filter(|text| !text.trim().is_empty())
+    if let Some(error) = result.error {
+        return Err(error);
+    }
+    result
+        .text
+        .filter(|text| !text.trim().is_empty())
         .ok_or_else(|| "资料中没有可提取的文本内容。".into())
 }
 
 // 读取「添加附件」选中的文件内容：图片/二进制返回 base64，文本返回内容，逐文件报告错误
 #[tauri::command]
-async fn read_attachment(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<AttachmentData>, String> {
+async fn read_attachment(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<AttachmentData>, String> {
     let parser = document_parser(&app);
     let mut results = Vec::with_capacity(paths.len());
     for path in paths {
@@ -957,12 +1046,14 @@ fn stage_attachment_files(workspace: &str, paths: &[String]) -> Result<Vec<Strin
     for part in [".sztu", "attachments"] {
         directory.push(part);
         match fs::create_dir(&directory) {
-            Ok(()) => {},
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error.to_string()),
         }
         directory = fs::canonicalize(&directory).map_err(|error| error.to_string())?;
-        if !directory.starts_with(&root) { return Err("附件目录超出项目范围".into()); }
+        if !directory.starts_with(&root) {
+            return Err("附件目录超出项目范围".into());
+        }
     }
     static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let mut staged = Vec::new();
@@ -972,30 +1063,48 @@ fn stage_attachment_files(workspace: &str, paths: &[String]) -> Result<Vec<Strin
         if !metadata.is_file() || metadata.len() > ATTACHMENT_MAX_BYTES {
             return Err("附件不是文件或超过 512MB 限制".into());
         }
-        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| error.to_string())?.as_nanos();
-        let folder = directory.join(format!("{stamp}-{}", SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let folder = directory.join(format!(
+            "{stamp}-{}",
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
         fs::create_dir(&folder).map_err(|error| error.to_string())?;
         let destination = folder.join(source.file_name().ok_or("附件文件名无效")?);
-        let mut reader = fs::File::open(&source).map_err(|error| error.to_string())?
+        let mut reader = fs::File::open(&source)
+            .map_err(|error| error.to_string())?
             .take(ATTACHMENT_MAX_BYTES + 1);
-        let mut writer = fs::OpenOptions::new().write(true).create_new(true).open(&destination)
+        let mut writer = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&destination)
             .map_err(|error| error.to_string())?;
         let copied = std::io::copy(&mut reader, &mut writer).map_err(|error| error.to_string())?;
         if copied > ATTACHMENT_MAX_BYTES {
             let _ = fs::remove_file(&destination);
             return Err("附件超过 512MB 限制".into());
         }
-        staged.push(destination.strip_prefix(&root).map_err(|error| error.to_string())?
-            .to_string_lossy().replace('\\', "/"));
+        staged.push(
+            destination
+                .strip_prefix(&root)
+                .map_err(|error| error.to_string())?
+                .to_string_lossy()
+                .replace('\\', "/"),
+        );
     }
     Ok(staged)
 }
 
 #[tauri::command]
-async fn stage_document_attachments(workspace: String, paths: Vec<String>) -> Result<Vec<String>, String> {
+async fn stage_document_attachments(
+    workspace: String,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || stage_attachment_files(&workspace, &paths))
-        .await.map_err(|error| error.to_string())?
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 // Connect to the TypeScript daemon and relay NDJSON messages to the frontend SDK.
@@ -1085,26 +1194,58 @@ fn macos_toggle_work_area(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn create_persistent_worktree(workspace_path: String, worktree_id: String, label: String) -> Result<serde_json::Value, String> {
+fn create_persistent_worktree(
+    workspace_path: String,
+    worktree_id: String,
+    label: String,
+) -> Result<serde_json::Value, String> {
     let root = Path::new(&workspace_path);
-    if !root.is_dir() { return Err("项目目录不存在".into()); }
+    if !root.is_dir() {
+        return Err("项目目录不存在".into());
+    }
     let repository_check = StdCommand::new("git")
         .args(["-C", &workspace_path, "rev-parse", "--verify", "HEAD"])
         .output()
         .map_err(|error| format!("无法执行 Git：{error}"))?;
     if !repository_check.status.success() {
-        return Err("当前项目不是有效的 Git 仓库，或仓库还没有任何提交。请先初始化 Git 并至少提交一次。".into());
+        return Err(
+            "当前项目不是有效的 Git 仓库，或仓库还没有任何提交。请先初始化 Git 并至少提交一次。"
+                .into(),
+        );
     }
-    let short_id: String = worktree_id.chars().filter(|ch| ch.is_ascii_alphanumeric()).take(12).collect();
-    if short_id.is_empty() { return Err("聊天 ID 无效".into()); }
-    let project_name = root.file_name().and_then(|name| name.to_str()).unwrap_or("project");
-    let worktree_root = root.parent().unwrap_or(root).join(".sztu-worktrees").join(project_name);
+    let short_id: String = worktree_id
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(12)
+        .collect();
+    if short_id.is_empty() {
+        return Err("聊天 ID 无效".into());
+    }
+    let project_name = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("project");
+    let worktree_root = root
+        .parent()
+        .unwrap_or(root)
+        .join(".sztu-worktrees")
+        .join(project_name);
     fs::create_dir_all(&worktree_root).map_err(|error| format!("无法创建工作树目录：{error}"))?;
-    let safe_label: String = label.chars().filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-').take(24).collect();
-    let safe_label = if safe_label.is_empty() { "worktree".to_string() } else { safe_label };
+    let safe_label: String = label
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+        .take(24)
+        .collect();
+    let safe_label = if safe_label.is_empty() {
+        "worktree".to_string()
+    } else {
+        safe_label
+    };
     let target = worktree_root.join(format!("{safe_label}-{short_id}"));
     let branch = format!("sztucode/{safe_label}-{short_id}");
-    if target.exists() { return Err(format!("该聊天的永久工作树已存在：{}", target.display())); }
+    if target.exists() {
+        return Err(format!("该聊天的永久工作树已存在：{}", target.display()));
+    }
     let output = StdCommand::new("git")
         .args(["-C", &workspace_path, "worktree", "add", "-b", &branch])
         .arg(&target)
@@ -1113,7 +1254,11 @@ fn create_persistent_worktree(workspace_path: String, worktree_id: String, label
         .map_err(|error| format!("无法执行 Git：{error}"))?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if detail.is_empty() { "创建永久工作树失败".into() } else { format!("创建永久工作树失败：{detail}") });
+        return Err(if detail.is_empty() {
+            "创建永久工作树失败".into()
+        } else {
+            format!("创建永久工作树失败：{detail}")
+        });
     }
     Ok(serde_json::json!({ "path": target.to_string_lossy().to_string(), "branch": branch }))
 }
@@ -1123,12 +1268,22 @@ fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
     let mut candidates = Vec::new();
     if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
         let programs = PathBuf::from(local_app_data).join("Programs");
-        candidates.push((programs.join("Microsoft VS Code").join("Code.exe"), Vec::new()));
+        candidates.push((
+            programs.join("Microsoft VS Code").join("Code.exe"),
+            Vec::new(),
+        ));
         candidates.push((programs.join("Cursor").join("Cursor.exe"), Vec::new()));
     }
     if let Some(path) = std::env::var_os("PATH") {
         for directory in std::env::split_paths(&path) {
-            for launcher in ["code.cmd", "code.exe", "code", "cursor.cmd", "cursor.exe", "cursor"] {
+            for launcher in [
+                "code.cmd",
+                "code.exe",
+                "code",
+                "cursor.cmd",
+                "cursor.exe",
+                "cursor",
+            ] {
                 let entry = directory.join(launcher);
                 if !entry.is_file() {
                     continue;
@@ -1136,7 +1291,9 @@ fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
                 for ancestor in entry.ancestors().skip(1).take(5) {
                     for executable in ["Code.exe", "Cursor.exe"] {
                         let candidate = ancestor.join(executable);
-                        if candidate.is_file() && !candidates.iter().any(|(path, _)| path == &candidate) {
+                        if candidate.is_file()
+                            && !candidates.iter().any(|(path, _)| path == &candidate)
+                        {
                             candidates.push((candidate, Vec::new()));
                         }
                     }
@@ -1152,7 +1309,10 @@ fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
 #[cfg(target_os = "macos")]
 fn ide_candidates() -> Vec<(PathBuf, Vec<String>)> {
     vec![
-        (PathBuf::from("open"), vec!["-a".into(), "Visual Studio Code".into()]),
+        (
+            PathBuf::from("open"),
+            vec!["-a".into(), "Visual Studio Code".into()],
+        ),
         (PathBuf::from("open"), vec!["-a".into(), "Cursor".into()]),
         (PathBuf::from("code"), Vec::new()),
         (PathBuf::from("cursor"), Vec::new()),
@@ -1232,7 +1392,11 @@ fn list_external_apps() -> Vec<ExternalApp> {
         // VS Code
         let vscode = local_app_data
             .as_ref()
-            .map(|d| d.join("Programs").join("Microsoft VS Code").join("Code.exe"))
+            .map(|d| {
+                d.join("Programs")
+                    .join("Microsoft VS Code")
+                    .join("Code.exe")
+            })
             .filter(|p| check_path(p))
             .or_else(|| {
                 program_files
@@ -1314,13 +1478,48 @@ fn list_external_apps() -> Vec<ExternalApp> {
         };
         let mut apps = Vec::new();
 
-        apps.push(ExternalApp { id: "trae-cn".into(), name: "TraeCode CN".into(), icon: "trae".into(), available: check_app("Trae CN") });
-        apps.push(ExternalApp { id: "trae".into(), name: "TraeCode".into(), icon: "trae".into(), available: check_app("Trae") });
-        apps.push(ExternalApp { id: "vscode".into(), name: "Visual Studio Code".into(), icon: "vscode".into(), available: check_app("Visual Studio Code") });
-        apps.push(ExternalApp { id: "cursor".into(), name: "Cursor".into(), icon: "cursor".into(), available: check_app("Cursor") });
-        apps.push(ExternalApp { id: "webstorm".into(), name: "WebStorm".into(), icon: "webstorm".into(), available: check_app("WebStorm") });
-        apps.push(ExternalApp { id: "explorer".into(), name: "访达".into(), icon: "folder".into(), available: true });
-        apps.push(ExternalApp { id: "default".into(), name: "默认应用".into(), icon: "default".into(), available: true });
+        apps.push(ExternalApp {
+            id: "trae-cn".into(),
+            name: "TraeCode CN".into(),
+            icon: "trae".into(),
+            available: check_app("Trae CN"),
+        });
+        apps.push(ExternalApp {
+            id: "trae".into(),
+            name: "TraeCode".into(),
+            icon: "trae".into(),
+            available: check_app("Trae"),
+        });
+        apps.push(ExternalApp {
+            id: "vscode".into(),
+            name: "Visual Studio Code".into(),
+            icon: "vscode".into(),
+            available: check_app("Visual Studio Code"),
+        });
+        apps.push(ExternalApp {
+            id: "cursor".into(),
+            name: "Cursor".into(),
+            icon: "cursor".into(),
+            available: check_app("Cursor"),
+        });
+        apps.push(ExternalApp {
+            id: "webstorm".into(),
+            name: "WebStorm".into(),
+            icon: "webstorm".into(),
+            available: check_app("WebStorm"),
+        });
+        apps.push(ExternalApp {
+            id: "explorer".into(),
+            name: "访达".into(),
+            icon: "folder".into(),
+            available: true,
+        });
+        apps.push(ExternalApp {
+            id: "default".into(),
+            name: "默认应用".into(),
+            icon: "default".into(),
+            available: true,
+        });
 
         apps
     }
@@ -1328,15 +1527,35 @@ fn list_external_apps() -> Vec<ExternalApp> {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         let in_path = |cmd: &str| {
-            std::env::var_os("PATH").map(|p| {
-                std::env::split_paths(&p).any(|dir| dir.join(cmd).is_file())
-            }).unwrap_or(false)
+            std::env::var_os("PATH")
+                .map(|p| std::env::split_paths(&p).any(|dir| dir.join(cmd).is_file()))
+                .unwrap_or(false)
         };
         vec![
-            ExternalApp { id: "vscode".into(), name: "Visual Studio Code".into(), icon: "vscode".into(), available: in_path("code") },
-            ExternalApp { id: "cursor".into(), name: "Cursor".into(), icon: "cursor".into(), available: in_path("cursor") },
-            ExternalApp { id: "explorer".into(), name: "文件管理器".into(), icon: "folder".into(), available: true },
-            ExternalApp { id: "default".into(), name: "默认应用".into(), icon: "default".into(), available: true },
+            ExternalApp {
+                id: "vscode".into(),
+                name: "Visual Studio Code".into(),
+                icon: "vscode".into(),
+                available: in_path("code"),
+            },
+            ExternalApp {
+                id: "cursor".into(),
+                name: "Cursor".into(),
+                icon: "cursor".into(),
+                available: in_path("cursor"),
+            },
+            ExternalApp {
+                id: "explorer".into(),
+                name: "文件管理器".into(),
+                icon: "folder".into(),
+                available: true,
+            },
+            ExternalApp {
+                id: "default".into(),
+                name: "默认应用".into(),
+                icon: "default".into(),
+                available: true,
+            },
         ]
     }
 }
@@ -1409,29 +1628,56 @@ fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
         "trae-cn" => {
             let p = local_app_data
                 .ok_or("缺少 LOCALAPPDATA")?
-                .join("Programs").join("Trae CN").join("Trae CN.exe");
-            if p.is_file() { Ok((p, Vec::new())) } else { Err("Trae CN 未安装".into()) }
+                .join("Programs")
+                .join("Trae CN")
+                .join("Trae CN.exe");
+            if p.is_file() {
+                Ok((p, Vec::new()))
+            } else {
+                Err("Trae CN 未安装".into())
+            }
         }
         "trae" => {
             let p = local_app_data
                 .ok_or("缺少 LOCALAPPDATA")?
-                .join("Programs").join("Trae").join("Trae.exe");
-            if p.is_file() { Ok((p, Vec::new())) } else { Err("Trae 未安装".into()) }
+                .join("Programs")
+                .join("Trae")
+                .join("Trae.exe");
+            if p.is_file() {
+                Ok((p, Vec::new()))
+            } else {
+                Err("Trae 未安装".into())
+            }
         }
         "vscode" => {
             let p = local_app_data
                 .as_ref()
-                .map(|d| d.join("Programs").join("Microsoft VS Code").join("Code.exe"))
+                .map(|d| {
+                    d.join("Programs")
+                        .join("Microsoft VS Code")
+                        .join("Code.exe")
+                })
                 .filter(|p| p.is_file())
-                .or_else(|| program_files.as_ref().map(|d| d.join("Microsoft VS Code").join("Code.exe")).filter(|p| p.is_file()))
+                .or_else(|| {
+                    program_files
+                        .as_ref()
+                        .map(|d| d.join("Microsoft VS Code").join("Code.exe"))
+                        .filter(|p| p.is_file())
+                })
                 .ok_or("VS Code 未安装")?;
             Ok((p, Vec::new()))
         }
         "cursor" => {
             let p = local_app_data
                 .ok_or("缺少 LOCALAPPDATA")?
-                .join("Programs").join("Cursor").join("Cursor.exe");
-            if p.is_file() { Ok((p, Vec::new())) } else { Err("Cursor 未安装".into()) }
+                .join("Programs")
+                .join("Cursor")
+                .join("Cursor.exe");
+            if p.is_file() {
+                Ok((p, Vec::new()))
+            } else {
+                Err("Cursor 未安装".into())
+            }
         }
         "webstorm" => {
             let pf = program_files.ok_or("缺少 ProgramFiles")?;
@@ -1442,11 +1688,16 @@ fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
                     let name = entry.file_name().to_string_lossy().to_lowercase();
                     if name.starts_with("webstorm") {
                         let exe = entry.path().join("bin").join("webstorm64.exe");
-                        if exe.exists() { found = Some(exe); break; }
+                        if exe.exists() {
+                            found = Some(exe);
+                            break;
+                        }
                     }
                 }
             }
-            found.map(|p| (p, Vec::new())).ok_or_else(|| "WebStorm 未安装".into())
+            found
+                .map(|p| (p, Vec::new()))
+                .ok_or_else(|| "WebStorm 未安装".into())
         }
         _ => Err(format!("未知应用：{app_id}")),
     }
@@ -1457,7 +1708,10 @@ fn resolve_editor_path(app_id: &str) -> Result<(PathBuf, Vec<String>), String> {
     let (app_name, args) = match app_id {
         "trae-cn" => ("Trae CN", vec!["-a".into(), "Trae CN".into()]),
         "trae" => ("Trae", vec!["-a".into(), "Trae".into()]),
-        "vscode" => ("Visual Studio Code", vec!["-a".into(), "Visual Studio Code".into()]),
+        "vscode" => (
+            "Visual Studio Code",
+            vec!["-a".into(), "Visual Studio Code".into()],
+        ),
         "cursor" => ("Cursor", vec!["-a".into(), "Cursor".into()]),
         "webstorm" => ("WebStorm", vec!["-a".into(), "WebStorm".into()]),
         _ => return Err(format!("未知应用：{app_id}")),
@@ -1485,7 +1739,9 @@ fn open_path_with_app(path: String, app_id: String) -> Result<(), String> {
     let target = PathBuf::from(&path);
     // allow file to not exist for edge cases, but most apps will handle it
     let mut cmd = app_command_for_id(&app_id, &target)?;
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
     cmd.spawn().map_err(|e| format!("启动失败：{e}"))?;
@@ -1493,7 +1749,10 @@ fn open_path_with_app(path: String, app_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_workspace_in_ide(workspace_path: String, workspace_id: Option<String>) -> Result<(), String> {
+fn open_workspace_in_ide(
+    workspace_path: String,
+    workspace_id: Option<String>,
+) -> Result<(), String> {
     let workspace_id = workspace_id.and_then(|id| {
         let trimmed = id.trim().to_string();
         (!trimmed.is_empty()).then_some(trimmed)
@@ -1526,8 +1785,13 @@ fn open_workspace_in_ide(workspace_path: String, workspace_id: Option<String>) -
         }
     }
 
-    let detail = errors.last().map(String::as_str).unwrap_or("未找到可用的 IDE");
-    Err(format!("无法启动 VS Code 或 Cursor。请先安装其中一个并确保命令可用。{detail}"))
+    let detail = errors
+        .last()
+        .map(String::as_str)
+        .unwrap_or("未找到可用的 IDE");
+    Err(format!(
+        "无法启动 VS Code 或 Cursor。请先安装其中一个并确保命令可用。{detail}"
+    ))
 }
 
 // ── 内置浏览器 webview 控制（JS API 不含 navigate/eval/url，经 Rust 桥接实现）──
@@ -1565,10 +1829,7 @@ fn browser_webview_navigate(
 }
 
 #[tauri::command]
-fn browser_webview_toggle_devtools(
-    app: tauri::AppHandle,
-    label: String,
-) -> Result<bool, String> {
+fn browser_webview_toggle_devtools(app: tauri::AppHandle, label: String) -> Result<bool, String> {
     let webview = app
         .get_webview(&label)
         .ok_or_else(|| format!("webview {label} 不存在"))?;
@@ -1612,27 +1873,25 @@ fn browser_webview_attach_picker(app: tauri::AppHandle, label: String) -> Result
             let Ok(core) = platform_webview.controller().CoreWebView2() else {
                 return;
             };
-            let handler = WebMessageReceivedEventHandler::create(Box::new(
-                move |_sender, args| {
-                    let Some(args) = args else {
-                        return Ok(());
-                    };
-                    let mut message = PWSTR::null();
-                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
-                        let text = webview2_com::take_pwstr(message);
-                        if let Some(payload) = text.strip_prefix("__szpk__:") {
-                            let _ = handler_app.emit(
-                                "sztu:element-picked",
-                                serde_json::json!({
-                                    "label": handler_label,
-                                    "payload": payload,
-                                }),
-                            );
-                        }
+            let handler = WebMessageReceivedEventHandler::create(Box::new(move |_sender, args| {
+                let Some(args) = args else {
+                    return Ok(());
+                };
+                let mut message = PWSTR::null();
+                if args.TryGetWebMessageAsString(&mut message).is_ok() {
+                    let text = webview2_com::take_pwstr(message);
+                    if let Some(payload) = text.strip_prefix("__szpk__:") {
+                        let _ = handler_app.emit(
+                            "sztu:element-picked",
+                            serde_json::json!({
+                                "label": handler_label,
+                                "payload": payload,
+                            }),
+                        );
                     }
-                    Ok(())
-                },
-            ));
+                }
+                Ok(())
+            }));
             let mut token: i64 = 0;
             let _ = core.add_WebMessageReceived(&handler, &mut token);
         })
@@ -1669,27 +1928,25 @@ fn browser_menu_attach(app: tauri::AppHandle, label: String) -> Result<(), Strin
             let Ok(core) = platform_webview.controller().CoreWebView2() else {
                 return;
             };
-            let handler = WebMessageReceivedEventHandler::create(Box::new(
-                move |_sender, args| {
-                    let Some(args) = args else {
-                        return Ok(());
-                    };
-                    let mut message = PWSTR::null();
-                    if args.TryGetWebMessageAsString(&mut message).is_ok() {
-                        let text = webview2_com::take_pwstr(message);
-                        if let Some(action) = text.strip_prefix("__szmenu__:") {
-                            let _ = handler_app.emit(
-                                "sztu:menu-action",
-                                serde_json::json!({
-                                    "label": handler_label,
-                                    "action": action,
-                                }),
-                            );
-                        }
+            let handler = WebMessageReceivedEventHandler::create(Box::new(move |_sender, args| {
+                let Some(args) = args else {
+                    return Ok(());
+                };
+                let mut message = PWSTR::null();
+                if args.TryGetWebMessageAsString(&mut message).is_ok() {
+                    let text = webview2_com::take_pwstr(message);
+                    if let Some(action) = text.strip_prefix("__szmenu__:") {
+                        let _ = handler_app.emit(
+                            "sztu:menu-action",
+                            serde_json::json!({
+                                "label": handler_label,
+                                "action": action,
+                            }),
+                        );
                     }
-                    Ok(())
-                },
-            ));
+                }
+                Ok(())
+            }));
             let mut token: i64 = 0;
             let _ = core.add_WebMessageReceived(&handler, &mut token);
         })
@@ -1776,6 +2033,7 @@ fn main() {
         .manage(IpcConnection::new())
         .manage(DaemonProcess::new())
         .manage(PtySessions::new())
+        .manage(wechat_bridge::WeChatLoginProcess::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -1800,7 +2058,12 @@ fn main() {
             browser_webview_toggle_devtools,
             browser_webview_attach_picker,
             browser_menu_attach,
-            macos_toggle_work_area
+            macos_toggle_work_area,
+            wechat_bridge::wechat_status,
+            wechat_bridge::wechat_login_start,
+            wechat_bridge::wechat_login_cancel,
+            wechat_bridge::wechat_bind_session,
+            wechat_bridge::wechat_unbind_session
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window exists");
@@ -1849,7 +2112,8 @@ fn main() {
                         ..
                     } = event
                     {
-                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu")
+                        {
                             let _ = menu.hide();
                         }
                         let _ = tray_window.show();
@@ -1859,8 +2123,10 @@ fn main() {
                         button_state: MouseButtonState::Up,
                         position,
                         ..
-                    } = event {
-                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu") {
+                    } = event
+                    {
+                        if let Some(menu) = tray_window.app_handle().get_webview_window("tray-menu")
+                        {
                             if menu.is_visible().unwrap_or(false) {
                                 let _ = menu.hide();
                                 return;
@@ -1874,12 +2140,15 @@ fn main() {
                             let monitor = menu.current_monitor().ok().flatten();
                             let (left, top, right, bottom) = monitor
                                 .map(|m| {
-                                    let p = m.position(); let s = m.size();
+                                    let p = m.position();
+                                    let s = m.size();
                                     (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
                                 })
                                 .unwrap_or((0, 0, i32::MAX, i32::MAX));
-                            let x = ((position.x as i32) - size.width as i32).clamp(left, right - size.width as i32);
-                            let y = ((position.y as i32) - size.height as i32 - 4).clamp(top, bottom - size.height as i32);
+                            let x = ((position.x as i32) - size.width as i32)
+                                .clamp(left, right - size.width as i32);
+                            let y = ((position.y as i32) - size.height as i32 - 4)
+                                .clamp(top, bottom - size.height as i32);
                             let _ = menu.set_position(tauri::PhysicalPosition::new(x, y));
                             let _ = menu.show();
                             let _ = menu.set_focus();
@@ -1926,10 +2195,24 @@ mod tests {
     #[test]
     fn document_attachments_use_bundled_parser() {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let executable = if cfg!(windows) { "document-parser.exe" } else { "document-parser" };
-        let parser = (manifest.join("resources/runtime/document-parser").join(executable), Vec::new());
-        assert!(parser.0.is_file(), "Run node desktop/scripts/prepare-document-parser.js first");
-        let directory = manifest.join("../../.sztu").join(format!("attachment-test-{}", std::process::id()));
+        let executable = if cfg!(windows) {
+            "document-parser.exe"
+        } else {
+            "document-parser"
+        };
+        let parser = (
+            manifest
+                .join("resources/runtime/document-parser")
+                .join(executable),
+            Vec::new(),
+        );
+        assert!(
+            parser.0.is_file(),
+            "Run node desktop/scripts/prepare-document-parser.js first"
+        );
+        let directory = manifest
+            .join("../../.sztu")
+            .join(format!("attachment-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         // Build an ordinary PDF with a valid cross-reference table, no external tools.
         let content = "BT /F1 12 Tf 72 720 Td (Attachment content) Tj ET";
@@ -1948,9 +2231,16 @@ mod tests {
         }
         let xref = pdf.len();
         pdf.push_str("xref\n0 6\n0000000000 65535 f \n");
-        for offset in offsets { pdf.push_str(&format!("{offset:010} 00000 n \n")); }
-        pdf.push_str(&format!("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"));
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for offset in offsets {
+            pdf.push_str(&format!("{offset:010} 00000 n \n"));
+        }
+        pdf.push_str(&format!(
+            "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        ));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         runtime.block_on(async {
             for name in ["中文 资料.PDF", "no-extension"] {
                 let path = directory.join(name);
@@ -1979,7 +2269,10 @@ mod tests {
                 ("demo.mp4", "video/mp4"),
                 ("sources.zip", "application/zip"),
                 ("scene.glb", "model/gltf-binary"),
-                ("installer.exe", "application/vnd.microsoft.portable-executable"),
+                (
+                    "installer.exe",
+                    "application/vnd.microsoft.portable-executable",
+                ),
             ] {
                 let asset = directory.join(name);
                 fs::write(&asset, b"\0binary material").unwrap();
@@ -1996,14 +2289,22 @@ mod tests {
     #[test]
     fn attachments_are_staged_as_separate_workspace_copies() {
         let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.sztu").join(format!("stage-test-{}", std::process::id()));
+            .join("../../.sztu")
+            .join(format!("stage-test-{}", std::process::id()));
         fs::create_dir_all(&directory).unwrap();
         let source = directory.join("原始 资料.docx");
         fs::write(&source, "source bytes").unwrap();
-        let result = stage_attachment_files(directory.to_str().unwrap(), &[source.to_string_lossy().into_owned()]).unwrap();
+        let result = stage_attachment_files(
+            directory.to_str().unwrap(),
+            &[source.to_string_lossy().into_owned()],
+        )
+        .unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].starts_with(".sztu/attachments/"));
-        assert_eq!(fs::read(directory.join(&result[0])).unwrap(), b"source bytes");
+        assert_eq!(
+            fs::read(directory.join(&result[0])).unwrap(),
+            b"source bytes"
+        );
         assert_eq!(fs::read(source).unwrap(), b"source bytes");
     }
 
