@@ -6,6 +6,7 @@ import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
+import { base64ImageSource, dataUrlFromBase64 } from "./image-utils.js";
 
 type OpenAiResponse = { choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number; prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; input_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; summary?: Array<{ type?: string; text?: string }>; content?: Array<{ type?: string; text?: string }> };
@@ -31,12 +32,8 @@ function isReasoningModel(model: string): boolean {
 }
 
 function dataUrlFromImageBlock(block: Record<string, unknown>): string {
-  const source = block.source;
-  if (!source || typeof source !== "object" || Array.isArray(source)) return "";
-  const value = source as Record<string, unknown>;
-  const mediaType = String(value.media_type ?? "");
-  const data = String(value.data ?? "");
-  return mediaType && data ? `data:${mediaType};base64,${data}` : "";
+  const source = base64ImageSource(block as import("../context.js").ContentBlock);
+  return source ? dataUrlFromBase64(source.mediaType, source.data) : "";
 }
 
 function imageUrlFromBlock(block: Record<string, unknown>): string {

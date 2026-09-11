@@ -19,12 +19,14 @@ import type { Chunk } from "./chunking/index.js";
 import { WorkspaceIndexer } from "./indexing/index.js";
 import { JsonlVectorStore } from "./vector-store/index.js";
 import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
+import type { ContentBlock } from "./context.js";
+import { getMimeTypeFromPath, imageToContentBlock } from "./providers/image-utils.js";
 import { inspectAsset } from "./asset-inspector.js";
 
 export type { ToolPermission } from "./tools-types.js";
 /** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */
 export type ToolImage = { mimeType: string; data: string };
-export type ToolResult = { ok: boolean; output: string; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied"; images?: ToolImage[] };
+export type ToolResult = { ok: boolean; output: string; content?: ContentBlock[]; error?: string; errorType?: "runtime_error" | "rate_limited" | "timeout" | "schema_error" | "permission_denied"; images?: ToolImage[] };
 export type ToolOutputStream = "stdout" | "stderr" | "combined";
 export type ToolOutputChunk = { tool_use_id?: string; stream: ToolOutputStream; data: string; ts: string };
 export type ToolContext = {
@@ -582,10 +584,16 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   for (const tool of createOfficeTools()) registry.register(tool);
   // bash 后台任务管理器：闭包持有，bash/bash_status/bash_output/bash_kill 共用
   const jobManager = new BashJobManager();
+  registry.register({ name: "view_image", timeoutMs: 30_000, description: "View a PNG, JPEG, WebP, or GIF image inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, async invoke(params, context) {
+    const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
+    try { const target = await context.workspace.resolveExisting(file); const info = await stat(target); const image = await imageToContentBlock(target); return { ok: true, output: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)`, content: [{ type: "text", text: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)` }, image] }; }
+    catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
+  }});
   registry.register({ name: "read_file", timeoutMs: 30_000, description: "Read a UTF-8 file inside the workspace with line numbers and optional line pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based first line" }, limit: { type: "integer", minimum: 1, maximum: 2000, description: "Maximum lines" } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
     try {
       const target = await context.workspace.resolveExisting(file);
+      if (getMimeTypeFromPath(target)) return ok(`This is an image file (${path.extname(target).slice(1).toUpperCase()}). Use view_image to analyze this image.`);
       // 二进制办公文档（PDF/DOCX/XLSX/PPTX）按 UTF-8 读只会得到乱码：给出指向 parse_document 的提示
       const documentHint = detectDocumentFormat(path.basename(target));
       if (documentHint) {

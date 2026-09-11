@@ -1,5 +1,5 @@
 import net from "node:net";
-import type { JsonRpcRequest, JsonRpcResponse, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionForkParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams, SessionCommand } from "@sztucode/protocol";
+import type { JsonRpcRequest, JsonRpcResponse, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionForkParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams, SessionCommand, MessageImageBlock } from "@sztucode/protocol";
 import { ok, error, RpcDispatchError, toSessionSummary, toProtocolSessionSnapshot, mimeType, publicSkill, matchesSubscription, probeModel, benchmarkModel, normalizeSettingsUpdate } from "./server-helpers.js";
 import { SkillLoader } from "./skills.js";
 import { PluginManager } from "./plugins.js";
@@ -28,6 +28,7 @@ import type { TelemetryContext } from "@sztucode/telemetry";
 import type { ArtifactStore } from "./artifact-store.js";
 import type { OperationStore } from "./operation-store.js";
 import type { SchedulerStore } from "./scheduler.js";
+import { validateBase64Image } from "./providers/image-utils.js";
 
 export interface CodingAgentServices {
   readonly events: EventBus;
@@ -51,6 +52,22 @@ const METHOD_NOT_FOUND = -32601;
 const SESSION_BUSY = -32012;
 const TEXT_READ_LIMIT = 1_000_000;
 const IMAGE_READ_LIMIT = 5_000_000;
+const MAX_MESSAGE_IMAGES = 20;
+const MAX_MESSAGE_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_MESSAGE_IMAGE_TOTAL_BYTES = 32 * 1024 * 1024;
+
+function validateMessageImages(images: MessageImageBlock[] | undefined): MessageImageBlock[] | undefined {
+  if (!images?.length) return undefined;
+  if (images.length > MAX_MESSAGE_IMAGES) throw new Error(`Too many images: ${images.length} (max ${MAX_MESSAGE_IMAGES})`);
+  let totalBytes = 0;
+  const validated = images.map((image) => {
+    const value = validateBase64Image(image.media_type, image.data, MAX_MESSAGE_IMAGE_BYTES);
+    totalBytes += value.decodedBytes;
+    return { type: "image" as const, media_type: value.mediaType, data: value.data };
+  });
+  if (totalBytes > MAX_MESSAGE_IMAGE_TOTAL_BYTES) throw new Error(`Images too large in total: ${totalBytes} bytes (max ${MAX_MESSAGE_IMAGE_TOTAL_BYTES})`);
+  return validated;
+}
 export class ServerService {
   constructor(readonly services?: CodingAgentServices) {}
   async persistRunEvent(this: any, event: import("@sztucode/protocol").RuntimeEvent): Promise<void> {
@@ -190,7 +207,8 @@ export class ServerService {
         const settings = await this.settings.get();
         const model = settings.model;
         const supportsVision = settings.supports_vision;
-        const images = supportsVision ? params.images : undefined;
+        if (!supportsVision && params.images?.length) throw new Error("The selected model does not support images. Use OCR or select a vision-capable model.");
+        const images = supportsVision ? validateMessageImages(params.images) : undefined;
         const content = images?.length ? [{ type: "text", text: params.content }, ...images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content;
         await this.sessions.appendMessage(params.session_id, { role: "user", content, model });
         this.events.publish({ type: "session.message_received", session_id: params.session_id, content: params.content, ts: new Date().toISOString() });
@@ -206,6 +224,7 @@ export class ServerService {
           if (skill) { invokedSkill = { name: skill.name, arguments: slash[2] ?? "", prompt: skill.system_prompt_template }; history.push({ role: "system", content: skill.system_prompt_template }); goal = slash[2] ?? ""; }
         }
         let runId = "";
+        const runContent = goal === params.content ? content : images?.length ? [{ type: "text", text: goal }, ...images.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : goal;
         runId = this.runs.start(goal, history, async (messages: import("./agent-loop.js").ChatMessage[], usage: { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number }) => {
           const assistant = messages.at(-1);
           if (assistant?.role === "assistant") await this.sessions.appendMessage(params.session_id, { role: "assistant", content: assistant.content, ...(assistant.reasoning_content ? { reasoning_content: assistant.reasoning_content } : {}), run_id: runId });
@@ -349,7 +368,7 @@ export class ServerService {
         this.events.publish({ type: "context.compacted", session_id: params.session_id, run_id: "", original_tokens: before, summary_tokens: after, ts: new Date().toISOString() });
         return ok(request.id, { summary_tokens: after, saved_tokens: Math.max(0, before - after), removed_messages: result.removedMessages, used_model: result.usedModel });
       }
-      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const steerSettings = await this.settings.get(); const steerImages = steerSettings.supports_vision ? params.images : undefined; const content = steerImages?.length ? [{ type: "text", text: params.content }, ...steerImages.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content, model: steerSettings.model }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
+      case "session.steer_message": { const params = request.params as unknown as import("@sztucode/protocol").SessionSteerMessageParams; if (!params.session_id || !params.content?.trim()) throw new Error("session_id and content are required"); const steerSettings = await this.settings.get(); if (!steerSettings.supports_vision && params.images?.length) throw new Error("The selected model does not support images. Use OCR or select a vision-capable model."); const steerImages = steerSettings.supports_vision ? validateMessageImages(params.images) : undefined; const content = steerImages?.length ? [{ type: "text", text: params.content }, ...steerImages.map((image) => ({ type: "image", source: { media_type: image.media_type, data: image.data } }))] : params.content; await this.sessions.appendMessage(params.session_id, { role: "user", content, model: steerSettings.model }); const runId = this.runs.steer(params.session_id, { role: "user", content }); this.events.publish({ type: "session.message_steered", session_id: params.session_id, run_id: runId, content: params.content, ts: new Date().toISOString() }); return ok(request.id, { run_id: runId, status: "accepted" }); }
       default: return error(request.id, METHOD_NOT_FOUND, `Method not found: ${request.method}`);
     }
   }
