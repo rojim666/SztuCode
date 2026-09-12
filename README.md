@@ -1,5 +1,6 @@
 # SztuCode
 
+[中文（默认）](README.md) · [English](README.en.md)
 > 面向高校的开源全场景办公智能体实验性场地：代码、文档、表格、幻灯片、浏览器，都是智能体的工作台。
 > 本地优先、事件驱动、可审计，提供 TypeScript 与 Python 双实现。
 
@@ -470,3 +471,4 @@ Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / mode
 ## License
 
 SztuCode 使用 [MIT License](LICENSE)。
+
