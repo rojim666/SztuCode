@@ -1680,5 +1680,43 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
 });
 </script>
 
+<style>
+/* 米色主题：温暖纸张底色 × 深咖啡文字 × 鼠尾草绿强调 */
+:root {
+  --beige-bg: #f4efe6;
+  --beige-surface: #fbf8f2;
+  --beige-soft: #eee6d8;
+  --beige-line: #ded4c4;
+  --beige-ink: #302b25;
+  --beige-muted: #756b5f;
+  --beige-accent: #6f8064;
+  --beige-accent-dark: #53634a;
+}
+body { background: var(--beige-bg) !important; color: var(--beige-ink) !important; }
+.nav.scrolled { background: rgba(251,248,242,.9) !important; border-bottom-color: var(--beige-line) !important; }
+.nav-logo, .nav-links a { color: var(--beige-ink) !important; }
+.nav-links a { color: var(--beige-muted) !important; }
+.nav-links a:hover { color: var(--beige-ink) !important; }
+.nav-cta { background: var(--beige-ink) !important; color: #fff !important; }
+.nav-cta:hover { background: var(--beige-accent) !important; color: #fff !important; }
+.hero { background: var(--beige-bg) !important; color: var(--beige-ink) !important; }
+.hero-grid { background-image: linear-gradient(rgba(77,64,48,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(77,64,48,.07) 1px,transparent 1px) !important; }
+.hero-glow { background: radial-gradient(ellipse at center, rgba(111,128,100,.16), transparent 70%) !important; }
+.hero h1, .section-title { color: var(--beige-ink) !important; }
+.hero h1 .gradient { background: linear-gradient(135deg,#6f8064,#a17852) !important; -webkit-background-clip:text !important; background-clip:text !important; }
+.eyebrow, .hero-badge { color: var(--beige-accent-dark) !important; }
+.hero-badge { border-color: rgba(111,128,100,.35) !important; background: rgba(111,128,100,.1) !important; }
+.section-desc { color: var(--beige-muted) !important; }
+section:nth-of-type(even) { background: rgba(251,248,242,.55); }
+.feature-card, .fs-card, .stat { background: var(--beige-surface) !important; border-color: var(--beige-line) !important; }
+.feature-card:hover, .flow-step:hover .fs-card { border-color: var(--beige-accent) !important; background: #fffdf8 !important; }
+.fc-icon { color: var(--beige-accent-dark) !important; background: var(--beige-soft) !important; border-color: var(--beige-line) !important; }
+.ticker { border-color: var(--beige-line) !important; background: rgba(111,128,100,.06) !important; }
+.ticker-group span { color: var(--beige-muted) !important; }
+.download-card { border-color: rgba(111,128,100,.4) !important; background: radial-gradient(ellipse 70% 90% at 50% 115%,rgba(111,128,100,.2),transparent 65%),linear-gradient(170deg,#e8dfd0,#f7f2e9 60%) !important; }
+.footer { background: #e9e0d3 !important; border-top-color: var(--beige-line) !important; }
+.footer-col a { color: var(--beige-muted) !important; }
+</style>
+
 </body>
 </html>

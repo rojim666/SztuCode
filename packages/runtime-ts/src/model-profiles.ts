@@ -29,7 +29,7 @@ export class ModelProfileStore {
     return this.all().map(({ api_key, keyless, ...profile }) => ({ ...profile, has_api_key: Boolean(keyless || api_key || providerKey(profile)), is_current: profile.id === this.activeId }));
   }
 
-  async save(input: Partial<StoredProfile> & { name: string; vendor: string; provider: "anthropic" | "openai"; model: string; base_url: string; select?: boolean }): Promise<{ settings: RuntimeSettings; models: ModelProfile[] }> {
+  async save(input: Partial<StoredProfile> & { name: string; vendor: string; provider: string; model: string; base_url: string; select?: boolean }): Promise<{ settings: RuntimeSettings; models: ModelProfile[] }> {
     if (input.reasoning_effort !== undefined) validateReasoningEffort(input.reasoning_effort);
     await this.load(); const id = input.id || randomUUID(); if (BUILTIN_PROFILES.some((profile) => profile.id === id)) throw new Error("builtin profiles cannot be edited");
     let profile = this.profiles.find((item) => item.id === id);
@@ -59,7 +59,8 @@ export class ModelProfileStore {
   private async persist(): Promise<void> { await mkdir(path.dirname(this.filePath), { recursive: true }); await writeFile(this.filePath, `${JSON.stringify({ profiles: this.profiles, active_model_id: this.activeId }, null, 2)}\n`, "utf8"); }
 }
 
-function providerKey(profile: { provider: "anthropic" | "openai"; base_url?: string }): string | undefined {
+function providerKey(profile: { provider: string; base_url?: string }): string | undefined {
   if (profile.provider === "anthropic") return process.env.ANTHROPIC_API_KEY;
-  return process.env.OPENAI_API_KEY ?? process.env.DEEPSEEK_API_KEY;
+  const keys: Record<string, string> = { deepseek: "DEEPSEEK_API_KEY", qwen: "DASHSCOPE_API_KEY", alibaba: "DASHSCOPE_API_KEY", moonshot: "MOONSHOT_API_KEY", kimi: "MOONSHOT_API_KEY", minimax: "MINIMAX_API_KEY", mistral: "MISTRAL_API_KEY", openrouter: "OPENROUTER_API_KEY", groq: "GROQ_API_KEY", together: "TOGETHER_API_KEY", fireworks: "FIREWORKS_API_KEY", perplexity: "PERPLEXITY_API_KEY", google: "GOOGLE_API_KEY", gemini: "GOOGLE_API_KEY" };
+  return process.env[keys[profile.provider.toLowerCase()] ?? "OPENAI_API_KEY"] ?? process.env.OPENAI_API_KEY;
 }

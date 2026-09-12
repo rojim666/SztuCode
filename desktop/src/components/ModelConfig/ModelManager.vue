@@ -162,6 +162,12 @@ function closeEditor() {
   // Vue has mounted it again instead of capturing the detached old button.
   void restoreFocus(() => editorTrigger.value, () => modelManagerBody.value);
 }
+async function authorizeOAuth() {
+  const url = selectedVendor.value?.oauthUrl;
+  if (!url) return;
+  try { if (isTauri()) await openUrl(url); else window.open(url, "_blank", "noopener,noreferrer"); }
+  catch (reason) { error.value = t("model.openKeyPageFailed", { reason: reason instanceof Error ? reason.message : String(reason) }); }
+}
 function setContextWindow(v: number) { contextWindow.value = v; }
 function setMaxOutput(v: number) { maxOutputTokens.value = v; }
 async function save() {
@@ -484,6 +490,10 @@ onMounted(() => {
               <button v-if="selectedVendor.apiKeyUrl" type="button" class="mm-link-btn" @click="getApiKey">
                 {{ t("model.getApiKey") }}
                 <AppIcon name="ExternalLink" :size="12" />
+              </button>
+              <button v-if="selectedVendor.oauthUrl" type="button" class="mm-link-btn" @click="authorizeOAuth">
+                {{ t("model.oauthLogin", "OAuth 登录") }}
+                <AppIcon name="Power" :size="12" />
               </button>
             </div>
 
