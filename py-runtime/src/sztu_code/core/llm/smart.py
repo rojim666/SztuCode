@@ -2,6 +2,7 @@
 from collections import OrderedDict
 from typing import Any
 
+from sztu_code.core.deadline import add_remaining_s
 from sztu_code.core.llm.base import LLMProvider
 
 
@@ -15,9 +16,16 @@ def task_requires_flagship(messages: list[dict[str, object]]) -> bool:
         if isinstance(content, str):
             texts.append(content)
         elif isinstance(content, list):
-            texts.extend(str(block.get("text", "")) for block in content if isinstance(block, dict) and block.get("type") == "text")
+            texts.extend(
+                str(block.get("text", ""))
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
     task = "\n".join(texts[-3:]).lower()
-    signals = ("architecture", "migration", "security audit", "distributed", "root cause", "架构", "迁移", "安全审计", "分布式", "根因", "跨模块", "复杂", "多agent", "多个 agent")
+    signals = (
+        "architecture", "migration", "security audit", "distributed", "root cause",
+        "架构", "迁移", "安全审计", "分布式", "根因", "跨模块", "复杂", "多agent", "多个 agent",
+    )
     return len(task) > 6000 or any(signal in task for signal in signals)
 
 
@@ -27,14 +35,31 @@ class SmartProvider:
         self.flagship = flagship
         self._choices: OrderedDict[str, bool] = OrderedDict()
 
-    async def chat(self, messages: list[dict[str, object]], tool_schemas: list[dict[str, object]], bus: Any, run_id: str, **kwargs: Any) -> Any:
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: Any,
+        run_id: str,
+        *,
+        remaining_s: float | None = None,
+        **kwargs: Any,
+    ) -> Any:
         # Keep tool/thinking continuations on the original model and preserve its cache prefix.
         if run_id not in self._choices:
             self._choices[run_id] = task_requires_flagship(messages)
         self._choices.move_to_end(run_id)
         selected = self.flagship if self._choices[run_id] else self.standard
+        selected_kwargs = dict(kwargs)
+        add_remaining_s(selected.chat, selected_kwargs, remaining_s)
         try:
-            response = await selected.chat(messages, tool_schemas, bus, run_id, **kwargs)
+            response = await selected.chat(
+                messages,
+                tool_schemas,
+                bus,
+                run_id,
+                **selected_kwargs,
+            )
         except BaseException:
             self._choices.pop(run_id, None)
             raise

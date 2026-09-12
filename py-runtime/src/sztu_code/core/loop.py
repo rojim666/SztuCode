@@ -5,7 +5,7 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sztu_code.core.budget import (
     DEFAULT_MAX_OUTPUT_TOKENS,
@@ -24,6 +24,7 @@ from sztu_code.core.bus.events import (
 from sztu_code.core.compact.budget import truncate_tool_results
 from sztu_code.core.compact.context_usage import IncrementalUsageEstimator
 from sztu_code.core.context import ContinueReason, ExecutionContext, TerminationReason
+from sztu_code.core.deadline import RunDeadlineExceeded, add_remaining_s
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock
@@ -32,6 +33,7 @@ from sztu_code.core.pricing import PricingCatalog, UnknownPricingPolicy
 from sztu_code.core.stuck_tracker import stuck_signature
 from sztu_code.core.tools.base import (
     _PERMISSION_GRANT_KEY,
+    ToolExecutionState,
     ToolPermission,
     ToolResult,
 )
@@ -144,6 +146,7 @@ async def _invoke_scheduled_tool(
     tool_call: ToolCallBlock,
     bus: EventBus,
     run_id: str,
+    context: ExecutionContext,
     permission_manager: PermissionManager | None,
     session_id: str,
     semaphore: asyncio.Semaphore,
@@ -152,9 +155,15 @@ async def _invoke_scheduled_tool(
     queued_at: str,
     queued_monotonic: float,
     classified_permission: ToolPermission | None = None,
-) -> ToolResult:
+) -> ToolResult | None:
+    # A queued call may acquire a semaphore only after another tool has
+    # consumed the run budget. Do not start it after the deadline.
+    if context.wall_clock_exceeded():
+        return None
     try:
         async with semaphore:
+            if context.wall_clock_exceeded():
+                return None
             return await invoke_tool(
                 registry,
                 tool_call,
@@ -173,6 +182,15 @@ async def _invoke_scheduled_tool(
     except Exception as exc:
         # Isolate an unexpected call-level failure from the rest of the batch.
         return ToolResult(content=str(exc), is_error=True, error_type="runtime_error")
+
+
+def _deadline_skipped_tool_result() -> ToolResult:
+    return ToolResult(
+        content="Tool call skipped because the run wall-clock deadline was reached.",
+        is_error=True,
+        error_type="deadline_exceeded",
+        execution_state=ToolExecutionState.NOT_STARTED,
+    )
 
 
 class AgentLoop:
@@ -319,7 +337,7 @@ class AgentLoop:
         return admission
 
     # 按准入结果调用 provider：仅在收缩输出上限时才传 max_output_tokens，
-    # None 时省略参数，交由 provider 使用其构造配置的默认输出上限
+    # 同时传递本次请求的 Run 剩余时间；None 表示不限制墙钟时间
     async def _chat(
         self,
         context: ExecutionContext,
@@ -352,26 +370,54 @@ class AgentLoop:
                 ts=_now(),
             )
         )
+        remaining_s = context.remaining_s()
+        if remaining_s is not None and remaining_s <= 0:
+            # Do not even create the provider coroutine once the run is out of
+            # time. This is the pre-request hard cutoff.
+            raise RunDeadlineExceeded
+
+        provider_kwargs: dict[str, Any] = {
+            "messages": messages,
+            "tool_schemas": tool_schemas,
+            "bus": self._bus,
+            "run_id": context.run_id,
+            "step": context.step,
+            "usage_estimator": self._usage_estimator,
+            "system": system,
+        }
+        add_remaining_s(self._provider.chat, provider_kwargs, remaining_s)
         if admission.request_max_output_tokens is not None:
-            return await self._provider.chat(
-                messages=messages,
-                tool_schemas=tool_schemas,
-                bus=self._bus,
-                run_id=context.run_id,
-                step=context.step,
-                usage_estimator=self._usage_estimator,
-                system=system,
-                max_output_tokens=admission.request_max_output_tokens,
-            )
-        return await self._provider.chat(
-            messages=messages,
-            tool_schemas=tool_schemas,
-            bus=self._bus,
-            run_id=context.run_id,
-            step=context.step,
-            usage_estimator=self._usage_estimator,
-            system=system,
-        )
+            provider_kwargs["max_output_tokens"] = admission.request_max_output_tokens
+
+        if remaining_s is None:
+            return await self._provider.chat(**provider_kwargs)
+
+        timeout = asyncio.timeout(remaining_s)
+        try:
+            async with timeout:
+                response = await self._provider.chat(**provider_kwargs)
+        except asyncio.CancelledError as exc:
+            if timeout.expired():
+                raise RunDeadlineExceeded from exc
+            raise
+        except TimeoutError as exc:
+            # A provider-raised timeout before the run deadline keeps its
+            # normal error semantics; the outer timeout is mapped otherwise.
+            if timeout.expired():
+                raise RunDeadlineExceeded from exc
+            raise
+        except Exception as exc:
+            # A provider may catch cancellation and fail while cleaning up.
+            # Once the outer timeout expires, it still owns the result.
+            if timeout.expired():
+                raise RunDeadlineExceeded from exc
+            raise
+        # A provider can return after an injected clock crosses the deadline
+        # without the real await timeout expiring. The run loop handles that
+        # response as late and does not start another operation.
+        if timeout.expired():
+            raise RunDeadlineExceeded
+        return response
 
     # 驱动 plan→act→observe 循环直到上下文终止；CancelledError 向上传播
     async def run(self, context: ExecutionContext) -> None:
@@ -400,10 +446,7 @@ class AgentLoop:
             # [budget] 墙钟上限预检：超时直接终止，不再发起 LLM 调用
             # 若已有 result（上一步已产出内容），优先保留而非丢弃
             if context.wall_clock_exceeded():
-                if context.result:
-                    context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
-                else:
-                    context.mark_failed(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+                context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
                 break
 
             context.step += 1
@@ -500,6 +543,17 @@ class AgentLoop:
                     system=outgoing_system,
                     admission=admission,
                 )
+            except RunDeadlineExceeded:
+                log.info(
+                    "LLM request reached run deadline run_id=%s step=%d",
+                    context.run_id,
+                    context.step,
+                )
+                context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+                await self._bus.publish(
+                    StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())
+                )
+                break
             except asyncio.CancelledError:
                 context.mark_failed("cancelled")
                 raise
@@ -508,6 +562,16 @@ class AgentLoop:
                     "LLM call failed run_id=%s step=%d", context.run_id, context.step
                 )
                 context.mark_failed("llm_error")
+                break
+
+            # A fake clock or a provider that returns at the timeout boundary
+            # can finish without raising TimeoutError. Do not process its
+            # response or start tools/wrap-up after the absolute deadline.
+            if context.wall_clock_exceeded():
+                context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+                await self._bus.publish(
+                    StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())
+                )
                 break
 
             # [budget] usage 缺失/全零 → 记账失败计数；恢复正常即清零。
@@ -611,6 +675,7 @@ class AgentLoop:
                                 tool_call,
                                 self._bus,
                                 context.run_id,
+                                context,
                                 self._permission_manager,
                                 self._session_id,
                                 semaphore,
@@ -629,23 +694,34 @@ class AgentLoop:
 
                 for index, tc in enumerate(response.tool_calls):
                     if concurrent_results is None:
-                        result = await invoke_tool(
-                            self._registry,
-                            tc,
-                            self._bus,
-                            context.run_id,
-                            permission_manager=self._permission_manager,
-                            session_id=self._session_id,
-                            batch_id=batch_id,
-                            scheduler_mode="serial",
-                            queued_at=queued_at,
-                            queued_monotonic=queued_monotonic,
-                        )
+                        if context.wall_clock_exceeded():
+                            context.mark_interrupted(
+                                TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+                            )
+                            result = _deadline_skipped_tool_result()
+                        else:
+                            result = await invoke_tool(
+                                self._registry,
+                                tc,
+                                self._bus,
+                                context.run_id,
+                                permission_manager=self._permission_manager,
+                                session_id=self._session_id,
+                                batch_id=batch_id,
+                                scheduler_mode="serial",
+                                queued_at=queued_at,
+                                queued_monotonic=queued_monotonic,
+                            )
                     else:
                         scheduled_result = concurrent_results[index]
                         if isinstance(scheduled_result, asyncio.CancelledError):
                             raise scheduled_result
-                        if not isinstance(scheduled_result, ToolResult):
+                        if scheduled_result is None:
+                            context.mark_interrupted(
+                                TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+                            )
+                            result = _deadline_skipped_tool_result()
+                        elif not isinstance(scheduled_result, ToolResult):
                             result = ToolResult(
                                 content=str(scheduled_result),
                                 is_error=True,
@@ -829,7 +905,9 @@ class AgentLoop:
                     concluded, conclusion_text = await self._conclude(
                         context, pending_summaries
                     )
-                    if concluded:
+                    if context.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED:
+                        pass
+                    elif concluded:
                         context.result = conclusion_text
                         context.mark_success()
                     else:
@@ -839,12 +917,14 @@ class AgentLoop:
                     # 收尾回合：步数到限时给一次总结，避免裸失败
                     if self._wrap_up_on_max_steps:
                         summary = await self._wrap_up(context, pending_summaries)
-                        context.result = summary or (
-                            "\n".join(pending_summaries) if pending_summaries else ""
-                        )
+                        if context.reason != TerminationReason.MAX_WALL_CLOCK_EXCEEDED:
+                            context.result = summary or (
+                                "\n".join(pending_summaries) if pending_summaries else ""
+                            )
                     elif pending_summaries:
                         context.result = "\n".join(pending_summaries)
-                    context.mark_interrupted("exceeded_max_steps")
+                    if context.reason != TerminationReason.MAX_WALL_CLOCK_EXCEEDED:
+                        context.mark_interrupted("exceeded_max_steps")
 
             # Claude Code 风格继续原因追踪
             if not context.is_done() and response.stop_reason == "tool_use":
@@ -931,6 +1011,10 @@ class AgentLoop:
     async def _wrap_up(
         self, context: ExecutionContext, pending_summaries: list[str]
     ) -> str:
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return ""
+
         instruction = (
             "The agent run has reached its step limit and must stop now. "
             "Provide a concise summary covering: (1) progress made so far, "
@@ -969,6 +1053,9 @@ class AgentLoop:
                 admission.remaining_tokens,
             )
             return ""
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return ""
         context.messages.append({"role": "user", "content": instruction})
         try:
             response = await self._chat(
@@ -980,11 +1067,17 @@ class AgentLoop:
             )
         except asyncio.CancelledError:
             raise
+        except RunDeadlineExceeded:
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return ""
         except Exception:
             logging.getLogger(__name__).exception(
                 "wrap-up LLM call failed run_id=%s step=%d",
                 context.run_id, context.step,
             )
+            return ""
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return ""
         if response.usage is not None:
             context.total_input_tokens += response.usage.input_tokens
@@ -1007,6 +1100,10 @@ class AgentLoop:
     async def _conclude(
         self, context: ExecutionContext, pending_summaries: list[str]
     ) -> tuple[bool, str]:
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return (False, "")
+
         instruction = (
             "The agent run has reached its step limit and must stop now. "
             "Give your final answer. If the goal is fully achieved, start your "
@@ -1045,6 +1142,9 @@ class AgentLoop:
                 admission.remaining_tokens,
             )
             return (False, "")
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return (False, "")
         context.messages.append({"role": "user", "content": instruction})
         try:
             response = await self._chat(
@@ -1056,11 +1156,17 @@ class AgentLoop:
             )
         except asyncio.CancelledError:
             raise
+        except RunDeadlineExceeded:
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
+            return (False, "")
         except Exception:
             logging.getLogger(__name__).exception(
                 "conclude LLM call failed run_id=%s step=%d",
                 context.run_id, context.step,
             )
+            return (False, "")
+        if context.wall_clock_exceeded():
+            context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return (False, "")
         if response.usage is not None:
             context.total_input_tokens += response.usage.input_tokens

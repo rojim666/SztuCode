@@ -17,6 +17,7 @@ class _DeadlineAdvancingProvider:
         self._clock = clock
         self._end_turn = end_turn
         self.calls = 0
+        self.remaining: list[float | None] = []
 
     async def chat(
         self,
@@ -28,8 +29,10 @@ class _DeadlineAdvancingProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         del messages, tool_schemas, bus, run_id, step, system, usage_estimator
+        self.remaining.append(remaining_s)
         self.calls += 1
         self._clock[0] = 1.0
         if self._end_turn:
@@ -54,16 +57,17 @@ async def test_agent_loop_stops_before_second_provider_request_after_deadline() 
     await AgentLoop(provider, ToolRegistry(), EventBus()).run(context)  # type: ignore[arg-type]
 
     assert provider.calls == 1
+    assert provider.remaining == [1.0]
     assert context.status == "interrupted"
     assert context.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
 
 
-async def test_agent_loop_preserves_late_end_turn_result_as_interrupted() -> None:
+async def test_agent_loop_discards_late_end_turn_after_deadline() -> None:
     clock = [0.0]
     provider = _DeadlineAdvancingProvider(clock, end_turn=True)
     context = ExecutionContext(
         run_id="late-end-turn",
-        goal="preserve the late result",
+        goal="discard the late result",
         max_steps=5,
         max_wall_clock_s=1,
         clock=lambda: clock[0],
@@ -72,6 +76,7 @@ async def test_agent_loop_preserves_late_end_turn_result_as_interrupted() -> Non
     await AgentLoop(provider, ToolRegistry(), EventBus()).run(context)  # type: ignore[arg-type]
 
     assert provider.calls == 1
+    assert provider.remaining == [1.0]
     assert context.status == "interrupted"
     assert context.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
-    assert context.result == "late result"
+    assert context.result == ""
