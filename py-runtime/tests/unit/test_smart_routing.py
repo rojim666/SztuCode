@@ -26,3 +26,29 @@ def test_routing_is_stable_during_tools_and_releases_finished_runs() -> None:
         await provider.chat([{"role": "user", "content": "architecture"}], [], None, "r2")
         assert flagship.calls == 1
     asyncio.run(run())
+
+
+def test_remaining_s_is_forwarded_to_selected_provider() -> None:
+    class Fake:
+        def __init__(self) -> None:
+            self.remaining: list[float | None] = []
+
+        async def chat(self, *args, **kwargs):
+            self.remaining.append(kwargs.get("remaining_s"))
+            return LlmResponse(stop_reason="end_turn")
+
+    standard = Fake()
+    provider = SmartProvider(standard, Fake())
+
+    async def run() -> None:
+        await provider.chat(
+            [{"role": "user", "content": "simple task"}],
+            [],
+            None,
+            "run-1",
+            remaining_s=1.25,
+        )
+
+    asyncio.run(run())
+
+    assert standard.remaining == [1.25]

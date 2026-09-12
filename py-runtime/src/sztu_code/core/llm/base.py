@@ -21,4 +21,5 @@ class LLMProvider(Protocol):
         system: str | None = None,
         usage_estimator: Any | None = None,
         max_output_tokens: int | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse: ...

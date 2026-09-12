@@ -37,6 +37,7 @@ class _MockProvider:
     ) -> None:
         self._responses = iter(responses)
         self._exc = exc
+        self.calls = 0
 
     async def chat(
         self,
@@ -48,10 +49,86 @@ class _MockProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
+        self.calls += 1
         if self._exc is not None:
             raise self._exc
         return next(self._responses)
+
+
+class _SlowDeadlineProvider:
+    """Blocks until the AgentLoop cancels the in-flight request."""
+
+    def __init__(self, *, raise_cleanup_error: bool = False) -> None:
+        self.calls = 0
+        self.remaining: list[float | None] = []
+        self.started = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self.raise_cleanup_error = raise_cleanup_error
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        self.calls += 1
+        self.remaining.append(remaining_s)
+        self.started.set()
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            if self.raise_cleanup_error:
+                raise RuntimeError("provider cleanup failed")
+            raise
+        return LlmResponse(stop_reason="end_turn", text="unexpected completion")
+
+
+class _ClockAdvancingProvider:
+    """Returns a response after advancing the injected monotonic clock."""
+
+    def __init__(
+        self,
+        clock: list[float],
+        *,
+        response: LlmResponse | None = None,
+        exc: BaseException | None = None,
+    ) -> None:
+        self.clock = clock
+        self.calls = 0
+        self.response = response
+        self.exc = exc
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        self.calls += 1
+        self.clock[0] = 1.0
+        if self.exc is not None:
+            raise self.exc
+        if self.response is not None:
+            return self.response
+        return LlmResponse(
+            stop_reason="tool_use",
+            tool_calls=[_tc(name="unknown_tool")],
+        )
 
 
 class _CapRecordingProvider:
@@ -74,6 +151,7 @@ class _CapRecordingProvider:
         system: str | None = None,
         usage_estimator: object | None = None,
         max_output_tokens: int | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         self.calls += 1
         self.caps.append(max_output_tokens)
@@ -117,8 +195,8 @@ class _CompactingProvider:
         *,
         step: int = 0,
         system: str | None = None,
-    
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         self._calls += 1
         if self._calls == 1:
@@ -217,6 +295,31 @@ class _TimedTool(BaseTool):
             return ToolResult(content=f"done:{label}")
         finally:
             self._probe.active -= 1
+
+
+class _DeadlineAdvancingTool(BaseTool):
+    """Advances the injected clock after the allowed calls have started."""
+
+    description = "Records calls and advances a test clock"
+    input_schema: dict[str, object] = {
+        "type": "object",
+        "properties": {"label": {"type": "string"}},
+        "required": ["label"],
+    }
+
+    def __init__(self, clock: list[float], advance_after: int) -> None:
+        self.name = "deadline_read"
+        self.required_permission = ToolPermission.READ_ONLY
+        self._clock = clock
+        self._advance_after = advance_after
+        self.started: list[str] = []
+
+    async def invoke(self, params: dict[str, object]) -> ToolResult:
+        label = str(params["label"])
+        self.started.append(label)
+        if len(self.started) >= self._advance_after:
+            self._clock[0] = 1.0
+        return ToolResult(content=f"done:{label}")
 
 
 class _UnknownPermissionTool(_TimedTool):
@@ -350,6 +453,7 @@ async def test_steering_received_at_end_turn_continues_loop() -> None:
             step: int = 0,
             system: str | None = None,
             usage_estimator: object | None = None,
+            remaining_s: float | None = None,
         ) -> LlmResponse:
             self.calls.append([dict(message) for message in messages])
             if len(self.calls) == 1:
@@ -1295,9 +1399,186 @@ async def test_wall_clock_exceeded_stops_loop() -> None:
     # 模拟已运行超时：elapsed_s 会 >= max_wall_clock_s
     ctx.started_at = time.monotonic() - 10.0  # 10 秒前开始
     await loop.run(ctx)
-    # 无 result 时 wall_clock 超时标记为 failed（区别于有结果的中断）
-    assert ctx.status == "failed"
+    # Deadline 超时统一呈现为可识别的 interrupted 终态
+    assert ctx.status == "interrupted"
     assert ctx.reason == "max_wall_clock_exceeded"
+
+
+# 功能：验证正在等待的可取消 LLM 请求会被 Run deadline 截断并清理
+# 设计：slow fake provider 阻塞在 await，断言只调用一次、收到剩余预算且观察到取消
+async def test_llm_request_is_cancelled_at_run_deadline() -> None:
+    provider = _SlowDeadlineProvider()
+    loop = AgentLoop(provider, ToolRegistry(), EventBus())  # type: ignore[arg-type]
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 0.05
+
+    started = time.monotonic()
+    await asyncio.wait_for(loop.run(ctx), timeout=0.5)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.2
+    assert provider.calls == 1
+    assert provider.started.is_set()
+    assert provider.cancelled.is_set()
+    remaining = provider.remaining[0]
+    assert remaining is not None
+    assert 0.0 < remaining <= 0.05
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+
+
+# 功能：验证旧版 Provider double 不接受 remaining_s 时仍可运行
+# 设计：AgentLoop 传递有限剩余时间，但兼容层应省略旧 double 不支持的关键字
+async def test_legacy_provider_double_is_compatible_with_deadline() -> None:
+    class _LegacyProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(
+            self,
+            messages: list[dict[str, object]],
+            tool_schemas: list[dict[str, object]],
+            bus: EventBus,
+            run_id: str,
+            *,
+            step: int = 0,
+            system: str | None = None,
+            usage_estimator: object | None = None,
+        ) -> LlmResponse:
+            self.calls += 1
+            return LlmResponse(stop_reason="end_turn", text="done")
+
+    provider = _LegacyProvider()
+    loop = AgentLoop(provider, ToolRegistry(), EventBus())  # type: ignore[arg-type]
+    clock = [0.0]
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+
+    await loop.run(ctx)
+
+    assert provider.calls == 1
+    assert ctx.status == "success"
+
+
+# 功能：验证 Provider 取消清理异常不会覆盖 deadline 终止语义
+# 设计：fake 在收到取消后抛出清理异常，loop 仍应报告 interrupted/max_wall_clock_exceeded
+async def test_deadline_wins_over_provider_cleanup_error() -> None:
+    provider = _SlowDeadlineProvider(raise_cleanup_error=True)
+    loop = AgentLoop(provider, ToolRegistry(), EventBus())  # type: ignore[arg-type]
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 0.05
+
+    await asyncio.wait_for(loop.run(ctx), timeout=0.5)
+
+    assert provider.calls == 1
+    assert provider.cancelled.is_set()
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+
+
+# 功能：验证 Provider 自身抛出的 TimeoutError 不会被误判为 Run deadline
+# 设计：即使注入时钟已到 deadline，Provider 自己抛出的超时仍应走普通 llm_error 路径
+async def test_provider_timeout_error_remains_llm_error() -> None:
+    clock = [0.0]
+    provider = _ClockAdvancingProvider(
+        clock,
+        exc=TimeoutError("provider timeout"),
+    )
+    loop, _ = _make_loop(provider)
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+
+    await loop.run(ctx)
+
+    assert ctx.status == "failed"
+    assert ctx.reason == "llm_error"
+
+
+# 功能：验证响应恰好跨过 deadline 时不会继续执行工具或 wrap-up/conclude
+# 设计：fake monotonic clock 在首个 provider 响应前推进到 deadline，loop 应只处理为中断
+async def test_deadline_after_llm_response_skips_follow_up_calls() -> None:
+    clock = [0.0]
+    provider = _ClockAdvancingProvider(clock)
+    loop = AgentLoop(
+        provider,  # type: ignore[arg-type]
+        ToolRegistry(),
+        EventBus(),
+        wrap_up_on_max_steps=True,
+        grace_step_on_max_steps=True,
+    )
+    ctx = _ctx(max_steps=1)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+
+    await loop.run(ctx)
+
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+
+
+@pytest.mark.parametrize("max_concurrency", [1, 2])
+async def test_tool_calls_after_deadline_are_not_started(max_concurrency: int) -> None:
+    # The first serial call, or the first two bounded concurrent calls, advance
+    # the injected clock. Later calls must be represented without invoking the tool.
+    clock = [0.0]
+    tool = _DeadlineAdvancingTool(clock, advance_after=max_concurrency)
+    registry = ToolRegistry()
+    registry.register(tool)
+    provider = _MockProvider([
+        LlmResponse(
+            stop_reason="tool_use",
+            tool_calls=[
+                _tc(
+                    "deadline_read",
+                    {"label": label},
+                    uid=f"deadline-tool-{label}",
+                )
+                for label in ("first", "second", "third")
+            ],
+        ),
+        LlmResponse(stop_reason="end_turn", text="unexpected follow-up"),
+    ])
+    loop = AgentLoop(
+        provider,
+        registry,
+        EventBus(),
+        tool_max_concurrency=max_concurrency,
+    )
+    ctx = _ctx(max_steps=5)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+
+    await loop.run(ctx)
+
+    assert tool.started == ["first", "second"][:max_concurrency]
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+
+
+# 功能：验证 deadline 边界到达的迟到 end_turn 不会覆盖已有结果
+# 设计：模拟 resume 场景已有结果，再让 Provider 返回跨过 deadline 的迟到文本
+async def test_late_end_turn_does_not_replace_existing_result() -> None:
+    clock = [0.0]
+    provider = _ClockAdvancingProvider(
+        clock,
+        response=LlmResponse(stop_reason="end_turn", text="late response"),
+    )
+    loop = AgentLoop(provider, ToolRegistry(), EventBus())  # type: ignore[arg-type]
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+    ctx.result = "existing result"
+
+    await loop.run(ctx)
+
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+    assert ctx.result == "existing result"
 
 
 # 功能：验证墙钟超时但有 result 时标记为 interrupted（保留已有结果）

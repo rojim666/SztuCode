@@ -471,12 +471,18 @@ class OpenAIProvider:
         system: str | None = None,
         usage_estimator: Any | None = None,
         max_output_tokens: int | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         effective_max_output = (
             max_output_tokens if max_output_tokens is not None else self._max_output_tokens
         )
         await bus.publish(
-            LlmModelSelectedEvent(run_id=run_id, model=self._model, strategy=getattr(self, "_routing_strategy", "static"), ts=_now())
+            LlmModelSelectedEvent(
+                run_id=run_id,
+                model=self._model,
+                strategy=getattr(self, "_routing_strategy", "static"),
+                ts=_now(),
+            )
         )
 
         openai_msgs = _anth_to_openai_messages(

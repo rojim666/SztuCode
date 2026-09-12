@@ -148,9 +148,10 @@ async def test_step_forwarded_to_inner_provider(tmp_path: Path) -> None:
     inner.chat = AsyncMock(return_value=_make_response())
 
     provider = TracingProvider(inner, writer)
-    await provider.chat([], [], EventBus(), "r", step=7)
+    await provider.chat([], [], EventBus(), "r", step=7, remaining_s=2.5)
     await writer.stop()
 
     inner.chat.assert_called_once()
     _, kwargs = inner.chat.call_args
     assert kwargs["step"] == 7
+    assert kwargs["remaining_s"] == 2.5
