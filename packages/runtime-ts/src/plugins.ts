@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import fsSync from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { SztubuddyPlugins } from "./Sztubuddy-resources.js";
+import { SztubuddyPlugins } from "./workbuddy-resources.js";
 
 export type PluginScope = "personal" | "workspace";
 export type PluginSource = PluginScope | "builtin";

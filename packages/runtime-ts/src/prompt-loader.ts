@@ -8,7 +8,7 @@ import type { PermissionMode } from "@sztucode/protocol";
 import { composeRuntimePrompt, dynamicRuntimePromptEntries, type PromptRuntimeContext } from "./prompt-harness.js";
 import type { ChatMessage } from "./agent-loop.js";
 import { SkillLoader } from "./skills.js";
-import { buildSztubuddyBase, importedAgent, loadSztubuddyResource, renderSztubuddyText, SztubuddyContract } from "./Sztubuddy-resources.js";
+import { buildSztubuddyBase, importedAgent, loadSztubuddyResource, renderSztubuddyText, SztubuddyContract } from "./workbuddy-resources.js";
 
 const execFileAsync = promisify(execFile);
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));

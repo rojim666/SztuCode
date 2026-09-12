@@ -22,7 +22,7 @@ import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retriev
 import type { ContentBlock } from "./context.js";
 import { getMimeTypeFromPath, imageToContentBlock } from "./providers/image-utils.js";
 import { inspectAsset } from "./asset-inspector.js";
-import { importedToolDescription, readPromptResource, SztubuddyManifest } from "./Sztubuddy-resources.js";
+import { importedToolDescription, readPromptResource, SztubuddyManifest } from "./workbuddy-resources.js";
 
 export type { ToolPermission } from "./tools-types.js";
 /** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
 import type { ModelInvocation } from "./agent-loop.js";
-import { loadSztubuddyResource } from "./Sztubuddy-resources.js";
+import { loadSztubuddyResource } from "./workbuddy-resources.js";
 
 type ContentBlockFields = { text?: string; content?: string | ContentBlock[]; [key: string]: unknown };
 export type KnownContentBlock = ContentBlockFields & (

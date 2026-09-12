@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PermissionMode } from "@sztucode/protocol";
-import { renderSztubuddyText, SztubuddyMode, type InteractionMode } from "./Sztubuddy-resources.js";
+import { renderSztubuddyText, SztubuddyMode, type InteractionMode } from "./workbuddy-resources.js";
 
 export type PromptRuntimeContext = { permissionMode?: PermissionMode; interactionMode?: InteractionMode; memoryEnabled?: boolean; toolNames?: Iterable<string>; taskText?: string };
 

@@ -16,7 +16,7 @@ import type { SessionBackend, SessionHeader, SessionSnapshot } from "@sztucode/s
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@sztucode/telemetry";
-import { importedAgent } from "./Sztubuddy-resources.js";
+import { importedAgent } from "./workbuddy-resources.js";
 
 const workflowCoderTools = ["read_file", "write_file", "edit_file", "list_dir", "grep_search", "glob_search"];
 export type SubagentRunOptions = { signal?: AbortSignal; parentSessionId?: string; parentRunId?: string; allowedPaths?: string[]; changedPaths?: Set<string>; scopeEscalations?: Set<string> };

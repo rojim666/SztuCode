@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { PluginManager } from "./plugins.js";
 import { fileURLToPath } from "node:url";
-import { adaptSztubuddyText, loadSztubuddyResource, renderSztubuddyText, resourcePath, SztubuddyContract, SztubuddySkills, SztubuddyRoot } from "./Sztubuddy-resources.js";
+import { adaptSztubuddyText, loadSztubuddyResource, renderSztubuddyText, resourcePath, SztubuddyContract, SztubuddySkills, SztubuddyRoot } from "./workbuddy-resources.js";
 
 export type SkillScope = "system" | "personal" | "workspace";
 export type Skill = { id: string; name: string; display_name: string; description: string; short_description: string; source: string; scope: SkillScope; path: string; enabled: boolean; system_prompt_template: string; allowed_tools: string[]; plugin: string | null; icon: string | null; brand_color: string | null; allow_implicit_invocation: boolean };

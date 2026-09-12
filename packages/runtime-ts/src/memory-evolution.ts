@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { ToolRegistry } from "./tools.js";
 import type { CanvasNode } from "./task-canvas.js";
-import { loadSztubuddyResource } from "./Sztubuddy-resources.js";
+import { loadSztubuddyResource } from "./workbuddy-resources.js";
 
 // --- Working State ---
 
