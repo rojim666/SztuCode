@@ -33,7 +33,7 @@ tencent-docs-plugin/
 
 ## 鉴权说明（环境变量驱动，不落盘）
 
-插件**完全依赖宿主（Workbuddy 等连接器）注入的环境变量**完成鉴权，**不走 OAuth 授权页面**，也**不依赖任何外部命令行工具（无 curl / mcporter / npm）**：调用入口 `tencentdocs.py` 用 Python 3 标准库（`urllib`）调用 MCP HTTP/JSON-RPC 协议，跨平台（Windows / macOS / Linux），所有票据只在调用时通过 HTTP header 即时透传，**不落盘**：
+插件**完全依赖宿主（Sztubuddy 等连接器）注入的环境变量**完成鉴权，**不走 OAuth 授权页面**，也**不依赖任何外部命令行工具（无 curl / mcporter / npm）**：调用入口 `tencentdocs.py` 用 Python 3 标准库（`urllib`）调用 MCP HTTP/JSON-RPC 协议，跨平台（Windows / macOS / Linux），所有票据只在调用时通过 HTTP header 即时透传，**不落盘**：
 
 | 环境变量 | 含义 | 透传 header |
 |---|---|---|

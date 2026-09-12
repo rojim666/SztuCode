@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ChatMessage, ModelProvider } from "./agent-loop.js";
 import { ToolRegistry } from "./tools.js";
 import type { CanvasNode } from "./task-canvas.js";
-import { loadWorkbuddyResource } from "./workbuddy-resources.js";
+import { loadSztubuddyResource } from "./Sztubuddy-resources.js";
 
 // --- Working State ---
 
@@ -211,7 +211,7 @@ function buildEvolutionPrompt(trajectory: CanvasNode[], goal: string = ""): stri
 }
 
 function memoryEvolutionSystemPrompt(): string {
-  return `${loadWorkbuddyResource("product/insights-facet-friction.tpl")}
+  return `${loadSztubuddyResource("product/insights-facet-friction.tpl")}
 
 [memory-evolution]
 For this invocation replace the report schema above with the SztuCode memory patch schema below.

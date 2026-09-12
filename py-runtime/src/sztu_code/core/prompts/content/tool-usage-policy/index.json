@@ -4,52 +4,52 @@
     {
       "id": "read-files",
       "file": "system-prompt-tool-usage-read-files.md",
-      "source": "workbuddy:tool-usage-policy/read-files"
+      "source": "Sztubuddy:tool-usage-policy/read-files"
     },
     {
       "id": "edit-files",
       "file": "system-prompt-tool-usage-edit-files.md",
-      "source": "workbuddy:tool-usage-policy/edit-files"
+      "source": "Sztubuddy:tool-usage-policy/edit-files"
     },
     {
       "id": "create-files",
       "file": "system-prompt-tool-usage-create-files.md",
-      "source": "workbuddy:tool-usage-policy/create-files"
+      "source": "Sztubuddy:tool-usage-policy/create-files"
     },
     {
       "id": "search-files",
       "file": "system-prompt-tool-usage-search-files.md",
-      "source": "workbuddy:tool-usage-policy/search-files"
+      "source": "Sztubuddy:tool-usage-policy/search-files"
     },
     {
       "id": "search-content",
       "file": "system-prompt-tool-usage-search-content.md",
-      "source": "workbuddy:tool-usage-policy/search-content"
+      "source": "Sztubuddy:tool-usage-policy/search-content"
     },
     {
       "id": "reserve-bash",
       "file": "system-prompt-tool-usage-reserve-bash.md",
-      "source": "workbuddy:tool-usage-policy/reserve-bash"
+      "source": "Sztubuddy:tool-usage-policy/reserve-bash"
     },
     {
       "id": "delegate-exploration",
       "file": "system-prompt-tool-usage-delegate-exploration.md",
-      "source": "workbuddy:tool-usage-policy/delegate-exploration"
+      "source": "Sztubuddy:tool-usage-policy/delegate-exploration"
     },
     {
       "id": "parallel-tool-calls",
       "file": "system-prompt-parallel-tool-call-note.md",
-      "source": "workbuddy:tool-usage-policy/parallel-tool-calls"
+      "source": "Sztubuddy:tool-usage-policy/parallel-tool-calls"
     },
     {
       "id": "task-management",
       "file": "system-prompt-tool-usage-task-management.md",
-      "source": "workbuddy:tool-usage-policy/task-management"
+      "source": "Sztubuddy:tool-usage-policy/task-management"
     },
     {
       "id": "sztucode-tool-environment",
       "file": "system-prompt-tool-usage-sztucode-environment.md",
-      "source": "workbuddy:tool-usage-policy/sztucode-tool-environment"
+      "source": "Sztubuddy:tool-usage-policy/sztucode-tool-environment"
     }
   ]
 }

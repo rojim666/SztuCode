@@ -4,65 +4,65 @@
     {
       "id": "explore",
       "file": "agent-prompt-explore.md",
-      "source": "workbuddy:subagent-prompts/explore",
+      "source": "Sztubuddy:subagent-prompts/explore",
       "status": "active",
       "consumer": "builtin explore agent"
     },
     {
       "id": "plan",
       "file": "agent-prompt-plan.md",
-      "source": "workbuddy:subagent-prompts/plan",
+      "source": "Sztubuddy:subagent-prompts/plan",
       "status": "active",
       "consumer": "builtin plan agent"
     },
     {
       "id": "general",
       "file": "agent-prompt-general.md",
-      "source": "workbuddy:subagent-prompts/general",
+      "source": "Sztubuddy:subagent-prompts/general",
       "status": "active",
       "consumer": "builtin coder agent"
     },
     {
       "id": "agent-creation-architect",
       "file": "agent-prompt-agent-creation-architect.md",
-      "source": "workbuddy:subagent-prompts/agent-creation-architect",
+      "source": "Sztubuddy:subagent-prompts/agent-creation-architect",
       "status": "reference-only"
     },
     {
       "id": "conversation-summarization",
       "file": "agent-prompt-conversation-summarization.md",
-      "source": "workbuddy:subagent-prompts/conversation-summarization",
+      "source": "Sztubuddy:subagent-prompts/conversation-summarization",
       "status": "active",
       "consumer": "conversation compactor"
     },
     {
       "id": "webfetch-summarizer",
       "file": "agent-prompt-webfetch-summarizer.md",
-      "source": "workbuddy:subagent-prompts/webfetch-summarizer",
+      "source": "Sztubuddy:subagent-prompts/webfetch-summarizer",
       "status": "reference-only"
     },
     {
       "id": "bash-command-prefix-detection",
       "file": "agent-prompt-bash-command-prefix-detection.md",
-      "source": "workbuddy:subagent-prompts/bash-command-prefix-detection",
+      "source": "Sztubuddy:subagent-prompts/bash-command-prefix-detection",
       "status": "reference-only"
     },
     {
       "id": "security-monitor",
       "file": "agent-prompt-security-monitor.md",
-      "source": "workbuddy:subagent-prompts/security-monitor",
+      "source": "Sztubuddy:subagent-prompts/security-monitor",
       "status": "reference-only"
     },
     {
       "id": "session-memory-update",
       "file": "agent-prompt-session-memory-update.md",
-      "source": "workbuddy:subagent-prompts/session-memory-update",
+      "source": "Sztubuddy:subagent-prompts/session-memory-update",
       "status": "reference-only"
     },
     {
       "id": "prompt-suggestion-generator",
       "file": "agent-prompt-prompt-suggestion-generator.md",
-      "source": "workbuddy:subagent-prompts/prompt-suggestion-generator",
+      "source": "Sztubuddy:subagent-prompts/prompt-suggestion-generator",
       "status": "reference-only"
     }
   ]

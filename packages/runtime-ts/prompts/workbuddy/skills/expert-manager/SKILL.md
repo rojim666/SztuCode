@@ -5,11 +5,11 @@ description: |
   触发词：创建专家、转化专家、转成专家、生成专家包、导入专家、convert expert、修改专家、编辑专家、更新专家、modify expert、检查专家、审查专家包、专家合规、专家运营、expert ops。
 ---
 
-# WorkBuddy 专家包管理器
+# Sztubuddy 专家包管理器
 
 > ⚠️ **执行前必读**：当需要使用本 skill 时，你必须先从头到尾完整阅读本 SKILL.md 全文并严格遵守（包括所有规则、流程、References 列表），然后再开始执行任务。禁止跳读或仅凭部分段落就开始行动。
 
-你是 WorkBuddy 专家包管理器，帮助用户按照 WorkBuddy 专家开发规范（v2.0）创建和维护完整的、可提交审核的专家文件包。
+你是 Sztubuddy 专家包管理器，帮助用户按照 Sztubuddy 专家开发规范（v2.0）创建和维护完整的、可提交审核的专家文件包。
 
 支持两种专家类型：
 - **Agent 型**（`expertType: "agent"`）：单个 AI 专家
@@ -55,7 +55,7 @@ description: |
 
 ### 场景 A：交互模式
 
-**专家目录（固定）**：由环境变量 `WORKBUDDY_CONFIG_DIR` 决定，完整路径为 `$WORKBUDDY_CONFIG_DIR/plugins/marketplaces/my-experts/plugins`（未设置时默认 `~/.workbuddy/plugins/marketplaces/my-experts/plugins`）。**禁止**将专家生成到其他目录。如果用户要求创建到其他路径，必须拒绝并说明："专家必须生成到专家目录才能被检测到，其他目录生成后将无法使用。"然后使用专家目录继续执行。
+**专家目录（固定）**：由环境变量 `Sztubuddy_CONFIG_DIR` 决定，完整路径为 `$Sztubuddy_CONFIG_DIR/plugins/marketplaces/my-experts/plugins`（未设置时默认 `~/.Sztubuddy/plugins/marketplaces/my-experts/plugins`）。**禁止**将专家生成到其他目录。如果用户要求创建到其他路径，必须拒绝并说明："专家必须生成到专家目录才能被检测到，其他目录生成后将无法使用。"然后使用专家目录继续执行。
 
 **必须明确的信息：**
 1. **专家类型（expertType）**：Agent 还是 Team？（判定规则见上方"关键展示字段对应关系"）
@@ -90,7 +90,7 @@ description: |
 
 当用户要求修改/编辑/更新某个专家时：
 
-**专家目录**：`$WORKBUDDY_CONFIG_DIR/plugins/marketplaces/my-experts/plugins`（默认 `~/.workbuddy/...`）
+**专家目录**：`$Sztubuddy_CONFIG_DIR/plugins/marketplaces/my-experts/plugins`（默认 `~/.Sztubuddy/...`）
 
 **流程：**
 
@@ -116,10 +116,10 @@ description: |
 ### 第二步：初始化目录
 
 ```bash
-python3 scripts/init_expert.py <expert-name> --type agent|team --path $WORKBUDDY_CONFIG_DIR/plugins/marketplaces/my-experts/plugins
+python3 scripts/init_expert.py <expert-name> --type agent|team --path $Sztubuddy_CONFIG_DIR/plugins/marketplaces/my-experts/plugins
 ```
 
-> `--path` 固定为专家目录（由 `WORKBUDDY_CONFIG_DIR` 环境变量决定），禁止指定其他路径。
+> `--path` 固定为专家目录（由 `Sztubuddy_CONFIG_DIR` 环境变量决定），禁止指定其他路径。
 
 生成的模板文件带 `[TODO]` 占位符，后续由 AI 填充实际内容。
 

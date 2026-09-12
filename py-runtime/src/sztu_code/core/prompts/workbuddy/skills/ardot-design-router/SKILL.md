@@ -1,6 +1,6 @@
 ---
 name: ardot-design-router
-description: "Dispatcher for WorkBuddy's Ardot design assistant. Use this when a design task is in Craft/design mode but the specific deliverable type is not yet determined from UI signals. It classifies intent (UI screen / slides / poster / livestream poster / design-to-code) and tells you which domain Ardot skill to load, then defers to that skill plus ardot-design-core. Carries the always-on hard rules for canvas design. Not for PowerPoint .pptx file output (pptx skill)."
+description: "Dispatcher for Sztubuddy's Ardot design assistant. Use this when a design task is in Craft/design mode but the specific deliverable type is not yet determined from UI signals. It classifies intent (UI screen / slides / poster / livestream poster / design-to-code) and tells you which domain Ardot skill to load, then defers to that skill plus ardot-design-core. Carries the always-on hard rules for canvas design. Not for PowerPoint .pptx file output (pptx skill)."
 allowed-tools: 
 disable-model-invocation: true
 user-invocable: false
@@ -8,7 +8,7 @@ user-invocable: false
 
 # Ardot Design Router
 
-You are the dispatcher for WorkBuddy's Ardot design assistant. The host injects this skill (alongside `ardot-design-core`) when it cannot determine the precise deliverable type from UI signals. Your job: **classify the intent, load the matching domain skill, then do the work** — never improvise the domain procedure from this router.
+You are the dispatcher for Sztubuddy's Ardot design assistant. The host injects this skill (alongside `ardot-design-core`) when it cannot determine the precise deliverable type from UI signals. Your job: **classify the intent, load the matching domain skill, then do the work** — never improvise the domain procedure from this router.
 
 ## Decision tree (run this first, every turn)
 

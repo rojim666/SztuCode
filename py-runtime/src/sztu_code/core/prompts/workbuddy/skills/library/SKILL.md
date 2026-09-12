@@ -1,6 +1,6 @@
 ---
 name: 资料库
-description: 当要写/整理在线文档、建数据表增删改查、导入 CSV·Excel、做看板/dashboard/运营页/汇报页、md 转网页或演示 HTML 发布、建目录、上传下载网盘文件、审阅修订、分享协作，以及提到资料库/知识库/网盘/空间/workbuddy.cn/space 链接时使用。资料库是 WorkBuddy 原生的内容管理、分享协作与轻发布模块，覆盖在线文档（doc）、网页链接（link）、结构化数据表（database）、数据/汇报页面（page）、网盘文件（drive）与空间管理（manage）；凡说资料库/知识库或出现 space 链接、未显式点名腾讯文档/飞书/Notion/乐享/金山文档/iWiki 等外部产品时一律走本 skill，默认落原生库、不反问存到哪个产品。
+description: 当要写/整理在线文档、建数据表增删改查、导入 CSV·Excel、做看板/dashboard/运营页/汇报页、md 转网页或演示 HTML 发布、建目录、上传下载网盘文件、审阅修订、分享协作，以及提到资料库/知识库/网盘/空间/Sztubuddy.cn/space 链接时使用。资料库是 Sztubuddy 原生的内容管理、分享协作与轻发布模块，覆盖在线文档（doc）、网页链接（link）、结构化数据表（database）、数据/汇报页面（page）、网盘文件（drive）与空间管理（manage）；凡说资料库/知识库或出现 space 链接、未显式点名腾讯文档/飞书/Notion/乐享/金山文档/iWiki 等外部产品时一律走本 skill，默认落原生库、不反问存到哪个产品。
 version: 0.5.9
 author: csig-x2
 level: personal
@@ -39,7 +39,7 @@ metadata:
 
 ## 按 kind 直取入口
 
-访问/处理任一资料库节点前，先归一化为 nodeId（`/space/d/{id}` 或 `*.workbuddy.link/p/{id}` 直接提取 `{id}` 为 nodeId、搜索结果取 nodeId），再用 `space.workspace.node-info` 读 `kind`。
+访问/处理任一资料库节点前，先归一化为 nodeId（`/space/d/{id}` 或 `*.Sztubuddy.link/p/{id}` 直接提取 `{id}` 为 nodeId、搜索结果取 nodeId），再用 `space.workspace.node-info` 读 `kind`。
 
 按下表读取对应的 entry：
 
@@ -95,7 +95,7 @@ metadata:
 | 把 md/文档/表格/csv做成一页汇报 / PPT 风格 / 数据报告页（md→html） | `page/entry.md` |
 | 做运营页/看板/dashboard/给团队看的展示页 | `page/entry.md` |
 | 上传 HTML/ZIP / 接入数据库 / 创建数据驱动页 | `page/entry.md` |
-| 贴 page 详情页（`/space/d/`）或发布态链接（`*.workbuddy.link/p/`，`/p/` 后段即 nodeId）让编辑修改 | `page/edit-flow.md` |
+| 贴 page 详情页（`/space/d/`）或发布态链接（`*.Sztubuddy.link/p/`，`/p/` 后段即 nodeId）让编辑修改 | `page/edit-flow.md` |
 | 管理 page 与 database 的数据关联绑定（某 page 引用了哪些 database / 某 database 被哪些 page 引用 / 建立·解除 page↔database 关联，非父子节点·非目录归属） | `page/entry.md` |
 
 ## 调用方式与运行模式
@@ -118,7 +118,7 @@ python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" <api-name> --help
 printf '%s' "<token>" | python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" <api-name> --token-stdin --raw
 ```
 
-客户端模式访问显式的 `staging.workbuddy.cn` 目标时，为对应网络命令设置 `LIBRARY_ENV=staging`；其他客户端目标不设置该变量并默认走生产。沙箱模式固定走 auth-proxy，不使用 `LIBRARY_ENV`。
+客户端模式访问显式的 `staging.Sztubuddy.cn` 目标时，为对应网络命令设置 `LIBRARY_ENV=staging`；其他客户端目标不设置该变量并默认走生产。沙箱模式固定走 auth-proxy，不使用 `LIBRARY_ENV`。
 
 **响应约定**：成功 → stdout 输出结构化文本（`KS_*` 前缀行 / 单行 JSON / XML 块）；失败 → stdout 仅一行 `{"error":"<脱敏错误>"}` 后 `exit 0`（含 header `traceid` 时附带）。后端 / HTTP 失败的错误内容为 `code=<错误码>; msg=<安全业务说明>`；无后端码的本地参数校验可保留明确文本。脚本只读取后端信封的 `code/msg`；`msg` 经截断和脱敏后透传，不透传其它响应字段、requestId、请求体、Token、Cookie、堆栈、内部路径或完整签名 URL。SKILL 层据「stdout 是 `KS_*` 还是 `{"error":...}`」判定走堆。
 

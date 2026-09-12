@@ -49,7 +49,7 @@ disable-user-invocation: true
 > ```
 > 未配置镜像且无外网时，`setup-html-to-docx.sh` 首跑必然失败——这是**已知交付前置条件**，非 skill 缺陷。**Agent 在私有化交付场景下调用本 skill 前，应先确认 IOA/运维已完成上述环境变量或离线 wheel 分发**，否则应转 Markdown 降级（见"错误处理与降级"）而非重试。
 
-**统一入口（推荐，workbuddy / local 通道一键装齐）**：
+**统一入口（推荐，Sztubuddy / local 通道一键装齐）**：
 
 ```bash
 bash <plugin_root>/scripts/wb/local/setup.sh
@@ -61,7 +61,7 @@ bash <plugin_root>/scripts/wb/local/setup.sh
 bash <plugin_root>/scripts/wb/local/setup-html-to-docx.sh
 ```
 
-> 说明：环境安装脚本位于 plugin 根的 `scripts/wb/local/setup-html-to-docx.sh`（workbuddy 本地通道专属）。
+> 说明：环境安装脚本位于 plugin 根的 `scripts/wb/local/setup-html-to-docx.sh`（Sztubuddy 本地通道专属）。
 
 脚本输出末尾会打印 `Python runner: <venv>/bin/python`，可直接 `export HTML_TO_DOCX_PY=<那个路径>` 供后续调用。
 

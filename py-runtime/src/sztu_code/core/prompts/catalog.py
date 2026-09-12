@@ -106,8 +106,8 @@ def _load_group(group: str, prompt_root: Path) -> tuple[PromptEntry, ...]:
         prompt_path = group_root / file_name
         try:
             content = strip_html_comments(prompt_path.read_text(encoding="utf-8"))
-            if str(raw_entry.get("source", "")).startswith("workbuddy:"):
-                from sztu_code.core.prompts.workbuddy import render_text
+            if str(raw_entry.get("source", "")).startswith("Sztubuddy:"):
+                from sztu_code.core.prompts.Sztubuddy import render_text
 
                 content = render_text(content)
         except OSError as exc:

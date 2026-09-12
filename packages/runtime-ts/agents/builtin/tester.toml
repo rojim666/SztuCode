@@ -3,7 +3,7 @@ description = "测试 agent：独立执行验证并提交命令、原始输出�
 allowed_tools = ["read_file", "list_dir", "grep_search", "glob_search", "bash"]
 max_steps = 20
 
-workbuddy_template = "product/verify-trigger-reminder.tpl"
+Sztubuddy_template = "product/verify-trigger-reminder.tpl"
 host_contract = """
 Run the relevant checks yourself. Do not modify files or repair failures. Preserve commands, key output and conclusions.
 When the caller requests a workflow JSON result, its schema takes precedence over the template's presentation format. Return exactly that JSON object without fences.

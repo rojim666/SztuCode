@@ -4,7 +4,7 @@ SztuCode 系统提示词的规范化编排台：浏览、编辑并**用运行时
 
 它不重新实现任何组装规则——编排预览通过子进程调用 `packages/runtime-ts/dist` 里的真实接口
 （`buildSystemPrompt`、`buildDynamicContext`、`runtimePromptEntries`、`dynamicRuntimePromptEntries`、
-`buildWorkbuddyBase`），因此所见即 daemon 实际下发的内容。
+`buildSztubuddyBase`），因此所见即 daemon 实际下发的内容。
 
 ## 启动
 
@@ -26,7 +26,7 @@ npm run prompt-studio
 ## 界面
 
 - **左：提示词库** — `prompts/content/*` 的 13 个分组（读取各组 `index.json`，标注 `active` / `reference-only`），
-  以及 `prompts/workbuddy/` 的 main / styles / modes / contract 资源。支持即时过滤与空状态提示。
+  以及 `prompts/Sztubuddy/` 的 main / styles / modes / contract 资源。支持即时过滤与空状态提示。
 - **中：编辑器** — 打开条目后直接修改，实时显示字符/行/词数；有未保存修改时给出提示，切换条目会二次确认。
 - **右：编排预览** — 配置 role / permission mode / interaction mode / 记忆开关 / 已注册工具（胶囊开关），
   实时得到分层的静态基座、运行时原子片段、完整 System Prompt 与动态 `<system-reminder>`，
@@ -42,22 +42,22 @@ npm run prompt-studio
 
 | UI / API | 运行时来源 |
 | --- | --- |
-| `POST /api/compose` 的静态基座 | `workbuddy-resources.buildWorkbuddyBase()` |
+| `POST /api/compose` 的静态基座 | `Sztubuddy-resources.buildSztubuddyBase()` |
 | 运行时原子片段 | `prompt-harness.runtimePromptEntries()`（工具→`tool-usage-policy` 映射表 + 恒注入 `executing-actions-with-care`） |
 | 动态补充片段 | `prompt-harness.dynamicRuntimePromptEntries()`（mode / auto-mode / auto-memory） |
 | System Prompt | `prompt-loader.buildSystemPrompt()` |
 | 动态 reminder | `prompt-loader.buildDynamicContext()`（cwd/date、项目指令、skills、git、快照） |
-| 提示词库 | `prompts/content/*/index.json` 与 `prompts/workbuddy/manifest.json` 所描述的资源树 |
+| 提示词库 | `prompts/content/*/index.json` 与 `prompts/Sztubuddy/manifest.json` 所描述的资源树 |
 
 ## API
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/state` | 目录树：分组、条目、workbuddy 资源 |
+| `GET` | `/api/state` | 目录树：分组、条目、Sztubuddy 资源 |
 | `GET` | `/api/content?group=&file=` | 读取某个 content 条目（返回 `content`/`chars`/`sha256`） |
-| `GET` | `/api/workbuddy?path=` | 读取某个 workbuddy 资源 |
+| `GET` | `/api/Sztubuddy?path=` | 读取某个 Sztubuddy 资源 |
 | `PUT` | `/api/content` | 写回 `{ group, file, content, expectedSha256? }` |
-| `PUT` | `/api/workbuddy` | 写回 `{ path, content, expectedSha256? }` |
+| `PUT` | `/api/Sztubuddy` | 写回 `{ path, content, expectedSha256? }` |
 | `POST` | `/api/compose` | 真实函数编排，返回分层结果与 metrics |
 
 ## 修改安全

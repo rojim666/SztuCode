@@ -5,7 +5,7 @@
 
 ## 1. 前置约束
 
-> **强制前置 · 图片托管自检（导入统一收口点，不允许任何支路绕过）**：产物是在线 page 的链路，调 `import_html.py` 前，最终 HTML 必须已过 `entry.md` §5.5「图片托管」编排 + 自检硬门——`<img>` 的 `src`/`srcset` 无任何指向第三方域的 http/https 外链残留（平台内链 `codebuddy`/`workbuddy` 除外）。未过此门禁止调用导入脚本。执行铁序、自检命令、失败交代见 `entry.md` §5.5。
+> **强制前置 · 图片托管自检（导入统一收口点，不允许任何支路绕过）**：产物是在线 page 的链路，调 `import_html.py` 前，最终 HTML 必须已过 `entry.md` §5.5「图片托管」编排 + 自检硬门——`<img>` 的 `src`/`srcset` 无任何指向第三方域的 http/https 外链残留（平台内链 `codebuddy`/`Sztubuddy` 除外）。未过此门禁止调用导入脚本。执行铁序、自检命令、失败交代见 `entry.md` §5.5。
 
 - 仅接受**单个文件路径**，后缀 `.html` / `.htm` / `.zip`，上限 50 MiB。
   - `.html` / `.htm`：单文件链路。

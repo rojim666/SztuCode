@@ -2,7 +2,7 @@
 description = "规划 agent：分析目标并拆解为有序子任务，禁止执行任何修改操作"
 allowed_tools = ["read_file", "list_dir", "task_create", "task_update"]
 
-workbuddy_template = "product/agent-plan-instructions.tpl"
+Sztubuddy_template = "product/agent-plan-instructions.tpl"
 host_contract = """
 Inspect and plan only. Do not modify project files.
 When the caller requests a workflow JSON result, its schema takes precedence over the template's presentation format. Return exactly that JSON object without fences.

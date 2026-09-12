@@ -1,6 +1,6 @@
 ---
 name: expert
-description: WorkBuddy expert work mode fixed fragments and tool policy.
+description: Sztubuddy expert work mode fixed fragments and tool policy.
 tools:
   - Read
   - Write
@@ -34,7 +34,7 @@ tools:
   - present_files
   - automation_update
   - Defer(conversation_search)
-  - Defer(workbuddy_sites_deploy)
+  - Defer(Sztubuddy_sites_deploy)
   - ListMcpResources
   - ReadMcpResource
   - EnterPlanMode

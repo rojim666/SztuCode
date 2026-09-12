@@ -1,3 +1,3 @@
 # Preserve upstream bytes so resource hashes survive checkout on every platform.
-packages/runtime-ts/prompts/workbuddy/** -text
-py-runtime/src/sztu_code/core/prompts/workbuddy/** -text
+packages/runtime-ts/prompts/Sztubuddy/** -text
+py-runtime/src/sztu_code/core/prompts/Sztubuddy/** -text

@@ -23,7 +23,7 @@
 
 ## 3. 创建内容格式
 
-- 正文只写 Markdown；禁止混入 `<Paragraph>`、`<Callout>`、`<Table>`、`<Mermaid>`、`<Mark>` 等 WorkBuddy 组件。
+- 正文只写 Markdown；禁止混入 `<Paragraph>`、`<Callout>`、`<Table>`、`<Mermaid>`、`<Mark>` 等 Sztubuddy 组件。
 - 表格使用 Markdown/GFM 表格。
 - Mermaid 使用 Markdown fenced code。
 - 普通引用使用 `>`；Markdown 无法表达的组件效果不能通过混写组件规避。

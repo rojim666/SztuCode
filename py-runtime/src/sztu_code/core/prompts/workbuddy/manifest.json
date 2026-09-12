@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source": "WorkBuddy 5.4.7/5.5.4 prompt collection",
+  "source": "Sztubuddy 5.4.7/5.5.4 prompt collection",
   "files": [
     {
       "path": "main/ask-mode-reminder.tpl",
@@ -28,53 +28,53 @@
       "sha256": "36a0513e9359297ea9c3bde84439722951999552d3ec8c293e37c84e70438700"
     },
     {
-      "path": "main/workbuddy-ask-code-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-ask-code-prompt.tpl",
+      "path": "main/Sztubuddy-ask-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-ask-code-prompt.tpl",
       "sha256": "7c7481ffab03643f2ce58999e0e96336e82f74266a6ca07a56996e6fa18bff48"
     },
     {
-      "path": "main/workbuddy-ask-coding-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-ask-coding-prompt.tpl",
+      "path": "main/Sztubuddy-ask-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-ask-coding-prompt.tpl",
       "sha256": "022b3c1ed5cfaca61a12b6ccebf780f5f6845e20ca6dae0fff40b50671261390"
     },
     {
-      "path": "main/workbuddy-ask-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-ask-prompt.tpl",
+      "path": "main/Sztubuddy-ask-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-ask-prompt.tpl",
       "sha256": "4e0152913e0be15c3cc6f3305ec76e17eb32298c36214939719b97de86925c51"
     },
     {
-      "path": "main/workbuddy-craft-code-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-craft-code-prompt.tpl",
+      "path": "main/Sztubuddy-craft-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-craft-code-prompt.tpl",
       "sha256": "f7837bf9f799c1866ce0e21c84380d055b2e322fc554a184446ed4d94d6fad2f"
     },
     {
-      "path": "main/workbuddy-craft-coding-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-craft-coding-prompt.tpl",
+      "path": "main/Sztubuddy-craft-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-craft-coding-prompt.tpl",
       "sha256": "aa49541669aae5c98001d358c58171eeaf3b13dbd1eeb3613d25465ce0f1971b"
     },
     {
-      "path": "main/workbuddy-craft-design-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-craft-design-prompt.tpl",
+      "path": "main/Sztubuddy-craft-design-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-craft-design-prompt.tpl",
       "sha256": "b1ecd4c9796f76772c9205b5903d5121af72fa31995c5be1c4f3ec6521d26fe1"
     },
     {
-      "path": "main/workbuddy-expert-code-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-expert-code-prompt.tpl",
+      "path": "main/Sztubuddy-expert-code-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-expert-code-prompt.tpl",
       "sha256": "b07933647e3065c050eb260581fae82c8009fa25a4baed74819d900c77493417"
     },
     {
-      "path": "main/workbuddy-expert-coding-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-expert-coding-prompt.tpl",
+      "path": "main/Sztubuddy-expert-coding-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-expert-coding-prompt.tpl",
       "sha256": "94f9009240596b4708b880a3c43902ae6016aa6ee22ec4eb2a2b84f21a60e440"
     },
     {
-      "path": "main/workbuddy-expert-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-expert-prompt.tpl",
+      "path": "main/Sztubuddy-expert-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-expert-prompt.tpl",
       "sha256": "a9559693f97e66fced3cf832d1284dfb6979fc8a7bcbc53b3c99462ff7021101"
     },
     {
-      "path": "main/workbuddy-prompt.tpl",
-      "source": "01-主提示词-单体tpl/workbuddy-prompt.tpl",
+      "path": "main/Sztubuddy-prompt.tpl",
+      "source": "01-主提示词-单体tpl/Sztubuddy-prompt.tpl",
       "sha256": "f3041b74502816d85f8fb49ba5d577f1255afe8a738fd043a48938329ef1ab8b"
     },
     {
@@ -113,8 +113,8 @@
       "sha256": "249a414fb31d482130e39ce0bb6fb062eea3fbcbb6b7ee72fa0ab0d77b5d5bfd"
     },
     {
-      "path": "modes/ask/.workbuddy-plugin/plugin.json",
-      "source": "03-组合式fragments-interactionmode/ask/.workbuddy-plugin/plugin.json",
+      "path": "modes/ask/.Sztubuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/ask/.Sztubuddy-plugin/plugin.json",
       "sha256": "b703848e17843fe6b0285e5067d3b0da0c45f2f4edbf058deef44329fcc25509"
     },
     {
@@ -148,8 +148,8 @@
       "sha256": "be0e99c9a96d24ba8ac5c2ffa3e6481ef55a6d065fbe7e60e7ae76ce58d1020e"
     },
     {
-      "path": "modes/craft/.workbuddy-plugin/plugin.json",
-      "source": "03-组合式fragments-interactionmode/craft/.workbuddy-plugin/plugin.json",
+      "path": "modes/craft/.Sztubuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/craft/.Sztubuddy-plugin/plugin.json",
       "sha256": "acd5192af80e6ec019294414c8ccb0cb8ec14f0bc173073afaff9f6eadc2555a"
     },
     {
@@ -193,8 +193,8 @@
       "sha256": "434183c025201499e1e3db21d42a8034c364eebe2b3df703c21f71349ef30991"
     },
     {
-      "path": "modes/expert/.workbuddy-plugin/plugin.json",
-      "source": "03-组合式fragments-interactionmode/expert/.workbuddy-plugin/plugin.json",
+      "path": "modes/expert/.Sztubuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/expert/.Sztubuddy-plugin/plugin.json",
       "sha256": "da1daa0b8e5f54c8ffae623a532cbe65175ce57de73d56af34418d390b01397f"
     },
     {
@@ -228,8 +228,8 @@
       "sha256": "5095a41207816d2d61f9bb7e3d0106d3b5fff6e4251d46adf052ddb6664fd869"
     },
     {
-      "path": "modes/plan/.workbuddy-plugin/plugin.json",
-      "source": "03-组合式fragments-interactionmode/plan/.workbuddy-plugin/plugin.json",
+      "path": "modes/plan/.Sztubuddy-plugin/plugin.json",
+      "source": "03-组合式fragments-interactionmode/plan/.Sztubuddy-plugin/plugin.json",
       "sha256": "ad58a32d09a96563ab36d029d0e3be6b7b4d5943813a7b6f72863708eb6b557c"
     },
     {
@@ -2641,7 +2641,7 @@
     },
     {
       "name": "ardot-design-router",
-      "description": "Dispatcher for WorkBuddy's Ardot design assistant. Use this when a design task is in Craft/design mode but the specific deliverable type is not yet determined from UI signals. It classifies intent (UI screen / slides / poster / livestream poster / design-to-code) and tells you which domain Ardot skill to load, then defers to that skill plus ardot-design-core. Carries the always-on hard rules for canvas design. Not for PowerPoint .pptx file output (pptx skill).",
+      "description": "Dispatcher for Sztubuddy's Ardot design assistant. Use this when a design task is in Craft/design mode but the specific deliverable type is not yet determined from UI signals. It classifies intent (UI screen / slides / poster / livestream poster / design-to-code) and tells you which domain Ardot skill to load, then defers to that skill plus ardot-design-core. Carries the always-on hard rules for canvas design. Not for PowerPoint .pptx file output (pptx skill).",
       "path": "skills/ardot-design-router/SKILL.md",
       "allowedTools": [],
       "plugin": null
@@ -2697,7 +2697,7 @@
     },
     {
       "name": "资料库",
-      "description": "当要写/整理在线文档、建数据表增删改查、导入 CSV·Excel、做看板/dashboard/运营页/汇报页、md 转网页或演示 HTML 发布、建目录、上传下载网盘文件、审阅修订、分享协作，以及提到资料库/知识库/网盘/空间/workbuddy.cn/space 链接时使用。资料库是 WorkBuddy 原生的内容管理、分享协作与轻发布模块，覆盖在线文档（doc）、网页链接（link）、结构化数据表（database）、数据/汇报页面（page）、网盘文件（drive）与空间管理（manage）；凡说资料库/知识库或出现 space 链接、未显式点名腾讯文档/飞书/Notion/乐享/金山文档/iWiki 等外部产品时一律走本 skill，默认落原生库、不反问存到哪个产品。",
+      "description": "当要写/整理在线文档、建数据表增删改查、导入 CSV·Excel、做看板/dashboard/运营页/汇报页、md 转网页或演示 HTML 发布、建目录、上传下载网盘文件、审阅修订、分享协作，以及提到资料库/知识库/网盘/空间/Sztubuddy.cn/space 链接时使用。资料库是 Sztubuddy 原生的内容管理、分享协作与轻发布模块，覆盖在线文档（doc）、网页链接（link）、结构化数据表（database）、数据/汇报页面（page）、网盘文件（drive）与空间管理（manage）；凡说资料库/知识库或出现 space 链接、未显式点名腾讯文档/飞书/Notion/乐享/金山文档/iWiki 等外部产品时一律走本 skill，默认落原生库、不反问存到哪个产品。",
       "path": "skills/library/SKILL.md",
       "allowedTools": [],
       "plugin": null
@@ -2711,10 +2711,10 @@
     },
     {
       "name": "marketplace-skill-installer",
-      "description": "在 WorkBuddy 对话中通过一句话从推荐市场（BuiltinMarket）搜索并安装 Skill。\n触发词：安装 skill、安装技能、install skill、添加技能、装个 X 技能、帮我安装 X、find skill、install marketplace skill、search skill。\n",
+      "description": "在 Sztubuddy 对话中通过一句话从推荐市场（BuiltinMarket）搜索并安装 Skill。\n触发词：安装 skill、安装技能、install skill、添加技能、装个 X 技能、帮我安装 X、find skill、install marketplace skill、search skill。\n",
       "path": "skills/marketplace-skill-installer/SKILL.md",
       "allowedTools": [
-        "workbuddy_marketplace_skill"
+        "Sztubuddy_marketplace_skill"
       ],
       "plugin": null
     },
@@ -2895,7 +2895,7 @@
     },
     {
       "name": "enhance-prompt",
-      "description": "Prompt enhancement agent for refining user input in WorkBuddy Desktop chat input box",
+      "description": "Prompt enhancement agent for refining user input in Sztubuddy Desktop chat input box",
       "template": "product/enhance-prompt-system-prompt.tpl",
       "tools": []
     },
@@ -3014,49 +3014,49 @@
     {
       "name": "commit",
       "path": "product/command-commit-prompt.tpl",
-      "description": "WorkBuddy commit workflow adapted for SztuCode",
+      "description": "Sztubuddy commit workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "create-pr",
       "path": "product/command-commit-push-pr-prompt.tpl",
-      "description": "WorkBuddy create-pr workflow adapted for SztuCode",
+      "description": "Sztubuddy create-pr workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "security-review",
       "path": "product/command-security-review-prompt.tpl",
-      "description": "WorkBuddy security-review workflow adapted for SztuCode",
+      "description": "Sztubuddy security-review workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "insights",
       "path": "product/command-insights-prompt.tpl",
-      "description": "WorkBuddy insights workflow adapted for SztuCode",
+      "description": "Sztubuddy insights workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "statusline",
       "path": "product/command-statusline-prompt.tpl",
-      "description": "WorkBuddy statusline workflow adapted for SztuCode",
+      "description": "Sztubuddy statusline workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "init",
       "path": "product/init-prompt.tpl",
-      "description": "WorkBuddy init workflow adapted for SztuCode",
+      "description": "Sztubuddy init workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     },
     {
       "name": "loop",
       "path": "product/skill-loop-prompt.tpl",
-      "description": "WorkBuddy loop workflow adapted for SztuCode",
+      "description": "Sztubuddy loop workflow adapted for SztuCode",
       "allowedTools": [],
       "plugin": null
     }

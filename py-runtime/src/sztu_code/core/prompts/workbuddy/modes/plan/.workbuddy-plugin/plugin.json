@@ -1,13 +1,13 @@
 {
   "name": "interactionmode-plan",
   "version": "0.1.2",
-  "description": "WorkBuddy plan interaction mode fragment and tool policy.",
+  "description": "Sztubuddy plan interaction mode fragment and tool policy.",
   "author": {
-    "name": "WorkBuddy"
+    "name": "Sztubuddy"
   },
   "category": "interaction",
   "keywords": [
-    "workbuddy",
+    "Sztubuddy",
     "interaction",
     "plan"
   ]

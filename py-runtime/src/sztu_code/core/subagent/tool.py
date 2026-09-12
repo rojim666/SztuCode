@@ -142,7 +142,7 @@ class SpawnAgentTool(BaseTool):
         # 与父 run 一致的默认单次输出上限，供子 AgentLoop 预算收缩时参考
         default_max_output_tokens: int = 8_192,
     ) -> None:
-        from sztu_code.core.prompts.workbuddy import manifest
+        from sztu_code.core.prompts.Sztubuddy import manifest
 
         self.description = type(self).description + "\nImported agent profiles: " + ", ".join(
             agent["name"] for agent in manifest()["agents"]

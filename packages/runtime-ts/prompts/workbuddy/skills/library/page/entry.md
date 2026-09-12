@@ -88,7 +88,7 @@ python3 "${CODEBUDDY_SKILL_DIR}/page/import_html.py" "<page.html>" --space-id "<
 1. **提取** HTML 中所有 `<img>` 标签的静态图片引用（`src` / `srcset`）。
 2. **判定每个引用是否第三方外链**：
    - 相对路径 → 跳过（非外链）。
-   - `http:` / `https:` / 协议相对 `//` 的绝对链接 → 取其 host 判断：host 含 `codebuddy` 或 `workbuddy` 关键字 = 平台内链，跳过；否则 = 第三方外链，需托管。
+   - `http:` / `https:` / 协议相对 `//` 的绝对链接 → 取其 host 判断：host 含 `codebuddy` 或 `Sztubuddy` 关键字 = 平台内链，跳过；否则 = 第三方外链，需托管。
 3. **转内链**：调用 `manage/upload_image.py --url` 转内链（脚本用法见 `manage/entry.md` §`manage/upload_image.py`（图片上传基础组件）），取返回 `json.url` 回写到对应 `<img>` 的 `src` / `srcset`；不向用户回显上传凭证 / 签名 URL。
 4. **失败登记**：转链失败 → 记入失败清单，不静默、不留空白占位（见下方「失败交代」）。
 
@@ -100,7 +100,7 @@ python3 "${CODEBUDDY_SKILL_DIR}/page/import_html.py" "<page.html>" --space-id "<
 grep -Eoi '<img[^>]+>' "<final.html>" \
   | grep -Eoi "(src|srcset)[[:space:]]*=[[:space:]]*[\"'][^\"']*(https?:)?//[^\"']+" \
   | grep -Eoi "(https?:)?//[^/\"')[:space:]]+" \
-  | grep -Eiv 'codebuddy|workbuddy'
+  | grep -Eiv 'codebuddy|Sztubuddy'
 ```
 
 - **无输出 = 合格** → 放行 `import_html.py` / 事务提交。
@@ -147,7 +147,7 @@ python3 "${CODEBUDDY_PLUGIN_ROOT}/skills/library/page/list_page_publish_artifact
 
 ### 触发
 
-用户要求修改一个已经导入 / 发布在 WorkBuddy Page 平台上的页面，并给出 `nodeId` 或
+用户要求修改一个已经导入 / 发布在 Sztubuddy Page 平台上的页面，并给出 `nodeId` 或
 `/space/d/<nodeId>` 链接时，走本能力。它不同于 `import_html.py` 的整包重导入：
 本流程会基于后端 Page Agent 事务协议，只上传被修改的产物文件。
 
@@ -270,7 +270,7 @@ python3 "${CODEBUDDY_SKILL_DIR}/page/page_database_relation.py" --token-stdin --
 
 **入口 A · 「一键可视化」按钮**：宿主强制 `skill="library"` + `autoSend`，prompt 为固定模式——含「**一键可视化生成 …… HTML …… 页面**」+ 三行 `spaceId:` / `nodeId:` / `kind: doc|database`。
 
-**入口 B · 对话贴资料库链接 + 美化/可视化意图**：用户在对话里给出 WorkBuddy 资料库链接（`www.workbuddy.cn/space/...` / `staging.workbuddy.cn/space/...`，或直接给 `nodeId`），并明确要"**一键美化 / 一键可视化 / 做成汇报页 / 做成演示 / 美化成 PPT**"。此时先从链接解析出 `nodeId` → 用 `manage` 的 `space.workspace.node-info` 仲裁 `kind` → 按 `kind` 路由（与入口 A 一致）。
+**入口 B · 对话贴资料库链接 + 美化/可视化意图**：用户在对话里给出 Sztubuddy 资料库链接（`www.Sztubuddy.cn/space/...` / `staging.Sztubuddy.cn/space/...`，或直接给 `nodeId`），并明确要"**一键美化 / 一键可视化 / 做成汇报页 / 做成演示 / 美化成 PPT**"。此时先从链接解析出 `nodeId` → 用 `manage` 的 `space.workspace.node-info` 仲裁 `kind` → 按 `kind` 路由（与入口 A 一致）。
 
 **品类路由（按 `kind`）**：
 - `kind: doc` → **本能力 md→html 分支**：`doc` 模块按 `nodeId` 读正文作 md 母本 → `md_to_html.py`（长页 / 演示格式判定见 `md-to-html-flow.md` §3）。

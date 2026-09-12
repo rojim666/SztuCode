@@ -1,10 +1,10 @@
-# WorkBuddy 提示词合集（原样整理，仅供研究）
+# Sztubuddy 提示词合集（原样整理，仅供研究）
 
-来源：docs/WorkBuddy/_analysis（5.4.7/5.5.4 解包）与 WorkBuddy-reference/extracted/cli/product.json。
+来源：docs/Sztubuddy/_analysis（5.4.7/5.5.4 解包）与 Sztubuddy-reference/extracted/cli/product.json。
 本目录在 gitignore 区内，不入库（合规红线：prompt 原文不提交进仓库）。
 
 ## 01-主提示词-单体tpl（15 份）
-旧架构单体模板：workbuddy-prompt.tpl 是主提示词（370 行 23 章）；
+旧架构单体模板：Sztubuddy-prompt.tpl 是主提示词（370 行 23 章）；
 ask/craft/expert × code/coding/design 是场景×模式变体；
 ask-mode-reminder / craft-mode-reminder 是模式切换时的覆盖声明（"This supersedes any other instructions"）；
 user-context-identity / user-context-expert-identity 是身份注入段。

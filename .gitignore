@@ -40,7 +40,7 @@ py-runtime/trials/
 desktop/src-tauri/resources/
 packages/runtime-ts/*.txt
 .hilo/
-.workbuddy/
+.Sztubuddy/
 
 # 运行时数据与临时产物：插件安装目录、临时 PDF/仓库等不入库
 .sztu/

@@ -14,7 +14,7 @@ import { promises as fs } from "node:fs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(here, "..");
 const PROMPT_ROOT = path.join(REPO_ROOT, "packages", "runtime-ts", "prompts", "content");
-const WORKBUDDY_ROOT = path.join(REPO_ROOT, "packages", "runtime-ts", "prompts", "workbuddy");
+const Sztubuddy_ROOT = path.join(REPO_ROOT, "packages", "runtime-ts", "prompts", "Sztubuddy");
 const PUBLIC_DIR = path.join(here, "public");
 const BACKUP_ROOT = path.join(REPO_ROOT, ".sztu", "prompt-studio-backups");
 const COMPOSE_WORKER = path.join(here, "lib", "compose.mjs");
@@ -117,16 +117,16 @@ async function listFiles(dir, root) {
   return out.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-async function listWorkbuddy() {
+async function listSztubuddy() {
   const result = { main: [], styles: [], modes: {}, contract: [] };
-  result.main = await listFiles(path.join(WORKBUDDY_ROOT, "main"), WORKBUDDY_ROOT);
-  result.styles = await listFiles(path.join(WORKBUDDY_ROOT, "styles"), WORKBUDDY_ROOT);
-  result.contract = await listFiles(WORKBUDDY_ROOT, WORKBUDDY_ROOT);
-  const modesDir = path.join(WORKBUDDY_ROOT, "modes");
+  result.main = await listFiles(path.join(Sztubuddy_ROOT, "main"), Sztubuddy_ROOT);
+  result.styles = await listFiles(path.join(Sztubuddy_ROOT, "styles"), Sztubuddy_ROOT);
+  result.contract = await listFiles(Sztubuddy_ROOT, Sztubuddy_ROOT);
+  const modesDir = path.join(Sztubuddy_ROOT, "modes");
   let modeDirs = [];
   try { modeDirs = (await fs.readdir(modesDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name); } catch { /* none */ }
   for (const mode of modeDirs.sort()) {
-    result.modes[mode] = await listFiles(path.join(modesDir, mode, "fragments"), WORKBUDDY_ROOT);
+    result.modes[mode] = await listFiles(path.join(modesDir, mode, "fragments"), Sztubuddy_ROOT);
   }
   return result;
 }
@@ -162,33 +162,33 @@ async function runCompose(input) {
 
 async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/state") {
-    const [groups, workbuddy] = await Promise.all([listContentGroups(), listWorkbuddy()]);
+    const [groups, Sztubuddy] = await Promise.all([listContentGroups(), listSztubuddy()]);
     return sendJson(res, 200, {
       repoRoot: REPO_ROOT,
       promptRoot: PROMPT_ROOT,
-      workbuddyRoot: WORKBUDDY_ROOT,
+      SztubuddyRoot: Sztubuddy_ROOT,
       groups,
-      workbuddy,
+      Sztubuddy,
     });
   }
 
-  if (req.method === "GET" && (url.pathname === "/api/content" || url.pathname === "/api/workbuddy")) {
+  if (req.method === "GET" && (url.pathname === "/api/content" || url.pathname === "/api/Sztubuddy")) {
     const isContent = url.pathname === "/api/content";
     const relative = isContent
       ? `${url.searchParams.get("group") ?? ""}/${url.searchParams.get("file") ?? ""}`
       : url.searchParams.get("path") ?? "";
-    const root = isContent ? PROMPT_ROOT : WORKBUDDY_ROOT;
+    const root = isContent ? PROMPT_ROOT : Sztubuddy_ROOT;
     const target = resolveInside(root, relative);
     const content = await fs.readFile(target, "utf8");
     return sendJson(res, 200, { path: relative, content, chars: content.length, sha256: sha256(content) });
   }
 
-  if (req.method === "PUT" && (url.pathname === "/api/content" || url.pathname === "/api/workbuddy")) {
+  if (req.method === "PUT" && (url.pathname === "/api/content" || url.pathname === "/api/Sztubuddy")) {
     const body = JSON.parse(await readBody(req));
     if (typeof body.content !== "string") throw new Error("content must be a string");
     const isContent = url.pathname === "/api/content";
     const relative = isContent ? `${body.group ?? ""}/${body.file ?? ""}` : body.path ?? "";
-    const root = isContent ? PROMPT_ROOT : WORKBUDDY_ROOT;
+    const root = isContent ? PROMPT_ROOT : Sztubuddy_ROOT;
     const target = resolveInside(root, relative);
     if (!target.endsWith(".md") && !target.endsWith(".tpl")) throw new Error("only .md and .tpl prompt files can be edited");
     if (body.expectedSha256) {
@@ -238,6 +238,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   process.stdout.write(`Prompt Studio running at http://${HOST}:${PORT}\n`);
   process.stdout.write(`  prompt root   : ${path.relative(REPO_ROOT, PROMPT_ROOT) || PROMPT_ROOT}\n`);
-  process.stdout.write(`  workbuddy root: ${path.relative(REPO_ROOT, WORKBUDDY_ROOT) || WORKBUDDY_ROOT}\n`);
+  process.stdout.write(`  Sztubuddy root: ${path.relative(REPO_ROOT, Sztubuddy_ROOT) || Sztubuddy_ROOT}\n`);
   process.stdout.write(`  backups       : ${path.relative(REPO_ROOT, BACKUP_ROOT) || BACKUP_ROOT}\n`);
 });

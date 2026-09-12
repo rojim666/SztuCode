@@ -13,7 +13,7 @@ For any need involving map rendering, visualization, marker placement, route dra
 - When the user does not specify a provider, default to Tencent Maps; see the "Default Scenario Quick Start Template" below.
 - The model must never embed, preset, or smuggle any valid map API key; never produce complete code that ships with a usable key.
 - Key usage rules (differentiated by scenario):
-  - **Default scenario** (the user does not need to provide a key) — the SDK URL does not carry the `key` parameter; requests go through the WorkBuddy local proxy via `_TMapSecurityConfig`.
+  - **Default scenario** (the user does not need to provide a key) — the SDK URL does not carry the `key` parameter; requests go through the Sztubuddy local proxy via `_TMapSecurityConfig`.
   - **Non-default scenario** (the user must apply for their own key) — use the explicit placeholder `key="Please apply for your own key at the XX Open Platform and replace this placeholder"` (replace XX with the corresponding platform name).
   - **Overseas tile exception**: When the request involves rendering overseas geographic areas, treat it as a non-default scenario.
 - Front-end key leakage risk: plaintext keys in front-end JS can be sniffed; for personal use, configure a Referer domain whitelist; for commercial use, key authentication must be proxied via the back end.
@@ -26,7 +26,7 @@ For any need involving map rendering, visualization, marker placement, route dra
 
 ## Default Scenario Quick Start Template (Tencent Maps GL JS, Proxy Mode)
 
-In the default scenario, WorkBuddy uses Tencent Maps' official `_TMapSecurityConfig` key proxy mode: the SDK is loaded directly from the official CDN (without the `key` parameter), the SDK's internal API requests are automatically routed to the local proxy, and the key is held by the WorkBuddy back end, so zero keys are exposed on the front end.
+In the default scenario, Sztubuddy uses Tencent Maps' official `_TMapSecurityConfig` key proxy mode: the SDK is loaded directly from the official CDN (without the `key` parameter), the SDK's internal API requests are automatically routed to the local proxy, and the key is held by the Sztubuddy back end, so zero keys are exposed on the front end.
 
 ```html
 <!DOCTYPE html>
@@ -65,7 +65,7 @@ Template notes:
 
 - `_TMapSecurityConfig` must be set before the SDK `<script>` tag.
 - The SDK URL must not include `?key=xxx`.
-- `__WB_HTTP_PORT__` / `__WB_TMAP_SECRET__` are WorkBuddy runtime placeholders. Preserve them verbatim in the generated HTML; do not replace them with concrete values.
+- `__WB_HTTP_PORT__` / `__WB_TMAP_SECRET__` are Sztubuddy runtime placeholders. Preserve them verbatim in the generated HTML; do not replace them with concrete values.
 
 ## After Generation, Call present_files to Display
 
@@ -81,7 +81,7 @@ Do not end the task after only calling `Write`; do not start `python http.server
 
 1. **Coordinate system**: use GCJ-02 (Mars coordinates).
 2. **Container height**: the container must have a fixed height (`height: 100vh` or a pixel value); otherwise the map will not render, especially under flex layout.
-3. **Do not modify placeholders**: `__WB_HTTP_PORT__` and `__WB_TMAP_SECRET__` are replaced automatically by the WorkBuddy runtime; preserve them verbatim when generating the HTML.
+3. **Do not modify placeholders**: `__WB_HTTP_PORT__` and `__WB_TMAP_SECRET__` are replaced automatically by the Sztubuddy runtime; preserve them verbatim when generating the HTML.
 4. **Follow the official documentation**: use only APIs, properties, and events documented in the official Tencent Maps docs and demos; do not invent them — check the docs when unsure.
 5. **Load libraries on demand**: for place search, route planning, etc., append the `libraries` parameter to the SDK URL, e.g., `/gljs?v=1.exp&libraries=service`.
 6. **Use string for route policy**: `TMap.service.Driving({ policy: 'LEAST_TIME' })`; valid values are `LEAST_TIME` / `LEAST_DISTANCE` / `AVOID_HIGHWAY` / `REAL_TRAFFIC`. Do not use `TMap.constants.DRIVING_POLICY.xxx`.

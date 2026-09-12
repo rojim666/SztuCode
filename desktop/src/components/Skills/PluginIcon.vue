@@ -152,7 +152,7 @@ registerPluginIcon("lark-skill-maker", "#3370FF", `<path d="M12 2l3 3h4v4l3 3-3 
 registerPluginIcon("lark-whiteboard", "#3370FF", `<rect x="3" y="3" width="18" height="14" rx="1" fill="#5C95FF"/><path d="M8 21h8M12 17v4" stroke="#3370FF" stroke-width="2" stroke-linecap="round" fill="none"/>`);
 registerPluginIcon("lark-vc-agent", "#3370FF", `<rect x="2" y="6" width="15" height="12" rx="2" fill="#5C95FF"/><path d="M17 10l5-3v10l-5-3v-4z" fill="#3370FF"/><circle cx="9.5" cy="12" r="2" fill="white"/>`);
 
-// ========== WorkBuddy 内置插件 ==========
+// ========== Sztubuddy 内置插件 ==========
 registerPluginIcon("sheetagent", "#217346", `<rect x="3" y="3" width="18" height="18" rx="2" fill="#4CAF7D"/><rect x="3" y="3" width="18" height="4" rx="2" fill="#217346"/><path d="M3 11h18M3 16h18M9 7v14M15 7v14" stroke="white" stroke-width="0.9" opacity="0.6" fill="none"/><circle cx="18" cy="18" r="3.4" fill="white"/><path d="M18 16.4v3.2M16.4 18h3.2" stroke="#217346" stroke-width="1.4" stroke-linecap="round" fill="none"/>`);
 registerPluginIcon("tencent-docs-plugin", "#0052D9", `<path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#7EA6F0"/><path d="M15 2v5h5" fill="#0052D9"/><path d="M8 15.5c-1.7 0-3-1.2-3-2.7 0-1.4 1.2-2.6 2.7-2.7.4-1.6 1.9-2.8 3.7-2.8 2 0 3.6 1.4 3.8 3.2 1.4.1 2.5 1.3 2.5 2.7 0 1.5-1.2 2.7-2.7 2.7H8z" fill="white" opacity="0.92"/>`);
 registerPluginIcon("tencent-docx", "#2B5797", `<path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#6E9BDB"/><path d="M15 2v5h5" fill="#2B5797"/><text x="12" y="17" text-anchor="middle" fill="white" font-size="8" font-weight="bold" font-family="Arial">W</text>`);

@@ -1,4 +1,4 @@
-> 本文是旧提示词的参考资料。当前运行时采用 [WorkBuddy 提示词集成](reference/workbuddy-prompts.md) 中的资源与加载机制。
+> 本文是旧提示词的参考资料。当前运行时采用 [Sztubuddy 提示词集成](reference/Sztubuddy-prompts.md) 中的资源与加载机制。
 
 ### 一、主系统提示词 (Main System Prompt)
 

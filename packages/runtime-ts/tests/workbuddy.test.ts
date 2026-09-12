@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildSystemPrompt, buildDynamicContext, loadAgentProfile } from "../src/prompt-loader.js";
-import { loadWorkbuddyResource, readPromptResource, renderWorkbuddyText, resourcePath, workbuddyManifest, workbuddyMode } from "../src/workbuddy-resources.js";
+import { loadSztubuddyResource, readPromptResource, renderSztubuddyText, resourcePath, SztubuddyManifest, SztubuddyMode } from "../src/Sztubuddy-resources.js";
 import { SkillLoader } from "../src/skills.js";
 import { PluginManager } from "../src/plugins.js";
 import { SubagentManager } from "../src/subagent.js";
@@ -15,8 +15,8 @@ import { JsonlSessionBackend } from "@sztucode/session-fs";
 import { RunManager } from "../src/run-manager.js";
 import { runMemoryEvolution } from "../src/memory-evolution.js";
 
-test("WorkBuddy bundle is complete and every product template renders", async () => {
-  const manifest = workbuddyManifest();
+test("Sztubuddy bundle is complete and every product template renders", async () => {
+  const manifest = SztubuddyManifest();
   assert.equal(manifest.files.length, 485);
   assert.equal(manifest.skills.length, 48);
   assert.equal(manifest.agents.length, 19);
@@ -24,13 +24,13 @@ test("WorkBuddy bundle is complete and every product template renders", async ()
     const bytes = await readFile(resourcePath(file.path));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256, file.path);
     if (file.path.endsWith(".tpl") || file.path.startsWith("modes/") && file.path.endsWith(".md")) {
-      const text = loadWorkbuddyResource(file.path);
+      const text = loadSztubuddyResource(file.path);
       assert.doesNotMatch(text, /\{%|\{\{/, file.path);
     }
   }
-  for (const mode of ["ask", "craft", "plan", "expert"] as const) assert.ok(workbuddyMode(mode));
-  assert.equal(renderWorkbuddyText("{{productName}} {{values.join(',')}} {% if values.length === 2 %}yes{% endif %}", { values: ["a", "b"] }), "SztuCode a,b yes");
-  const summary = loadWorkbuddyResource("product/context-summary-prompt.tpl");
+  for (const mode of ["ask", "craft", "plan", "expert"] as const) assert.ok(SztubuddyMode(mode));
+  assert.equal(renderSztubuddyText("{{productName}} {{values.join(',')}} {% if values.length === 2 %}yes{% endif %}", { values: ["a", "b"] }), "SztuCode a,b yes");
+  const summary = loadSztubuddyResource("product/context-summary-prompt.tpl");
   assert.doesNotMatch(summary, /All tasks described below are already completed/);
   assert.match(summary, /Never mark unfinished work completed/);
 });
@@ -49,23 +49,23 @@ test("resource reader is bounded and cannot escape the installed bundle", () => 
 });
 
 test("nested skills and plugins support lazy loading, disable and project overrides", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-workbuddy-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-Sztubuddy-"));
   try {
     const config = path.join(root, "config");
     const loader = new SkillLoader(root, config);
     const items = await loader.list();
-    for (const skill of workbuddyManifest().skills) {
+    for (const skill of SztubuddyManifest().skills) {
       const loaded = await loader.get(skill.name);
-      assert.equal(loaded.source, "workbuddy");
+      assert.equal(loaded.source, "Sztubuddy");
       assert.match(loaded.system_prompt_template, /Skill directory: skills\//);
       assert.match(loaded.system_prompt_template, /# SztuCode runtime contract/);
     }
-    for (const command of workbuddyManifest().commands) {
+    for (const command of SztubuddyManifest().commands) {
       const loaded = await loader.get(command.name);
       assert.equal(loaded.allow_implicit_invocation, false);
       assert.doesNotMatch(loaded.system_prompt_template, /\{\{|\{%/);
     }
-    const nested = items.find(item => item.source === "workbuddy" && item.plugin)!;
+    const nested = items.find(item => item.source === "Sztubuddy" && item.plugin)!;
     const plugins = new PluginManager(root, config);
     await plugins.setEnabled(`builtin:${nested.plugin}`, false);
     await assert.rejects(loader.get(nested.name), /disabled/);
@@ -76,24 +76,24 @@ test("nested skills and plugins support lazy loading, disable and project overri
     assert.match((await loader.get(nested.name)).system_prompt_template, /runtime contract/);
     const local = path.join(root, ".sztu", "skills", nested.name);
     await mkdir(local, { recursive: true });
-    await writeFile(path.join(local, "SKILL.md"), `---\nname: ${nested.name}\nworkbuddy: true\ndescription: Local\n---\nKeep {{ literal }} in code examples.\n`);
+    await writeFile(path.join(local, "SKILL.md"), `---\nname: ${nested.name}\nSztubuddy: true\ndescription: Local\n---\nKeep {{ literal }} in code examples.\n`);
     assert.equal((await loader.get(nested.name)).source, "project");
     assert.match((await loader.get(nested.name)).system_prompt_template, /\{\{ literal \}\}/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("imported agent instructions are system messages and empty tool lists stay empty", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-workbuddy-agent-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-Sztubuddy-agent-"));
   const events = new EventBus(path.join(root, "events.jsonl"));
   try {
-    for (const agent of workbuddyManifest().agents) {
+    for (const agent of SztubuddyManifest().agents) {
       const profile = await loadAgentProfile(root, agent.name);
       assert.match(profile.systemPrompt, /SztuCode runtime contract/);
       assert.doesNotMatch(profile.systemPrompt, /\{\{|\{%/);
     }
     const injected: string[] = [];
     events.subscribe(event => { if (event.type === "context.injected") injected.push(event.text ?? ""); });
-    const agent = workbuddyManifest().agents.find(item => item.tools.length === 0)!;
+    const agent = SztubuddyManifest().agents.find(item => item.tools.length === 0)!;
     assert.ok(agent);
     const permissions = new PermissionManager(events, 20);
     const manager = new SubagentManager({ complete: async (messages, tools) => {
@@ -113,7 +113,7 @@ test("imported agent instructions are system messages and empty tool lists stay 
 });
 
 test("active command instructions are included in the displayed main system prompt", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-workbuddy-command-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "sztu-Sztubuddy-command-"));
   const events = new EventBus(path.join(root, "events.jsonl"));
   let injected = "";
   try {

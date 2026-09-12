@@ -1,13 +1,13 @@
 {
   "name": "interactionmode-craft",
   "version": "0.1.7",
-  "description": "WorkBuddy craft interaction mode fragment and tool policy.",
+  "description": "Sztubuddy craft interaction mode fragment and tool policy.",
   "author": {
-    "name": "WorkBuddy"
+    "name": "Sztubuddy"
   },
   "category": "interaction",
   "keywords": [
-    "workbuddy",
+    "Sztubuddy",
     "interaction",
     "craft"
   ]

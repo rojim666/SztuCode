@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PermissionMode } from "@sztucode/protocol";
-import { renderWorkbuddyText, workbuddyMode, type InteractionMode } from "./workbuddy-resources.js";
+import { renderSztubuddyText, SztubuddyMode, type InteractionMode } from "./Sztubuddy-resources.js";
 
 export type PromptRuntimeContext = { permissionMode?: PermissionMode; interactionMode?: InteractionMode; memoryEnabled?: boolean; toolNames?: Iterable<string>; taskText?: string };
 
@@ -34,7 +34,7 @@ export async function runtimePromptEntries(context: PromptRuntimeContext): Promi
 export async function dynamicRuntimePromptEntries(context: PromptRuntimeContext): Promise<string[]> {
   const entries: string[] = [];
   const mode = context.interactionMode ?? (context.permissionMode === "plan" ? "plan" : "craft");
-  if (mode !== "craft") entries.push(workbuddyMode(mode));
+  if (mode !== "craft") entries.push(SztubuddyMode(mode));
   if (context.permissionMode === "auto") entries.push(await activePrompt("safety-prompts", "auto-mode"));
   if (context.memoryEnabled) entries.push(await activePrompt("memory-system-prompts", "auto-memory"));
   return entries;
@@ -65,7 +65,7 @@ function loadGroup(group: string): Promise<Map<string, { content: string; status
       const status = rawStatus;
       if (!id || output.has(id) || path.basename(file) !== file || path.extname(file) !== ".md") throw new Error(`invalid prompt entry: ${group}/${id}`);
       const content = (await readFile(path.join(groupRoot, file), "utf8")).trim(); if (!content) throw new Error(`empty prompt entry: ${group}/${id}`);
-      output.set(id, { content: renderWorkbuddyText(content), status });
+      output.set(id, { content: renderSztubuddyText(content), status });
     }
     return output;
   })();

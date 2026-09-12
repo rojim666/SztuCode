@@ -15,7 +15,7 @@ homepage: https://docs.qq.com/home
 
 ## 前置：鉴权 / 调用方式
 
-本 skill 运行在 `tencent-docs-plugin` 插件中，**鉴权完全依赖宿主（如 Workbuddy 连接器）注入的票据**，
+本 skill 运行在 `tencent-docs-plugin` 插件中，**鉴权完全依赖宿主（如 Sztubuddy 连接器）注入的票据**，
 不走 OAuth 授权页。所有工具调用一律走 `tencentdocs.py` 的 `tdoc_call` 入口（纯 Python 标准库，跨平台，Windows 无需 bash/curl），由它在调用时通过 HTTP header
 即时透传票据到服务端，**不落盘**。详见 [references/auth.md](./references/auth.md)。
 
@@ -24,7 +24,7 @@ homepage: https://docs.qq.com/home
 ```bash
 python3 tencentdocs.py tdoc_init
 #   READY            → 已就绪，直接干活
-#   ERROR:no_token   → 请在宿主（Workbuddy）中完成腾讯文档授权后重试
+#   ERROR:no_token   → 请在宿主（Sztubuddy）中完成腾讯文档授权后重试
 ```
 
 调用任意工具：
@@ -117,7 +117,7 @@ python3 tencentdocs.py tdoc_call <service> <tool> '[json_args]'
 
 | 错误码 | 类型 | 处理 |
 |---|---|---|
-| `400006` | Token 鉴权失败 | 票据无效/过期，由宿主（Workbuddy）刷新后重试，见 [references/auth.md](./references/auth.md) |
+| `400006` | Token 鉴权失败 | 票据无效/过期，由宿主（Sztubuddy）刷新后重试，见 [references/auth.md](./references/auth.md) |
 | `400007` | VIP 权限不足 | 引导升级 VIP：https://docs.qq.com/vip?immediate_buy=1?part_aid=persnlspace_mcp |
 | `400008` | 积分不足 | 引导购买积分：https://docs.qq.com/vip/asset-center?tab=ai&fromPage=offsite&part_aid=offsite_claw |
 | `400016` | 文档类型不匹配 | 用错品类工具，先 `manage.query_file_info` 确认类型再按品类路由 |

@@ -11,7 +11,7 @@ Available agent types and the tools they have access to:
 {%- endif -%}
 {%- endfor -%}
 {%- if agentsOverview and agentsOverview.omittedCount > 0 %}
-[Registered agents exceed the maximum limit. Please go to `.workbuddy/agents/` and `.workbuddy/plugins/` to find remaining agents.]
+[Registered agents exceed the maximum limit. Please go to `.Sztubuddy/agents/` and `.Sztubuddy/plugins/` to find remaining agents.]
 {%- endif %}
 {%- endif %}
 
@@ -72,7 +72,7 @@ When a team is active (created via TeamCreate), you can spawn teammates by provi
 When spawning teammates via the Agent tool, choose the `subagent_type` based on what tools the agent needs for its task. Each agent type has a different set of available tools — match the agent to the work:
 - **Read-only agents** (e.g., Explore, Plan) cannot edit or write files. Only assign them research, search, or planning tasks. Never assign them implementation work.
 - **Full-capability agents** (e.g., general-purpose) have access to all tools including file editing, writing, and bash. Use these for tasks that require making changes.
-- **Custom agents** defined in `.workbuddy/agents/` may have their own tool restrictions. Check their descriptions to understand what they can and cannot do.
+- **Custom agents** defined in `.Sztubuddy/agents/` may have their own tool restrictions. Check their descriptions to understand what they can and cannot do.
 Always review the agent type descriptions and their available tools listed in the Agent tool prompt before selecting a `subagent_type` for a teammate.
 
 Teammates always run in the background in detached mode. They communicate via the SendMessage tool and coordinate through the shared task list.

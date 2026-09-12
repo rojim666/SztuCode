@@ -22,7 +22,7 @@ import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retriev
 import type { ContentBlock } from "./context.js";
 import { getMimeTypeFromPath, imageToContentBlock } from "./providers/image-utils.js";
 import { inspectAsset } from "./asset-inspector.js";
-import { importedToolDescription, readPromptResource, workbuddyManifest } from "./workbuddy-resources.js";
+import { importedToolDescription, readPromptResource, SztubuddyManifest } from "./Sztubuddy-resources.js";
 
 export type { ToolPermission } from "./tools-types.js";
 /** 工具返回的图片内容（如浏览器截图）：结构化传递用于桌面端展示，不进入 LLM 文本上下文 */
@@ -416,7 +416,7 @@ export function registerQuestionTool(registry: ToolRegistry, ask: (questions: Ar
 }
 
 export function createSpawnAgentTool(subagents: SubagentHandleSource): Tool {
-  const roles = ["planner", "coder", "tester", "reviewer", ...workbuddyManifest().agents.map(agent => agent.name)];
+  const roles = ["planner", "coder", "tester", "reviewer", ...SztubuddyManifest().agents.map(agent => agent.name)];
   return { name: "spawn_agent", description: "Delegate a focused task to a background subagent and poll its result by handle", permission: "workspace_write", schema: { type: "object", properties: { role: { type: "string", enum: roles }, goal: { type: "string", minLength: 1 }, context: { type: "string" } }, required: ["role", "goal"] }, async invoke(params) { const role = String(params.role ?? ""); const goal = String(params.goal ?? ""); if (!roles.includes(role) || !goal.trim()) return fail("role and goal are required", "schema_error"); try { const { handle } = subagents.spawn(role, goal, typeof params.context === "string" ? params.context : undefined); return ok(`Started subagent ${role} in background. Handle: ${handle}. Poll subagent_result("${handle}") for its output; subagent_status lists all; subagent_cancel stops one.`); } catch (error) { return fail(error instanceof Error ? error.message : String(error)); } } };
 }
 

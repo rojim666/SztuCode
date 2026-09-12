@@ -1,16 +1,16 @@
 ---
 name: marketplace-skill-installer
 description: |
-  在 WorkBuddy 对话中通过一句话从推荐市场（BuiltinMarket）搜索并安装 Skill。
+  在 Sztubuddy 对话中通过一句话从推荐市场（BuiltinMarket）搜索并安装 Skill。
   触发词：安装 skill、安装技能、install skill、添加技能、装个 X 技能、帮我安装 X、find skill、install marketplace skill、search skill。
-allowed-tools: workbuddy_marketplace_skill
+allowed-tools: Sztubuddy_marketplace_skill
 license: Internal
 disable: false
 ---
 
 # Marketplace Skill Installer
 
-帮助用户用一句话从 WorkBuddy 推荐市场（**BuiltinMarket**）安装 Skill。
+帮助用户用一句话从 Sztubuddy 推荐市场（**BuiltinMarket**）安装 Skill。
 
 ## When to Use
 
@@ -24,7 +24,7 @@ disable: false
 ## 严格的工具调用约束
 
 - **禁止**直接构造任何 HTTP 请求，禁止涉及 token/cookie/Authorization。
-- **只能**通过 `workbuddy_marketplace_skill` 这个内置工具完成全部操作；鉴权和后端调用由宿主处理。
+- **只能**通过 `Sztubuddy_marketplace_skill` 这个内置工具完成全部操作；鉴权和后端调用由宿主处理。
 - **禁止**伪造或猜测 `skillId`——必须从 search 结果中拿到。
 
 ## Workflow
@@ -39,7 +39,7 @@ disable: false
 
 ### Step 2：搜索
 
-调用 `workbuddy_marketplace_skill`，action 为 `search`：
+调用 `Sztubuddy_marketplace_skill`，action 为 `search`：
 
 ```json
 { "action": "search", "keyword": "飞书套件", "limit": 5 }
@@ -82,7 +82,7 @@ disable: false
 
 ### Step 5：调用 install 后
 
-`workbuddy_marketplace_skill` 的 install action 返回：
+`Sztubuddy_marketplace_skill` 的 install action 返回：
 
 - `success: true` → 用 `message` 告诉用户安装到了哪里、版本是什么；可附一句"在【技能管理】面板里能看到它"。**不要**手动构造路径——直接用 `message` 字段。
 - `success: false` → 把 `error` 透传，并按错误类型给提示（见下表）。
@@ -91,11 +91,11 @@ disable: false
 
 | `error` 前缀 | 含义 | 建议提示 |
 |---|---|---|
-| `[CONFIG_ERROR]` | 主进程未配置 endpoint | "WorkBuddy 推荐市场暂未启用，可能需要更新到最新版客户端" |
+| `[CONFIG_ERROR]` | 主进程未配置 endpoint | "Sztubuddy 推荐市场暂未启用，可能需要更新到最新版客户端" |
 | `[BUILTIN_MARKET_ERROR]` | 后端业务错误 | 直接展示 `error` 内容 |
 | `[UNKNOWN_SKILL_ID]` | install 阶段发现该 skillId 在推荐市场已不存在 | **不要**重试相同的 skillId；重新调 search 拿新的 skillId 再安装 |
 | `[DOWNLOAD_ERROR]` | 下载签名 URL 或 zip 失败 | "下载失败，可能是网络问题或权限不足" |
-| `[EXTRACT_ERROR]` | 解压失败 | "解压安装包失败，建议清理 `$WORKBUDDY_CONFIG_DIR/skills/`（默认 `~/.workbuddy/skills/`）后重试" |
+| `[EXTRACT_ERROR]` | 解压失败 | "解压安装包失败，建议清理 `$Sztubuddy_CONFIG_DIR/skills/`（默认 `~/.Sztubuddy/skills/`）后重试" |
 | `[INSTALL_ERROR]` | 其他未知 | 直接展示 `error` 内容 |
 
 ## 重要规则

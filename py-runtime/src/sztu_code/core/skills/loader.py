@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from sztu_code.core.prompts.workbuddy import (
+from sztu_code.core.prompts.Sztubuddy import (
     RESOURCE_ROOT,
     adapt_text,
     imported_plugins,
@@ -194,7 +194,7 @@ def _parse_skill_file(
         and source == "builtin"
         and path.parent == SkillLoader._BUILTIN_DIR
         and match
-        and re.search(r"^workbuddy: true$", match.group(1), re.MULTILINE)
+        and re.search(r"^Sztubuddy: true$", match.group(1), re.MULTILINE)
     ):
         body = render_text(body)
     metadata = _read_openai_metadata(path)
@@ -245,7 +245,7 @@ class SkillLoader:
         ]
         roots.extend(self._plugin_skill_roots(self._BUILTIN_PLUGINS_DIR, "builtin-plugin"))
         roots.append((self._config_root / "skills", "user"))
-        roots.insert(len(roots) - 1, (RESOURCE_ROOT / "skills", "workbuddy"))
+        roots.insert(len(roots) - 1, (RESOURCE_ROOT / "skills", "Sztubuddy"))
         roots.extend(self._plugin_skill_roots(self._config_root / "plugins", "user-plugin"))
         roots.append((self._project_root / ".sztu" / "skills", "project"))
         roots.extend(
@@ -356,7 +356,7 @@ class SkillLoader:
                 Plugin(
                     id=plugin_id,
                     name=item["name"],
-                    description="Imported WorkBuddy skill collection; "
+                    description="Imported Sztubuddy skill collection; "
                     "external services require configured connectors.",
                     version="",
                     source="builtin",
@@ -494,7 +494,7 @@ class SkillLoader:
         imported = next(
             (s for s in self.list_all_skills(include_disabled=True) if s.name == name), None
         )
-        if imported is not None and imported.source == "workbuddy":
+        if imported is not None and imported.source == "Sztubuddy":
             if not imported.enabled or imported.path is None:
                 return None
             item = next(s for s in imported_skills() if s["name"] == name)
@@ -553,13 +553,13 @@ class SkillLoader:
             overrides = self._enabled_overrides()
             seen: dict[str, Skill] = {}
             for directory, source in self._roots():
-                if source == "workbuddy":
+                if source == "Sztubuddy":
                     for item in imported_skills():
                         skill = Skill(
                             name=item["name"],
                             description=item["description"],
                             system_prompt_template="",
-                            source="workbuddy",
+                            source="Sztubuddy",
                             path=resource_path(item["path"]),
                             plugin=item["plugin"],
                         )

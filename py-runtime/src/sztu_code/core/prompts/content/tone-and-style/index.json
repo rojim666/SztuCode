@@ -4,17 +4,17 @@
     {
       "id": "code-references",
       "file": "system-prompt-tone-and-style-code-references.md",
-      "source": "workbuddy:tone-and-style/code-references"
+      "source": "Sztubuddy:tone-and-style/code-references"
     },
     {
       "id": "concise-output-detailed",
       "file": "system-prompt-tone-and-style-concise-output-detailed.md",
-      "source": "workbuddy:tone-and-style/concise-output-detailed"
+      "source": "Sztubuddy:tone-and-style/concise-output-detailed"
     },
     {
       "id": "concise-output-short",
       "file": "system-prompt-tone-and-style-concise-output-short.md",
-      "source": "workbuddy:tone-and-style/concise-output-short"
+      "source": "Sztubuddy:tone-and-style/concise-output-short"
     }
   ]
 }

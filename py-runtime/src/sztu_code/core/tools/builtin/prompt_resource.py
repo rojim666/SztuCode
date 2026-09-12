@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from sztu_code.core.prompts.workbuddy import read_resource
+from sztu_code.core.prompts.Sztubuddy import read_resource
 from sztu_code.core.skills.loader import SkillLoader
 from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 

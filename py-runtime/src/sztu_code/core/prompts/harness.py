@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 
 from sztu_code.core.prompts.catalog import DEFAULT_PROMPT_CATALOG, PromptCatalog
-from sztu_code.core.prompts.workbuddy import mode_prompt
+from sztu_code.core.prompts.Sztubuddy import mode_prompt
 
 
 @dataclass(frozen=True)

@@ -4,67 +4,67 @@
     {
       "id": "software-engineering-focus",
       "file": "system-prompt-doing-tasks-software-engineering-focus.md",
-      "source": "workbuddy:doing-tasks/software-engineering-focus"
+      "source": "Sztubuddy:doing-tasks/software-engineering-focus"
     },
     {
       "id": "read-before-modifying",
       "file": "system-prompt-doing-tasks-read-before-modifying.md",
-      "source": "workbuddy:doing-tasks/read-before-modifying"
+      "source": "Sztubuddy:doing-tasks/read-before-modifying"
     },
     {
       "id": "security",
       "file": "system-prompt-doing-tasks-security.md",
-      "source": "workbuddy:doing-tasks/security"
+      "source": "Sztubuddy:doing-tasks/security"
     },
     {
       "id": "avoid-over-engineering",
       "file": "system-prompt-doing-tasks-avoid-over-engineering.md",
-      "source": "workbuddy:doing-tasks/avoid-over-engineering"
+      "source": "Sztubuddy:doing-tasks/avoid-over-engineering"
     },
     {
       "id": "no-unnecessary-additions",
       "file": "system-prompt-doing-tasks-no-unnecessary-additions.md",
-      "source": "workbuddy:doing-tasks/no-unnecessary-additions"
+      "source": "Sztubuddy:doing-tasks/no-unnecessary-additions"
     },
     {
       "id": "no-unnecessary-error-handling",
       "file": "system-prompt-doing-tasks-no-unnecessary-error-handling.md",
-      "source": "workbuddy:doing-tasks/no-unnecessary-error-handling"
+      "source": "Sztubuddy:doing-tasks/no-unnecessary-error-handling"
     },
     {
       "id": "no-premature-abstractions",
       "file": "system-prompt-doing-tasks-no-premature-abstractions.md",
-      "source": "workbuddy:doing-tasks/no-premature-abstractions"
+      "source": "Sztubuddy:doing-tasks/no-premature-abstractions"
     },
     {
       "id": "no-compatibility-hacks",
       "file": "system-prompt-doing-tasks-no-compatibility-hacks.md",
-      "source": "workbuddy:doing-tasks/no-compatibility-hacks"
+      "source": "Sztubuddy:doing-tasks/no-compatibility-hacks"
     },
     {
       "id": "minimize-file-creation",
       "file": "system-prompt-doing-tasks-minimize-file-creation.md",
-      "source": "workbuddy:doing-tasks/minimize-file-creation"
+      "source": "Sztubuddy:doing-tasks/minimize-file-creation"
     },
     {
       "id": "no-time-estimates",
       "file": "system-prompt-doing-tasks-no-time-estimates.md",
-      "source": "workbuddy:doing-tasks/no-time-estimates"
+      "source": "Sztubuddy:doing-tasks/no-time-estimates"
     },
     {
       "id": "help-and-feedback",
       "file": "system-prompt-doing-tasks-help-and-feedback.md",
-      "source": "workbuddy:doing-tasks/help-and-feedback"
+      "source": "Sztubuddy:doing-tasks/help-and-feedback"
     },
     {
       "id": "ambitious-tasks",
       "file": "system-prompt-doing-tasks-ambitious-tasks.md",
-      "source": "workbuddy:doing-tasks/ambitious-tasks"
+      "source": "Sztubuddy:doing-tasks/ambitious-tasks"
     },
     {
       "id": "blocked-approach",
       "file": "system-prompt-doing-tasks-blocked-approach.md",
-      "source": "workbuddy:doing-tasks/blocked-approach"
+      "source": "Sztubuddy:doing-tasks/blocked-approach"
     }
   ]
 }

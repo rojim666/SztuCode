@@ -4,35 +4,35 @@
     {
       "id": "malicious-code-protection",
       "file": "system-prompt-malicious-code-protection.md",
-      "source": "workbuddy:safety-prompts/malicious-code-protection",
+      "source": "Sztubuddy:safety-prompts/malicious-code-protection",
       "status": "active",
       "consumer": "main and subagent static prompt"
     },
     {
       "id": "command-injection-detection",
       "file": "system-prompt-command-injection-detection.md",
-      "source": "workbuddy:safety-prompts/command-injection-detection",
+      "source": "Sztubuddy:safety-prompts/command-injection-detection",
       "status": "reference-only",
       "consumer": "deterministic bash permission policy"
     },
     {
       "id": "sandbox",
       "file": "system-prompt-sandbox.md",
-      "source": "workbuddy:safety-prompts/sandbox",
+      "source": "Sztubuddy:safety-prompts/sandbox",
       "status": "reference-only",
       "consumer": "platform sandbox reference"
     },
     {
       "id": "permission-modes",
       "file": "system-prompt-permission-modes.md",
-      "source": "workbuddy:safety-prompts/permission-modes",
+      "source": "Sztubuddy:safety-prompts/permission-modes",
       "status": "reference-only",
       "consumer": "PermissionManager"
     },
     {
       "id": "auto-mode",
       "file": "system-prompt-auto-mode.md",
-      "source": "workbuddy:safety-prompts/auto-mode",
+      "source": "Sztubuddy:safety-prompts/auto-mode",
       "status": "active",
       "consumer": "AgentRunner when permission mode is auto"
     }

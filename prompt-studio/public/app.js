@@ -46,8 +46,8 @@ const el = (tag, cls, text) => {
 async function loadCatalog() {
   state.catalog = await api("/api/state");
   $("endpoint").textContent = state.catalog.promptRoot;
-  $("endpoint").title = `content: ${state.catalog.promptRoot}\nworkbuddy: ${state.catalog.workbuddyRoot}`;
-  $("foot-roots").textContent = `${state.catalog.promptRoot}  ·  ${state.catalog.workbuddyRoot}`;
+  $("endpoint").title = `content: ${state.catalog.promptRoot}\nSztubuddy: ${state.catalog.SztubuddyRoot}`;
+  $("foot-roots").textContent = `${state.catalog.promptRoot}  ·  ${state.catalog.SztubuddyRoot}`;
   renderLibrary();
 }
 
@@ -73,14 +73,14 @@ function renderLibrary() {
     root.append(details);
   }
 
-  const wb = state.catalog.workbuddy;
+  const wb = state.catalog.Sztubuddy;
   const sections = [
-    ["WorkBuddy · main", wb.main],
-    ["WorkBuddy · styles", wb.styles],
-    ["WorkBuddy · contract", wb.contract],
+    ["Sztubuddy · main", wb.main],
+    ["Sztubuddy · styles", wb.styles],
+    ["Sztubuddy · contract", wb.contract],
     ...Object.entries(wb.modes).map(([mode, files]) => [`Mode · ${mode}`, files]),
   ];
-  const label = el("div", "section-label", "WorkBuddy 资源");
+  const label = el("div", "section-label", "Sztubuddy 资源");
   root.append(label);
   for (const [title, files] of sections) {
     const shown = files.filter((f) => match(f.path));
@@ -96,7 +96,7 @@ function renderLibrary() {
       const btn = el("button", "entry");
       btn.type = "button";
       btn.append(el("span", null, f.path.split("/").pop()), el("span", "chars", fmt(f.chars)));
-      btn.addEventListener("click", () => openWorkbuddy(f.path, btn));
+      btn.addEventListener("click", () => openSztubuddy(f.path, btn));
       list.append(btn);
     }
     details.append(list);
@@ -140,11 +140,11 @@ async function openContent(group, file, btn) {
   markActive(btn);
 }
 
-async function openWorkbuddy(path, btn) {
+async function openSztubuddy(path, btn) {
   if (!confirmDiscard()) return;
-  const data = await api(`/api/workbuddy?path=${encodeURIComponent(path)}`);
-  state.current = { kind: "workbuddy", path };
-  applyEditor(`workbuddy/${path}`, data);
+  const data = await api(`/api/Sztubuddy?path=${encodeURIComponent(path)}`);
+  state.current = { kind: "Sztubuddy", path };
+  applyEditor(`Sztubuddy/${path}`, data);
   markActive(btn);
 }
 
@@ -187,7 +187,7 @@ async function saveCurrent() {
   if (!state.current || state.composing) return;
   const content = $("editor").value;
   const isContent = state.current.kind === "content";
-  const endpoint = isContent ? "/api/content" : "/api/workbuddy";
+  const endpoint = isContent ? "/api/content" : "/api/Sztubuddy";
   const payload = isContent
     ? { group: state.current.group, file: state.current.file, content, expectedSha256: state.sha256 }
     : { path: state.current.path, content, expectedSha256: state.sha256 };
@@ -218,7 +218,7 @@ function reloadCurrent() {
   if (!state.current) return;
   const btn = document.querySelector(".entry.active");
   if (state.current.kind === "content") openContent(state.current.group, state.current.file, btn);
-  else openWorkbuddy(state.current.path, btn);
+  else openSztubuddy(state.current.path, btn);
 }
 
 /* ---------- compose ---------- */
@@ -367,7 +367,7 @@ function renderCompose(r) {
   entryBlock.append(bar, rows);
   out.append(entryBlock);
 
-  out.append(makeBlock("静态基座 · workbuddy base", `${fmt(m.workbuddyBaseChars)} 字符`, r.staticSections.workbuddyBase));
+  out.append(makeBlock("静态基座 · Sztubuddy base", `${fmt(m.SztubuddyBaseChars)} 字符`, r.staticSections.SztubuddyBase));
   out.append(makeBlock("角色行", `${fmt(r.staticSections.roleLine.length)} 字符`, r.staticSections.roleLine));
   out.append(makeBlock("完整 System Prompt（真实函数输出）", `${fmt(m.systemPromptChars)} 字符`, r.systemPrompt, { open: true }));
   out.append(makeBlock("动态上下文 · <system-reminder>", `${fmt(m.dynamicContextChars)} 字符`, r.dynamicContext));

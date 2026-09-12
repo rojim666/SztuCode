@@ -10,7 +10,7 @@ from typing import Any, cast
 from jinja2 import ChainableUndefined
 from jinja2.sandbox import SandboxedEnvironment
 
-RESOURCE_ROOT = Path(__file__).parent / "workbuddy"
+RESOURCE_ROOT = Path(__file__).parent / "Sztubuddy"
 _ENGINE = SandboxedEnvironment(autoescape=False, undefined=ChainableUndefined)
 _ALIASES = dict(
     zip(
@@ -30,7 +30,7 @@ def manifest() -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("version") != 1 or not all(
         isinstance(value.get(k), list) for k in ("files", "skills", "agents", "commands")
     ):
-        raise ValueError("Invalid WorkBuddy resource manifest")
+        raise ValueError("Invalid Sztubuddy resource manifest")
     return cast(dict[str, Any], value)
 
 
@@ -39,7 +39,7 @@ def resource_path(relative: str) -> Path:
         raise ValueError("Resource path must be bundle-relative")
     candidate = (RESOURCE_ROOT / relative).resolve()
     if candidate == RESOURCE_ROOT.resolve() or RESOURCE_ROOT.resolve() not in candidate.parents:
-        raise ValueError("Resource path escapes the WorkBuddy bundle")
+        raise ValueError("Resource path escapes the Sztubuddy bundle")
     return candidate
 
 
@@ -50,7 +50,7 @@ def adapt_text(text: str) -> str:
         return re.sub(r"([A-Za-z_][\w.]*)\.join\(([^)]*)\)", r"(\1 | join(\2))", expr)
 
     text = re.sub(r"({{[\s\S]*?}}|{%[\s\S]*?%})", normalize, text)
-    text = re.sub(r"\b(CodeBuddy Code|CodeBuddy|WorkBuddy)\b", "SztuCode", text)
+    text = re.sub(r"\b(CodeBuddy Code|CodeBuddy|Sztubuddy)\b", "SztuCode", text)
     text = text.replace("CODEBUDDY.md", "SZTUCODE.md")
     text = re.sub(r"\b(" + "|".join(_ALIASES) + r")\b", lambda m: _ALIASES[m[0]], text)
     return text.replace(

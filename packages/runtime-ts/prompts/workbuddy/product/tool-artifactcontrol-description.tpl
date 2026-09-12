@@ -5,7 +5,7 @@ This is currently the ONLY action ArtifactControl supports (no list / delete / p
 Use this tool when the user wants to unpublish / take down / revoke / 取消分享 / 下线 / 设为私密 a link that was created with the Artifact tool — e.g. "unpublish that link", "取消这个分享", "make it private again", "I shared a sensitive file, take it down".
 
 Parameters (provide at least one):
-- shareLink: the full share link URL returned by Artifact (e.g. "https://workbuddy.link/p/abc123"). This is the easiest option — just pass back the link.
+- shareLink: the full share link URL returned by Artifact (e.g. "https://Sztubuddy.link/p/abc123"). This is the easiest option — just pass back the link.
 - nodeId: alternatively, the bare identifier (the segment after "/p/" in the share link).
 
 Behavior:

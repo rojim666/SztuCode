@@ -12,7 +12,7 @@
 
 | 场景 | 写法 |
 |---|---|
-| `create_doc.py` 创建整篇文档 | 只支持 Markdown；禁止写 WorkBuddy 组件标签；组件语法仅用于编辑 / 修订链路 |
+| `create_doc.py` 创建整篇文档 | 只支持 Markdown；禁止写 Sztubuddy 组件标签；组件语法仅用于编辑 / 修订链路 |
 | `submit_doc_edit.py` insert / update | 必须用组件 |
 | `submit_review_edit.py` insert / update | 必须用组件 |
 | 提交写入 `content` / `new_content` | 禁止 frontmatter，禁止手写 `id` |

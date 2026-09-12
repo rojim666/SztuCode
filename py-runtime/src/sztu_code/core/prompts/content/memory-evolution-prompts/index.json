@@ -4,7 +4,7 @@
     {
       "id": "meta-agent-analysis",
       "file": "agent-prompt-memory-evolution-meta-agent.md",
-      "source": "workbuddy:memory-evolution-prompts/meta-agent-analysis",
+      "source": "Sztubuddy:memory-evolution-prompts/meta-agent-analysis",
       "status": "active",
       "consumer": "memory evolution meta-agent"
     }

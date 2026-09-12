@@ -23,7 +23,7 @@ DeferExecuteTool({
     input_fidelity: "high",
     size: "<确定的 ImageGen size>",
     quality: "high",
-    output_dir: "<工作目录>/.workbuddy/generated-images"
+    output_dir: "<工作目录>/.Sztubuddy/generated-images"
   }
 })
 ```

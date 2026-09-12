@@ -178,7 +178,7 @@ class SessionManager:
                     raise HandlerError(-32602, f"Skill is disabled: {skill_name}")
                 slash_prompt = (
                     resolve_slash_command_prompt(f"/{skill_name}")
-                    if known_skill is None or known_skill.source in {"builtin", "workbuddy"}
+                    if known_skill is None or known_skill.source in {"builtin", "Sztubuddy"}
                     else None
                 )
                 if slash_prompt is not None:

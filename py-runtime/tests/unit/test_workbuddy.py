@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sztu_code.core.agents.loader import AgentProfileLoader
-from sztu_code.core.prompts.workbuddy import (
+from sztu_code.core.prompts.Sztubuddy import (
     RESOURCE_ROOT, build_base, imported_skills, load_resource, manifest,
     mode_prompt, read_resource, render_text, resource_path,
 )
@@ -20,7 +20,7 @@ def test_bundle_integrity_and_runtime_parity() -> None:
     assert len(inventory["files"]) == 485
     assert len(inventory["skills"]) == 48
     assert len(inventory["agents"]) == 19
-    ts_root = Path(__file__).resolve().parents[3] / "packages/runtime-ts/prompts/workbuddy"
+    ts_root = Path(__file__).resolve().parents[3] / "packages/runtime-ts/prompts/Sztubuddy"
     for file in inventory["files"]:
         data = resource_path(file["path"]).read_bytes()
         assert hashlib.sha256(data).hexdigest() == file["sha256"], file["path"]
@@ -54,17 +54,17 @@ def test_skills_plugins_commands_and_overrides(tmp_path: Path) -> None:
     for item in imported_skills():
         skill = loader.resolve(item["name"])
         assert skill is not None
-        assert skill.source == "workbuddy"
+        assert skill.source == "Sztubuddy"
         assert "# SztuCode runtime contract" in skill.system_prompt_template
         assert "Skill directory:" in skill.system_prompt_template
-    nested = next(s for s in loader.list_all_skills() if s.source == "workbuddy" and s.plugin)
+    nested = next(s for s in loader.list_all_skills() if s.source == "Sztubuddy" and s.plugin)
     loader.set_plugin_enabled(f"builtin:{nested.plugin}", False)
     assert loader.resolve(nested.name) is None
     loader.set_plugin_enabled(f"builtin:{nested.plugin}", True)
     assert loader.resolve(nested.name) is not None
     local = tmp_path / ".sztu/skills" / nested.name
     local.mkdir(parents=True)
-    (local / "SKILL.md").write_text(f"---\nname: {nested.name}\nworkbuddy: true\ndescription: Local\n---\nKeep {{{{ literal }}}} in examples.\n", encoding="utf-8")
+    (local / "SKILL.md").write_text(f"---\nname: {nested.name}\nSztubuddy: true\ndescription: Local\n---\nKeep {{{{ literal }}}} in examples.\n", encoding="utf-8")
     loader.invalidate()
     override = loader.resolve(nested.name)
     assert override is not None and override.source == "project"

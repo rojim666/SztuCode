@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getEncoding, type Tiktoken } from "js-tiktoken";
 import type { ModelInvocation } from "./agent-loop.js";
-import { loadWorkbuddyResource } from "./workbuddy-resources.js";
+import { loadSztubuddyResource } from "./Sztubuddy-resources.js";
 
 type ContentBlockFields = { text?: string; content?: string | ContentBlock[]; [key: string]: unknown };
 export type KnownContentBlock = ContentBlockFields & (
@@ -327,7 +327,7 @@ export class ContextManager {
     const old = fullFallback ? this.messages.filter((message) => message.role !== "system") : flat(oldTurns); const oldTokens = this.counter.countMessages(old);
     if (!old.length) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };
     if (!fullFallback && oldTokens < (options.minimumOldTokens ?? 2_000)) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };
-    const prompt = [loadWorkbuddyResource("product/context-summary-prompt.tpl"), "Preserve unresolved issues and exact next steps. Return plain text with headings: Goal, Progress, Decisions, Open Issues, Next Steps.", (options.compactionCount ?? 0) > 0 ? `This is compaction #${(options.compactionCount ?? 0) + 1}. Focus primarily on new information because the previous summary is already in the stable prefix.` : "", focus.trim() ? `Pay special attention to: ${focus.trim()}` : "", "\nEarlier turns:\n---\n" + messagesToText(old)].filter(Boolean).join("\n");
+    const prompt = [loadSztubuddyResource("product/context-summary-prompt.tpl"), "Preserve unresolved issues and exact next steps. Return plain text with headings: Goal, Progress, Decisions, Open Issues, Next Steps.", (options.compactionCount ?? 0) > 0 ? `This is compaction #${(options.compactionCount ?? 0) + 1}. Focus primarily on new information because the previous summary is already in the stable prefix.` : "", focus.trim() ? `Pay special attention to: ${focus.trim()}` : "", "\nEarlier turns:\n---\n" + messagesToText(old)].filter(Boolean).join("\n");
     try {
       const response = await provider.complete([{ role: "user", content: prompt }], { list: () => [] }, signal, undefined, invocation ? { ...invocation, purpose: "compaction" } : undefined);
       const summaryText = response.text.trim(); const summaryTokens = Number(response.usage?.output_tokens ?? this.counter.count(summaryText));

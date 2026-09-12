@@ -3,7 +3,7 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { PluginManager } from "./plugins.js";
 import { fileURLToPath } from "node:url";
-import { adaptWorkbuddyText, loadWorkbuddyResource, renderWorkbuddyText, resourcePath, workbuddyContract, workbuddySkills, workbuddyRoot } from "./workbuddy-resources.js";
+import { adaptSztubuddyText, loadSztubuddyResource, renderSztubuddyText, resourcePath, SztubuddyContract, SztubuddySkills, SztubuddyRoot } from "./Sztubuddy-resources.js";
 
 export type SkillScope = "system" | "personal" | "workspace";
 export type Skill = { id: string; name: string; display_name: string; description: string; short_description: string; source: string; scope: SkillScope; path: string; enabled: boolean; system_prompt_template: string; allowed_tools: string[]; plugin: string | null; icon: string | null; brand_color: string | null; allow_implicit_invocation: boolean };
@@ -17,7 +17,7 @@ const skillFileCache = new Map<string, ParsedSkillFile>();
 function parseHeader(header: string): { values: Map<string, string>; tools: string[] } { const values = new Map<string, string>(); const tools: string[] = []; let list = ""; for (const raw of header.split(/\r?\n/)) { const line = raw.trim(); if (line.startsWith("- ") && list === "allowed_tools") tools.push(scalar(line.slice(2))); else if (line.includes(":")) { const [key, ...rest] = line.split(":"); list = key; values.set(key, scalar(rest.join(":"))); } } return { values, tools }; }
 function parseSkillText(text: string): ParsedSkillFile { const match = frontmatter.exec(text); const header = match?.[1] ?? ""; const body = match ? text.slice(match[0].length) : text; const { values, tools } = parseHeader(header); return { name: values.get("name") ?? "", description: values.get("description") ?? "", tools, body: body.trim() }; }
 function renderBuiltin(filePath: string, parsed: ParsedSkillFile): ParsedSkillFile {
-  if (path.dirname(filePath) === resolveBuiltinRoot() && ["init.md", "review.md", "summarize.md", "orchestrate.md"].includes(path.basename(filePath))) return { ...parsed, body: renderWorkbuddyText(parsed.body) };
+  if (path.dirname(filePath) === resolveBuiltinRoot() && ["init.md", "review.md", "summarize.md", "orchestrate.md"].includes(path.basename(filePath))) return { ...parsed, body: renderSztubuddyText(parsed.body) };
   return parsed;
 }
 // 只分块读取文件开头的 frontmatter，不加载正文，避免每次 list() 都付出全文 IO 代价
@@ -37,7 +37,7 @@ export class SkillLoader {
     const roots: Array<[string, string, SkillScope]> = [
       [this.builtinRoot, "builtin", "system"],
       ...pluginRoots.filter((item) => item.scope === "system").map((item) => [item.root, item.source, item.scope] as [string, string, SkillScope]),
-      [path.join(workbuddyRoot, "skills"), "workbuddy", "system"],
+      [path.join(SztubuddyRoot, "skills"), "Sztubuddy", "system"],
       [path.join(this.configRoot, "skills"), "user", "personal"],
       ...pluginRoots.filter((item) => item.scope === "personal").map((item) => [item.root, item.source, item.scope] as [string, string, SkillScope]),
       [path.join(this.projectRoot, ".sztu", "skills"), "project", "workspace"],
@@ -48,10 +48,10 @@ export class SkillLoader {
     // 同名技能以高优先级来源为准（后写覆盖前写），与 Python 端 list_all_skills 的覆盖语义对齐。
     const seen = new Map<string, Skill>();
     for (const [root, source, scope] of roots) {
-      if (source === "workbuddy") {
-        for (const item of workbuddySkills()) {
+      if (source === "Sztubuddy") {
+        for (const item of SztubuddySkills()) {
           const candidate = resourcePath(item.path);
-          const id = `workbuddy:${item.name}`;
+          const id = `Sztubuddy:${item.name}`;
           seen.set(item.name, { id, name: item.name, display_name: item.name, description: item.description, short_description: item.description, source, scope, path: candidate, enabled: (enabled[id] ?? true) && (plugins.find(plugin => plugin.id === `builtin:${item.plugin}`)?.enabled ?? true), get system_prompt_template() { return importedSkillBody(candidate, item.path); }, allowed_tools: item.allowedTools, plugin: item.plugin, icon: null, brand_color: null, allow_implicit_invocation: !item.path.startsWith("product/") });
         }
         continue;
@@ -83,14 +83,14 @@ export class SkillLoader {
   }
   async install(sourcePath: string, scope: "personal" | "workspace"): Promise<Skill> { const source = path.resolve(sourcePath); const info = await fsPromises.stat(source); const skillFile = info.isDirectory() ? path.join(source, "SKILL.md") : source; const parsed = await parseSkillFile(skillFile); const parent = scope === "personal" ? path.join(this.configRoot, "skills") : path.join(this.projectRoot, ".sztu", "skills"); const destination = path.join(parent, parsed.name || path.basename(path.dirname(skillFile))); await fsPromises.mkdir(parent, { recursive: true }); if (info.isDirectory()) await fsPromises.cp(source, destination, { recursive: true, force: true }); else { await fsPromises.mkdir(destination, { recursive: true }); await fsPromises.cp(source, path.join(destination, "SKILL.md"), { force: true }); } const installedFile = path.join(destination, "SKILL.md"); skillFileCache.delete(installedFile); /* 覆盖安装后让旧缓存失效 */ return buildSkill(installedFile, scope === "personal" ? "user" : "project", scope, await parseSkillFile(installedFile), true); }
   async uninstall(id: string): Promise<void> { const skill = (await this.list()).find((item) => item.id === id); if (!skill) throw new Error(`Unknown skill: ${id}`); if (skill.plugin || (skill.source !== "user" && skill.source !== "project")) throw new Error("Only directly installed personal or workspace skills can be uninstalled"); const root = path.resolve(skill.source === "user" ? path.join(this.configRoot, "skills") : path.join(this.projectRoot, ".sztu", "skills")); const skillPath = path.resolve(skill.path); const target = path.basename(skillPath).toLowerCase() === "skill.md" ? path.dirname(skillPath) : skillPath; const relative = path.relative(root, target); if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) throw new Error("Refusing to uninstall a skill outside its installation root"); await fsPromises.rm(target, { recursive: true, force: false }); skillFileCache.delete(skillPath); }
-  async get(name: string): Promise<Skill> { const skill = (await this.list()).find((item) => item.enabled && item.name === name); if (!skill) throw new Error(`Unknown or disabled skill: ${name}`); if (skill.source === "workbuddy") return { ...skill }; const parsed = await parseSkillFile(skill.path); return { ...skill, system_prompt_template: parsed.body, allowed_tools: parsed.tools }; }
+  async get(name: string): Promise<Skill> { const skill = (await this.list()).find((item) => item.enabled && item.name === name); if (!skill) throw new Error(`Unknown or disabled skill: ${name}`); if (skill.source === "Sztubuddy") return { ...skill }; const parsed = await parseSkillFile(skill.path); return { ...skill, system_prompt_template: parsed.body, allowed_tools: parsed.tools }; }
   invalidateCache(): void { skillFileCache.clear(); }
   private async enabledOverrides(): Promise<Record<string, boolean>> { try { return (JSON.parse(await fsPromises.readFile(path.join(this.configRoot, "skill-settings.json"), "utf8")) as { skills?: Record<string, boolean> }).skills ?? {}; } catch { return {}; } }
 }
 
 function importedSkillBody(candidate: string, relative: string): string {
-  const body = relative.startsWith("product/") ? loadWorkbuddyResource(relative) : adaptWorkbuddyText(lazyBody(candidate));
-  return `Skill directory: ${path.posix.dirname(relative)} (use prompt_resource for relative references).\n\n${body}\n\n${workbuddyContract()}`;
+  const body = relative.startsWith("product/") ? loadSztubuddyResource(relative) : adaptSztubuddyText(lazyBody(candidate));
+  return `Skill directory: ${path.posix.dirname(relative)} (use prompt_resource for relative references).\n\n${body}\n\n${SztubuddyContract()}`;
 }
 
 function resolveBuiltinRoot(): string {

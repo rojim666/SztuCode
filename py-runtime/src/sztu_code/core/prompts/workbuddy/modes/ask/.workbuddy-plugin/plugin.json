@@ -1,13 +1,13 @@
 {
   "name": "interactionmode-ask",
   "version": "0.1.1",
-  "description": "WorkBuddy ask interaction mode fragment and tool policy.",
+  "description": "Sztubuddy ask interaction mode fragment and tool policy.",
   "author": {
-    "name": "WorkBuddy"
+    "name": "Sztubuddy"
   },
   "category": "interaction",
   "keywords": [
-    "workbuddy",
+    "Sztubuddy",
     "interaction",
     "ask"
   ]

@@ -2,7 +2,7 @@
 description = "执行 agent：严格按计划执行代码和文件操作，不做额外评判"
 allowed_tools = ["bash", "read_file", "write_file", "list_dir", "task_update", "task_list"]
 
-workbuddy_template = "product/cli-agent-prompt.tpl"
+Sztubuddy_template = "product/cli-agent-prompt.tpl"
 host_contract = """
 Execute the delegated plan within the allowed paths. Report pending work honestly.
 When the caller requests a workflow JSON result, its schema takes precedence over the template's presentation format. Return exactly that JSON object without fences.

@@ -8,7 +8,7 @@ import pytest
 
 from sztu_code.core.prompts import build_system_prompt
 from sztu_code.core.prompts.catalog import DEFAULT_PROMPT_CATALOG
-from sztu_code.core.prompts.workbuddy import build_base, load_resource
+from sztu_code.core.prompts.Sztubuddy import build_base, load_resource
 from sztu_code.core.prompts.system_prompt import (
     DYNAMIC_BOUNDARY,
     MAX_INSTRUCTION_FILE_CHARS,
@@ -49,8 +49,8 @@ def test_main_prompt_sections_are_loaded_in_index_order() -> None:
     entries = DEFAULT_PROMPT_CATALOG.entries("main")
     assert len(sections) == 5
     assert sections == tuple(entry.content for entry in entries)
-    assert entries[0].prompt_id == "workbuddy-system"
-    assert all(entry.source.startswith("workbuddy:") for entry in entries)
+    assert entries[0].prompt_id == "Sztubuddy-system"
+    assert all(entry.source.startswith("Sztubuddy:") for entry in entries)
     assert "<content_policy>" in sections[-1]
 
 

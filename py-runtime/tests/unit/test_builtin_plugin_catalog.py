@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from sztu_code.core.skills.loader import SkillLoader
-from sztu_code.core.prompts.workbuddy import manifest
+from sztu_code.core.prompts.Sztubuddy import manifest
 
 
 def test_six_bundled_plugins_have_real_skills_and_provenance(tmp_path: Path) -> None:

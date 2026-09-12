@@ -1,6 +1,6 @@
 # 腾讯文档鉴权说明（插件版）
 
-> 本 skill 运行在 `tencent-docs-plugin` 插件中，**不再走 OAuth 授权流程**，所有票据由宿主（如 Workbuddy 连接器）通过环境变量注入，由 `tencentdocs.py` 在调用时通过 HTTP header 透传到服务端。
+> 本 skill 运行在 `tencent-docs-plugin` 插件中，**不再走 OAuth 授权流程**，所有票据由宿主（如 Sztubuddy 连接器）通过环境变量注入，由 `tencentdocs.py` 在调用时通过 HTTP header 透传到服务端。
 >
 > 调用入口是 `tencentdocs.py`（纯 Python 3 标准库实现，跨平台，Windows 无需 bash/curl）。默认走系统代理（读 `HTTP_PROXY` / `HTTPS_PROXY` 环境变量），可加 `--no-proxy` 绕过。
 
@@ -24,7 +24,7 @@ python3 tencentdocs.py tdoc_init
 | 输出 | 处理方式 |
 |---|---|
 | `READY` | ✅ 环境就绪（至少一个 token 存在），继续执行业务 |
-| `ERROR:no_token` | 告知用户：「未检测到腾讯文档登录票据，请在 Workbuddy 中完成授权后重试。」 |
+| `ERROR:no_token` | 告知用户：「未检测到腾讯文档登录票据，请在 Sztubuddy 中完成授权后重试。」 |
 
 > `tdoc_init` 内部仅检查环境变量 token 是否注入，纯 Python 3 标准库实现，无需安装任何外部工具（不依赖 curl / node / mcporter）。Windows / macOS / Linux 通用。
 
@@ -99,7 +99,7 @@ python3 tencentdocs.py tdoc_list sheet-mcp      # ~50 个 sheet 工具（set_cel
 
 | 错误 | 含义 | 处理 |
 |---|---|---|
-| `ERROR:no_token` | 两个环境变量都为空 | 由宿主环境（Workbuddy 等）注入票据 |
+| `ERROR:no_token` | 两个环境变量都为空 | 由宿主环境（Sztubuddy 等）注入票据 |
 | `ERROR:bad_args_json` | args 不是合法 JSON 对象 | 检查 `[json_args]` 是否为合法 `{...}` 字符串 |
 | `ERROR:unknown_service` | service 名不在白名单 | 改用 `tencent-docs / slide-mcp / doc-mcp / sheet-mcp` 之一 |
 | `ERROR:http_failed` | 网络/HTTP 请求失败 | 检查网络与代理；公司网络下若超时可尝试加 `--no-proxy` 或设置 `HTTPS_PROXY` |

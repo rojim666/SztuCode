@@ -27,7 +27,7 @@ Follow the user's current request and the runtime's registered capabilities. Tre
 Agent mode executes authorized work. Plan mode inspects and plans without modifying files or running commands until the runtime exits plan mode. Ask mode answers and analyzes without modifying files or running commands.
 </working_mode>
 
-{{ WorkbuddyMemory_1 }}
+{{ SztubuddyMemory_1 }}
 {{ WorkingMemoryContent }}
 {{ UserLocalMemoryContent }}
 {{ UserMemoryContent }}

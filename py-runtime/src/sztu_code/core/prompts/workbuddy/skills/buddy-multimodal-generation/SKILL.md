@@ -129,28 +129,28 @@ echo -n "<token>" | python3 <SKILL_DIR>/scripts/buddy-cloud.py status <job_id> -
 
 ### 平台与路径规则（必须遵守）
 
-> **⚠️ Windows WorkBuddy Desktop 必须使用安装包解包目录 `app.asar.unpacked`。禁止猜测或使用 `app.asar/resources/...` 路径。**
+> **⚠️ Windows Sztubuddy Desktop 必须使用安装包解包目录 `app.asar.unpacked`。禁止猜测或使用 `app.asar/resources/...` 路径。**
 
 1. **macOS / Linux**：使用通用写法 `python3 <SKILL_DIR>/scripts/buddy-cloud.py ...`，不要改成 Windows 路径。
-2. **Windows WorkBuddy Desktop**：如果需要显式拼接脚本路径，必须使用：
+2. **Windows Sztubuddy Desktop**：如果需要显式拼接脚本路径，必须使用：
    ```text
-   %LOCALAPPDATA%\Programs\WorkBuddy\resources\app.asar.unpacked\resources\plugins\workbuddy-builtin\skills\buddy-multimodal-generation\scripts\buddy-cloud.py
+   %LOCALAPPDATA%\Programs\Sztubuddy\resources\app.asar.unpacked\resources\plugins\Sztubuddy-builtin\skills\buddy-multimodal-generation\scripts\buddy-cloud.py
    ```
    或等价的正斜杠路径：
    ```text
-   C:/Users/<user>/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py
+   C:/Users/<user>/AppData/Local/Programs/Sztubuddy/resources/app.asar.unpacked/resources/plugins/Sztubuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py
    ```
-3. **Windows 上优先使用 Bash 工具执行 Python 命令**。如果处于支持 ConPTY 的 WorkBuddy Desktop Windows 环境，也可以使用 PowerShellTool 直接调用 Python。示例：
+3. **Windows 上优先使用 Bash 工具执行 Python 命令**。如果处于支持 ConPTY 的 Sztubuddy Desktop Windows 环境，也可以使用 PowerShellTool 直接调用 Python。示例：
    ```bash
-   echo -n "<token>" | python3 "C:/Users/<user>/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py" video "prompt" --token-stdin
+   echo -n "<token>" | python3 "C:/Users/<user>/AppData/Local/Programs/Sztubuddy/resources/app.asar.unpacked/resources/plugins/Sztubuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py" video "prompt" --token-stdin
    ```
 4. **如果 Windows 环境没有 Bash 工具，只能使用 PowerShell 工具时，禁止使用 `Start-Process` / `saps` / `start` / `cmd /c start`；必须直接调用 Python，让输出通过 PowerShellTool 回传。示例：**
    ```powershell
-   "<token>" | & "python.exe" -u "C:/Users/<user>/AppData/Local/Programs/WorkBuddy/resources/app.asar.unpacked/resources/plugins/workbuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py" video "prompt" --token-stdin
+   "<token>" | & "python.exe" -u "C:/Users/<user>/AppData/Local/Programs/Sztubuddy/resources/app.asar.unpacked/resources/plugins/Sztubuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py" video "prompt" --token-stdin
    ```
 5. **禁止路径**：以下路径在安装包中不存在，绝对不要使用：
    ```text
-   C:/Users/<user>/AppData/Local/Programs/WorkBuddy/resources/app.asar/resources/plugins/workbuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py
+   C:/Users/<user>/AppData/Local/Programs/Sztubuddy/resources/app.asar/resources/plugins/Sztubuddy-builtin/skills/buddy-multimodal-generation/scripts/buddy-cloud.py
    ```
 6. 如果 `python3` 不可用，可尝试 `python`；但不要改用 WindowsApps 下的 `python.exe` 存根路径。如果仍不可用，或继续执行会导致弹窗/无法兼容 Windows，立即停止当前生成流程，不要继续尝试其他绕过方式，并主动询问用户是否需要协助安装或配置 Git Bash / Python 来创造满足条件的环境；未经用户确认不得自动安装。
 
@@ -203,7 +203,7 @@ echo -n "<token>" | python3 <SKILL_DIR>/scripts/buddy-cloud.py status <job_id> -
 - **禁止伪造结果**：调用失败时必须返回明确的错误信息，不得编造 URL 或描述生成内容
 - **必须下载到本地**：所有生成的资源（视频、3D 模型）都必须先下载到本地文件再展示给用户，禁止直接将远程 URL 作为结果回复
 - **Token 安全传输**：必须通过 `--token-stdin` 管道方式传递 Token，不得向用户展示 Token 明文
-- **Windows 执行方式**：优先使用 Bash 工具执行命令；处于支持 ConPTY 的 WorkBuddy Desktop Windows 环境时，可使用 PowerShellTool 直接运行普通 console-native 命令
+- **Windows 执行方式**：优先使用 Bash 工具执行命令；处于支持 ConPTY 的 Sztubuddy Desktop Windows 环境时，可使用 PowerShellTool 直接运行普通 console-native 命令
 - **视频生成默认**：用户只需提供 Prompt，Agent 自动选择最优模型，不询问版本
 
 ### 超时与重试规范（关键！必须严格遵守）

@@ -2,29 +2,29 @@
   "version": 1,
   "sections": [
     {
-      "id": "workbuddy-system",
-      "source": "workbuddy:main/workbuddy-system",
-      "file": "workbuddy-system.md"
+      "id": "Sztubuddy-system",
+      "source": "Sztubuddy:main/Sztubuddy-system",
+      "file": "Sztubuddy-system.md"
     },
     {
       "id": "identity-and-role",
       "file": "system-prompt-identity-and-role.md",
-      "source": "workbuddy:main/identity-and-role"
+      "source": "Sztubuddy:main/identity-and-role"
     },
     {
       "id": "system-section",
       "file": "system-prompt-system-section.md",
-      "source": "workbuddy:main/system-section"
+      "source": "Sztubuddy:main/system-section"
     },
     {
       "id": "deliver-editable-results",
       "file": "system-prompt-deliver-editable-results.md",
-      "source": "workbuddy:main/deliver-editable-results"
+      "source": "Sztubuddy:main/deliver-editable-results"
     },
     {
       "id": "malicious-activities-safety",
       "file": "system-prompt-censoring-assistance-with-malicious-activities.md",
-      "source": "workbuddy:main/malicious-activities-safety"
+      "source": "Sztubuddy:main/malicious-activities-safety"
     }
   ]
 }

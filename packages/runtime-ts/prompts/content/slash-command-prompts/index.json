@@ -4,7 +4,7 @@
     {
       "id": "security-review",
       "file": "agent-prompt-security-review-slash-command.md",
-      "source": "workbuddy:slash-command-prompts/security-review",
+      "source": "Sztubuddy:slash-command-prompts/security-review",
       "command": "/security-review",
       "status": "active",
       "consumer": "session slash command"
@@ -12,7 +12,7 @@
     {
       "id": "batch",
       "file": "agent-prompt-batch-slash-command.md",
-      "source": "workbuddy:slash-command-prompts/batch",
+      "source": "Sztubuddy:slash-command-prompts/batch",
       "command": "/batch",
       "status": "active",
       "consumer": "session slash command"
@@ -20,7 +20,7 @@
     {
       "id": "review-pr",
       "file": "agent-prompt-review-pr-slash-command.md",
-      "source": "workbuddy:slash-command-prompts/review-pr",
+      "source": "Sztubuddy:slash-command-prompts/review-pr",
       "command": "/review-pr",
       "status": "active",
       "consumer": "session slash command"
@@ -28,7 +28,7 @@
     {
       "id": "pr-comments",
       "file": "agent-prompt-pr-comments-slash-command.md",
-      "source": "workbuddy:slash-command-prompts/pr-comments",
+      "source": "Sztubuddy:slash-command-prompts/pr-comments",
       "command": "/pr-comments",
       "status": "active",
       "consumer": "session slash command"
@@ -36,7 +36,7 @@
     {
       "id": "git-commit",
       "file": "agent-prompt-quick-git-commit.md",
-      "source": "workbuddy:slash-command-prompts/git-commit",
+      "source": "Sztubuddy:slash-command-prompts/git-commit",
       "command": "/commit",
       "status": "active",
       "consumer": "session slash command"
@@ -44,7 +44,7 @@
     {
       "id": "create-pr",
       "file": "agent-prompt-create-pr.md",
-      "source": "workbuddy:slash-command-prompts/create-pr",
+      "source": "Sztubuddy:slash-command-prompts/create-pr",
       "command": "/create-pr",
       "status": "active",
       "consumer": "session slash command"

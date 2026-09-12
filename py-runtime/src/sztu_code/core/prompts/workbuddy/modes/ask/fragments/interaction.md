@@ -1,6 +1,6 @@
 ---
 name: ask
-description: WorkBuddy ask work mode fixed fragments and tool policy.
+description: Sztubuddy ask work mode fixed fragments and tool policy.
 tools:
   - Read
   - AskUserQuestion

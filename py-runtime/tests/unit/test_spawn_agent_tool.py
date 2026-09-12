@@ -221,7 +221,7 @@ async def test_default_role_is_coder(tmp_path: Path) -> None:
 
 async def test_imported_no_tool_agent_cannot_gain_tools_from_skill(tmp_path: Path) -> None:
     from sztu_code.core.bus.events import ContextInjectedEvent
-    from sztu_code.core.prompts.workbuddy import manifest
+    from sztu_code.core.prompts.Sztubuddy import manifest
 
     agent = next(a for a in manifest()["agents"] if not a["tools"])
     captured: dict[str, Any] = {}

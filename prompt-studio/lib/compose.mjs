@@ -1,7 +1,7 @@
 // Prompt Studio compose worker.
 //
 // Runs in a fresh child process on every request so the process-level prompt
-// caches inside the runtime (workbuddy templates, per-group index cache) never
+// caches inside the runtime (Sztubuddy templates, per-group index cache) never
 // serve stale text after an edit. It calls the REAL runtime functions from
 // packages/runtime-ts/dist, so the preview is authoritative rather than a
 // re-implementation of the composition rules.
@@ -16,7 +16,7 @@ const load = (name) => import(pathToFileURL(path.join(distDir, `${name}.js`)).hr
 
 const { buildSystemPrompt, buildDynamicContext } = await load("prompt-loader");
 const { runtimePromptEntries, dynamicRuntimePromptEntries } = await load("prompt-harness");
-const { buildWorkbuddyBase } = await load("workbuddy-resources");
+const { buildSztubuddyBase } = await load("Sztubuddy-resources");
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -46,7 +46,7 @@ if (input.interactionMode) context.interactionMode = input.interactionMode;
 const approxTokens = (text) => Math.round(text.length / 3.5);
 
 try {
-  const base = buildWorkbuddyBase();
+  const base = buildSztubuddyBase();
   const roleLine = `# Runtime context\n- Agent role: ${role}`;
   const staticBase = [base, roleLine].join("\n\n");
   const runtimeEntries = await runtimePromptEntries(context);
@@ -62,14 +62,14 @@ try {
     staticBase,
     runtimeEntries,
     staticSections: {
-      workbuddyBase: base,
+      SztubuddyBase: base,
       roleLine,
     },
     systemPrompt,
     dynamicEntries,
     dynamicContext,
     metrics: {
-      workbuddyBaseChars: base.length,
+      SztubuddyBaseChars: base.length,
       staticBaseChars: staticBase.length,
       runtimeEntriesChars: runtimeEntries.reduce((sum, entry) => sum + entry.length, 0),
       systemPromptChars: systemPrompt.length,

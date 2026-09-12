@@ -9,7 +9,7 @@ from sztu_code.core.prompts.catalog import (
     PromptCatalog,
 )
 from sztu_code.core.prompts.catalog import PromptIndexError as PromptIndexError
-from sztu_code.core.prompts.workbuddy import build_base
+from sztu_code.core.prompts.Sztubuddy import build_base
 
 # 静态/动态段分界哨兵，供 /system-prompt 定位动态上下文起点
 DYNAMIC_BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"

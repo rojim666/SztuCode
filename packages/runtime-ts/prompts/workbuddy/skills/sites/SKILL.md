@@ -8,7 +8,7 @@ disable: false
 
 # 发布应用 / Sites
 
-Publish a local project as an online link via the built-in `workbuddy_sites_deploy` tool.
+Publish a local project as an online link via the built-in `Sztubuddy_sites_deploy` tool.
 Unlike static-only deploy, this supports any project that can run as a single-port HTTP
 service: static sites, PDFs, small games, and backend HTTP apps (Node.js / Python / Go).
 
@@ -59,7 +59,7 @@ retry switch.
 ## Unpublish (take offline)
 
 To unpublish / take a published site offline / cancel a publish, use the built-in
-`workbuddy_sites_deploy` tool with `action: "unpublish"` and the same project `directory`
+`Sztubuddy_sites_deploy` tool with `action: "unpublish"` and the same project `directory`
 that was deployed. After unpublishing, the shared link stops working. This is destructive —
 if the user was not explicit, confirm first. If the directory was never published or is
 already offline, tell the user that instead of pretending it was taken offline.
@@ -113,7 +113,7 @@ public HTTP port. It does **NOT** support:
   connection string pointing at a public managed database (e.g. Supabase) is allowed too,
   because the sandbox can reach the internet.
 
-The `workbuddy_sites_deploy` tool runs this **pre-check before uploading anything**. An
+The `Sztubuddy_sites_deploy` tool runs this **pre-check before uploading anything**. An
 unsupported project comes back as `{"type":"sites_deploy_unsupported"}` carrying a
 ready-to-use `userMessage` (plus an internal `agentGuidance`). When that happens:
 
@@ -150,7 +150,7 @@ ready-to-use `userMessage` (plus an internal `agentGuidance`). When that happens
 
 ## How to Deploy
 
-Use the built-in tool `workbuddy_sites_deploy`. It accepts:
+Use the built-in tool `Sztubuddy_sites_deploy`. It accepts:
 
 - `action` (optional) — `deploy` (default) / `unpublish`.
 - `directory` (required) — absolute path to the local project source directory.
@@ -202,7 +202,7 @@ deploy — develop the project first as a single-port HTTP service, then deploy 
 
 ### Step 3: Deploy
 
-Call `workbuddy_sites_deploy` with the identified directory (plus optional overrides):
+Call `Sztubuddy_sites_deploy` with the identified directory (plus optional overrides):
 
 ```json
 { "directory": "/absolute/path/to/project", "userAskedToPublish": true }

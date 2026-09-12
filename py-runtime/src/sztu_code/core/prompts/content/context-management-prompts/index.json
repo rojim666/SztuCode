@@ -4,26 +4,26 @@
     {
       "id": "context-compaction-summary",
       "file": "system-prompt-context-compaction-summary.md",
-      "source": "workbuddy:context-management-prompts/context-compaction-summary",
+      "source": "Sztubuddy:context-management-prompts/context-compaction-summary",
       "status": "active",
       "consumer": "conversation compactor"
     },
     {
       "id": "full-compaction-analysis",
       "file": "system-prompt-analysis-instructions-for-full-compact-prompt-full-conversation.md",
-      "source": "workbuddy:context-management-prompts/full-compaction-analysis",
+      "source": "Sztubuddy:context-management-prompts/full-compaction-analysis",
       "status": "reference-only"
     },
     {
       "id": "recent-messages-analysis",
       "file": "system-prompt-analysis-instructions-for-full-compact-prompt-recent-messages.md",
-      "source": "workbuddy:context-management-prompts/recent-messages-analysis",
+      "source": "Sztubuddy:context-management-prompts/recent-messages-analysis",
       "status": "reference-only"
     },
     {
       "id": "subagent-delegation-examples",
       "file": "system-prompt-subagent-delegation-examples.md",
-      "source": "workbuddy:context-management-prompts/subagent-delegation-examples",
+      "source": "Sztubuddy:context-management-prompts/subagent-delegation-examples",
       "status": "reference-only"
     }
   ]

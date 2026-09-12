@@ -81,7 +81,7 @@ KS_DOC_EDIT_DRYRUN	<N>	actions=ok
 
 ## 4. 创建整篇文档
 
-`create_doc.py` 固定提交 Markdown，禁止混入 WorkBuddy 组件。创建任务边界见 `tasks/read_create.md`。
+`create_doc.py` 固定提交 Markdown，禁止混入 Sztubuddy 组件。创建任务边界见 `tasks/read_create.md`。
 
 ```bash
 # 默认创建位置

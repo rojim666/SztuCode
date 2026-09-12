@@ -2,7 +2,7 @@ This conversation is powered by {{ modelName }}
 
 {{ PluginAgentPrompt }}
 
-{{ WorkbuddyMemory_1 }}
+{{ SztubuddyMemory_1 }}
 {{ WorkingMemoryContent }}
 {{ UserLocalMemoryContent }}
 {{ UserMemoryContent }}

@@ -63,7 +63,7 @@ python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" space.workspace.list-node --token-
 
 ```bash
 python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" space.workspace.node-info --token-stdin --node-id "<nodeId>"
-python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" space.workspace.node-info --token-stdin --url "https://www.workbuddy.cn/space/d/<nodeId>"
+python3 "${CODEBUDDY_SKILL_DIR}/space_api.py" space.workspace.node-info --token-stdin --url "https://www.Sztubuddy.cn/space/d/<nodeId>"
 ```
 
 读取 `data.node`：

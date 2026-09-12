@@ -4,92 +4,92 @@
     {
       "id": "read_file",
       "file": "tool-read-file.md",
-      "source": "workbuddy:tool-descriptions/read_file"
+      "source": "Sztubuddy:tool-descriptions/read_file"
     },
     {
       "id": "write_file",
       "file": "tool-write-file.md",
-      "source": "workbuddy:tool-descriptions/write_file"
+      "source": "Sztubuddy:tool-descriptions/write_file"
     },
     {
       "id": "edit_file",
       "file": "tool-edit-file.md",
-      "source": "workbuddy:tool-descriptions/edit_file"
+      "source": "Sztubuddy:tool-descriptions/edit_file"
     },
     {
       "id": "list_dir",
       "file": "tool-list-dir.md",
-      "source": "workbuddy:tool-descriptions/list_dir"
+      "source": "Sztubuddy:tool-descriptions/list_dir"
     },
     {
       "id": "glob_search",
       "file": "tool-glob-search.md",
-      "source": "workbuddy:tool-descriptions/glob_search"
+      "source": "Sztubuddy:tool-descriptions/glob_search"
     },
     {
       "id": "grep_search",
       "file": "tool-grep-search.md",
-      "source": "workbuddy:tool-descriptions/grep_search"
+      "source": "Sztubuddy:tool-descriptions/grep_search"
     },
     {
       "id": "bash",
       "file": "tool-bash.md",
-      "source": "workbuddy:tool-descriptions/bash"
+      "source": "Sztubuddy:tool-descriptions/bash"
     },
     {
       "id": "spawn_agent",
       "file": "tool-spawn-agent.md",
-      "source": "workbuddy:tool-descriptions/spawn_agent"
+      "source": "Sztubuddy:tool-descriptions/spawn_agent"
     },
     {
       "id": "agent_result",
       "file": "tool-agent-result.md",
-      "source": "workbuddy:tool-descriptions/agent_result"
+      "source": "Sztubuddy:tool-descriptions/agent_result"
     },
     {
       "id": "ask_user_question",
       "file": "tool-ask-user-question.md",
-      "source": "workbuddy:tool-descriptions/ask_user_question"
+      "source": "Sztubuddy:tool-descriptions/ask_user_question"
     },
     {
       "id": "memory_read",
       "file": "tool-memory-read.md",
-      "source": "workbuddy:tool-descriptions/memory_read"
+      "source": "Sztubuddy:tool-descriptions/memory_read"
     },
     {
       "id": "note_save",
       "file": "tool-note-save.md",
-      "source": "workbuddy:tool-descriptions/note_save"
+      "source": "Sztubuddy:tool-descriptions/note_save"
     },
     {
       "id": "note_update",
       "file": "tool-note-update.md",
-      "source": "workbuddy:tool-descriptions/note_update"
+      "source": "Sztubuddy:tool-descriptions/note_update"
     },
     {
       "id": "read_ref",
       "file": "tool-read-ref.md",
-      "source": "workbuddy:tool-descriptions/read_ref"
+      "source": "Sztubuddy:tool-descriptions/read_ref"
     },
     {
       "id": "task_create",
       "file": "tool-task-create.md",
-      "source": "workbuddy:tool-descriptions/task_create"
+      "source": "Sztubuddy:tool-descriptions/task_create"
     },
     {
       "id": "task_update",
       "file": "tool-task-update.md",
-      "source": "workbuddy:tool-descriptions/task_update"
+      "source": "Sztubuddy:tool-descriptions/task_update"
     },
     {
       "id": "task_list",
       "file": "tool-task-list.md",
-      "source": "workbuddy:tool-descriptions/task_list"
+      "source": "Sztubuddy:tool-descriptions/task_list"
     },
     {
       "id": "task_get",
       "file": "tool-task-get.md",
-      "source": "workbuddy:tool-descriptions/task_get"
+      "source": "Sztubuddy:tool-descriptions/task_get"
     }
   ]
 }

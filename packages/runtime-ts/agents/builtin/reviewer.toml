@@ -2,7 +2,7 @@
 description = "审查 agent：核查执行结果是否达成目标，给出客观评估"
 allowed_tools = ["read_file", "list_dir", "bash"]
 
-workbuddy_template = "product/command-security-review-prompt.tpl"
+Sztubuddy_template = "product/command-security-review-prompt.tpl"
 host_contract = """
 Review the requested scope and actual artifacts. Include correctness, regression, and security findings. Do not modify files.
 When the caller requests a workflow JSON result, its schema takes precedence over the template's presentation format. Return exactly that JSON object without fences.

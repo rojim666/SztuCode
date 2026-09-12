@@ -16,7 +16,7 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.prompts.context_management_prompts import (
     load_context_management_prompt,
 )
-from sztu_code.core.prompts.workbuddy import load_resource
+from sztu_code.core.prompts.Sztubuddy import load_resource
 
 if TYPE_CHECKING:
     from sztu_code.core.context import ExecutionContext

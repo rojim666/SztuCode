@@ -58,7 +58,7 @@
 
 ### 不进本流程的情况
 
-- 用户给的是**已存在资料库节点**（nodeId / `workbuddy.cn/space` 链接）+ 可视化意图 → 走 `md-to-html-flow.md` 入口 A/B。
+- 用户给的是**已存在资料库节点**（nodeId / `Sztubuddy.cn/space` 链接）+ 可视化意图 → 走 `md-to-html-flow.md` 入口 A/B。
 - 用户要**建站 / 多页应用 / 前端工程** → 交主 agent，不走资料库单页 page。
 - 用户要**编辑已托管 page**（给 page 详情页 / 发布态链接要改）→ 走 `edit-flow.md`（见 `entry.md` §7 与 P0 kind 仲裁）。
 

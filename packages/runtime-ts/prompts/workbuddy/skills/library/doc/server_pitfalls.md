@@ -13,7 +13,7 @@
 ## 2. dry-run 不等于正式解析
 
 - `submit_review_edit.py --dry-run` / `submit_doc_edit.py --dry-run` 校验本地 action schema、body 翻译、组件顶层结构、Mark 边界和评论锚点。
-- `create_doc.py --dry-run` 校验非空、编码、大小，并拒绝 Markdown 正文中的 WorkBuddy 组件标签。
+- `create_doc.py --dry-run` 校验非空、编码、大小，并拒绝 Markdown 正文中的 Sztubuddy 组件标签。
 - dry-run 不具备远端目标 block 类型和正式解析上下文；通过 dry-run 不代表正式提交一定成功。
 
 正式失败时按 `error_handling.md` 分类处理，不用真实提交反复试探语法。
