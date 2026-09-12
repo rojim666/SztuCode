@@ -32,8 +32,39 @@ class _EndTurnProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         return LlmResponse(stop_reason="end_turn", text="done")
+
+
+class _SlowProvider:
+    """Blocks until the runner-level deadline cancels the in-flight request."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.remaining: list[float | None] = []
+        self.cancelled = asyncio.Event()
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        self.calls += 1
+        self.remaining.append(remaining_s)
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        return LlmResponse(stop_reason="end_turn", text="unexpected completion")
 
 
 class _LoopingProvider:
@@ -52,6 +83,7 @@ class _LoopingProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         # Recuris 记忆进化的 Meta-Agent 调用不计入主循环步数
         if system and "[memory-evolution]" in system:
@@ -79,6 +111,7 @@ class _CapturingProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         self.messages = [dict(m) for m in messages]
         self.system = system
@@ -115,6 +148,7 @@ new goal
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         self._calls += 1
         if self._calls == 1:
@@ -156,6 +190,7 @@ class _CancelableCompactingProvider:
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -210,6 +245,7 @@ finish without session
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -272,6 +308,7 @@ survive failure
         step: int = 0,
         system: str | None = None,
         usage_estimator: object | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
@@ -425,6 +462,38 @@ async def test_run_finished_event_published_on_max_steps(tmp_path: Path) -> None
     finished = next(e for e in events if e.type == "run.finished")  # type: ignore[attr-defined]
     assert finished.status == "interrupted"  # type: ignore[attr-defined]
     assert finished.reason == "exceeded_max_steps"  # type: ignore[attr-defined]
+
+
+# 功能：验证 Runner 在 LLM hard cutoff 后发布统一终态，且不触发记忆进化
+# 设计：可取消 Provider 被 Run deadline 截断；max_wall_clock_exceeded 不属于进化触发原因
+async def test_run_finished_on_deadline_skips_memory_evolution(tmp_path: Path) -> None:
+    provider = _SlowProvider()
+    config = _config()
+    config.budget.max_wall_clock_s = 1.0
+    events: list[BaseModel] = []
+
+    async def collect(event: BaseModel) -> None:
+        events.append(event)
+
+    runner = AgentRunner(
+        config,
+        provider=provider,  # type: ignore[arg-type]
+        extra_handlers=[collect],
+        runs_dir=tmp_path,
+    )
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("deadline goal", workspace_root=tmp_path),
+        timeout=1.5,
+    )
+
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "max_wall_clock_exceeded"
+    assert provider.calls == 1
+    assert provider.cancelled.is_set()
+    finished = next(event for event in events if event.type == "run.finished")  # type: ignore[attr-defined]
+    assert finished.status == "interrupted"  # type: ignore[attr-defined]
+    assert finished.reason == "max_wall_clock_exceeded"  # type: ignore[attr-defined]
+    assert not (tmp_path / ".sztu" / "memory").exists()
 
 
 # 功能：验证 events.jsonl 第一行为 run.started、最后一行为 run.finished

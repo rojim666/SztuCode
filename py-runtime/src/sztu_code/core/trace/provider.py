@@ -5,6 +5,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
+from sztu_code.core.deadline import add_remaining_s
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.base import LLMProvider
 from sztu_code.core.llm.types import LlmResponse
@@ -42,6 +43,7 @@ class TracingProvider:
         system: str | None = None,
         usage_estimator: Any | None = None,
         max_output_tokens: int | None = None,
+        remaining_s: float | None = None,
     ) -> LlmResponse:
         call_data: dict[str, Any]
         if self._include_payload:
@@ -65,10 +67,15 @@ class TracingProvider:
         )
 
         t0 = time.monotonic()
+        inner_kwargs: dict[str, Any] = {
+            "step": step,
+            "system": system,
+            "usage_estimator": usage_estimator,
+            "max_output_tokens": max_output_tokens,
+        }
+        add_remaining_s(self._inner.chat, inner_kwargs, remaining_s)
         result = await self._inner.chat(
-            messages, tool_schemas, bus, run_id, step=step, system=system,
-            usage_estimator=usage_estimator,
-            max_output_tokens=max_output_tokens,
+            messages, tool_schemas, bus, run_id, **inner_kwargs
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
 
