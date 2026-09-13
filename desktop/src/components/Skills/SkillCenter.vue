@@ -22,6 +22,10 @@ const props = defineProps<{
   workspaceName?: string | null;
 }>();
 
+const emit = defineEmits<{
+  useInChat: [skillName: string];
+}>();
+
 type Area = "plugins" | "skills";
 type PluginView = "installed" | "marketplace";
 type InstallKind = "plugin" | "skill";
@@ -109,6 +113,12 @@ function openPluginDetail(plugin: PluginSummary): void {
 function openSkillDetail(skill: SkillSummary): void {
   selectedSkill.value = skill;
   skillDetailOpen.value = true;
+}
+
+function useSelectedSkill(): void {
+  if (!selectedSkill.value) return;
+  skillDetailOpen.value = false;
+  emit("useInChat", selectedSkill.value.name);
 }
 
 function canDeleteSkill(skill: SkillSummary): boolean {
@@ -748,8 +758,12 @@ onUnmounted(() => {
             <span v-if="owningPlugin(selectedSkill)">所属插件：{{ owningPlugin(selectedSkill)?.display_name }}</span>
           </div>
         </div>
-        <footer v-if="canDeleteSkill(selectedSkill)" class="skill-detail-footer">
-          <button class="skill-delete-btn" :disabled="updatingSkill === selectedSkill.id" @click="removeInstalledSkill(selectedSkill)">
+        <footer class="skill-detail-footer">
+          <button type="button" class="skill-use-btn" @click="useSelectedSkill">
+            <AppIcon name="MessageCircle" :size="14" />
+            在对话中使用
+          </button>
+          <button v-if="canDeleteSkill(selectedSkill)" type="button" class="skill-delete-btn" :disabled="updatingSkill === selectedSkill.id" @click="removeInstalledSkill(selectedSkill)">
             <AppIcon v-if="updatingSkill === selectedSkill.id" name="RefreshCw" :size="14" class="spin" />
             <AppIcon v-else name="Trash2" :size="14" />
             {{ updatingSkill === selectedSkill.id ? '删除中…' : '删除技能' }}
@@ -902,8 +916,11 @@ onUnmounted(() => {
 .skill-detail-body { min-height: 120px; padding: 20px; }
 .skill-detail-body h3 { margin: 0 0 8px; color: var(--text-faint, #8b8e93); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .skill-detail-body p { margin: 0; color: var(--text, #3f4247); font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
-.skill-detail-footer { padding: 14px 20px; border-top: 1px solid color-mix(in srgb, var(--border, #e8eaed) 60%, transparent); background: color-mix(in srgb, var(--surface-soft, #f8f9fa) 58%, transparent); }
-.skill-detail-footer .skill-delete-btn { display: inline-flex; height: 32px; margin-left: auto; padding: 0 11px; align-items: center; gap: 6px; color: #a44b43; background: color-mix(in srgb, #df7a70 9%, var(--surface, #fff)); border: 0; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.skill-detail-footer { display: flex; align-items: center; gap: 8px; padding: 14px 20px; border-top: 1px solid color-mix(in srgb, var(--border, #e8eaed) 60%, transparent); background: color-mix(in srgb, var(--surface-soft, #f8f9fa) 58%, transparent); }
+.skill-detail-footer button { display: inline-flex; height: 32px; padding: 0 11px; align-items: center; gap: 6px; border: 0; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.skill-detail-footer .skill-use-btn { margin-left: auto; color: var(--accent-contrast, #fff); background: var(--accent, #26282b); }
+.skill-detail-footer .skill-use-btn:hover { background: color-mix(in srgb, var(--accent, #26282b) 88%, #fff); }
+.skill-detail-footer .skill-delete-btn { color: #a44b43; background: color-mix(in srgb, #df7a70 9%, var(--surface, #fff)); }
 .skill-detail-footer .skill-delete-btn:hover:not(:disabled) { background: color-mix(in srgb, #df7a70 15%, var(--surface, #fff)); }
 .skill-detail-footer .skill-delete-btn:disabled { opacity: .5; cursor: default; }
 

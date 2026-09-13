@@ -1,4 +1,12 @@
 export const palette = {
+  modesTitle: "Work mode",
+  modesHint: "Select to insert command",
+  modeNames: { plan: "Plan", edits: "Edit", auto: "Auto" },
+  modeHints: { plan: "Analyze and plan", edits: "Edit project files", auto: "Execute automatically" },
+  searchHint: "Search name, purpose or plugin",
+  loadingSkills: "Loading skills for this project…",
+  skillsError: "Could not refresh skills. Showing the cached catalog.",
+
   menuAria: "Slash commands and skills",
   commandGroupAria: "Commands",
   commandGroupTitle: "Commands",

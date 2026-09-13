@@ -19,6 +19,7 @@ import SlashCommandMenu from "./components/CommandPalette/SlashCommandMenu.vue";
 import SkillCenter from "./components/Skills/SkillCenter.vue";
 import AutomationPage from "./components/Automation/AutomationPage.vue";
 import PluginIcon from "./components/Skills/PluginIcon.vue";
+import PromptEditor from "./components/Composer/PromptEditor.vue";
 import SettingsDialog from "./components/Settings/SettingsDialog.vue";
 import QueueDock from "./components/Composer/QueueDock.vue";
 import AttachmentChip from "./components/Composer/AttachmentChip.vue";
@@ -38,7 +39,7 @@ import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
   archiveSession, cancelRun, connectRuntime, createSession, forkSession, deleteWorkspace, getProviderStatus, getRuntimeConnectionError, getRuntimeSettings, listChanges, listOperations, listPendingUserQuestions, listSessions,
-  listWorkspaces, listPlugins, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
+  listWorkspaces, listPlugins, listSkills, moveSession, onRuntimeDisconnect, onRuntimeEvent, openWorkspace, pinWorkspace, readAttachments, renameWorkspace, respondPermission, respondUserQuestion, resumeWorkspace,
   revertChanges, sendPrompt, sessionHistory, setRuntimeSettings, steerPrompt, workspaceStatus,
   type Attachment, type DurableOperation, type ImageBlock, type PendingUserQuestion, type ProviderStatus, type RuntimeSettings, type Session, type UserQuestionAnswer, type Workspace, type PluginSummary,
 } from "./services/sztu-runtime";
@@ -165,7 +166,7 @@ const tokenBatcher = createTokenFrameBatcher(
   (handle) => window.cancelAnimationFrame(handle),
 );
 const prompt = ref("");
-const activePrompt = ref<HTMLTextAreaElement | null>(null);
+const activePrompt = ref<InstanceType<typeof PromptEditor> | null>(null);
 // 会话流"回到底部"悬浮按钮：离开底部时显示，点击回到底部
 const taskStreamEl = ref<HTMLElement | null>(null);
 const streamScrolledUp = ref(false);
@@ -406,7 +407,7 @@ function turnDotWaveStyle(idx: number) {
 }
 
 // 监听 orderedTimeline 和 DOM 变化，刷新观察器（在 orderedTimeline 定义后注册，见下方）
-const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
+const launcherPrompt = ref<InstanceType<typeof PromptEditor> | null>(null);
 const slashMenuActiveIndex = ref(0);
 const slashMenuDismissed = ref(false);
 const sending = ref(false);
@@ -418,6 +419,7 @@ const launcherPluginMenuOpen = ref(false);
 const activePluginMenuOpen = ref(false);
 const launcherPlugins = ref<PluginSummary[]>([]);
 const insertedPlugins = ref<PluginSummary[]>([]);
+const selectedSkill = ref<{ name: string } | null>(null);
 const launcherPermissionMenuOpen = ref(false);
 const permissionConfirmOpen = ref(false);
 const permissionSaving = ref(false);
@@ -869,11 +871,34 @@ function startDividerDrag(event: PointerEvent) {
   document.addEventListener("pointercancel", finish, { once: true });
 }
 const slashQuery = computed(() => {
-  const match = prompt.value.match(/^\/([^\s]*)$/);
+  const match = prompt.value.match(/^\/([^\n]*)$/);
+  if (/^\/(plan|edits|auto)\s/.test(prompt.value)) return null;
   return match ? match[1] : null;
 });
 const slashMenuOpen = computed(() => slashQuery.value !== null && !slashMenuDismissed.value);
-const slashItems = computed(() => slashQuery.value === null ? [] : slashMenuItems(slashQuery.value, providerStatus.value?.skills ?? []));
+const queriedSkills = ref<ProviderStatus["skills"] | null>(null);
+const skillQueryLoading = ref(false);
+const skillQueryError = ref(false);
+const composerSkills = computed(() => queriedSkills.value ?? providerStatus.value?.skills ?? []);
+const slashItems = computed(() => slashQuery.value === null ? [] : slashMenuItems(slashQuery.value, composerSkills.value, key => t(key)));
+let skillQueryVersion = 0;
+watch([slashMenuOpen, connected, () => activeWorkspace.value?.workspace_id], async ([open, online], previous) => {
+  const version = ++skillQueryVersion;
+  if (!online || previous?.[2] !== activeWorkspace.value?.workspace_id) queriedSkills.value = null;
+  skillQueryLoading.value = false;
+  skillQueryError.value = false;
+  if (!open || !online) return;
+  skillQueryLoading.value = true;
+  try {
+    const result = await listSkills(activeWorkspace.value?.workspace_id);
+    if (version === skillQueryVersion) queriedSkills.value = result;
+  } catch {
+    if (version === skillQueryVersion) skillQueryError.value = true;
+  } finally {
+    if (version === skillQueryVersion) skillQueryLoading.value = false;
+  }
+});
+watch(slashItems, items => { slashMenuActiveIndex.value = Math.min(slashMenuActiveIndex.value, Math.max(0, items.length - 1)); });
 
 type HistoryBlock = Record<string, unknown>;
 
@@ -1864,6 +1889,7 @@ function beginTask(project: Workspace | null = workspace.value) {
   activeId.value = null;
   launcherTimeline.value = new Map();
   attachedFiles.value = [];
+  selectedSkill.value = null;
   page.value = "work";
   prompt.value = loadComposerDraft(project?.workspace_id ?? null);
   void nextTick(() => launcherPrompt.value?.focus());
@@ -1960,6 +1986,7 @@ async function submitTask(
     page.value = "work";
     saveComposerDraft(project?.workspace_id ?? null, "");
     prompt.value = "";
+    selectedSkill.value = null;
     insertedPlugins.value = [];
     sending.value = false;
     const sent = await startSessionRun(sessionId, displayText, trimmed, images, attachments);
@@ -2154,7 +2181,7 @@ function handleSessionClosed(sessionId: string) {
 }
 async function submit(gesture: ComposerSubmitGesture = "enter") {
   const content = prompt.value.trim();
-  if (!content || steering.value || (sending.value && !isAppending.value)) return;
+  if (!content && !selectedSkill.value || steering.value || (sending.value && !isAppending.value)) return;
   if (activeId.value && (active.value?.archived || active.value?.status === "closed")) return;
   const mode = ({ "/plan": "plan", "/edits": "accept_edits", "/auto": "auto" } as const)[content as "/plan" | "/edits" | "/auto"];
   if (mode) {
@@ -2173,6 +2200,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
       enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
       prompt.value = "";
       attachedFiles.value = [];
+      selectedSkill.value = null;
       insertedPlugins.value = [];
     } else {
       steering.value = true;
@@ -2180,6 +2208,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
         await steerPrompt(sessionId, payload, images);
         prompt.value = "";
         attachedFiles.value = [];
+        selectedSkill.value = null;
         insertedPlugins.value = [];
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -2192,12 +2221,14 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
           if (sent) {
             prompt.value = "";
             attachedFiles.value = [];
+            selectedSkill.value = null;
             insertedPlugins.value = [];
           }
         } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
           enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
           prompt.value = "";
           attachedFiles.value = [];
+          selectedSkill.value = null;
           insertedPlugins.value = [];
         } else {
           void showProjectNotice(t("app.sendFailed"), friendlyError(error).message, "danger");
@@ -2213,6 +2244,7 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
   const sent = await submitTask(displayText, payload, workspace.value, images, timelineAttachments);
   if (sent) {
     attachedFiles.value = [];
+    selectedSkill.value = null;
     insertedPlugins.value = [];
   }
 }
@@ -2638,6 +2670,9 @@ async function buildMessagePayload(baseText: string): Promise<{
     ocrProgress.value = null;
   }
 
+  // 技能以输入框内的可视标签呈现，但发送时仍使用原有斜杠调用语法。
+  const skillInvocation = selectedSkill.value ? `/${selectedSkill.value.name}` : "";
+
   // 静默注入已选择的插件标签，用户无感知
   if (insertedPlugins.value.length) {
     const pluginTags = insertedPlugins.value.map(p => `@${p.name}`).join(' ');
@@ -2645,8 +2680,8 @@ async function buildMessagePayload(baseText: string): Promise<{
   }
 
   return {
-    displayText: baseText,
-    payload: [baseText, ...sections].filter(Boolean).join("\n\n"),
+    displayText: [skillInvocation, baseText].filter(Boolean).join(" "),
+    payload: [skillInvocation, baseText, ...sections].filter(Boolean).join("\n\n"),
     images,
     timelineAttachments,
   };
@@ -2836,15 +2871,38 @@ function onDrop(event: DragEvent) {
   })();
 }
 function chooseSkill(name: string) {
-  prompt.value = "/" + name + " ";
+  const isSkill = slashItems.value.some((item) => item.name === name && item.group === "skill");
+  if (isSkill) {
+    selectedSkill.value = { name };
+    prompt.value = "";
+  } else {
+    selectedSkill.value = null;
+    prompt.value = "/" + name + " ";
+  }
   slashMenuDismissed.value = false;
   void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
 }
+function useSkillInChat(name: string) {
+  openPage("work");
+  selectedSkill.value = { name };
+  void nextTick(() => (activeId.value ? activePrompt.value : launcherPrompt.value)?.focus());
+}
+function removeSelectedSkill() {
+  selectedSkill.value = null;
+}
 function handlePromptInput() {
+  const invocation = prompt.value.match(/^\/([^\s]+)\s+([\s\S]*)$/);
+  if (!selectedSkill.value && invocation) {
+    const skill = slashMenuItems(invocation[1], composerSkills.value).find(item => item.group === "skill" && item.name.toLowerCase() === invocation[1].toLowerCase());
+    if (skill) {
+      selectedSkill.value = { name: skill.name };
+      prompt.value = invocation[2];
+    }
+  }
   slashMenuDismissed.value = false;
   slashMenuActiveIndex.value = 0;
 }
-function closeActiveSession() { activeId.value = null; launcherTimeline.value = new Map(); void refreshIndex(false); }
+function closeActiveSession() { activeId.value = null; selectedSkill.value = null; launcherTimeline.value = new Map(); void refreshIndex(false); }
 async function applyPermissionMode(value: RuntimeSettings["permission_mode"]) {
   permissionSaving.value = true;
   permissionSettingsError.value = "";
@@ -3684,21 +3742,20 @@ watch(activeWorkspace, (project) => {
                     @stop="stopActiveRun"
                   />
                     <form v-else class="sztu-composer active-composer" :class="{ 'append-mode': isAppending, 'drag-over': isDragOver }" @submit.prevent="submit" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-                      <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-                      <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
+                      <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="composerSkills" :loading="skillQueryLoading" :error="skillQueryError" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
+                      <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length, 'has-skill-tag': selectedSkill }">
                         <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
                         <p v-if="attachedFiles.some((file) => file.kind === 'image')" class="image-processing-mode" aria-live="polite">{{ imageProcessingLabel }}</p>
-                        <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="14" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                         <div v-if="ocrProgress" class="ocr-progress-bar">
                           <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
                           <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
                         </div>
-                        <textarea ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed' || !!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : (active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder'))))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                        <PromptEditor :skill="selectedSkill" :plugins="insertedPlugins" @remove-skill="removeSelectedSkill" @remove-plugin="removeInsertedPlugin" ref="activePrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="active.archived || active.status === 'closed' || !!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : (active.archived || active.status === 'closed' ? t('app.resumeTaskHint') : (isAppending ? t('app.composerPlaceholder') : (sending ? t('app.sending') : t('app.composerPlaceholder'))))" rows="3" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                         <div v-if="isDragOver" class="drag-overlay">
                           <AppIcon name="Upload" :size="32" />
                           <span>{{ t('app.dropFilesHere') }}</span>
                         </div>
-                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim()" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
+                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim() || selectedSkill" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() && !selectedSkill || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
                       </div>
                     </form>
                 </QueueDock>
@@ -3731,16 +3788,15 @@ watch(activeWorkspace, (project) => {
             </header>
 
             <form class="sztu-composer landing-composer" :class="{ 'drag-over': isDragOver }" @submit.prevent="submit()" @dragenter="onDragEnter" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-              <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="providerStatus?.skills ?? []" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
-              <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length }">
+              <SlashCommandMenu v-if="slashMenuOpen" :query="slashQuery ?? ''" :skills="composerSkills" :loading="skillQueryLoading" :error="skillQueryError" :connected="connected" :active-index="slashMenuActiveIndex" @activate="slashMenuActiveIndex = $event" @select="chooseSkill" />
+              <div class="composer-input-shell" :class="{ 'has-plugin-tags': insertedPlugins.length, 'has-skill-tag': selectedSkill }">
                 <div v-if="attachedFiles.length" class="attachment-strip"><AttachmentChip v-for="(file, index) in attachedFiles" :key="file.path" :file="file" @remove="removeAttachment(index)" /></div>
                 <p v-if="attachedFiles.some((file) => file.kind === 'image')" class="image-processing-mode" aria-live="polite">{{ imageProcessingLabel }}</p>
-                <div v-if="insertedPlugins.length" class="plugin-tag-strip"><span v-for="p in insertedPlugins" :key="p.id" class="plugin-tag-chip"><PluginIcon :name="p.name" :size="16" /><em>{{ p.display_name }}</em><button type="button" :aria-label="'移除' + p.display_name" @click="removeInsertedPlugin(p.id)"><AppIcon name="X" :size="12" /></button></span></div>
                 <div v-if="ocrProgress" class="ocr-progress-bar">
                   <AppIcon name="LoaderCircle" class="ocr-spin" :size="13" />
                   <span>{{ t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) }}</span>
                 </div>
-                <textarea ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="!!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
+                <PromptEditor :skill="selectedSkill" :plugins="insertedPlugins" @remove-skill="removeSelectedSkill" @remove-plugin="removeInsertedPlugin" ref="launcherPrompt" v-model="prompt" :aria-label="t('app.taskInput')" :disabled="!!ocrProgress" :placeholder="ocrProgress ? t('app.ocrProcessing', { current: ocrProgress.current, total: ocrProgress.total }) : t('app.composerPlaceholder')" rows="4" @input="handlePromptInput" @keydown="onComposerKeydown" @paste="onPasteImage" />
                 <div v-if="isDragOver" class="drag-overlay">
                   <AppIcon name="Upload" :size="32" />
                   <span>{{ t('app.dropFilesHere') }}</span>
@@ -3756,7 +3812,7 @@ watch(activeWorkspace, (project) => {
                   </div>
                   <span />
                   <ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" />
-                  <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim()"><AppIcon name="ArrowUp" :size="15" /></button>
+                  <button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTask')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-else class="send" type="submit" :aria-label="t('app.sendTask')" :disabled="!connected || !prompt.trim() && !selectedSkill"><AppIcon name="ArrowUp" :size="15" /></button>
                 </div>
               </div>
               <div class="launcher-bottom-controls">
@@ -3811,7 +3867,7 @@ watch(activeWorkspace, (project) => {
       </section>
       <section v-if="page === 'automations'" class="chat-main"><AutomationPage :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" /></section>
 
-      <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" /></section>
+      <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" @use-in-chat="useSkillInChat" /></section>
 
       <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p>
         <!-- 微信 OpenClaw 接入功能暂时隐藏，保留代码待后续恢复。

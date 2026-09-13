@@ -1,4 +1,12 @@
 export const palette = {
+  modesTitle: "工作模式",
+  modesHint: "选择后插入命令",
+  modeNames: { plan: "规划", edits: "编辑", auto: "自动" },
+  modeHints: { plan: "分析与制定计划", edits: "修改项目文件", auto: "自动执行操作" },
+  searchHint: "输入名称、用途或插件",
+  loadingSkills: "正在查询当前项目的技能…",
+  skillsError: "技能目录刷新失败，暂时显示已缓存目录",
+
   menuAria: "斜杠命令与技能",
   commandGroupAria: "命令",
   commandGroupTitle: "命令",
