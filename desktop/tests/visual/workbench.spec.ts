@@ -144,7 +144,7 @@ test("launcher model picker opens fully above the composer without being clipped
   expect(painted).toEqual({ opensAboveShell: true, topPaintsPopover: true });
 });
 
-test("work page remains mounted while navigating between top-level pages", async ({ page }) => {
+test("all tasks stays inside settings while the work page remains mounted", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -152,10 +152,18 @@ test("work page remains mounted while navigating between top-level pages", async
   await expect(workHost).toBeVisible();
   await workHost.evaluate((element) => { (element as HTMLElement & { persistentMarker?: string }).persistentMarker = "mounted"; });
 
-  await page.getByRole("button", { name: "全部任务", exact: true }).click();
-  await expect(workHost).toBeHidden();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("dialog", { name: "设置", exact: true }).getByRole("button", { name: "全部任务", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "设置", exact: true });
+  await expect(dialog.getByRole("heading", { name: "全部任务", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "全部任务", exact: true })).toHaveClass(/active/);
+  await expect(workHost).toBeVisible();
   expect(await workHost.evaluate((element) => (element as HTMLElement & { persistentMarker?: string }).persistentMarker)).toBe("mounted");
 
+  await dialog.getByRole("button", { name: "外观", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "外观", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "全部任务", exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: /新建任务/ }).first().click();
   await expect(workHost).toBeVisible();
   expect(await workHost.evaluate((element) => (element as HTMLElement & { persistentMarker?: string }).persistentMarker)).toBe("mounted");
@@ -713,8 +721,10 @@ test("new task, keyboard shortcut, and primary tools remain interactive", async 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await page.getByRole("button", { name: "全部任务", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("dialog", { name: "设置", exact: true }).getByRole("button", { name: "全部任务", exact: true }).click();
   await expect(page.getByRole("heading", { name: "全部任务", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: /新建任务/ }).click();
   await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("汝之所想，皆以言成")).toBeFocused();
@@ -725,8 +735,7 @@ test("new task, keyboard shortcut, and primary tools remain interactive", async 
   await expect(page.getByPlaceholder("汝之所想，皆以言成")).toBeFocused();
   await expect(page.getByRole("listbox", { name: "斜杠命令与技能" })).toBeVisible();
 
-  await page.getByRole("button", { name: "浏览器连接", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "浏览器连接", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /新建任务/ }).click();
   await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
 });
@@ -822,7 +831,7 @@ test("sidebar keeps the 952px boundary and auto-collapses below it", async ({ pa
 
   await expandNavigation.click();
   await expect(page.getByRole("button", { name: /新建任务/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "浏览器连接", exact: true })).toHaveCount(0);
   await page.getByPlaceholder("汝之所想，皆以言成").fill("/");
   await expect(page.getByRole("listbox", { name: "斜杠命令与技能" })).toBeVisible();
   await expect(page).toHaveScreenshot("agent-sidebar-v6-951.png", { fullPage: true });
@@ -1571,11 +1580,9 @@ test("one continuous main surface owns the rounded upper-left corner", async ({ 
 
   const scenarios = [
     { route: "work", surfaces: [".work-page-host"] },
-    { route: "board", surfaces: [".board-page"] },
     { route: "source-control", surfaces: [".source-control-host"] },
     { route: "automations", surfaces: [".chat-main", ".chat-automations"] },
     { route: "skills", surfaces: [".chat-main", ".skill-center"] },
-    { route: "webbridge", surfaces: [".simple-page"] },
   ] as const;
 
   for (const scenario of scenarios) {
@@ -2135,7 +2142,5 @@ test("Escape closes only the model form and restores focus to its trigger", asyn
   await expect(page.locator(".model-manager")).toBeVisible();
   await expect(addButton).toBeFocused();
 });
-
-
 
 

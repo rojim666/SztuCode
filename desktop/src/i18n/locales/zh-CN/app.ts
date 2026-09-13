@@ -104,7 +104,6 @@ export const app = {
   noProjectSelected: "未选择项目",
   sourceControl: "源代码管理",
   workspace: "工作区",
-  taskIntro: "开启「{name}」的构筑之路。",
   currentProject: "当前项目",
 
   // 对话轮次圆点导航

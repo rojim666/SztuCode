@@ -21,7 +21,7 @@ import AgentLogo from "../timeline/AgentLogo.vue";
 import ModelManager from "../ModelConfig/ModelManager.vue";
 import AppUpdater from "./AppUpdater.vue";
 
-type SettingsSection = "appearance" | "general" | "agent" | "integrations" | "about";
+type SettingsSection = "tasks" | "appearance" | "general" | "agent" | "integrations" | "about";
 
 const PROJECT_URL = "https://github.com/rojim666/SztuCode";
 
@@ -253,6 +253,7 @@ async function useCcswitchProvider(providerId: string) {
 }
 
 const sections = computed<Array<{ id: SettingsSection; label: string; icon: string }>>(() => [
+  { id: "tasks", label: t("app.allTasks"), icon: "LayoutDashboard" },
   { id: "appearance", label: t("settings.sections.appearance"), icon: "Palette" },
   { id: "general", label: t("settings.sections.general"), icon: "SlidersHorizontal" },
   { id: "agent", label: t("settings.sections.agent"), icon: "Cpu" },
@@ -297,8 +298,8 @@ function selectLocale(value: AppLocale) {
 
       <div class="settings-dialog__body">
         <nav class="settings-dialog__nav" :aria-label="t('settings.navAria')">
-          <button v-for="item in sections" :key="item.id" type="button" class="nav-item" :class="{ active: activeSection === item.id }" @click="activeSection = item.id">
-            <AppIcon :name="item.icon" :size="16" :filled="activeSection === item.id" />
+          <button v-for="item in sections" :key="item.id" type="button" class="nav-item" :class="{ active: activeSection === item.id }" :aria-label="item.label" :title="item.label" @click="activeSection = item.id">
+            <AppIcon :name="item.icon" :size="20" />
             <span>{{ item.label }}</span>
           </button>
           <div class="settings-dialog__nav-foot">
@@ -308,7 +309,8 @@ function selectLocale(value: AppLocale) {
         </nav>
 
         <main class="settings-dialog__content">
-          <template v-if="activeSection === 'appearance'">
+          <slot v-if="activeSection === 'tasks'" name="tasks" />
+          <template v-else-if="activeSection === 'appearance'">
             <header class="settings-pane-title">
               <div>
                 <h2>{{ t('settings.appearance.title') }}</h2>
@@ -826,11 +828,11 @@ function selectLocale(value: AppLocale) {
 .nav-item.active {
   color: var(--text);
   background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface-soft));
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .nav-item.active svg {
-  color: var(--accent);
+  color: inherit;
 }
 
 .settings-dialog__nav-foot {
@@ -1952,7 +1954,7 @@ function selectLocale(value: AppLocale) {
   height: min(760px, 92vh);
   min-height: min(560px, 90vh);
   border: 0;
-  border-radius: 10px;
+  border-radius: 24px;
   background: var(--app-bg);
   box-shadow: 0 18px 48px rgba(0, 0, 0, .16);
   grid-template-rows: 68px minmax(0, 1fr);
@@ -1974,24 +1976,34 @@ function selectLocale(value: AppLocale) {
 .settings-dialog__body { grid-template-columns: 216px minmax(0, 1fr); }
 
 .settings-dialog__nav {
+  --settings-nav-color: #171717;
   padding: 18px 12px 14px;
+  overflow-y: auto;
   background: var(--chrome-bg);
   border-right: 0;
 }
 
 .nav-item {
-  min-height: 38px;
+  min-height: 44px;
+  flex-shrink: 0;
   margin: 2px 0;
   padding: 0 12px;
   border-radius: 6px;
-  font-size: 13px;
+  gap: 12px;
+  color: var(--settings-nav-color);
+  font-size: 15px;
+  font-weight: 400;
   transition: background .12s ease, color .12s ease;
 }
 
-.nav-item:hover { transform: none; background: var(--surface-soft); }
+.nav-item:hover { color: var(--settings-nav-color); transform: none; background: var(--surface-soft); }
+
+:global([data-app-theme="dark"] .settings-dialog__nav) {
+  --settings-nav-color: #f5f5f5;
+}
 
 .nav-item.active {
-  color: var(--text);
+  color: var(--settings-nav-color);
   background: var(--surface-raised);
   border-color: transparent;
   box-shadow: none;
@@ -2033,7 +2045,10 @@ function selectLocale(value: AppLocale) {
 .appearance-preview { height: 96px; border-radius: 6px; }
 
 @media (max-width: 760px) {
-  .settings-dialog { border-radius: 8px; }
+  .settings-dialog { border-radius: 20px; }
+  .settings-dialog__body { grid-template-columns: 60px minmax(0, 1fr); }
+  .settings-dialog__nav { padding-inline: 6px; }
+  .nav-item { padding-inline: 0; }
   .settings-dialog__content { padding: 20px 16px 26px; }
 }
 </style>

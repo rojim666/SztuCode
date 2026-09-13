@@ -98,6 +98,7 @@ defineExpose({ focus });
 .prompt-editor[aria-disabled="true"] { opacity: .6; cursor: default; }
 .prompt-editor .prompt-inline-token { display: inline-flex; align-items: center; gap: 5px; margin-right: 7px; color: #2583e9; font-size: 13px; font-weight: 600; vertical-align: baseline; user-select: all; }
 .prompt-inline-token svg { flex: none; align-self: center; }
-.task-launcher .prompt-editor { order: 2; min-height: 112px; padding: 20px 14px 10px; }
+.task-launcher .prompt-editor { order: 2; min-height: var(--launcher-input-min-height, 50px); padding: var(--launcher-input-padding, 12px 14px 8px); }
+.task-launcher .prompt-editor.is-empty::before { font-size: var(--launcher-placeholder-font-size, 14px); }
 :root[data-app-theme="dark"] .prompt-editor .prompt-inline-token { color: #6ab0ff; }
 </style>

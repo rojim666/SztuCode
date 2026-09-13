@@ -336,6 +336,18 @@ button.composer-project:hover { color: #1a70cf; }
 .session-board > article span { color: #858a91; font-size: 10px; }
 .session-board > h2 { margin: 24px 5px 5px; color: #696e75; font-size: 12px; font-weight: 600; }
 .session-board .session-menu { top: 32px; }
+.settings-task-board { min-width: 0; }
+.settings-task-board > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.settings-task-board > header h2 { margin: 0; color: var(--text); font-size: var(--text-page-title); font-weight: 500; }
+.settings-task-board > header p { margin: 7px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.settings-task-board .outline-button { flex-shrink: 0; color: var(--text); background: var(--surface-raised); border-color: var(--border); }
+.settings-task-board .session-board > article { border-bottom-color: var(--border); }
+.settings-task-board .session-board > article > button:first-child { color: var(--text); }
+.settings-task-board .session-board > article b { font-size: 14px; font-weight: 500; }
+.settings-task-board .session-board > article span { color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.settings-task-board .session-board > h2 { color: var(--text-muted); font-weight: 500; }
+.settings-task-board .empty-state { min-height: 280px; color: var(--text-faint); }
+.settings-task-board .empty-state h2 { color: var(--text-muted); }
 /* work-active 的 main 为 overflow: visible，simple-page 需自身限高滚动 */
 .sztu-main > .simple-page { height: 100%; overflow: auto; background: #fff; border-top-left-radius: 12px; }
 

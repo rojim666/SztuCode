@@ -4,8 +4,6 @@ import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
 import BrandWordmark from "./components/BrandWordmark.vue";
 import { contextSource } from "./utils/contextEvolution";
-import WeChatBridge from "./components/WebBridge/WeChatBridge.vue";
-import WeChatConnectionPanel from "./components/WebBridge/WeChatConnectionPanel.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
 import ProjectInspector from "./components/Inspector/ProjectInspector.vue";
 import ModelConfigMenu from "./components/ModelConfig/ModelConfigMenu.vue";
@@ -46,7 +44,7 @@ import {
 
 const { t } = useI18n({ useScope: "global" });
 
-type Page = "work" | "board" | "skills" | "automations" | "webbridge" | "source-control";
+type Page = "work" | "skills" | "automations" | "source-control";
 type AppMenu = "file" | "edit" | "view" | "help";
 type RuntimeEvent = Record<string, unknown>;
 type ProjectDialogTone = "neutral" | "success" | "danger";
@@ -500,8 +498,6 @@ const isDragOver = ref(false);
 let dragCounter = 0;
 const providerStatus = ref<ProviderStatus | null>(null);
 // 微信连接面板：内嵌 OpenClaw Control UI，扫码/状态在该页面完成
-const wechatPanelOpen = ref(false);
-const wechatControlUiUrl = "http://127.0.0.1:18789/";
 const runtimeSettings = ref<RuntimeSettings | null>(null);
 const imageProcessingLabel = computed(() => imageProcessingMode(runtimeSettings.value?.model ?? "", runtimeSettings.value?.supports_vision ?? null) === "direct" ? "图片将直接发送给当前视觉模型" : "图片将先通过 OCR 转为文本" );
 const settingsOpen = ref(false);
@@ -553,14 +549,6 @@ const activeWorkspaces = computed(() => workspaces.value.filter((item) => !item.
 const archivedProjects = computed(() => workspaces.value.filter((item) => item.archived));
 const liveSessions = computed(() => sessions.value.filter((item) => !item.archived));
 const archivedSessions = computed(() => sessions.value.filter((item) => item.archived));
-const wechatSessions = computed(() => {
-  const workspaceById = new Map(workspaces.value.map((item) => [item.workspace_id, item]));
-  return sessions.value.map((session) => ({
-    session_id: session.session_id,
-    title: session.title,
-    projectName: session.workspace_id ? workspaceById.get(session.workspace_id)?.name ?? null : null,
-  }));
-});
 const operations = ref<DurableOperation[]>([]);
 const recentSessions = computed(() => liveSessions.value.filter((item) => !item.workspace_id).slice(0, 6));
 const normalizedTaskQuery = computed(() => taskQuery.value.trim().toLocaleLowerCase());
@@ -3503,6 +3491,7 @@ watch(activeWorkspace, (project) => {
       <aside id="primary-navigation" class="sztu-sidebar agent-sidebar">
       <header class="sidebar-brand">
         <h1><BrandWordmark /></h1>
+        <span class="sidebar-beta-badge">Beta</span>
         <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <AppIcon name="Search" :size="16" aria-hidden="true" />
         </button>
@@ -3520,14 +3509,12 @@ watch(activeWorkspace, (project) => {
       </Teleport>
 
       <div class="sidebar-command">
-        <button class="new-task-button" @click="pulseIcon('new-task'); beginTask()"><AppIcon name="Compose" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'new-task' }" />{{ t('app.newTask') }}</button>
+        <button class="new-task-button" @click="beginTask()"><AppIcon name="Compose" :size="18" />{{ t('app.newTask') }}</button>
       </div>
 
       <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
-        <button :class="{ active: page === 'board' }" @click="pulseIcon('board'); openPage('board')"><AppIcon name="LayoutDashboard" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'board' }" /><span>{{ t('app.allTasks') }}</span></button>
-        <button :class="{ active: page === 'automations' }" @click="pulseIcon('automations'); openPage('automations')"><AppIcon name="CalendarClock" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'automations' }" /><span>{{ t('app.automations') }}</span></button>
-        <button :class="{ active: page === 'skills' }" @click="pulseIcon('skills'); openPage('skills')"><AppIcon name="Puzzle" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'skills' }" /><span>{{ t('app.skills') }}</span></button>
-        <button :class="{ active: page === 'webbridge' }" @click="pulseIcon('webbridge'); openPage('webbridge')"><AppIcon name="Globe2" :size="16" :class="{ 'icon-pulse': pulsingIcon === 'webbridge' }" /><span>{{ t('app.webbridge') }}</span></button>
+        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="18" /><span>{{ t('app.automations') }}</span></button>
+        <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="18" /><span>{{ t('app.skills') }}</span></button>
       </nav>
 
       <div class="sidebar-workspace">
@@ -3606,8 +3593,8 @@ watch(activeWorkspace, (project) => {
       </div>
 
       <footer v-if="statusBarVisible" class="sidebar-footer">
-        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>{{ t('app.localService') }}</b><small>{{ connected ? t('app.connected') : runtimeConnectionError ? t('app.reconnecting') : t('app.disconnected') }}</small></span></div>
         <button ref="settingsButton" class="settings-link" :title="t('app.settings')" :aria-label="t('app.settings')" :aria-expanded="settingsOpen" @click="openSettings"><AppIcon name="Settings" :size="16" /></button>
+        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>{{ t('app.localService') }}</b><small>{{ connected ? t('app.connected') : runtimeConnectionError ? t('app.reconnecting') : t('app.disconnected') }}</small></span></div>
       </footer>
       </aside>
       <Teleport to="body">
@@ -3676,7 +3663,6 @@ watch(activeWorkspace, (project) => {
               </div>
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
-                  <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><AppIcon name="Terminal" :size="36" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
                   <KeepAlive>
                     <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-file-in-tree="onOpenFileInTreeFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
@@ -3856,25 +3842,10 @@ watch(activeWorkspace, (project) => {
 
       <section v-if="page === 'source-control'" class="source-control-host"><SourceControlPanel v-if="activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :workspace-name="activeWorkspace.name" :workspace-path="activeWorkspace.path" @close="openPage('work')" @changed="refreshIndex(false)" /><div v-else class="source-control-no-workspace"><AppIcon name="GitBranch" :size="30" /><h1>{{ t('app.noWorkspaceAvailable') }}</h1><p>{{ t('app.openProjectForScm') }}</p><button type="button" @click="openPage('work')">{{ t('app.backToWorkspace') }}</button></div></section>
 
-      <section v-if="page === 'board'" class="simple-page board-page">
-        <header><div><h1>{{ t('app.allTasks') }}</h1><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
-        <div class="session-board">
-          <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ officeTaskState(task.status, operations.find(operation => operation.session_id === task.session_id)?.status) }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
-          <h2 v-if="archivedSessions.length">{{ t('app.archived') }}</h2>
-          <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
-          <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
-        </div>
-      </section>
       <section v-if="page === 'automations'" class="chat-main"><AutomationPage :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" /></section>
 
       <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" @use-in-chat="useSkillInChat" /></section>
 
-      <section v-if="page === 'webbridge'" class="simple-page"><header><div><h1>{{ t('app.webbridge') }}</h1><p>{{ t('app.webbridgeSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">重新连接</button></header><div class="bridge-card"><AppIcon name="Globe2" :size="24" /><div><h2>{{ t('app.connectionStatus') }}</h2><p>{{ runtimeConnectionError || (connected ? 'daemon 已连接' : 'daemon 未连接') }}</p></div><span class="status-pill">{{ connected ? '已连接' : t('app.disconnected') }}</span></div><div v-for="server in providerStatus?.mcp_servers ?? []" :key="server.name" class="bridge-card"><div><h2>{{ server.name }}</h2><p>{{ server.status }} · {{ server.tool_count ?? 0 }} 个工具</p></div></div><p>飞书账户授权尚未接入当前 daemon；模拟适配器不会显示为真实账户已连接。</p>
-        <!-- 微信 OpenClaw 接入功能暂时隐藏，保留代码待后续恢复。
-        <WeChatBridge :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" :panel-open="wechatPanelOpen" @open-panel="wechatPanelOpen = !wechatPanelOpen" />
-        <WeChatConnectionPanel v-if="wechatPanelOpen" :sessions="wechatSessions" :connected="connected" :control-ui-url="wechatControlUiUrl" @close="wechatPanelOpen = false" />
-        -->
-      </section>
     </main>
 
     <Teleport to="body">
@@ -3889,7 +3860,19 @@ watch(activeWorkspace, (project) => {
         @permission-change="choosePermissionMode"
         @manage-model="openModelManager"
         @runtime-updated="runtimeSettings = $event"
-      />
+      >
+        <template #tasks>
+          <section class="settings-task-board" aria-labelledby="settings-tasks-title">
+            <header><div><h2 id="settings-tasks-title">{{ t('app.allTasks') }}</h2><p>{{ t('app.boardSubtitle') }}</p></div><button class="outline-button" @click="refreshIndex(false)">{{ t('app.refresh') }}</button></header>
+            <div class="session-board">
+              <article v-for="task in liveSessions" :key="task.session_id" :class="{ pinned: task.pinned }"><button @click="closeSettings(); chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ officeTaskState(task.status, operations.find(operation => operation.session_id === task.session_id)?.status) }} · {{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
+              <h2 v-if="archivedSessions.length">{{ t('app.archived') }}</h2>
+              <article v-for="task in archivedSessions" :key="task.session_id" class="archived"><button @click="closeSettings(); chooseTask(task.session_id)"><b>{{ task.title || 'Untitled task' }}</b><span>{{ task.updated_at }}</span></button><SessionActions :session="task" @changed="refreshIndex(false)" @closed="refreshIndex(false)" /></article>
+              <div v-if="!sessions.length" class="empty-state"><AppIcon name="LayoutDashboard" :size="58" /><h2>{{ t('app.noSessions') }}</h2></div>
+            </div>
+          </section>
+        </template>
+      </SettingsDialog>
 
       <div v-if="projectBeingEdited" class="project-edit-backdrop" role="presentation" @mousedown.self="closeProjectEdit">
         <form class="project-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="project-edit-title" @submit.prevent="saveProjectEdit" @keydown.esc.prevent="closeProjectEdit">

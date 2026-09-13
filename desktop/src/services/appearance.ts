@@ -125,7 +125,8 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
   root.dataset.density = settings.compact ? "compact" : "comfortable";
   root.style.setProperty("--font-ui", uiFonts[settings.uiFont]);
   root.style.setProperty("--font-code", codeFonts[settings.codeFont]);
-  root.style.setProperty("--text-display-title", `${settings.fontSize + 28}px`);
+  // 首页 launcher 大标题基准：比界面字号大 20px（34px @ 默认 14px）
+  root.style.setProperty("--text-display-title", `${settings.fontSize + 20}px`);
   root.style.setProperty("--text-hero-title", `${settings.fontSize + 12}px`);
   root.style.setProperty("--text-page-title", `${settings.fontSize + 8}px`);
   root.style.setProperty("--text-brand-title", `${settings.fontSize + 3}px`);

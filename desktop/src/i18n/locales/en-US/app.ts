@@ -104,7 +104,6 @@ export const app = {
   noProjectSelected: "No project selected",
   sourceControl: "Source Control",
   workspace: "Workspace",
-  taskIntro: "Begin your build journey with \"{name}\".",
   currentProject: "the current project",
 
   // Turn dot navigation
