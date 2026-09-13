@@ -34,6 +34,11 @@ body,
   letter-spacing: 0;
 }
 
+/* 让固定字号的历史组件也随“界面字号”实时缩放。 */
+#app {
+  zoom: var(--ui-font-scale, 1);
+}
+
 button,
 input,
 select,

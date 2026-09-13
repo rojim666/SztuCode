@@ -3,10 +3,11 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
 import AgentLogo from "./AgentLogo.vue";
-import type { ContextInjectionEntry } from "./types";
+import type { ContextInjectionEntry, ToolCallEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
+import { readContextFiles } from "../../utils/contextFiles";
 
-const props = defineProps<{ entries: ContextInjectionEntry[] }>();
+const props = defineProps<{ entries: ContextInjectionEntry[]; toolCalls: ToolCallEntry[]; workspacePath?: string }>();
 const { t } = useI18n({ useScope: "global" });
 const open = ref(false);
 const selectedIndex = ref(Math.max(0, props.entries.length - 1));
@@ -65,15 +66,8 @@ const charLabel = computed(() =>
 );
 const turnLabel = computed(() => `${props.entries.length} 轮`);
 
-// 解析文件列表
-const files = computed(() => {
-  const explicit = entry.value.files?.map((file) => file.trim()).filter(Boolean) ?? [];
-  const inferred = [...body.value.matchAll(/^##\s+([^\n]+)$/gm)]
-    .map((match) => match[1].trim())
-    .filter((value) => /(?:^|[\\/])[^\\/]+\.[a-z0-9]{1,12}$/i.test(value));
-  const gitFiles = [...body.value.matchAll(/^\s*[MADRCU?!]{1,2}\s+(.+)$/gm)].map((match) => match[1].trim());
-  return [...new Set([...explicit, ...inferred, ...gitFiles])];
-});
+// 文件属于当前用户会话轮；正文快照中的 Git 状态和路径标题不代表文件读取。
+const files = computed(() => readContextFiles(props.toolCalls, props.workspacePath));
 
 // 取文件名
 const fileName = (path: string) => {

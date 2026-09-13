@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
-import { reasoningSummary } from "../../utils/reasoningSummary";
+import { reasoningSummary, renderReasoningMarkdown } from "../../utils/reasoningSummary";
 
 const props = defineProps<{
   text: string;
@@ -62,6 +62,8 @@ if (!props.completed && chars.length) schedule();
 const catchingUp = computed(() => displayed.value !== props.text);
 const thinkingActive = computed(() => props.running || catchingUp.value);
 const preview = computed(() => reasoningSummary(displayed.value, thinkingActive.value));
+const previewHtml = computed(() => renderReasoningMarkdown(preview.value));
+const displayedHtml = computed(() => renderReasoningMarkdown(displayed.value));
 </script>
 
 <template>
@@ -77,13 +79,13 @@ const preview = computed(() => reasoningSummary(displayed.value, thinkingActive.
         <AppIcon v-else name="Brain" :size="14" />
       </span>
       <span class="thinking-block__label">{{ t('timeline.thinking.label') }}</span>
-      <span v-if="!open && thinkingActive" ref="previewRef" class="thinking-block__preview">{{ preview }}</span>
+      <span v-if="!open && thinkingActive" ref="previewRef" class="thinking-block__preview" v-html="previewHtml" />
       <AppIcon name="ChevronRight" class="thinking-block__chevron" :size="12" />
     </button>
 
     <transition name="think-expand">
       <div v-if="open" class="thinking-block__body">
-        <div class="thinking-block__bubble">{{ displayed }}</div>
+        <div class="thinking-block__bubble" v-html="displayedHtml" />
       </div>
     </transition>
   </div>

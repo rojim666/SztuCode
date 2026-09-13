@@ -338,7 +338,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 
 .step-badge--done {
   color: #fff;
-  background: #6b7280;
+  background: #22c55e;
 }
 
 @keyframes pulse-blue {
@@ -355,7 +355,7 @@ watch([thinkingPreview, thinkingRunning], () => {
 /* 完成：绿色圆形背景对勾 */
 .activity-phase.done .activity-phase__status {
   color: #fff;
-  background: #6b7280;
+  background: #22c55e;
 }
 
 /* 失败：橙色圆形背景叉号（warning 语义） */

@@ -35,6 +35,8 @@ function looksLikeFilePath(raw: string): string | null {
   if (str.length > 200) return null;
   str = str.replace(/^[(["'‘“]+/, "").replace(/[)\]"'’”。，、；：]+$/, "").trim();
   if (!str || /[\s<>{}[\]"']/.test(str)) return null;
+  // 以斜杠结尾的是目录路径，不应渲染为可打开文件链接。
+  if (/[\\/]$/.test(str)) return null;
   if (/^[a-z]+:\/\//i.test(str)) return null;
   const lineMatch = str.match(/^(.+?)(?::(\d+)(?:-\d+)?)?$/);
   if (!lineMatch) return null;

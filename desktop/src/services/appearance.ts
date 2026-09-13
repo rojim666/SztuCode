@@ -135,6 +135,8 @@ export function applyAppearanceSettings(settings: AppearanceSettings): void {
   root.style.setProperty("--text-control", `${Math.max(11, settings.fontSize - 1)}px`);
   root.style.setProperty("--text-caption", `${Math.max(10, settings.fontSize - 2)}px`);
   root.style.setProperty("--text-micro", `${Math.max(9, settings.fontSize - 3)}px`);
+  // 全局缩放兜底：覆盖仍使用固定 px 的旧组件，确保字号调整立即作用于整个界面。
+  root.style.setProperty("--ui-font-scale", String(settings.fontSize / defaultAppearanceSettings.fontSize));
   root.style.setProperty("--markdown-paragraph-spacing", `${settings.paragraphSpacing}em`);
   root.style.setProperty("--markdown-list-item-spacing", `${(settings.paragraphSpacing * 0.39).toFixed(3)}em`);
   root.style.setProperty("--markdown-line-height", String(settings.paragraphLineHeight));

@@ -1945,43 +1945,44 @@ function selectLocale(value: AppLocale) {
 }
 
 .settings-dialog {
-  width: min(920px, 94vw);
-  height: min(680px, 90vh);
-  min-height: 520px;
+  /* 面板整体放大约 12%；min() 兜底，保证小窗口下不溢出视口。 */
+  width: min(1040px, 94vw);
+  height: min(760px, 92vh);
+  min-height: min(560px, 90vh);
   border: 0;
   border-radius: 10px;
   background: var(--app-bg);
   box-shadow: 0 18px 48px rgba(0, 0, 0, .16);
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 68px minmax(0, 1fr);
 }
 
 .settings-dialog__header {
-  height: 64px;
-  padding: 0 22px;
+  height: 68px;
+  padding: 0 24px;
   background: var(--chrome-bg);
   border-bottom: 1px solid var(--border);
 }
 
 .settings-dialog__header h1 {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: 0;
 }
 
-.settings-dialog__body { grid-template-columns: 196px minmax(0, 1fr); }
+.settings-dialog__body { grid-template-columns: 216px minmax(0, 1fr); }
 
 .settings-dialog__nav {
-  padding: 16px 10px 12px;
+  padding: 18px 12px 14px;
   background: var(--chrome-bg);
   border-right: 0;
 }
 
 .nav-item {
-  min-height: 36px;
+  min-height: 38px;
   margin: 2px 0;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   transition: background .12s ease, color .12s ease;
 }
 
@@ -2000,24 +2001,24 @@ function selectLocale(value: AppLocale) {
 }
 
 .settings-dialog__content {
-  padding: 24px 30px 36px;
+  padding: 28px 34px 42px;
   background: var(--surface-raised);
 }
 
-.settings-pane-title { margin-bottom: 18px; }
+.settings-pane-title { margin-bottom: 20px; }
 .settings-pane-title h2 { font-size: var(--text-page-title); letter-spacing: 0; }
 
 .settings-card {
-  margin-bottom: 10px;
-  padding: 16px;
+  margin-bottom: 12px;
+  padding: 18px;
   border-radius: 8px;
   background: var(--surface-raised);
   box-shadow: none;
   border: 0;
 }
 
-.settings-card__heading { margin-bottom: 13px; }
-.settings-card__heading h3 { font-size: 13px; }
+.settings-card__heading { margin-bottom: 15px; }
+.settings-card__heading h3 { font-size: 14px; }
 
 .option-btn, .wallpaper-btn, .font-btn {
   border-radius: 6px;
@@ -2027,7 +2028,7 @@ function selectLocale(value: AppLocale) {
 .option-btn:hover, .wallpaper-btn:hover, .font-btn:hover { transform: none; box-shadow: none; }
 .option-btn.selected, .wallpaper-btn.selected, .font-btn.selected { box-shadow: none; }
 
-.appearance-preview { height: 84px; border-radius: 6px; }
+.appearance-preview { height: 96px; border-radius: 6px; }
 
 @media (max-width: 760px) {
   .settings-dialog { border-radius: 8px; }

@@ -521,7 +521,7 @@ watch(
     <article
       v-for="turn in turns"
       :key="turn.key"
-      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null, localeTag]"
+      v-memo="[turn.key, turn.state, turn.summaryText, turn.thinkingText, turn.runStats, turn.pending, turn.hasContent, turn.contextInjections, turn.allToolCalls, workspacePath, turn.liveToolCall, turn.completedCalls.length, isTurnExpanded(turn), copiedTurn, retryingTurn, turn.state === 'running' ? now : null, localeTag]"
       class="timeline-step"
     >
       <div v-if="turn.userAttachments.length" class="timeline-user-attachments">
@@ -546,7 +546,7 @@ watch(
       <div v-if="turn.hasContent" class="timeline-assistant">
         <div class="timeline-step__content">
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
-          <ContextInjectionRow v-if="turn.contextInjections?.length" :entries="turn.contextInjections" />
+          <ContextInjectionRow v-if="turn.contextInjections?.length" :entries="turn.contextInjections" :tool-calls="turn.allToolCalls" :workspace-path="workspacePath" />
           <button
             v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"

@@ -1,3 +1,6 @@
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+
 // 推理折叠摘要工具（借鉴 dsh ui-conversation ReasoningRow）：
 // 流式中显示最后一行非空文本跟随输出，结算后显示首行作为稳定标题 ——
 // 折叠态渲染代价恒定，与文本总长度无关；纯函数便于单测
@@ -19,4 +22,11 @@ export function latestLine(text: string): string {
 export function reasoningSummary(text: string, running: boolean): string {
   if (!text.trim()) return "";
   return running ? latestLine(text) : firstLine(text);
+}
+
+/** 将思考区域中的 Markdown 转成安全的内联 HTML。 */
+export function renderReasoningMarkdown(text: string): string {
+  if (!text) return "";
+  const html = marked.parse(text, { async: false, breaks: true }) as string;
+  return DOMPurify.sanitize(html);
 }

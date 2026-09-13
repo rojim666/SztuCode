@@ -414,6 +414,7 @@
   transition: background 0.12s ease, color 0.12s ease;
   text-decoration: none;
   font-size: 14px;
+  font-weight: 500;
   padding: 2px 7px;
   box-shadow: none;
   border: none;

@@ -647,7 +647,7 @@
   overflow: hidden;
   color: #30353a;
   background: #fff;
-  border: 1px solid rgb(25 32 41 / 11%);
+  border: 1px solid rgb(25 32 41 / 9%);
   border-radius: 12px;
   box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%);
   animation: sidebar-preview-in 80ms ease-out;
@@ -787,8 +787,10 @@
 /* 相邻会话条 hover/focus 的底色会糊成一块，行与行之间留出间距 */
 .sidebar-session + .sidebar-session { margin-top: 3px; }
 
+/* 会话条底色改用半透明深色叠加（color-mix 跟随主题翻转），
+   实色灰在侧栏和壁纸材质下会显得发死、像水泥块 */
 .sidebar-session:hover,
-.sidebar-session:focus-within { background: #eef0f2; }
+.sidebar-session:focus-within { background: color-mix(in srgb, var(--text) 6%, transparent); }
 
 .sidebar-session:has(.session-actions[data-pinned="true"]) { box-shadow: inset 2px 0 #397fd0; }
 .sidebar-session:has(.session-actions[data-unread="true"]) :is(.status-task-row b, .project-task, .conversation-row) { color: #202124; font-weight: 650; }
@@ -838,7 +840,7 @@
 .sidebar-session:hover .session-actions .icon-button,
 .sidebar-session:focus-within .session-actions .icon-button { opacity: 1; }
 
-.sidebar-session .session-actions .icon-button:hover { background: #dfe3e6; }
+.sidebar-session .session-actions .icon-button:hover { color: #4b5563; background: #f7f8fa; }
 
 .session-preview {
   position: fixed;
@@ -925,7 +927,7 @@
   border-radius: var(--workspace-surface-radius) 0 0 0;
   box-shadow: none;
 }
-.sztu-main.chat-main, .chat-main { border: 0; }
+.sztu-main.chat-main, .chat-main { border: 1px solid #e2e5e8; }
 .sidebar-brand { display: flex; align-items: center; min-height: 36px; padding: 0 1px 0 8px; }
 .sztu-shell.is-macos .sidebar-brand { min-height: 36px; padding-top: 0; }
 .sidebar-brand h1 { margin: 0; min-width: 0; overflow: hidden; color: var(--accent); font-family: "Aptos Display", "Microsoft YaHei UI", sans-serif; font-size: 15px; font-weight: 650; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
@@ -1143,9 +1145,10 @@
 .status-task-row span { display: grid; min-width: 0; gap: 1px; }
 .status-task-row b { overflow: hidden; color: inherit; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .status-task-row small { color: #9a9fa5; font-size: 9px; white-space: nowrap; }
+/* 选中态会话条：半透明深色叠加（比 hover 更深一档），不再用 #ECEEF0 实色水泥灰 */
 .sidebar-session:has(.status-task-row.active),
 .sidebar-session:has(.project-task.active),
-.sidebar-session:has(.conversation-row.active) { background: #ECEEF0; }
+.sidebar-session:has(.conversation-row.active) { background: color-mix(in srgb, var(--text) 10%, transparent); }
 /* 选中底色由会话容器统一绘制，避免子按钮再次叠加一层 --accent-soft（#E5E9EA）。 */
 .agent-sidebar :is(.status-task-row:hover, .status-task-row.active, .project-task:hover, .project-task.active, .conversation-row:hover, .conversation-row.active) {
   background: transparent !important;

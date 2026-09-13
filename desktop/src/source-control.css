@@ -1525,3 +1525,32 @@
     border-color: var(--border);
   }
 }
+
+/* 源代码管理：用留白和层级替代密集边框，保持轻量的编辑器质感。 */
+.source-control-page { background: #fbfaf8; }
+.source-control-header { flex-basis: 70px; padding: 0 28px; border-bottom: 1px solid #eeeae4; background: #fbfaf8; }
+.source-control-title h1 { font-size: 15px; letter-spacing: .01em; }
+.source-control-title p { margin-top: 3px; color: #9a9288; }
+.source-control-branch { margin: 0 28px; padding: 8px 0; border: 0; border-bottom: 1px solid #eeeae4; background: transparent; }
+.source-control-tabs { padding: 0 28px; border-bottom: 1px solid #eeeae4; background: transparent; }
+.source-control-tabs button { padding: 13px 4px; margin-right: 24px; border: 0; background: transparent; }
+.source-control-tabs button.active { color: #292722; background: transparent; }
+.source-control-tabs button.active::after { height: 2px; bottom: -1px; border-radius: 2px; background: #3d765d; }
+.source-control-summary { padding: 14px 28px 8px; }
+.source-control-search { margin: 0 28px 10px; border: 0; border-bottom: 1px solid #e8e3dc; border-radius: 0; background: transparent; }
+.source-control-search:focus-within { border-color: #8eaa9a; box-shadow: none; }
+.source-control-commit { margin: 0 28px 14px; gap: 10px; }
+.source-control-commit input { border: 0; border-bottom: 1px solid #e8e3dc; border-radius: 0; background: transparent; }
+.source-control-commit input:focus { border-color: #8eaa9a; box-shadow: none; }
+.source-control-commit button { border-radius: 8px; background: #477a62; }
+.source-control-body { border-top: 0; background: #fbfaf8; }
+.source-control-files { padding: 12px 20px 20px 28px; border-right: 1px solid #eeeae4; background: #fbfaf8; }
+.source-control-group + .source-control-group { margin-top: 20px; padding-top: 16px; border-top: 1px solid #eeeae4; }
+.source-control-group-header { padding: 0 4px; color: #928a81; }
+.source-control-group-header span { border: 0; background: #f0ece6; }
+.source-control-file { min-height: 48px; padding: 7px 10px; border: 0; border-radius: 9px; }
+.source-control-file:hover { border: 0; background: #f3efe9; }
+.source-control-file.active { border: 0; box-shadow: inset 2px 0 #477a62; background: #f1ede7; }
+.source-control-diff { background: #fff; }
+.source-control-diff > header { padding: 0 24px; border-bottom: 1px solid #eeeae4; background: #fff; }
+.source-control-diff-code { padding: 24px; }

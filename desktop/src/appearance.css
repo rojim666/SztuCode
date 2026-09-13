@@ -1,11 +1,11 @@
 ﻿:root {
-  --app-bg: #faf8f3;
-  --surface: #fffefa;
-  --surface-soft: #f5f1e9;
+  --app-bg: #f8f5ef;
+  --surface: #ffffff;
+  --surface-soft: #f5f1ea;
   --surface-raised: #ffffff;
-  --chrome-bg: #f7f3eb;
-  --border: #e8e1d6;
-  --border-strong: #d9d0c2;
+  --chrome-bg: #f8f7f5;
+  --border: #e5ded3;
+  --border-strong: #d9d0c3;
   --text: #332e28;
   --text-muted: #7d7469;
   --text-faint: #aaa197;
@@ -16,7 +16,7 @@
   --shadow-modal: 0 24px 70px rgb(74 56 38 / 12%), 0 4px 18px rgb(74 56 38 / 7%);
   --wallpaper-opacity: .28;
   --wallpaper-opacity-dark: .46;
-  --chrome-surface-opacity: 68%;
+  --chrome-surface-opacity: 52%;
   --conversation-surface-opacity: 64%;
   --composer-surface-opacity: 92%;
   --inspector-surface-opacity: 64%;
@@ -154,6 +154,12 @@
 .sztu-main {
   color: var(--text) !important;
   background: var(--surface) !important;
+  /* 工作区外围线用中性灰发丝线：主题里的 --border 是暖米色，直接淡化会留下暖色调，
+     这里改用中性灰 + 低透明度控制"淡"的程度；1px 已是最细可辨识宽度，纯透明会失去边界。 */
+  border: 1px solid color-mix(in srgb, #5f6368 12%, transparent) !important;
+  /* 工作区左上角必须只由 --workspace-surface-radius 决定；这里再写死一个半径，
+     会在缺省 .work-active 的场合露出与 chrome 缺口 (24px) 不一致的圆角。 */
+  border-radius: var(--workspace-surface-radius, 24px) 0 0 0;
 }
 
 .settings-link,
@@ -794,17 +800,19 @@
 }
 
 /* Chrome must not sit under translucent content surfaces. Use the same round
-   corner for the workspace and the complementary chrome cutout. */
-:root:not([data-wallpaper="none"]) .sztu-shell {
+   corner for the workspace and the complementary chrome cutout.
+   纯色材质也走同一套变量：否则 .sztu-main 会落到 workbench 的 squircle 圆角，
+   与壁纸材质下的圆形缺口弧线对不上，左上角在两种材质间就不是同一个圆角。 */
+.sztu-shell {
   --chrome-cutout-left: var(--sidebar-width, 268px);
   --chrome-cutout-radius: 24px;
 }
-:root:not([data-wallpaper="none"]) .sztu-shell.sidebar-collapsed {
+.sztu-shell.sidebar-collapsed {
   --chrome-cutout-left: 0px;
   --chrome-cutout-radius: 0px;
 }
-:root:not([data-wallpaper="none"]) .sztu-main {
-  --workspace-surface-radius: var(--chrome-cutout-radius);
+.sztu-main {
+  --workspace-surface-radius: var(--chrome-cutout-radius, 24px);
   corner-shape: round;
 }
 :root:not([data-wallpaper="none"]) .sztu-shell::before { z-index: -2; }

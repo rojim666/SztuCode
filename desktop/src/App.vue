@@ -2,6 +2,7 @@
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
+import BrandWordmark from "./components/BrandWordmark.vue";
 import WeChatBridge from "./components/WebBridge/WeChatBridge.vue";
 import WeChatConnectionPanel from "./components/WebBridge/WeChatConnectionPanel.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
@@ -727,7 +728,14 @@ function showSessionPreview(task: Session, event: MouseEvent | FocusEvent) {
   projectPreviewId.value = null;
   projectActionsOpen.value = null;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  sessionPreview.value = { task, top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)), left: Math.min(rect.right, window.innerWidth - 262) };
+  // 与会话项保持一点间距，避免详情卡片紧贴在左侧栏边缘。
+  const previewWidth = 254;
+  const previewGap = 8;
+  sessionPreview.value = {
+    task,
+    top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)),
+    left: Math.min(rect.right + previewGap, window.innerWidth - previewWidth - 8),
+  };
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
 function hideSessionPreview() { sessionPreview.value = null; }
@@ -3397,7 +3405,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
     <div class="sidebar-viewport">
       <aside id="primary-navigation" class="sztu-sidebar agent-sidebar">
       <header class="sidebar-brand">
-        <h1>SztuCode</h1>
+        <h1><BrandWordmark /></h1>
         <button class="task-search-toggle" type="button" :title="t('app.searchTasks')" :aria-label="t('app.searchTasks')" :aria-expanded="taskSearchOpen" aria-controls="task-search-popover" @click="toggleTaskSearch">
           <AppIcon name="Search" :size="16" aria-hidden="true" />
         </button>
