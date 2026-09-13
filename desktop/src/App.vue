@@ -3,6 +3,7 @@ import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, re
 import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
 import BrandWordmark from "./components/BrandWordmark.vue";
+import { contextSource } from "./utils/contextEvolution";
 import WeChatBridge from "./components/WebBridge/WeChatBridge.vue";
 import WeChatConnectionPanel from "./components/WebBridge/WeChatConnectionPanel.vue";
 import { confirm, message, open as openDialog, invoke, listen, getCurrentWindow, getCurrentWebview, IS_TAURI } from "./lib/tauri-shim";
@@ -395,6 +396,15 @@ function handleDotHover(idx: number, event: FocusEvent | MouseEvent) {
   });
 }
 
+// 轮次圆点：放大的圆点只向右扩展，左缘必须停在其它圆点所在的竖直基线上。
+// 圆点 8px，中心缩放会把左缘推出 (scale-1)*4px，位移取同样的值即可抵消，
+// 位移与缩放同源推导，避免两处魔法数各自漂移。
+function turnDotWaveStyle(idx: number) {
+  const wave = Math.max(0, 1 - Math.abs(idx - turnDotActive.value));
+  const scale = 1 + wave * 0.55;
+  return { "--wave-offset": `${((scale - 1) * 4).toFixed(2)}px`, "--wave-scale": `${scale}` };
+}
+
 // 监听 orderedTimeline 和 DOM 变化，刷新观察器（在 orderedTimeline 定义后注册，见下方）
 const launcherPrompt = ref<HTMLTextAreaElement | null>(null);
 const slashMenuActiveIndex = ref(0);
@@ -529,7 +539,9 @@ const backgroundUserQuestions = computed(() => pendingUserQuestions.value.filter
 const isRunActive = computed(() => sending.value || runActive.value);
 // 追加模式只代表当前会话已有一个实际运行中的 run；发送请求的短暂窗口仍使用普通发送状态。
 const isAppending = computed(() => Boolean(activeId.value && activeView.value?.runActive));
-const activeWorkspace = computed(() => workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? workspace.value);
+const activeWorkspace = computed(() => activeId.value
+  ? workspaces.value.find((item) => item.workspace_id === active.value?.workspace_id) ?? null
+  : workspace.value);
 // IDE 操作必须跟随当前会话绑定的工作区，不能回退到新建任务启动器残留的项目。
 const activeSessionWorkspace = computed(() => {
   const workspaceId = active.value?.workspace_id;
@@ -798,6 +810,7 @@ function clearTaskSearch() {
 }
 // 延迟卸载工作区面板，保证关闭动画完整播放
 function setInspectorOpen(next: boolean) {
+  next = next && Boolean(activeWorkspace.value);
   if (inspectorCloseTimer) clearTimeout(inspectorCloseTimer);
   if (inspectorOpenFrame !== undefined) cancelAnimationFrame(inspectorOpenFrame);
   if (next) {
@@ -1251,7 +1264,7 @@ function hydrateTimeline(
     const text = String(injection.text ?? injection.preview ?? "");
     const entry: ContextInjectionEntry = {
       id: `ctx-history-${runId}-${current.contextInjections?.length ?? 0}`,
-      source: "system",
+      source: contextSource(injection.source),
       label: String(injection.label ?? t("app.contextInjection")),
       chars: Number(injection.chars ?? text.length),
       preview: String(injection.preview ?? ""),
@@ -1433,7 +1446,7 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
     const step = stepFor(timelineEvent);
     const entry: ContextInjectionEntry = {
       id: `ctx-${runId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      source: String(event.source ?? "system") as ContextInjectionEntry["source"],
+      source: contextSource(event.source),
       label: String(event.label ?? t("app.contextInjection")),
       chars: Number(event.chars ?? 0),
       preview: String(event.preview ?? ""),
@@ -1770,6 +1783,8 @@ async function loadSessionHistory(sessionId: string) {
   return request;
 }
 
+// null is an intentional launcher/projectless selection after initialization.
+let indexSelectionInitialized = false;
 async function refreshIndex(loadHistory = false) {
   connected.value = await connectRuntime();
   runtimeConnectionError.value = getRuntimeConnectionError();
@@ -1808,8 +1823,13 @@ async function refreshIndex(loadHistory = false) {
       view.runActive = false;
     }
   }
-  workspace.value ??= nextWorkspaces[0] ?? null;
-  activeId.value ??= nextSessions.find((item) => !item.archived)?.session_id ?? null;
+  if (!indexSelectionInitialized) {
+    indexSelectionInitialized = true;
+    activeId.value ??= nextSessions.find((item) => !item.archived)?.session_id ?? null;
+    workspace.value = activeId.value
+      ? nextWorkspaces.find(item => item.workspace_id === nextSessions.find(session => session.session_id === activeId.value)?.workspace_id) ?? null
+      : workspace.value ?? nextWorkspaces[0] ?? null;
+  }
   if (loadHistory && activeId.value) await loadSessionHistory(activeId.value);
   loading.value = false;
     if ("__TAURI_INTERNALS__" in window) {
@@ -1833,6 +1853,7 @@ async function submitUserQuestion(pending: PendingUserQuestion, answers: UserQue
 }
 
 function beginTask(project: Workspace | null = workspace.value) {
+  indexSelectionInitialized = true;
   if (!activeId.value) saveComposerDraft(workspace.value?.workspace_id ?? null, prompt.value);
   window.clearTimeout(projectPreviewCloseTimer);
   projectPreviewId.value = null;
@@ -2030,6 +2051,7 @@ async function stopActiveRun() {
   }
 }
 async function chooseTask(id: string) {
+  indexSelectionInitialized = true;
   taskSearchOpen.value = false;
   try {
     const stored = JSON.parse(localStorage.getItem("sztu.unreadSessions") ?? "[]");
@@ -2043,6 +2065,7 @@ async function chooseTask(id: string) {
     detail: { sessionId: id, unread: false },
   }));
   const session = sessions.value.find((item) => item.session_id === id);
+  workspace.value = workspaces.value.find(item => item.workspace_id === session?.workspace_id) ?? null;
   const view = ensureSessionView(id);
   const latestRunId = session?.latest_run_id ?? null;
   if (latestRunId) {
@@ -2508,11 +2531,13 @@ function toggleLauncherPermissionMenu() {
   permissionSettingsError.value = "";
 }
 function chooseLauncherWorkspace(item: Workspace) {
+  indexSelectionInitialized = true;
   workspace.value = item;
   closeLauncherMenus();
   launcherProjectQuery.value = "";
 }
 function clearLauncherWorkspace() {
+  indexSelectionInitialized = true;
   workspace.value = null;
   closeLauncherMenus();
   launcherProjectQuery.value = "";
@@ -3206,6 +3231,14 @@ async function onOpenFileFromTimeline(rawPath: string) {
   inspectorRef.value?.openChangeDiff(rawPath);
 }
 
+// 上下文演进的已读文件记录 → 直接切到右侧「文件」标签页，在文件树中定位并预览该文件
+async function onOpenFileInTreeFromTimeline(rawPath: string) {
+  if (!rawPath || !activeWorkspace.value?.path) return;
+  setInspectorOpen(true);
+  await nextTick();
+  inspectorRef.value?.previewFile(rawPath);
+}
+
 // AI 生成可视化产物（报告 / HTML / 图片）后自动打开右侧功能栏预览最新一个
 function autoPreviewVisualArtifacts(sessionId: string, paths: string[]) {
   if (!sessionId || sessionId !== activeId.value) return;
@@ -3310,6 +3343,12 @@ onBeforeUnmount(() => {
 watch(page, (next) => { if (next === "skills") void refreshIndex(false); });
 // 切换/新建会话后会话流从头渲染，回到底部按钮状态随之复位
 watch(activeId, () => { streamScrolledUp.value = false; });
+watch(activeWorkspace, (project) => {
+  if (project) return;
+  projectMenuOpen.value = false;
+  filesRequest.value = null;
+  setInspectorOpen(false);
+});
 </script>
 
 <template>
@@ -3551,16 +3590,17 @@ watch(activeId, () => { streamScrolledUp.value = false; });
           <div class="work-layout" :class="{ 'no-inspector': !inspectorOpen || !activeWorkspace, 'inspector-resizing': inspectorResizing }" :style="workLayoutStyle">
             <section class="task-canvas">
               <div v-if="sessionLoading" class="session-loading" role="status" :aria-label="t('app.loadingSession')">
-                <AppIcon name="Terminal" :size="40" />
-                <span>{{ t('app.loadingSessionDots') }}</span>
+                <BrandWordmark class="session-loading__logo" aria-hidden="true" />
+                <span class="session-loading__label">{{ t('app.loadingSessionDots') }}</span>
               </div>
               <header class="work-header">
-                <button class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace?.name || t('app.noProjectSelected') }}</span><AppIcon name="ChevronDown" :size="14" /></button>
-                <div v-if="projectMenuOpen" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
+                <button v-if="activeWorkspace" class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace.name }}</span><AppIcon name="ChevronDown" :size="14" /></button>
+                <span v-else class="temporary-task-label">{{ t('app.temporaryTask') }}</span>
+                <div v-if="projectMenuOpen && activeWorkspace" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">
                   <SessionActions :session="active" :active="true" @changed="refreshIndex(false)" @closed="closeActiveSession" />
-                  <button class="source-control-toggle" :title="t('app.sourceControl')" :aria-label="t('app.sourceControl')" :disabled="!activeWorkspace" @click="openPage('source-control')"><AppIcon name="GitBranch" :size="18" /></button>
-                  <button class="workspace-panel-toggle" :title="t('app.workspace')" :aria-label="t('app.workspace')" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><AppIcon name="Folder" :size="18" :filled="inspectorOpen" /></button>
+                  <button v-if="activeWorkspace" class="source-control-toggle" :title="t('app.sourceControl')" :aria-label="t('app.sourceControl')" @click="openPage('source-control')"><AppIcon name="GitBranch" :size="18" /></button>
+                  <button v-if="activeWorkspace" class="workspace-panel-toggle" :title="t('app.workspace')" :aria-label="t('app.workspace')" :aria-expanded="inspectorOpen" :class="{ active: inspectorOpen }" @click="toggleInspector"><AppIcon name="Folder" :size="18" :filled="inspectorOpen" /></button>
                 </div>
               </header>
               <div v-if="pendingPermissions.length" class="global-permission-banner" aria-live="polite">
@@ -3580,7 +3620,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <div v-if="!orderedTimeline.length" class="task-intro"><span class="task-intro-icon"><AppIcon name="Terminal" :size="36" /></span><b>{{ t('app.taskIntro', { name: activeWorkspace?.name || t('app.currentProject') }) }}</b></div>
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-changes="onOpenChangesFromTimeline" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-file-in-tree="onOpenFileInTreeFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->
@@ -3594,7 +3634,7 @@ watch(activeId, () => { streamScrolledUp.value = false; });
                         type="button"
                         role="tab"
                         class="turn-dot"
-                        :style="{ '--wave-offset': `${Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 4}px`, '--wave-scale': `${1 + Math.max(0, 1 - Math.abs(idx - turnDotActive)) * 0.55}` }"
+                        :style="turnDotWaveStyle(idx)"
                         :class="{ active: turnDotActive === idx }"
                         :aria-selected="turnDotActive === idx"
                         :aria-label="t('app.turnAria', { n: idx + 1, label })"

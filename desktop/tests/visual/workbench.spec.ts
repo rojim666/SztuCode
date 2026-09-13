@@ -1767,7 +1767,7 @@ test("context injection expands to the complete live and restored text", async (
   }, liveTail);
 
   const liveRow = page.locator(".ctx-row");
-  await expect(liveRow.getByText("上下文注入", { exact: true })).toBeVisible();
+  await expect(liveRow.getByText("上下文演进", { exact: true })).toBeVisible();
   await liveRow.getByRole("button").click();
   await expect(liveRow.locator("pre")).toContainText(liveTail);
 

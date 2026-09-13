@@ -1,3 +1,5 @@
+.temporary-task-label { color: var(--text-muted); font-size: 13px; }
+
 .task-canvas {
   position: relative;
   min-width: 0;
@@ -8,7 +10,7 @@
   overflow: hidden;
 }
 
-/* 切换会话的加载层：终端图标呼吸 + 提示符光标闪烁 */
+/* 切换会话时完全遮挡旧内容，项目字标轻微呼吸。 */
 .session-loading {
   position: absolute;
   inset: 0;
@@ -18,22 +20,16 @@
   align-items: center;
   justify-content: center;
   gap: 14px;
-  background: rgb(255 255 255 / 78%);
-  backdrop-filter: blur(2px);
+  background: var(--surface, #fff);
 }
-.session-loading svg { color: #3579a8; animation: session-loading-pulse 1.1s ease-in-out infinite; }
-.session-loading span { display: flex; align-items: center; gap: 7px; color: #5b6572; font-size: 13px; }
-.session-loading span::after {
-  width: 8px;
-  height: 15px;
-  background: #3579a8;
-  border-radius: 1px;
-  animation: session-loading-caret 1s steps(1) infinite;
-  content: "";
+.session-loading .session-loading__logo {
+  width: 144px;
+  height: 26px;
+  animation: session-loading-pulse 1.6s ease-in-out infinite;
 }
-@keyframes session-loading-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.86); opacity: .6; } }
-@keyframes session-loading-caret { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .session-loading svg, .session-loading span::after { animation: none; } }
+.session-loading__label { color: var(--text-muted); font-size: 13px; }
+@keyframes session-loading-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.97); opacity: .72; } }
+@media (prefers-reduced-motion: reduce) { .session-loading .session-loading__logo { animation: none; } }
 
 .task-conversation {
   position: relative; /* 为“回到底部”悬浮按钮提供定位上下文 */
@@ -807,6 +803,8 @@
   content: "";
   transform: translateY(-50%);
 }
+/* 双按钮（可恢复）时未读圆点整体左移，避免压住恢复图标 */
+.sidebar-session:has(.session-actions[data-resumable="true"]):has(.session-actions[data-unread="true"]):not(:has(.session-actions[data-running="true"]))::after { right: 58px; }
 .status-session:has(.session-actions[data-running="true"]) .status-task-row > i { visibility: hidden; }
 
 .sidebar-session .project-task,
@@ -828,6 +826,9 @@
 .sidebar-session .project-task.active,
 .sidebar-session .conversation-row:hover,
 .sidebar-session .conversation-row.active { background: transparent; }
+
+/* 已完成（closed）会话在归档按钮旁多一个「恢复任务」按钮，为该行预留双按钮宽度 */
+.sidebar-session:has(.session-actions[data-resumable="true"]) { grid-template-columns: minmax(0, 1fr) 54px; }
 
 .sidebar-session .session-actions .icon-button {
   width: 26px;
@@ -1393,16 +1394,17 @@
 .project-picker-list { display: grid; gap: 2px; max-height: min(240px, 38vh); padding: 6px 0; overflow-y: auto; border-bottom: 1px solid #ececee; }
 .project-picker-list button, .project-picker-actions button { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px 9px; color: #353940; background: transparent; border-radius: 7px; text-align: left; }
 .project-picker-list button:hover, .project-picker-actions button:hover { background: #f4f4f4; }
-.project-picker-list button[aria-checked="true"] { background: #eef4ff; }
-.project-picker-list button[aria-checked="true"]:hover { background: #e3eefa; }
+/* 项目选中底色跟随浅色主题令牌（深色主题在同一文件的暗色适配段覆写）。 */
+.project-picker-list button[aria-checked="true"] { background: var(--accent-soft); }
+.project-picker-list button[aria-checked="true"]:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .project-picker-list button > svg:first-child, .project-picker-actions button > svg { flex: 0 0 auto; color: #666c74; }
-.project-picker-list button[aria-checked="true"] > svg:first-child { color: #1683ef; }
+.project-picker-list button[aria-checked="true"] > svg:first-child { color: var(--accent); }
 .project-picker-list button > span:not(.app-icon), .project-picker-actions button > span:not(.app-icon) { display: grid; gap: 2px; min-width: 0; margin-right: auto; }
 .project-picker-list b, .project-picker-actions span { font-size: 13px; font-weight: 500; color: #252a2f; }
-.project-picker-list button[aria-checked="true"] b { color: #175a9e; }
+.project-picker-list button[aria-checked="true"] b { color: var(--accent); }
 .project-picker-list small { display: block; overflow: hidden; margin-top: 2px; color: #85878b; font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .project-picker-actions small { display: none; }
-.project-picker-list button > svg:last-child { flex: 0 0 auto; color: #1683ef; }
+.project-picker-list button > svg:last-child { flex: 0 0 auto; color: var(--accent); }
 .project-picker-actions { display: grid; gap: 2px; padding: 5px 0 0; }
 .project-picker-empty { margin: 0; padding: 16px 10px; color: #91969d; border-bottom: 1px solid #ececee; font-size: 11px; text-align: center; }
 .task-launcher .composer-input-shell .attachment-strip { padding: 8px 12px 0; }

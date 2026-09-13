@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import AppIcon from "../icons/AppIcon.vue";
 import { useI18n } from "vue-i18n";
-import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, type Session, type Workspace } from "../../services/sztu-runtime";
+import { archiveSession, listWorkspaces, moveSession, pinSession, renameSession, resumeSession, type Session, type Workspace } from "../../services/sztu-runtime";
 import { friendlyError } from "../../utils/errorNotice";
 
 const { t } = useI18n({ useScope: "global" });
@@ -49,6 +49,9 @@ const menuStyle = ref<Record<string, string>>({});
 const copyOpen = ref(false);
 const projectOpen = ref(false);
 const projects = ref<Workspace[]>([]);
+// 已归档和已完成（closed）的会话都需要「恢复任务」入口：后端 session.resume
+// 会取消归档，并把 chat 会话的状态重置为可继续输入。
+const resumable = computed(() => props.session.archived || props.session.status === "closed");
 
 async function positionMenu(point?: { x: number; y: number }) {
   await nextTick();
@@ -97,6 +100,21 @@ async function togglePinned() {
 async function archive() {
   if (props.session.archived || busy.value) return;
   await run(() => archiveSession(props.session.session_id), true);
+}
+
+async function resume() {
+  if (busy.value) return;
+  busy.value = true;
+  notice.value = "";
+  try {
+    await resumeSession(props.session.session_id);
+    closeMenu();
+    emit("changed");
+  } catch (error) {
+    notice.value = t("session.resumeFailed", { message: friendlyError(error).message });
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function openContextMenu(event: MouseEvent) {
@@ -225,8 +243,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'">
-    <button ref="trigger" class="icon-button" :title="session.status === 'active' ? t('session.archiveBlockedTitle') : t('session.archiveTitle')" :aria-label="t('session.archiveTitle')" :disabled="busy || session.status === 'active'" @click="archive"><AppIcon name="Archive" :size="17" /></button>
+  <div class="session-actions" :data-session-id="session.session_id" :data-pinned="pinned" :data-unread="unread && session.status !== 'active'" :data-running="session.status === 'active'" :data-resumable="resumable">
+    <button v-if="resumable" class="icon-button" :title="t('session.resumeTitle')" :aria-label="t('session.resumeTitle')" :disabled="busy" @click="resume"><AppIcon name="RotateCcw" :size="17" /></button>
+    <button v-if="!session.archived" ref="trigger" class="icon-button" :title="session.status === 'active' ? t('session.archiveBlockedTitle') : t('session.archiveTitle')" :aria-label="t('session.archiveTitle')" :disabled="busy || session.status === 'active'" @click="archive"><AppIcon name="Archive" :size="17" /></button>
     <Teleport to="body">
       <div v-if="open" ref="menu" class="session-menu session-menu--floating" :style="menuStyle" role="menu" @contextmenu.stop>
         <form v-if="renaming" @submit.prevent="saveTitle"><input v-model="title" :aria-label="t('session.nameLabel')" maxlength="120" autofocus /><button :disabled="busy">{{ t('session.save') }}</button></form>

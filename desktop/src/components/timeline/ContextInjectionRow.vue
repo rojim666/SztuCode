@@ -1,626 +1,191 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, useId, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
 import AgentLogo from "./AgentLogo.vue";
 import type { ContextInjectionEntry, ToolCallEntry } from "./types";
 import { fileTypeIconUrl } from "../../utils/fileIcon";
 import { readContextFiles } from "../../utils/contextFiles";
+import { contextLines, diffContext, previousContextIndex } from "../../utils/contextEvolution";
 
 const props = defineProps<{ entries: ContextInjectionEntry[]; toolCalls: ToolCallEntry[]; workspacePath?: string }>();
+// 已读文件记录是在工作区文件树中定位文件，而不是打开变更 diff（后者属于任务摘要）
+const emit = defineEmits<{ openFileInTree: [path: string] }>();
 const { t } = useI18n({ useScope: "global" });
+const bodyId = useId();
 const open = ref(false);
-const selectedIndex = ref(Math.max(0, props.entries.length - 1));
-const entry = computed(() => props.entries[selectedIndex.value] ?? props.entries.at(-1)!);
-const latestEntry = computed(() => props.entries.at(-1)!);
-watch(() => props.entries.length, (length) => { selectedIndex.value = Math.max(0, length - 1); });
-
-// 来源标签取自语言包：computed 内调用 t，切换语言时自动重建。
-// 左侧内嵌 mini AgentLogo（带眨眼/眼珠跟随/随机表情），iconActive 控制顶部三点呼吸动效
-const sourceConfig = computed(() => {
-  switch (entry.value.source) {
-    case "intervention":
-      return { label: t("timeline.context.source.intervention"), icon: "ShieldAlert", iconActive: true };
-    case "steering":
-      return { label: t("timeline.context.source.steering"), icon: "CornerDownRight", iconActive: true };
-    case "compaction":
-      return { label: t("timeline.context.source.compaction"), icon: "Archive", iconActive: false };
-    case "canvas":
-      return { label: t("timeline.context.source.canvas"), icon: "PanelTop", iconActive: true };
-    default:
-      return { label: t("timeline.context.source.system"), icon: "Database", iconActive: false };
-  }
+// null follows new snapshots; manually selected history keeps its stable ID.
+const selectedId = ref<string | null>(null);
+const selectedIndex = computed(() => {
+  const index = props.entries.findIndex(item => item.id === selectedId.value);
+  return index < 0 ? props.entries.length - 1 : index;
 });
-
-const body = computed(() => entry.value.text ?? entry.value.preview);
-type ContextDiffRow = { kind: "added" | "removed" | "unchanged"; text: string };
-const previousBody = computed(() => {
-  if (selectedIndex.value <= 0) return "";
-  return props.entries[selectedIndex.value - 1]?.text ?? props.entries[selectedIndex.value - 1]?.preview ?? "";
+const entry = computed(() => props.entries[selectedIndex.value]);
+const body = computed(() => entry.value?.text ?? entry.value?.preview ?? "");
+const previousIndex = computed(() => previousContextIndex(props.entries, selectedIndex.value));
+const previous = computed(() => props.entries[previousIndex.value]);
+const mode = ref<"diff" | "full">("diff");
+const lineLimit = ref(300);
+const fileLimit = ref(12);
+const query = ref("");
+const copyState = ref<"idle" | "copied" | "copyFailed">("idle");
+watch(() => props.entries.map(item => item.id), ids => {
+  if (selectedId.value && !ids.includes(selectedId.value)) selectedId.value = null;
 });
-const diffRows = computed<ContextDiffRow[]>(() => {
-  const currentLines = body.value.split(/\r?\n/);
-  const previousLines = previousBody.value.split(/\r?\n/);
-  const previousCounts = new Map<string, number>();
-  for (const line of previousLines) previousCounts.set(line, (previousCounts.get(line) ?? 0) + 1);
-  const currentCounts = new Map<string, number>();
-  for (const line of currentLines) currentCounts.set(line, (currentCounts.get(line) ?? 0) + 1);
-  const rows: ContextDiffRow[] = [];
-  for (const line of previousLines) {
-    const remaining = currentCounts.get(line) ?? 0;
-    if (remaining > 0) currentCounts.set(line, remaining - 1);
-    else rows.push({ kind: "removed", text: line });
+watch(() => entry.value?.id, () => { lineLimit.value = 300; copyState.value = "idle"; });
+watch(mode, () => { lineLimit.value = 300; });
+watch(query, () => { fileLimit.value = 12; });
+const diff = computed(() => open.value && mode.value === "diff"
+  ? diffContext(previous.value?.text ?? previous.value?.preview ?? "", body.value)
+  : { rows: [], added: 0, removed: 0, coarse: false });
+const contentRows = computed(() => !open.value ? [] : mode.value === "full"
+  ? contextLines(body.value).map(text => ({ kind: "unchanged", text }))
+  : diff.value.rows.filter(row => row.kind !== "unchanged"));
+// Bound rendered output; copying preserves the exact, unformatted snapshot.
+const visibleRows = computed(() => {
+  let chars = 0;
+  const rows = [];
+  for (const row of contentRows.value.slice(0, lineLimit.value)) {
+    const text = row.text.slice(0, 4000);
+    if (chars + text.length > lineLimit.value * 400) break;
+    rows.push({ ...row, text, clipped: text.length < row.text.length });
+    chars += text.length;
   }
-  for (const line of currentLines) {
-    const remaining = previousCounts.get(line) ?? 0;
-    if (remaining > 0) previousCounts.set(line, remaining - 1);
-    else rows.push({ kind: "added", text: line });
-  }
-  if (!rows.length && currentLines.length) return [{ kind: "unchanged", text: `${currentLines.length} 行内容未变化` }];
-  return rows.slice(0, 3000);
+  return rows;
 });
-const addedCount = computed(() => diffRows.value.filter((row) => row.kind === "added").length);
-const removedCount = computed(() => diffRows.value.filter((row) => row.kind === "removed").length);
-const charLabel = computed(() =>
-  latestEntry.value.chars >= 1000 ? `${(latestEntry.value.chars / 1000).toFixed(1)}k` : String(latestEntry.value.chars),
-);
-const turnLabel = computed(() => `${props.entries.length} 轮`);
-
-// 文件属于当前用户会话轮；正文快照中的 Git 状态和路径标题不代表文件读取。
 const files = computed(() => readContextFiles(props.toolCalls, props.workspacePath));
-
-// 取文件名
-const fileName = (path: string) => {
-  const parts = path.replace(/[\\/]+$/, "").split(/[\\/]/);
-  return parts[parts.length - 1] || path;
-};
-
-// 根据文件名返回图标 URL（使用项目自带的 file-icons 资源集）
-// 目录/无扩展名/lock文件等特殊情况回退到 lucide 图标
-const getFileIcon = (name: string) => {
-  const lower = name.toLowerCase();
-  // 目录（末尾带斜杠或无扩展名）
-  if (lower.endsWith("/") || lower.endsWith("\\")) {
-    return { kind: "lucide" as const, icon: "Folder", color: "#d97706" };
-  }
-  const ext = lower.includes(".") ? lower.split(".").pop()! : "";
-  const base = lower.split(/[\\/]/).pop()!;
-  if (!ext && base.length > 0) {
-    return { kind: "lucide" as const, icon: "Folder", color: "#d97706" };
-  }
-  // lock 文件
-  if (ext === "lock") {
-    return { kind: "lucide" as const, icon: "FileLock2", color: "#9ca3af" };
-  }
-  // 图片（本地图标已包含 image 类型，无需特判，走 fileTypeIconUrl 即可）
-  const url = fileTypeIconUrl(name);
-  if (url) {
-    return { kind: "url" as const, url };
-  }
-  // 未匹配到图标的文件使用默认文档图标
-  const defaultUrl = fileTypeIconUrl("a.txt");
-  if (defaultUrl) {
-    return { kind: "url" as const, url: defaultUrl };
-  }
-  return { kind: "lucide" as const, icon: "FileImage", color: "#6b7280" };
-};
-
-// 预计算每个文件的图标信息，避免模板中重复调用
-const fileItems = computed(() => {
-  return files.value.slice(0, 48).map((path) => {
-    const name = fileName(path);
-    const icon = getFileIcon(name);
-    return { path, name, icon };
-  });
-});
-
-const ariaLabel = computed(() => t("timeline.context.ariaLabel", { label: "上下文演进", source: sourceConfig.value.label }));
+const filteredFiles = computed(() => files.value.filter(path => path.toLowerCase().includes(query.value.trim().toLowerCase())));
+const fileItems = computed(() => filteredFiles.value.slice(0, fileLimit.value).map(path => ({
+  path, name: path.split("/").pop() || path, icon: fileTypeIconUrl(path),
+})));
+const sourceLabel = (item: ContextInjectionEntry) => t("timeline.context.source." + item.source);
+const chars = (item?: ContextInjectionEntry) => (item?.chars ?? 0).toLocaleString();
+const charDelta = computed(() => (entry.value?.chars ?? 0) - (previous.value?.chars ?? 0));
+async function copyContent() {
+  const id = entry.value?.id;
+  try {
+    await navigator.clipboard.writeText(body.value);
+    if (entry.value?.id === id) copyState.value = "copied";
+  } catch { if (entry.value?.id === id) copyState.value = "copyFailed"; }
+}
 </script>
 
 <template>
-  <section class="ctx-row" :class="[`ctx-${entry.source}`, { open }]">
-    <button
-      type="button"
-      class="ctx-row__trigger"
-      :aria-label="ariaLabel"
-      :aria-expanded="open"
-      @click="open = !open"
-    >
-      <span class="ctx-row__icon">
-        <AgentLogo :active="sourceConfig.iconActive" size="mini" />
-      </span>
-      <span class="ctx-row__title">上下文演进</span>
-      <span class="ctx-row__badge">{{ t('timeline.context.chars', { count: charLabel }) }}</span>
-      <span class="ctx-row__badge">{{ turnLabel }}</span>
-      <span v-if="files.length" class="ctx-row__badge ctx-row__badge--files">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
-      <AppIcon name="ChevronDown" class="ctx-row__chevron" :size="13" />
+  <section v-if="entry" class="ctx-row" :class="{ open }">
+    <button type="button" class="ctx-row__trigger" :aria-expanded="open" :aria-controls="bodyId" @click="open = !open">
+      <AgentLogo :active="false" size="mini" />
+      <span class="ctx-row__title">{{ t('timeline.context.evolution') }}</span>
+      <span class="ctx-row__badge">{{ t('timeline.context.snapshots', { count: entries.length }) }}</span>
+      <span class="ctx-row__badge">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
+      <AppIcon name="ChevronDown" class="ctx-row__chevron" :size="14" />
     </button>
-
-    <transition name="ctx-expand">
-      <div v-if="open" class="ctx-row__body">
-        <div class="ctx-row__turns" role="list" aria-label="上下文轮次">
-          <button
-            v-for="(item, index) in props.entries"
-            :key="item.id"
-            type="button"
-            class="ctx-row__turn"
-            :class="{ selected: index === selectedIndex }"
-            @click="selectedIndex = index"
-          >
-            <span>第 {{ index + 1 }} 轮</span>
-            <small>{{ item.chars >= 1000 ? `${(item.chars / 1000).toFixed(1)}k` : item.chars }} 字符</small>
+    <div v-if="open" :id="bodyId" class="ctx-row__body">
+      <div class="ctx-row__heading">
+        <span>{{ t('timeline.context.snapshotHistory') }}</span>
+        <button type="button" class="ctx-row__action" :aria-pressed="selectedId === null" @click="selectedId = null">
+          {{ t(selectedId === null ? 'timeline.context.following' : 'timeline.context.followLatest') }}
+        </button>
+      </div>
+      <div class="ctx-row__turns" role="group" :aria-label="t('timeline.context.snapshotHistory')">
+        <button v-for="(item, index) in entries" :key="item.id" type="button" class="ctx-row__turn"
+          :class="{ selected: index === selectedIndex }" :aria-pressed="index === selectedIndex"
+          :title="item.label" @click="selectedId = item.id">
+          <span>{{ t('timeline.context.snapshotNumber', { count: index + 1 }) }}</span>
+          <small>{{ sourceLabel(item) }} · {{ t('timeline.context.chars', { count: chars(item) }) }}</small>
+        </button>
+      </div>
+      <div class="ctx-row__summary">
+        <strong>{{ entry.label || sourceLabel(entry) }}</strong>
+        <span>{{ t('timeline.context.chars', { count: chars(entry) }) }}</span>
+        <span v-if="previous">{{ t('timeline.context.charDelta', { count: (charDelta > 0 ? '+' : '') + charDelta.toLocaleString() }) }}</span>
+      </div>
+      <section class="ctx-row__section">
+        <div class="ctx-row__toolbar">
+          <div role="group" :aria-label="t('timeline.context.contentView')" class="ctx-row__modes">
+            <button type="button" :aria-pressed="mode === 'diff'" @click="mode = 'diff'">{{ t('timeline.context.changes') }}</button>
+            <button type="button" :aria-pressed="mode === 'full'" @click="mode = 'full'">{{ t('timeline.context.fullContent') }}</button>
+          </div>
+          <button type="button" class="ctx-row__action" :disabled="!body" @click="copyContent">{{ t('timeline.context.copy') }}</button>
+          <span role="status">{{ copyState === 'idle' ? '' : t('timeline.context.' + copyState) }}</span>
+        </div>
+        <p class="ctx-row__hint" v-if="mode === 'diff'">
+          {{ previous ? t('timeline.context.comparedWith', { count: previousIndex + 1 }) : t('timeline.context.initialSnapshot') }}
+          <span class="ctx-row__added">+{{ diff.added }}</span> / <span class="ctx-row__removed">−{{ diff.removed }}</span>
+          {{ t('timeline.context.lines') }}
+        </p>
+        <p v-if="diff.coarse && mode === 'diff'" class="ctx-row__hint">{{ t('timeline.context.coarseDiff') }}</p>
+        <p v-if="!body" class="ctx-row__empty">{{ t('timeline.context.emptyContent') }}</p>
+        <p v-else-if="!contentRows.length" class="ctx-row__empty">{{ t('timeline.context.unchanged') }}</p>
+        <pre v-else class="ctx-row__content" tabindex="0" :aria-label="t('timeline.context.contentView')"><code v-for="(row, index) in visibleRows" :key="index" :class="'ctx-diff-' + row.kind">{{ mode === 'diff' ? (row.kind === 'added' ? '+ ' : '− ') : '' }}{{ row.text }}{{ row.clipped ? ' …' : '' }}{{ '\n' }}</code></pre>
+        <p v-if="visibleRows.some(row => row.clipped)" class="ctx-row__hint">{{ t('timeline.context.longLines') }}</p>
+        <button v-if="visibleRows.length < contentRows.length" type="button" class="ctx-row__action" @click="lineLimit += 300">
+          {{ t('timeline.context.moreLines', { count: contentRows.length - visibleRows.length }) }}
+        </button>
+      </section>
+      <section class="ctx-row__section ctx-row__files">
+        <div class="ctx-row__heading"><strong>{{ t('timeline.context.readFiles') }}</strong><span>{{ files.length }}</span></div>
+        <input v-if="files.length > 6" v-model="query" type="search" class="ctx-row__search" :placeholder="t('timeline.context.searchFiles')" :aria-label="t('timeline.context.searchFiles')" />
+        <div v-if="fileItems.length" class="ctx-row__file-grid">
+          <button v-for="item in fileItems" :key="item.path" type="button" class="ctx-row__file-chip" :title="item.path" @click="emit('openFileInTree', item.path)">
+            <img v-if="item.icon" :src="item.icon" alt="" width="16" height="16" />
+            <AppIcon v-else name="FileText" :size="16" />
+            <span><b>{{ item.name }}</b><small>{{ item.path }}</small></span>
           </button>
         </div>
-        <div v-if="files.length" class="ctx-row__section">
-          <div class="ctx-row__section-header">
-            <AppIcon name="Folder" :size="14" />
-            <span>{{ t('timeline.context.filesSection') }}</span>
-            <span class="ctx-row__section-count">{{ t('timeline.context.fileCount', { count: files.length }) }}</span>
-          </div>
-          <div class="ctx-row__file-grid">
-            <div
-              v-for="item in fileItems"
-              :key="item.path"
-              class="ctx-row__file-chip"
-              :title="item.path"
-            >
-              <img
-                v-if="item.icon.kind === 'url'"
-                :src="item.icon.url"
-                class="ctx-row__file-icon-img"
-                :alt="item.name"
-              />
-              <AppIcon
-                v-else
-                :name="item.icon.icon"
-                :size="16"
-                :style="{ color: item.icon.color }"
-              />
-              <span>{{ item.name }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="body" class="ctx-row__section ctx-row__section--content">
-          <div class="ctx-row__section-header">
-            <AppIcon :name="sourceConfig.icon" :size="14" />
-            <span>本轮变化</span>
-            <span class="ctx-row__diff-stat ctx-row__diff-stat--added">+{{ addedCount }}</span>
-            <span class="ctx-row__diff-stat ctx-row__diff-stat--removed">-{{ removedCount }}</span>
-          </div>
-          <div class="ctx-row__legend">
-            <span class="ctx-row__legend-item ctx-row__legend-item--added">新增上下文</span>
-            <span class="ctx-row__legend-item ctx-row__legend-item--removed">删除 / 压缩上下文</span>
-          </div>
-          <pre class="ctx-row__content ctx-row__diff-content"><code v-for="(row, index) in diffRows" :key="`${index}-${row.kind}`" :class="`ctx-diff-${row.kind}`">{{ row.kind === 'added' ? '+ ' : row.kind === 'removed' ? '- ' : '  ' }}{{ row.text }}{{ '\n' }}</code></pre>
-        </div>
-      </div>
-    </transition>
+        <p v-else class="ctx-row__empty">{{ t(files.length ? 'timeline.context.noMatchingFiles' : 'timeline.context.noReadFiles') }}</p>
+        <button v-if="filteredFiles.length > fileLimit" type="button" class="ctx-row__action" @click="fileLimit += 24">
+          {{ t('timeline.context.moreFiles', { count: filteredFiles.length - fileLimit }) }}
+        </button>
+      </section>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.ctx-row {
-  margin: 6px 0;
-  font-size: 13px;
-}
-
-.ctx-row__trigger {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  min-height: 30px;
-  padding: 4px 6px;
-  margin: 0 -6px;
-  color: #6b7280;
-  background: transparent;
-  border: 0;
-  border-radius: 5px;
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.ctx-row__trigger:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-.ctx-row__icon {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  flex: 0 0 auto;
-  border-radius: 7px;
-  background: transparent;
-}
-.ctx-row__icon .app-icon { margin: 0; }
-
-.ctx-row__title {
-  flex: 0 0 auto;
-  color: #374151;
-  font-weight: 500;
-  font-size: 13px;
-}
-
-.ctx-row__badge {
-  padding: 2px 8px;
-  color: #6b7280;
-  background: #f3f4f6;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 17px;
-}
-
-.ctx-row__badge--files {
-  color: #4b5563;
-}
-
-.ctx-row__chevron {
-  flex: 0 0 auto;
-  margin-left: auto;
-  color: #9ca3af;
-  transition: transform 0.18s ease;
-  opacity: 0;
-}
-
-.ctx-row__trigger:hover .ctx-row__chevron,
-.ctx-row.open .ctx-row__chevron {
-  opacity: 1;
-}
-
-.ctx-row.open .ctx-row__chevron {
-  transform: rotate(180deg);
-}
-
-.ctx-row__body {
-  margin: 5px 0 7px 0;
-  padding: 16px 18px 18px;
-  background: #ffffff;
-  border: 0;
-  border-left: 2px solid #e5e7eb;
-  border-radius: 0;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.ctx-row__turns {
-  display: flex;
-  gap: 5px;
-  padding: 0 0 12px;
-  overflow-x: auto;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.ctx-row__turn {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: baseline;
-  gap: 5px;
-  padding: 6px 10px;
-  color: #6b7280;
-  background: #f8fafc;
-  border: 1px solid transparent;
-  border-radius: 5px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.ctx-row__turn small {
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.ctx-row__turn:hover {
-  color: #374151;
-  background: #e5e7eb;
-}
-
-.ctx-row__turn.selected {
-  color: #111827;
-  background: #ffffff;
-  border-color: #cbd5e1;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.08);
-}
-
-.ctx-row__section-header {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 11px;
-  color: #334155;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-.ctx-row__section-count {
-  margin-left: auto;
-  color: #9ca3af;
-  font-weight: 500;
-  font-size: 12px;
-}
-
-.ctx-row__diff-stat {
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.ctx-row__diff-stat--added,
-.ctx-row__legend-item--added {
-  color: #15803d;
-}
-
-.ctx-row__diff-stat--removed,
-.ctx-row__legend-item--removed {
-  color: #b91c1c;
-}
-
-.ctx-row__legend {
-  display: flex;
-  gap: 12px;
-  margin: -3px 0 7px;
-  color: #64748b;
-  font-size: 11px;
-}
-
-.ctx-row__legend-item::before {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin: 0 4px 1px 0;
-  border-radius: 50%;
-  content: "";
-}
-
-.ctx-row__legend-item--added::before { background: #4ade80; }
-.ctx-row__legend-item--removed::before { background: #f87171; }
-
-.ctx-row__file-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.ctx-row__file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 220px;
-  padding: 6px 10px;
-  color: #374151;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
-  border-radius: 6px;
-  font: 12px/1.5 "SF Mono", "JetBrains Mono", Consolas, "Microsoft YaHei Mono", monospace;
-  transition: all 0.12s ease;
-  cursor: default;
-}
-
-.ctx-row__file-chip:hover {
-  border-color: #c7cdd4;
-  background: #f9fafb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transform: translateY(-0.5px);
-}
-
-.ctx-row__file-chip span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ctx-row__file-icon-img {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  object-fit: contain;
-  display: block;
-}
-
-.ctx-row__section--content {
-  margin-top: 2px;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.ctx-row__content {
-  max-height: 360px;
-  margin: 0;
-  padding: 14px 16px;
-  overflow: auto;
-  color: #1e293b;
-  background: #fbfdff;
-  border: 0;
-  border-radius: 5px;
-  box-shadow: inset 0 0 0 1px #edf2f7;
-  font: 13px/1.8 "SF Mono", "JetBrains Mono", Consolas, "Microsoft YaHei Mono", monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.ctx-row__diff-content code {
-  display: block;
-  min-height: 23px;
-  padding: 1px 10px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.ctx-row__diff-content .ctx-diff-added {
-  color: #166534;
-  background: #effcf3;
-  box-shadow: inset 3px 0 #34d399;
-}
-
-.ctx-row__diff-content .ctx-diff-removed {
-  color: #991b1b;
-  background: #fff5f5;
-  box-shadow: inset 3px 0 #f87171;
-}
-
-.ctx-row__diff-content .ctx-diff-unchanged {
-  color: #94a3b8;
-  background: #fbfdff;
-}
-
-.ctx-row__content::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-.ctx-row__content::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.ctx-row__content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-/* 展开/折叠动画 */
-.ctx-expand-enter-active,
-.ctx-expand-leave-active {
-  transition: all 0.2s ease;
-  overflow: hidden;
-}
-
-.ctx-expand-enter-from,
-.ctx-expand-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-  max-height: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
-.ctx-expand-enter-to,
-.ctx-expand-leave-from {
-  opacity: 1;
-  transform: translateY(0);
-  max-height: 800px;
-}
-
-/* 暗色主题 */
-:global([data-app-theme="dark"] .ctx-row__trigger:hover){
-  background: rgba(255, 255, 255, 0.05);
-}
-
-:global([data-app-theme="dark"] .ctx-row__icon){
-  background: transparent !important;
-}
-
-:global([data-app-theme="dark"] .ctx-row__title){
-  color: #d1d5db;
-}
-
-:global([data-app-theme="dark"] .ctx-row__badge){
-  color: #9ca3af;
-  background: rgba(255, 255, 255, 0.07);
-}
-
-:global([data-app-theme="dark"] .ctx-row__badge--files){
-  color: #d1d5db;
-}
-
-:global([data-app-theme="dark"] .ctx-row__chevron){
-  color: #6b7280;
-}
-
-:global([data-app-theme="dark"] .ctx-row__body){
-  background: #171b21;
-  border-left-color: #374151;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
-}
-
-:global([data-app-theme="dark"] .ctx-row__turns){
-  border-bottom-color: #28303a;
-}
-
-:global([data-app-theme="dark"] .ctx-row__turn){
-  color: #aab4c0;
-  background: #20262e;
-}
-
-:global([data-app-theme="dark"] .ctx-row__turn:hover){
-  color: #e5e7eb;
-  background: #2b3440;
-}
-
-:global([data-app-theme="dark"] .ctx-row__turn.selected){
-  color: #f3f4f6;
-  background: #252d37;
-  border-color: #4b5563;
-}
-
-:global([data-app-theme="dark"] .ctx-row__section-header){
-  color: #9ca3af;
-}
-
-:global([data-app-theme="dark"] .ctx-row__section-count){
-  color: #6b7280;
-}
-
-:global([data-app-theme="dark"] .ctx-row__file-chip){
-  color: #d1d5db;
-  background: #232323;
-  border-color: #333;
-}
-
-:global([data-app-theme="dark"] .ctx-row__file-chip:hover){
-  border-color: #444;
-  background: #2a2a2a;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-:global([data-app-theme="dark"] .ctx-row__section--content){
-  border-top-color: #28303a;
-}
-
-:global([data-app-theme="dark"] .ctx-row__content){
-  color: #dbe4ee;
-  background: #14181d;
-  box-shadow: inset 0 0 0 1px #28303a;
-}
-
-:global([data-app-theme="dark"] .ctx-row__diff-content .ctx-diff-added){
-  color: #86efac;
-  background: #14291d;
-}
-
-:global([data-app-theme="dark"] .ctx-row__diff-content .ctx-diff-removed){
-  color: #fda4af;
-  background: #321b20;
-}
-
-:global([data-app-theme="dark"] .ctx-row__diff-content .ctx-diff-unchanged){
-  color: #718096;
-  background: #14181d;
-}
-
-:global([data-app-theme="dark"] .ctx-row__content::-webkit-scrollbar-thumb){
-  background: #404040;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ctx-expand-enter-active,
-  .ctx-expand-leave-active {
-    transition: none;
-  }
-
-  .ctx-row__file-chip {
-    transition: none;
-  }
-
-  .ctx-row__file-chip:hover {
-    transform: none;
-  }
-}
+.ctx-row { margin: 6px 0; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.ctx-row button { cursor: pointer; font: inherit; }
+.ctx-row button:focus-visible, .ctx-row input:focus-visible, .ctx-row pre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctx-row__trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--text-muted); text-align: left; flex-wrap: wrap; }
+.ctx-row__title { color: var(--text); font-weight: 500; }
+.ctx-row__badge { padding: 2px 7px; border-radius: 6px; background: var(--surface-soft); font-size: 11px; }
+.ctx-row__chevron { margin-left: auto; transition: transform .15s; }
+.open .ctx-row__chevron { transform: rotate(180deg); }
+.ctx-row__body { margin-top: 8px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 0; }
+.ctx-row__heading, .ctx-row__toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ctx-row__heading { justify-content: space-between; }
+.ctx-row__heading strong { color: var(--text); font-weight: 500; }
+.ctx-row__action { padding: 4px 0; border: 0; background: transparent; color: var(--text-muted); }
+.ctx-row__action:hover { color: var(--text); text-decoration: underline; }
+.ctx-row__action[aria-pressed="true"] { color: var(--accent); }
+.ctx-row__turns { display: flex; gap: 6px; overflow-x: auto; padding: 10px 2px; max-height: 110px; }
+.ctx-row__turn { flex: 0 0 auto; display: grid; gap: 4px; padding: 8px 10px; background: var(--surface-soft); border: 1px solid transparent; border-radius: 6px; color: var(--text-muted); text-align: left; }
+.ctx-row__turn small { font-size: 10px; }
+.ctx-row__turn.selected { border-color: var(--border-strong); background: var(--surface-raised); color: var(--text); }
+.ctx-row__summary { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 12px; font-size: 11px; }
+.ctx-row__summary strong { color: var(--text); font-weight: 500; }
+.ctx-row__modes { display: inline-flex; gap: 2px; border-radius: 6px; padding: 2px; background: var(--surface-soft); margin-right: auto; }
+.ctx-row__modes button { padding: 5px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); }
+.ctx-row__modes button[aria-pressed="true"] { color: var(--text); background: var(--surface-raised); }
+.ctx-row__hint { margin: 9px 0; font-size: 11px; line-height: 1.6; }
+.ctx-row__empty { padding: 12px 0; margin: 0; color: var(--text-muted); }
+.ctx-row__content { max-height: 360px; margin: 8px 0; padding: 10px; overflow: auto; color: var(--text); background: var(--surface-soft); border-radius: 6px; font: 11px/1.7 Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.ctx-row__content code { display: block; min-height: 1.7em; padding: 0 6px; }
+.ctx-row__added, .ctx-diff-added { color: #237c45; }
+.ctx-row__removed, .ctx-diff-removed { color: #b24444; }
+.ctx-diff-added { background: #32965312; }
+.ctx-diff-removed { background: #c04a4a12; }
+.ctx-row__files { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+.ctx-row__files .ctx-row__heading { margin-bottom: 10px; }
+.ctx-row__search { width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface-soft); font: inherit; }
+.ctx-row__file-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 6px; }
+.ctx-row__file-chip { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; color: var(--text); border: 1px solid var(--border); border-radius: 6px; background: transparent; text-align: left; }
+.ctx-row__file-chip:hover { background: var(--surface-soft); border-color: var(--border-strong); }
+.ctx-row__file-chip > img, .ctx-row__file-chip > svg { flex: 0 0 auto; }
+.ctx-row__file-chip span { display: grid; gap: 3px; min-width: 0; }
+.ctx-row__file-chip b, .ctx-row__file-chip small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ctx-row__file-chip b { font-weight: 500; }
+.ctx-row__file-chip small { color: var(--text-muted); font-size: 10px; }
+:global([data-app-theme="dark"] .ctx-row__added), :global([data-app-theme="dark"] .ctx-diff-added) { color: #86d5a2; }
+:global([data-app-theme="dark"] .ctx-row__removed), :global([data-app-theme="dark"] .ctx-diff-removed) { color: #efa0a0; }
+@media (prefers-reduced-motion: reduce) { .ctx-row__chevron { transition: none; } }
 </style>

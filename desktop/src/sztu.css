@@ -216,7 +216,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .work-header__tools .active { color: #1674df; background: #edf5ff; }
 .icon-button { display: grid; width: 31px; height: 31px; padding: 0; place-items: center; color: #30343a; background: transparent; border-radius: 6px; }
 .icon-button:hover { background: #f4f5f6; }
-.session-actions { position: relative; }
+.session-actions { position: relative; display: inline-flex; align-items: center; gap: 2px; }
 .session-menu { position: absolute; z-index: 30; top: 36px; right: 0; display: grid; width: 232px; padding: 7px; background: #fff; border: 1px solid rgb(25 32 41 / 11%); border-radius: 14px; box-shadow: 0 16px 38px rgb(25 32 41 / 15%), 0 3px 10px rgb(25 32 41 / 8%); }
 .session-menu > button,
 .session-menu__copy-wrap > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 7px 10px; color: #252a30; background: transparent; border-radius: 9px; text-align: left; font-size: 13px; }

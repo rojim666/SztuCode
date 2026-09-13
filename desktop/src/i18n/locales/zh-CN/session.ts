@@ -1,6 +1,8 @@
 export const session = {
   archiveTitle: "归档会话",
   archiveBlockedTitle: "任务运行中，暂不能归档",
+  resumeTitle: "恢复任务",
+  resumeFailed: "恢复失败：{message}",
   nameLabel: "会话名称",
   save: "保存",
   pin: "置顶",

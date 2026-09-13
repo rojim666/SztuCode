@@ -21,6 +21,7 @@ const emit = defineEmits<{
   continue: [runId?: string];
   decide: [toolUseId: string, decision: PermissionDecision];
   openFile: [path: string];
+  openFileInTree: [path: string];
   openChanges: [runId: string];
   reverted: [runId: string];
   review: [ctx: { workspaceId: string; runId: string; paths: string[] }];
@@ -546,7 +547,7 @@ watch(
       <div v-if="turn.hasContent" class="timeline-assistant">
         <div class="timeline-step__content">
           <!-- 上下文注入行：压缩/干预/系统注入；任务进度画布不进入会话区。 -->
-          <ContextInjectionRow v-if="turn.contextInjections?.length" :entries="turn.contextInjections" :tool-calls="turn.allToolCalls" :workspace-path="workspacePath" />
+          <ContextInjectionRow v-if="turn.contextInjections?.length" :entries="turn.contextInjections" :tool-calls="turn.allToolCalls" :workspace-path="workspacePath" @open-file-in-tree="emit('openFileInTree', $event)" />
           <button
             v-if="(turn.hasActivity || turn.runStats) && turn.state !== 'running' && turn.state !== 'waiting'"
             type="button"

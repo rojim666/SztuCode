@@ -171,8 +171,9 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
 .model-picker-list > button { min-height: 42px; padding: 6px 8px; gap: 8px; border-radius: 8px; }
 .model-picker-list b { color: #343940; font-size: 13px; font-weight: 500; line-height: 18px; }
 .model-picker-list small { font-size: 10px; line-height: 14px; }
-.model-picker-list > button[aria-checked="true"] { background: #edf5ff; }
-.model-picker-list > button[aria-checked="true"] b { color: #1d589a; font-weight: 600; }
+/* 选中底色走主题令牌：默认（浅色）用 --accent-soft，深色主题在 appearance.css 中覆写同一令牌。 */
+.model-picker-list > button[aria-checked="true"] { background: var(--accent-soft); }
+.model-picker-list > button[aria-checked="true"] b { color: var(--accent); font-weight: 600; }
 .model-picker-list > button:focus-visible { outline: 2px solid #3498ff; outline-offset: -2px; }
 .model-picker-popover > footer { padding: 5px 7px; }
 .model-picker-popover > footer button { min-height: 32px; padding: 0 7px; font-size: 11px; color: #737980; }

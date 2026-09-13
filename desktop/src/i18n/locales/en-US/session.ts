@@ -1,6 +1,8 @@
 export const session = {
   archiveTitle: "Archive session",
   archiveBlockedTitle: "Task is running; archiving is unavailable",
+  resumeTitle: "Resume task",
+  resumeFailed: "Failed to resume: {message}",
   nameLabel: "Session name",
   save: "Save",
   pin: "Pin",

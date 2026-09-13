@@ -331,7 +331,7 @@
 
 :root[data-app-theme="dark"] .session-loading {
   color: var(--text-muted);
-  background: rgb(32 36 37 / 82%);
+  background: var(--surface);
 }
 
 :root[data-app-theme="dark"] :is(
