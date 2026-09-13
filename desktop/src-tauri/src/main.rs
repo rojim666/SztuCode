@@ -1,3 +1,5 @@
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+
 use std::{
     collections::HashMap,
     fs,
@@ -1203,8 +1205,11 @@ fn create_persistent_worktree(
     if !root.is_dir() {
         return Err("项目目录不存在".into());
     }
-    let repository_check = StdCommand::new("git")
-        .args(["-C", &workspace_path, "rev-parse", "--verify", "HEAD"])
+    let mut repository_command = StdCommand::new("git");
+    repository_command.args(["-C", &workspace_path, "rev-parse", "--verify", "HEAD"]);
+    #[cfg(windows)]
+    repository_command.creation_flags(0x0800_0000);
+    let repository_check = repository_command
         .output()
         .map_err(|error| format!("无法执行 Git：{error}"))?;
     if !repository_check.status.success() {
@@ -1246,10 +1251,14 @@ fn create_persistent_worktree(
     if target.exists() {
         return Err(format!("该聊天的永久工作树已存在：{}", target.display()));
     }
-    let output = StdCommand::new("git")
+    let mut worktree_command = StdCommand::new("git");
+    worktree_command
         .args(["-C", &workspace_path, "worktree", "add", "-b", &branch])
         .arg(&target)
-        .arg("HEAD")
+        .arg("HEAD");
+    #[cfg(windows)]
+    worktree_command.creation_flags(0x0800_0000);
+    let output = worktree_command
         .output()
         .map_err(|error| format!("无法执行 Git：{error}"))?;
     if !output.status.success() {
