@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from "vue";
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
 import AppIcon from "../icons/AppIcon.vue";
 import { useI18n } from "vue-i18n";
 import { slashMenuItems, type SkillSearchEntry } from "./slash-menu";
@@ -12,6 +12,24 @@ const skills = computed(() => items.value.filter(item => item.group === "skill")
 const total = computed(() => slashMenuItems("", props.skills, key => t(key)).filter(item => item.group === "skill").length);
 const itemIndex = (id: string) => items.value.findIndex(item => item.id === id);
 const menu = ref<HTMLElement>();
+const availableHeight = ref(360);
+let resizeObserver: ResizeObserver | undefined;
+function measureSpace() {
+  const parent = menu.value?.parentElement;
+  if (parent) availableHeight.value = Math.max(120, Math.min(520, parent.getBoundingClientRect().top - 68));
+}
+onMounted(() => {
+  measureSpace();
+  resizeObserver = new ResizeObserver(measureSpace);
+  if (menu.value?.parentElement) resizeObserver.observe(menu.value.parentElement);
+  window.addEventListener('resize', measureSpace);
+  window.addEventListener('scroll', measureSpace, true);
+});
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  window.removeEventListener('resize', measureSpace);
+  window.removeEventListener('scroll', measureSpace, true);
+});
 const modeIcons: Record<string, string> = { plan: "ListChecks", edits: "Pencil", auto: "Sparkles" };
 watch([() => props.activeIndex, items], async () => {
   await nextTick();
@@ -26,7 +44,7 @@ watch([() => props.activeIndex, items], async () => {
 </script>
 
 <template>
-  <section ref="menu" class="slash-menu command-picker" role="listbox" :aria-label="t('palette.menuAria')" :aria-busy="loading">
+  <section ref="menu" class="slash-menu command-picker" :style="{ maxHeight: availableHeight + 'px' }" role="listbox" :aria-label="t('palette.menuAria')" :aria-busy="loading">
     <section v-if="commands.length" class="picker-modes" role="group" :aria-label="t('palette.commandGroupAria')">
       <header>{{ t('palette.modesTitle') }}<small>{{ t('palette.modesHint') }}</small></header>
       <div class="picker-modes__grid">

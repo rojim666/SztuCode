@@ -2,7 +2,7 @@
 .queue-dock {
   position: relative;
   z-index: 6;
-  width: min(660px, calc(100% - 64px)); /* 与 .task-conversation .sztu-composer 同款宽度公式 */
+  width: min(812px, calc(100% - 64px)); /* 与 .task-conversation .sztu-composer 同款宽度公式 */
   margin: 0 auto 17px;
   overflow: visible; /* 斜杠菜单与模型气泡需要溢出显示 */
   color: var(--text-muted);
@@ -30,7 +30,7 @@
   margin: 0;
   background: var(--surface);
   border: 1px solid #e4e6e8;
-  border-radius: 14px;
+  border-radius: 20px;
   box-shadow: 0 3px 10px rgb(28 36 44 / 4%);
 }
 

@@ -904,6 +904,7 @@
   .task-conversation > .queue-dock > .sztu-composer,
   .task-conversation > .queue-dock > .user-question-composer,
   .task-launcher .composer-input-shell,
+  .task-launcher .landing-composer,
   .chat-composer > textarea
 ) {
   background: color-mix(in srgb, var(--surface) var(--composer-surface-opacity), transparent) !important;
@@ -923,9 +924,19 @@
 }
 
 :root:not([data-wallpaper="none"]) .task-conversation .sztu-composer:not(.drag-over) .composer-input-shell,
-:root:not([data-wallpaper="none"]) .task-launcher .sztu-composer:not(.drag-over) {
+:root:not([data-wallpaper="none"]) .task-launcher .sztu-composer:not(.drag-over):not(.landing-composer) {
   background: transparent !important;
   box-shadow: none;
+}
+
+/* 首页输入卡片的底部控制栏必须与输入壳共用同一层材质，避免壁纸模式下两侧出现缺口。 */
+:root:not([data-wallpaper="none"]) .task-launcher .launcher-bottom-controls {
+  margin-inline: -1px;
+  padding-inline: 8px;
+  background: transparent !important;
+  border-radius: 0 0 14px 14px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 :root:not([data-wallpaper="none"]) :is(

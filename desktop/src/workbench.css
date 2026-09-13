@@ -10,7 +10,7 @@
   overflow: hidden;
 }
 
-/* 切换会话时完全遮挡旧内容，项目字标轻微呼吸。 */
+/* 切换会话时完全遮挡旧内容，渐变亮带从左向右扫过字标。 */
 .session-loading {
   position: absolute;
   inset: 0;
@@ -25,11 +25,22 @@
 .session-loading .session-loading__logo {
   width: 144px;
   height: 26px;
-  animation: session-loading-pulse 1.6s ease-in-out infinite;
+}
+.session-loading__logo img {
+  -webkit-mask-image: linear-gradient(90deg, rgb(0 0 0 / .4) 35%, #000 50%, rgb(0 0 0 / .4) 65%);
+  mask-image: linear-gradient(90deg, rgb(0 0 0 / .4) 35%, #000 50%, rgb(0 0 0 / .4) 65%);
+  -webkit-mask-size: 300% 100%;
+  mask-size: 300% 100%;
+  animation: session-loading-shimmer 1.8s linear infinite;
 }
 .session-loading__label { color: var(--text-muted); font-size: 13px; }
-@keyframes session-loading-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.97); opacity: .72; } }
-@media (prefers-reduced-motion: reduce) { .session-loading .session-loading__logo { animation: none; } }
+@keyframes session-loading-shimmer {
+  from { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+  to { -webkit-mask-position: 0% 0; mask-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .session-loading__logo img { animation: none; -webkit-mask-image: none; mask-image: none; }
+}
 
 .task-conversation {
   position: relative; /* 为“回到底部”悬浮按钮提供定位上下文 */
@@ -492,7 +503,7 @@
 .task-intro p { max-width: 520px; margin: 0; color: #737980; font-size: 13px; line-height: 1.75; }
 .task-conversation .sztu-composer { overflow: visible; position: relative; }
 /* 外框线由 .queue-dock 卡片统一绘制，内层输入壳不再描边，避免双层边框显得粗 */
-.task-conversation .sztu-composer .composer-input-shell { position: relative; display: flex; overflow: visible; flex-direction: column; background: transparent; border: 0; border-radius: 12px; }
+.task-conversation .sztu-composer .composer-input-shell { position: relative; display: flex; overflow: visible; flex-direction: column; background: transparent; border: 0; border-radius: 20px; }
 /* 拖拽状态样式 - 使用 !important 确保覆盖透明背景设置 */
 .sztu-composer.drag-over { border-color: #1a70cf !important; box-shadow: 0 0 0 3px rgb(26 112 207 / 12%) !important; }
 .sztu-composer.drag-over .composer-input-shell { background: #f0f7ff !important; border: 2px dashed #1a70cf !important; border-radius: 12px !important; overflow: hidden; }
@@ -505,7 +516,7 @@
 .task-launcher .permission.permission--full-access { color: #e65d18; }
 .task-launcher .permission.permission--per-item { color: #24262b; }
 .task-conversation .sztu-composer .attachment-strip { padding-top: 6px; }
-.task-conversation .sztu-composer textarea { min-height: 44px; padding: 8px 10px 4px; width: 100%; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; outline: none; }
+.task-conversation .sztu-composer textarea { min-height: 30px; padding: 6px 10px 2px; width: 100%; background: transparent; border: 0; border-radius: 0; box-shadow: none; resize: none; outline: none; }
 .task-conversation .sztu-composer textarea { font-size: 12px; line-height: 1.4; }
 /* 插件标签渲染在打字区域内：占用首行位置，正文紧随其后 */
 .task-conversation .composer-input-shell.has-plugin-tags .plugin-tag-strip { padding: 8px 10px 0; font-size: 12px; }
@@ -1357,7 +1368,7 @@
 .task-launcher .send:not(.stop) svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .model-management-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .ccswitch-import-btn.primary { display: flex; align-items: center; gap: 5px; color: #fff; background: #303338; border-color: #303338; }
-.launcher-bottom-controls { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.launcher-bottom-controls { display: flex; gap: 8px; align-items: center; margin-top: 0; padding: 0 7px 6px; }
 .launcher-project-control { position: relative; display: flex; min-width: 0; flex: 0 1 auto; }
 .launcher-plugin-control { position: relative; display: flex; flex: 0 0 auto; }
 .task-launcher button.composer-project { display: flex; align-items: center; gap: 6px; width: auto; max-width: 340px; min-height: 34px; padding: 6px 14px; color: #555c65; background: transparent; border: 0; border-radius: 999px; font-size: 12px; transition: color .12s ease, background-color .12s ease; }
@@ -1373,11 +1384,19 @@
 .composer-plugin.pill { min-height: 0; padding: 5px 8px; color: #6c6e72; background: transparent; border: 0; border-radius: 999px; font-size: 11px; }
 .composer-plugin.pill:hover { color: #3b3d40; background: #ececec; }
 .composer-plugin.pill .composer-plugin-icons > span { border-radius: 6px; }
-.plugin-tag-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: var(--text-body); line-height: 1.75; }
+.skill-tag-strip, .plugin-tag-strip { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: var(--text-body); line-height: 1.75; }
+.skill-tag-strip { order: 1; padding-inline: 14px; }
+.skill-tag-chip { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; padding: 0; color: #1683ef; background: transparent; border: 0; font-size: inherit; font-weight: 600; }
+.skill-tag-chip em { color: #1683ef; }
+.skill-tag-chip em { min-width: 0; overflow-wrap: anywhere; }
+.skill-tag-chip svg, .skill-tag-chip button { flex: 0 0 auto; }
 .plugin-tag-chip { display: inline-flex; align-items: center; gap: 5px; padding: 0; color: #1683ef; background: transparent; border: 0; border-radius: 0; font-size: inherit; font-weight: 500; }
-.plugin-tag-chip em { font-style: normal; }
-.plugin-tag-chip button { display: grid; width: 16px; height: 16px; padding: 0; place-items: center; color: #1683ef; background: transparent; border: 0; border-radius: 4px; margin-left: 2px; opacity: 0.5; }
-.plugin-tag-chip button:hover { color: #0d5fc0; opacity: 1; background: #e8f2fe; }
+.skill-tag-chip em, .plugin-tag-chip em { font-style: normal; }
+.skill-tag-chip button, .plugin-tag-chip button { display: grid; width: 16px; height: 16px; padding: 0; place-items: center; color: #1683ef; background: transparent; border: 0; border-radius: 4px; margin-left: 2px; opacity: 0.65; }
+.skill-tag-chip button:hover, .plugin-tag-chip button:hover { color: #0d5fc0; opacity: 1; background: #e8f2fe; }
+.task-launcher .skill-tag-strip { padding: 10px 14px 0; }
+.task-conversation .composer-input-shell.has-skill-tag .skill-tag-strip { padding: 8px 10px 0; font-size: 12px; }
+.task-conversation .composer-input-shell.has-skill-tag textarea { padding-top: 4px; }
 .plugin-picker-popover { top: auto; bottom: calc(100% + 8px); left: 0; width: 310px; padding: 6px; animation-name: launcher-popover-up-in; }
 .plugin-picker-list { display: grid; gap: 2px; max-height: 240px; padding: 6px 0; overflow-y: auto; }
 .plugin-picker-list button { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px 9px; color: #353940; background: transparent; border-radius: 7px; text-align: left; }
@@ -1951,4 +1970,27 @@
   .sidebar-workspace {
     background: var(--surface) !important;
   }
+}
+
+/* Command picker: readable rows and a shared blue skill identity. */
+.sztu-composer .slash-menu { border-radius: 14px; border-color: var(--border, #e3e7ed); background: var(--surface, #fff); box-shadow: 0 12px 36px #182b4618, 0 2px 6px #182b4608; }
+.sztu-composer .slash-menu__scroll { padding: 7px; }
+.sztu-composer .slash-menu__group h3 { height: 30px; padding-inline: 10px; font-size: 11px; }
+.sztu-composer .slash-menu__group h3 small { font-size: 10px; }
+.sztu-composer .slash-menu__group button { min-height: 42px; padding: 7px 10px; border: 0; border-radius: 8px; gap: 10px; }
+.sztu-composer .slash-menu__group button b { font-family: inherit; font-size: 13px; font-weight: 550; }
+.sztu-composer .slash-menu__group button > span:nth-of-type(2) { font-size: 12px; }
+.sztu-composer .slash-menu__icon:not(.command) { color: #2583e9; background: transparent; }
+.sztu-composer .slash-menu__group button:is(:hover, .active, [aria-selected="true"]) { color: #2583e9; background: #2583e910; }
+.sztu-composer .slash-menu__group button:focus-visible { box-shadow: inset 0 0 0 1px #2583e9; }
+.sztu-composer .slash-menu > footer { background: var(--surface, #fff); min-height: 36px; font-size: 10px; }
+.task-launcher .composer-input-shell.has-skill-tag .skill-tag-strip { padding: 16px 14px 0; }
+.task-launcher .composer-input-shell.has-skill-tag textarea { padding-top: 6px; }
+.task-conversation .composer-input-shell > .skill-tag-strip { order: 0; }
+:root[data-app-theme="dark"] .sztu-composer .slash-menu__icon:not(.command),
+:root[data-app-theme="dark"] .sztu-composer .slash-menu__group button:is(:hover, .active, [aria-selected="true"]) { color: #6ab0ff; }
+@container composer (max-width: 460px) {
+  .sztu-composer .slash-menu__group button { grid-template-columns: 24px minmax(0, 1fr) 16px; gap: 4px 8px; }
+  .sztu-composer .slash-menu__group button > span:nth-of-type(2) { grid-column: 2; grid-row: 2; font-size: 11px; }
+  .sztu-composer .slash-menu__group button > svg { grid-column: 3; grid-row: 1; }
 }
