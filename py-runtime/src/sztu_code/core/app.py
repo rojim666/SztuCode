@@ -915,14 +915,21 @@ class CoreApp:
         )
         if self._permission_manager is None:
             logger.error("permission.respond: PermissionManager not initialized")
-            return PermissionRespondResult()
-        self._permission_manager.respond(
+            return PermissionRespondResult(ok=False, status="unknown")
+        # Issue #118：透传归属结果，让客户端能区分已送达/未知 ID/归属不匹配
+        status = self._permission_manager.respond(
             cmd.tool_use_id,
             cmd.decision,
             cmd.run_id,
             cmd.session_id,
         )
-        return PermissionRespondResult()
+        if status != "resolved":
+            logger.info(
+                "permission.respond: tool_use_id=%s not delivered (status=%s)",
+                cmd.tool_use_id,
+                status,
+            )
+        return PermissionRespondResult(ok=status == "resolved", status=status)
 
     # 接收结构化问题回答，校验后恢复 ask_user_question 所在的工具调用
     async def _user_question_respond_handler(

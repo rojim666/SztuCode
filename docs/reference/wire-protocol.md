@@ -220,7 +220,9 @@
 | Field | Type | Required |
 | --- | --- | --- |
 | `type` | `"permission.respond"` | no |
-| `permission_id` | `string` | yes |
+| `tool_use_id` | `string` | yes |
+| `run_id` | `string` | no |
+| `session_id` | `string` | no |
 | `decision` | `"allow_once" \| "always_allow" \| "deny_once" \| "always_deny"` | yes |
 
 ### WorkspaceOpenParams
@@ -326,6 +328,13 @@
 | --- | --- | --- |
 | `run_id` | `string` | yes |
 | `events` | `RuntimeEvent[]` | yes |
+
+### PermissionRespondResult
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `ok` | `boolean` | yes |
+| `status` | `"resolved" \| "unknown" \| "mismatch"` | no |
 
 ### RequestCancelResult
 

@@ -132,7 +132,7 @@ export interface RunCancelParams { type?: "run.cancel"; run_id: string }
 export interface RunGetParams { type?: "run.get"; run_id: string }
 export interface RunReplayParams { type?: "run.replay"; run_id: string; max_events?: number }
 export interface RequestCancelParams { type?: "request.cancel" | "$/cancelRequest"; request_id: RequestId; reason?: string }
-export interface PermissionRespondParams { type?: "permission.respond"; permission_id: string; decision: PermissionDecision }
+export interface PermissionRespondParams { type?: "permission.respond"; tool_use_id: string; run_id?: string; session_id?: string; decision: PermissionDecision }
 export interface WorkspaceOpenParams { type?: "workspace.open"; path: string }
 export interface WorkspaceListParams { type?: "workspace.list" }
 export type ArtifactType = "docx" | "pptx" | "pdf" | "xlsx" | "csv" | "web" | "image" | "audio" | "video" | "model3d" | "app" | "archive" | "code" | "other";
@@ -148,6 +148,12 @@ export interface AgentRunResult { run_id: string }
 export interface RunCancelResult { run_id: string; status: "cancelling" | "not_running" }
 export interface RunGetResult { run_id: string; status: "running" | "completed" | "failed" | "cancelled" | "unknown" }
 export interface RunReplayResult { run_id: string; events: RuntimeEvent[] }
+// Issue #118: ownership status of an approval response. The Python daemon always
+// returns `status`; the TS daemon currently returns only `{ accepted, ok }`, so
+// `status` stays optional. "resolved" = delivered to the pending request,
+// "unknown" = tool_use_id not pending (already resolved/cancelled/never existed),
+// "mismatch" = run/session ownership did not match (request stays pending).
+export interface PermissionRespondResult { ok: boolean; status?: "resolved" | "unknown" | "mismatch" }
 export interface RequestCancelResult { request_id: RequestId; status: "cancelling" | "not_running" }
 export interface WorkspaceSummary { workspace_id: string; path: string; name: string; archived: boolean; pinned?: boolean }
 export interface WorkspaceOpenResult { workspace: WorkspaceSummary }
@@ -349,7 +355,7 @@ export function validateRequestParams(method: string, params: unknown): Validati
       return !id.ok ? id : optionalNonNegativeInteger(value.max_events) ? { ok: true, value } : invalidParams("max_events must be a non-negative integer", "max_events");
     }
     case "request.cancel": case "$/cancelRequest": return requireId(value, "request_id");
-    case "permission.respond": return nonEmptyString(value.permission_id) && ["allow_once", "always_allow", "deny_once", "always_deny"].includes(String(value.decision)) ? { ok: true, value } : invalidParams("permission_id and a valid decision are required");
+    case "permission.respond": return nonEmptyString(value.tool_use_id ?? value.permission_id) && ["allow_once", "always_allow", "deny_once", "always_deny"].includes(String(value.decision)) ? { ok: true, value } : invalidParams("tool_use_id (legacy: permission_id) and a valid decision are required");
     case "session.create": return (value.mode === undefined || value.mode === "chat" || value.mode === "one_shot") && optionalString(value.title) && (value.workspace_id === undefined || value.workspace_id === null || nonEmptyString(value.workspace_id)) ? { ok: true, value } : invalidParams("invalid session.create parameters");
     case "session.attach": case "session.detach": case "session.get": case "session.history": case "session.get_history": return requireId(value, "session_id");
     case "session.list": return optionalBoolean(value.include_archived) ? { ok: true, value } : invalidParams("include_archived must be boolean", "include_archived");

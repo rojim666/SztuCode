@@ -480,6 +480,11 @@ class PermissionRespondCommand(BaseModel):
 
 class PermissionRespondResult(BaseModel):
     ok: bool = True
+    # Issue #118：审批响应的归属结果。"resolved" 已送达对应请求；"unknown"
+    # 表示 tool_use_id 不存在或已被解决/取消（迟到/重复响应）；"mismatch"
+    # 表示 run/session 归属不匹配（请求仍挂起，等待真正归属者响应）。
+    # ok 仅在 resolved 时为 True。
+    status: Literal["resolved", "unknown", "mismatch"] = "resolved"
 
 
 class UserQuestionOption(BaseModel):
