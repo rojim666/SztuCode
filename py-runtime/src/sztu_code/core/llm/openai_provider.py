@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -42,6 +43,30 @@ _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
 _RATE_LIMIT_BACKOFF_S = (5.0, 10.0, 20.0)
 
 log = logging.getLogger(__name__)
+
+
+def _budget_deadline(remaining_s: float | None) -> float | None:
+    if remaining_s is None:
+        return None
+    return time.monotonic() + max(remaining_s, 0.0)
+
+
+def _budget_remaining(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return deadline - time.monotonic()
+
+
+def _request_timeout(timeout_s: float, deadline: float | None) -> float | None:
+    remaining = _budget_remaining(deadline)
+    if remaining is None:
+        return None
+    return min(timeout_s, max(remaining, 0.0))
+
+
+def _retry_fits_budget(deadline: float | None, delay: float) -> bool:
+    remaining = _budget_remaining(deadline)
+    return remaining is None or delay < remaining
 
 
 # 单次流式调用的累积结果：文本、推理片段、工具调用增量、结束原因与 usage
@@ -453,6 +478,7 @@ class OpenAIProvider:
         self._text_tool_history = is_campus_deepseek
         self._context_window_override = context_window
         self._max_output_tokens = max_output_tokens
+        self._timeout_s = timeout_s
         self._temperature = temperature
         self._top_p = top_p
         self._reasoning_effort = reasoning_effort
@@ -473,6 +499,7 @@ class OpenAIProvider:
         max_output_tokens: int | None = None,
         remaining_s: float | None = None,
     ) -> LlmResponse:
+        deadline = _budget_deadline(remaining_s)
         effective_max_output = (
             max_output_tokens if max_output_tokens is not None else self._max_output_tokens
         )
@@ -497,7 +524,7 @@ class OpenAIProvider:
         )
 
         acc = await self._stream_with_retries(
-            openai_msgs, tools, bus, run_id, step, effective_max_output
+            openai_msgs, tools, bus, run_id, step, effective_max_output, deadline
         )
 
         input_tokens, output_tokens, cache_read = _usage_from_final(acc.usage)
@@ -554,11 +581,22 @@ class OpenAIProvider:
         run_id: str,
         step: int,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> _StreamResult:
         for attempt in range(1, _MAX_STREAM_RETRIES + 1):
+            remaining = _budget_remaining(deadline)
+            if remaining is not None and remaining <= 0:
+                raise TimeoutError("OpenAI request exceeded the remaining run budget")
             try:
                 return await self._stream_once(
-                    openai_msgs, tools, bus, run_id, step, attempt, max_output_tokens
+                    openai_msgs,
+                    tools,
+                    bus,
+                    run_id,
+                    step,
+                    attempt,
+                    max_output_tokens,
+                    deadline,
                 )
             except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as exc:
                 if attempt == _MAX_STREAM_RETRIES:
@@ -568,6 +606,13 @@ class OpenAIProvider:
                     )
                     raise
                 delay = _RETRY_BACKOFF_S[attempt - 1]
+                if not _retry_fits_budget(deadline, delay):
+                    log.info(
+                        "stream retry skipped because backoff exceeds remaining budget "
+                        "run_id=%s step=%d delay=%.1fs",
+                        run_id, step, delay,
+                    )
+                    raise
                 log.warning(
                     "stream dropped (attempt %d/%d) run_id=%s step=%d: %s — retrying in %.0fs",
                     attempt, _MAX_STREAM_RETRIES, run_id, step, exc, delay,
@@ -580,6 +625,13 @@ class OpenAIProvider:
                 if not retryable or attempt == _MAX_STREAM_RETRIES:
                     raise
                 delay = _RATE_LIMIT_BACKOFF_S[attempt - 1]
+                if not _retry_fits_budget(deadline, delay):
+                    log.info(
+                        "rate-limit retry skipped because backoff exceeds remaining budget "
+                        "run_id=%s step=%d delay=%.1fs",
+                        run_id, step, delay,
+                    )
+                    raise
                 log.warning(
                     "LLM transient API error status=%s (attempt %d/%d) "
                     "run_id=%s: %s — retry in %.0fs",
@@ -598,9 +650,21 @@ class OpenAIProvider:
         step: int,
         attempt: int,
         max_output_tokens: int,
+        deadline: float | None = None,
     ) -> _StreamResult:
-        kwargs = self._request_kwargs(openai_msgs, tools, max_output_tokens)
-        stream = await self._client.chat.completions.create(**kwargs)
+        kwargs = self._request_kwargs(
+            openai_msgs,
+            tools,
+            max_output_tokens,
+            timeout_s=_request_timeout(self._timeout_s, deadline),
+        )
+        request_client = self._client
+        if deadline is not None:
+            # The provider owns the outer retry policy. Disable SDK-level
+            # retries for budgeted calls so one attempt cannot consume the
+            # same remaining budget multiple times internally.
+            request_client = self._client.with_options(max_retries=0)
+        stream = await request_client.chat.completions.create(**kwargs)
         result = _StreamResult()
         async for chunk in stream:
             await _consume_chunk(chunk, result, bus, run_id, step, attempt)
@@ -612,6 +676,7 @@ class OpenAIProvider:
         openai_msgs: list[dict[str, object]],
         tools: list[dict[str, object]] | None,
         max_output_tokens: int,
+        timeout_s: float | None = None,
     ) -> dict[str, object]:
         kwargs: dict[str, object] = {
             "model": self._model,
@@ -620,6 +685,8 @@ class OpenAIProvider:
             "stream_options": {"include_usage": True},
             "max_completion_tokens": max_output_tokens,
         }
+        if timeout_s is not None:
+            kwargs["timeout"] = timeout_s
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
         if self._top_p is not None:

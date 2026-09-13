@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
@@ -91,17 +93,20 @@ def _make_provider(
     output_tokens: int = 50,
     cache_read: int = 0,
     thinking_deltas: list[str] | None = None,
+    timeout_s: float = 120.0,
 ) -> tuple[AnthropicProvider, MagicMock]:
     final = _make_final(stop_reason, content, input_tokens, output_tokens, cache_read)
     client = MagicMock()
+    client.with_options.return_value = client
     client.messages.stream.return_value = FakeStream(texts or [], final, thinking_deltas)
-    return AnthropicProvider(model="test-model", client=client), client
+    return AnthropicProvider(model="test-model", client=client, timeout_s=timeout_s), client
 
 
 async def _chat(
     provider: AnthropicProvider,
     messages: list[dict[str, object]] | None = None,
     tool_schemas: list[dict[str, object]] | None = None,
+    remaining_s: float | None = None,
 ) -> tuple[LlmResponse, list[BaseModel]]:
     collected: list[BaseModel] = []
     bus = EventBus()
@@ -115,6 +120,7 @@ async def _chat(
         tool_schemas=tool_schemas or [],
         bus=bus,
         run_id="r1",
+        remaining_s=remaining_s,
     )
     return result, collected
 
@@ -220,6 +226,111 @@ async def test_no_tokens_when_response_is_empty() -> None:
     tokens = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
     assert tokens == []
     assert result.text == ""
+
+
+# 功能：验证运行时剩余预算小于 Provider 默认 timeout 时收缩 Anthropic 单次请求 timeout
+# 设计：模拟 AgentLoop 传入 3.5 秒预算，检查 SDK 请求不会继续使用构造时的 120 秒默认值
+async def test_remaining_budget_limits_anthropic_request_timeout() -> None:
+    provider, client = _make_provider(timeout_s=120.0)
+    client.messages.stream.side_effect = ValueError("stop after request setup")
+
+    with pytest.raises(ValueError):
+        await provider.chat(
+            messages=[],
+            tool_schemas=[],
+            bus=EventBus(),
+            run_id="r1",
+            remaining_s=3.5,
+        )
+
+    timeout = client.messages.stream.call_args.kwargs["timeout"]
+    assert 0 < timeout <= 3.5
+    assert timeout == pytest.approx(3.5, abs=0.25)
+    client.with_options.assert_called_once_with(max_retries=0)
+
+
+# 功能：验证没有运行时预算时不覆盖 SDK 已配置的 Provider 默认 timeout
+# 设计：remaining_s=None 表示兼容旧调用方，单次请求不额外注入 timeout 参数
+async def test_missing_remaining_budget_keeps_anthropic_default_timeout() -> None:
+    provider, client = _make_provider(timeout_s=45.0)
+    client.messages.stream.side_effect = ValueError("stop after request setup")
+
+    with pytest.raises(ValueError):
+        await provider.chat(
+            messages=[],
+            tool_schemas=[],
+            bus=EventBus(),
+            run_id="r1",
+        )
+
+    assert "timeout" not in client.messages.stream.call_args.kwargs
+    client.with_options.assert_not_called()
+
+
+# 功能：验证已耗尽的 Anthropic 剩余预算不会发起 SDK 请求
+# 设计：零值和负值都表示没有可用预算，必须在请求入口直接拒绝
+@pytest.mark.parametrize("remaining_s", [0.0, -1.0])
+async def test_anthropic_rejects_exhausted_remaining_budget(remaining_s: float) -> None:
+    provider, client = _make_provider()
+
+    with pytest.raises(TimeoutError, match="remaining run budget"):
+        await _chat(provider, remaining_s=remaining_s)
+
+    client.messages.stream.assert_not_called()
+    client.with_options.assert_not_called()
+
+
+# 功能：验证固定退避无法放入剩余预算时不会发起下一次 Anthropic 请求
+# 设计：第一次连接错误后的默认退避为 1 秒；剩余预算只有 0.5 秒时应直接结束，且不等待超预算退避
+async def test_anthropic_retry_stops_when_backoff_exceeds_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, client = _make_provider()
+    client.messages.stream.side_effect = [httpx.ReadError("connection lost")]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(httpx.ReadError):
+        await _chat(provider, remaining_s=0.5)
+
+    assert client.messages.stream.call_count == 1
+    sleep.assert_not_awaited()
+
+
+# 功能：验证剩余预算足够时仍会执行一次 Anthropic 重试
+# 设计：第一轮连接错误、第二轮非重试错误，检查恰好等待默认 1 秒并发起第二次请求
+async def test_anthropic_retry_runs_when_backoff_fits_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, client = _make_provider()
+    client.messages.stream.side_effect = [
+        httpx.ReadError("connection lost"),
+        ValueError("stop after retry"),
+    ]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(ValueError):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.messages.stream.call_count == 2
+    sleep.assert_awaited_once_with(1.0)
+
+
+# 功能：验证重试退避期间收到取消信号时不会被吞掉，也不会继续下一次请求
+# 设计：模拟 deadline 取消 sleep，取消异常必须向 AgentLoop 传播，调用次数保持为一次
+async def test_anthropic_retry_propagates_cancellation_without_next_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, client = _make_provider()
+    client.messages.stream.side_effect = [httpx.ReadError("connection lost")]
+    sleep = AsyncMock(side_effect=asyncio.CancelledError())
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.messages.stream.call_count == 1
 
 # 功能：验证 Anthropic 的最终 thinking block 会发布 llm.thinking 事件。
 # 设计：桌面端时间线需要以同一 run 和 step 关联思考内容，不能只写入最终历史。
