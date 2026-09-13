@@ -281,10 +281,11 @@ async def test_cancel_session_only_affects_target_session() -> None:
 # ── respond: unknown tool_use_id ──────────────────────────────────────────────
 
 # 功能：验证 respond 传入不存在的 tool_use_id 时静默忽略，不抛异常
-# 设计：竞态场景（客户端重复发送响应）不应导致 daemon crash
+# 设计：竞态场景（客户端重复发送响应）不应导致 daemon crash；#118 要求返回
+#       明确的 unknown 状态，让客户端能区分"已送达"与"无处送达"
 def test_respond_unknown_tool_use_id_is_noop() -> None:
     mgr = _make_manager()
-    mgr.respond("nonexistent", "allow_once")  # should not raise
+    assert mgr.respond("nonexistent", "allow_once") == "unknown"  # should not raise
 
 
 # ── OUTSIDE_CWD 不被 always 缓存绕过 ─────────────────────────────────────────
@@ -429,7 +430,8 @@ async def test_permission_cancellation_cleans_up_pending() -> None:
         await task
 
     assert "t_cancelled" not in mgr._pending
-    mgr.respond("t_cancelled", "allow_once", run_id="r1", session_id="s1")
+    # 取消后的迟到响应归属 unknown，不影响任何新请求（Issue #118）
+    assert mgr.respond("t_cancelled", "allow_once", run_id="r1", session_id="s1") == "unknown"
 
 
 # 功能：验证权限事件发送期间取消也会清理 pending 请求
@@ -568,3 +570,168 @@ async def test_cancel_all_resolves_all_pending_requests() -> None:
     ]
     assert mgr._pending == {}
     assert mgr._session_cancellations == {}
+
+
+# ── Issue #118：归属校验与重复 ID 防护 ───────────────────────────────────────
+
+# 功能：验证并发 run 复用同一 tool_use_id 时，后到请求被拒绝且先到请求不受影响
+# 设计：r1/s1 挂起后 r2 用相同 ID 发起第二个 ASK；第二个立即返回
+#       duplicate_request_id，随后 respond 仍能正确解决第一个请求
+async def test_duplicate_tool_use_id_denies_new_request_and_keeps_first() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    first = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="dup-id", tool_name="bash",
+            params={"command": "echo one"}, session_id="s1",
+            event_emitter=emitter, run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+    assert "dup-id" in mgr._pending
+
+    second_allowed, second_decision = await mgr.check_and_wait(
+        tool_use_id="dup-id", tool_name="bash",
+        params={"command": "echo two"}, session_id="s1",
+        event_emitter=emitter, run_id="r2",
+    )
+    assert (second_allowed, second_decision) == (False, "duplicate_request_id")
+
+    status = mgr.respond("dup-id", "allow_once", run_id="r1", session_id="s1")
+    assert status == "resolved"
+    assert await first == (True, "allow_once")
+    assert "dup-id" not in mgr._pending
+
+
+# 功能：验证父子 Agent 共享 manager 时（子 Agent 默认继承父 PermissionManager），
+#       同 ID 并发同样被拒——重复 ID 不能唤醒其他上下文的审批
+# 设计：父 run 与子 run 各自 check_and_wait 使用相同 tool_use_id，断言子请求被
+#       拒绝、父请求仍挂起且只能被父归属的响应解决
+async def test_duplicate_tool_use_id_rejected_across_parent_and_child_runs() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    parent = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="shared-id", tool_name="bash",
+            params={"command": "echo parent"}, session_id="s1",
+            event_emitter=emitter, run_id="r-parent",
+        )
+    )
+    await asyncio.sleep(0)
+
+    child_allowed, child_decision = await mgr.check_and_wait(
+        tool_use_id="shared-id", tool_name="bash",
+        params={"command": "echo child"}, session_id="s1",
+        event_emitter=emitter, run_id="r-child",
+    )
+    assert (child_allowed, child_decision) == (False, "duplicate_request_id")
+    assert not parent.done()
+
+    assert mgr.respond("shared-id", "deny_once", run_id="r-parent", session_id="s1") == "resolved"
+    assert await parent == (False, "deny_once")
+
+
+# 功能：验证 respond 对不存在或已被取消的请求返回 "unknown"
+# 设计：覆盖两条路径——从未存在的 ID、cancel_run 清理后的 ID（迟到响应）
+async def test_respond_returns_unknown_for_missing_or_cancelled_requests() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    assert mgr.respond("never-existed", "allow_once", run_id="r1", session_id="s1") == "unknown"
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="cancelled-id", tool_name="bash",
+            params={"command": "echo"}, session_id="s1",
+            event_emitter=emitter, run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+    mgr.cancel_run("r1", "s1")
+    assert await task == (False, "deny_once")
+    assert mgr.respond("cancelled-id", "allow_once", run_id="r1", session_id="s1") == "unknown"
+
+
+# 功能：验证重复 respond 的第二次返回 "unknown"，且不改变首次决策结果
+# 设计：解决后再次 respond 同一 ID；Future 结果保持首次决策
+async def test_double_respond_second_returns_unknown() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="twice-id", tool_name="bash",
+            params={"command": "echo"}, session_id="s1",
+            event_emitter=emitter, run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+    assert mgr.respond("twice-id", "allow_once", run_id="r1", session_id="s1") == "resolved"
+    assert mgr.respond("twice-id", "deny_once", run_id="r1", session_id="s1") == "unknown"
+    assert await task == (True, "allow_once")
+
+
+# 功能：验证 session 归属不匹配时返回 "mismatch"，请求保留、正确归属仍可解决
+# 设计：s2/r1 的错误响应被拒绝；随后 s1/r1 的响应正常送达同一请求
+async def test_respond_wrong_session_returns_mismatch_and_keeps_request() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="own-id", tool_name="bash",
+            params={"command": "echo"}, session_id="s1",
+            event_emitter=emitter, run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert mgr.respond("own-id", "allow_once", run_id="r1", session_id="s2") == "mismatch"
+    assert not task.done()
+
+    assert mgr.respond("own-id", "allow_once", run_id="r1", session_id="s1") == "resolved"
+    assert await task == (True, "allow_once")
+
+
+# 功能：验证 run 归属不匹配同样返回 "mismatch"
+# 设计：r-old 的并发错误响应不能解决 r-new 的同 ID 请求（与取消后复用 ID
+#       场景互补：覆盖"未取消但归属错误"的窗口）
+async def test_respond_wrong_run_returns_mismatch() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="run-own-id", tool_name="bash",
+            params={"command": "echo"}, session_id="s1",
+            event_emitter=emitter, run_id="r-new",
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert mgr.respond("run-own-id", "allow_once", run_id="r-old", session_id="s1") == "mismatch"
+    assert not task.done()
+
+    assert mgr.respond("run-own-id", "allow_once", run_id="r-new", session_id="s1") == "resolved"
+    assert await task == (True, "allow_once")
+
+
+# 功能：验证空串归属字段与 None 同样视为未提供（向后兼容），响应可送达
+# 设计：RPC 命令模型要求字符串字段，客户端可能传 ""；空串不应让所有响应 mismatch
+async def test_respond_with_empty_ownership_fields_still_resolves() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    _, emitter = await _collect_emitted()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="empty-own-id", tool_name="bash",
+            params={"command": "echo"}, session_id="s1",
+            event_emitter=emitter, run_id="r1",
+        )
+    )
+    await asyncio.sleep(0)
+
+    assert mgr.respond("empty-own-id", "allow_once", run_id="", session_id="") == "resolved"
+    assert await task == (True, "allow_once")

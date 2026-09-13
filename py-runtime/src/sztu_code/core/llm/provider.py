@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -37,6 +38,30 @@ _MAX_STREAM_RETRIES = 3
 _RETRY_BACKOFF_S = (1.0, 2.0, 4.0)
 
 log = logging.getLogger(__name__)
+
+
+def _budget_deadline(remaining_s: float | None) -> float | None:
+    if remaining_s is None:
+        return None
+    return time.monotonic() + max(remaining_s, 0.0)
+
+
+def _budget_remaining(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return deadline - time.monotonic()
+
+
+def _request_timeout(timeout_s: float, deadline: float | None) -> float | None:
+    remaining = _budget_remaining(deadline)
+    if remaining is None:
+        return None
+    return min(timeout_s, max(remaining, 0.0))
+
+
+def _retry_fits_budget(deadline: float | None, delay: float) -> bool:
+    remaining = _budget_remaining(deadline)
+    return remaining is None or delay < remaining
 
 
 # Return the context window used for usage display and compaction thresholds.
@@ -150,6 +175,7 @@ class AnthropicProvider:
         self._model = model
         self._context_window_override = context_window
         self._max_output_tokens = max_output_tokens
+        self._timeout_s = timeout_s
         self._temperature = temperature
         self._top_p = top_p
         self._reasoning_effort = reasoning_effort
@@ -170,6 +196,7 @@ class AnthropicProvider:
         max_output_tokens: int | None = None,
         remaining_s: float | None = None,
     ) -> LlmResponse:
+        deadline = _budget_deadline(remaining_s)
         effective_max_output = (
             max_output_tokens if max_output_tokens is not None else self._max_output_tokens
         )
@@ -222,9 +249,22 @@ class AnthropicProvider:
         thinking_published = False
 
         for attempt in range(1, _MAX_STREAM_RETRIES + 1):
+            remaining = _budget_remaining(deadline)
+            if remaining is not None and remaining <= 0:
+                raise TimeoutError("Anthropic request exceeded the remaining run budget")
+
+            request_kwargs = dict(kwargs)
+            request_timeout = _request_timeout(self._timeout_s, deadline)
+            request_client = self._client
+            if request_timeout is not None:
+                # The provider owns the outer retry policy. Disable SDK-level
+                # retries for budgeted calls so one attempt cannot consume the
+                # same remaining budget multiple times internally.
+                request_client = self._client.with_options(max_retries=0)
+                request_kwargs["timeout"] = request_timeout
             text_parts = []
             try:
-                async with self._client.messages.stream(**kwargs) as stream:
+                async with request_client.messages.stream(**request_kwargs) as stream:
                     async for event in stream:
                         if getattr(event, "type", "") != "content_block_delta":
                             continue
@@ -263,6 +303,13 @@ class AnthropicProvider:
                     )
                     raise
                 delay = _RETRY_BACKOFF_S[attempt - 1]
+                if not _retry_fits_budget(deadline, delay):
+                    log.info(
+                        "stream retry skipped because backoff exceeds remaining budget "
+                        "run_id=%s step=%d delay=%.1fs",
+                        run_id, step, delay,
+                    )
+                    raise
                 log.warning(
                     "stream dropped (attempt %d/%d) run_id=%s step=%d: %s — retrying in %.0fs",
                     attempt, _MAX_STREAM_RETRIES, run_id, step, exc, delay,

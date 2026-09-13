@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import openai
 import pytest
 from pydantic import BaseModel
 
@@ -95,17 +98,20 @@ class FakeStream:
 def _make_provider(
     chunks: list[MagicMock] | None = None,
     model: str = "test-model",
+    timeout_s: float = 120.0,
 ) -> tuple[OpenAIProvider, MagicMock]:
     client = MagicMock()
+    client.with_options.return_value = client
     stream = FakeStream(chunks or [])
     client.chat.completions.create = AsyncMock(return_value=stream)
-    return OpenAIProvider(model=model, client=client), client
+    return OpenAIProvider(model=model, client=client, timeout_s=timeout_s), client
 
 
 async def _chat(
     provider: OpenAIProvider,
     messages: list[dict[str, object]] | None = None,
     tool_schemas: list[dict[str, object]] | None = None,
+    remaining_s: float | None = None,
 ) -> tuple[LlmResponse, list[BaseModel]]:
     collected: list[BaseModel] = []
     bus = EventBus()
@@ -119,6 +125,7 @@ async def _chat(
         tool_schemas=tool_schemas or [],
         bus=bus,
         run_id="r1",
+        remaining_s=remaining_s,
     )
     return result, collected
 
@@ -523,6 +530,139 @@ async def test_empty_stream() -> None:
     tokens = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
     assert tokens == []
     assert result.text == ""
+
+
+# 功能：验证运行时剩余预算小于 Provider 默认 timeout 时收缩 OpenAI 单次请求 timeout
+# 设计：模拟 AgentLoop 传入 3.5 秒预算，检查 SDK 请求不会继续使用构造时的 120 秒默认值
+async def test_remaining_budget_limits_openai_request_timeout() -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks, timeout_s=120.0)
+    client.chat.completions.create.side_effect = ValueError("stop after request setup")
+
+    with pytest.raises(ValueError):
+        await provider.chat(
+            messages=[],
+            tool_schemas=[],
+            bus=EventBus(),
+            run_id="r1",
+            remaining_s=3.5,
+        )
+
+    timeout = client.chat.completions.create.call_args.kwargs["timeout"]
+    assert 0 < timeout <= 3.5
+    assert timeout == pytest.approx(3.5, abs=0.25)
+    client.with_options.assert_called_once_with(max_retries=0)
+
+
+# 功能：验证没有运行时预算时不覆盖 SDK 已配置的 Provider 默认 timeout
+# 设计：remaining_s=None 表示兼容旧调用方，单次请求不额外注入 timeout 参数
+async def test_missing_remaining_budget_keeps_openai_default_timeout() -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks, timeout_s=45.0)
+    client.chat.completions.create.side_effect = ValueError("stop after request setup")
+
+    with pytest.raises(ValueError):
+        await provider.chat(
+            messages=[],
+            tool_schemas=[],
+            bus=EventBus(),
+            run_id="r1",
+        )
+
+    assert "timeout" not in client.chat.completions.create.call_args.kwargs
+    client.with_options.assert_not_called()
+
+
+# 功能：验证已耗尽的 OpenAI 剩余预算不会发起 SDK 请求
+# 设计：零值和负值都表示没有可用预算，必须在请求入口直接拒绝
+@pytest.mark.parametrize("remaining_s", [0.0, -1.0])
+async def test_openai_rejects_exhausted_remaining_budget(remaining_s: float) -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks)
+
+    with pytest.raises(TimeoutError, match="remaining run budget"):
+        await _chat(provider, remaining_s=remaining_s)
+
+    client.chat.completions.create.assert_not_called()
+    client.with_options.assert_not_called()
+
+
+# 功能：验证固定退避无法放入剩余预算时不会发起下一次 OpenAI 请求
+# 设计：第一次连接错误后的默认退避为 1 秒；剩余预算只有 0.5 秒时应直接结束，且不等待超预算退避
+async def test_openai_retry_stops_when_backoff_exceeds_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks)
+    client.chat.completions.create.side_effect = [httpx.ReadError("connection lost")]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(httpx.ReadError):
+        await _chat(provider, remaining_s=0.5)
+
+    assert client.chat.completions.create.call_count == 1
+    sleep.assert_not_awaited()
+
+
+# 功能：验证剩余预算足够时仍会执行一次 OpenAI 重试
+# 设计：第一轮连接错误、第二轮非重试错误，检查恰好等待默认 1 秒并发起第二次请求
+async def test_openai_retry_runs_when_backoff_fits_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks)
+    client.chat.completions.create.side_effect = [
+        httpx.ReadError("connection lost"),
+        ValueError("stop after retry"),
+    ]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(ValueError):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.chat.completions.create.call_count == 2
+    sleep.assert_awaited_once_with(1.0)
+
+
+# 功能：验证 OpenAI 限流退避也受剩余预算约束
+# 设计：429 的默认首轮退避为 5 秒；剩余预算只有 2 秒时不等待、不发起第二次请求
+async def test_openai_rate_limit_retry_stops_when_backoff_exceeds_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks)
+    request = httpx.Request("POST", "https://example.com/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    client.chat.completions.create.side_effect = [
+        openai.RateLimitError("rate limited", response=response, body=None)
+    ]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(openai.RateLimitError):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.chat.completions.create.call_count == 1
+    sleep.assert_not_awaited()
+
+
+# 功能：验证重试退避期间收到取消信号时不会被吞掉，也不会继续下一次请求
+# 设计：模拟 deadline 取消 sleep，取消异常必须向 AgentLoop 传播，调用次数保持为一次
+async def test_openai_retry_propagates_cancellation_without_next_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [_make_chunk(finish_reason="stop", usage=_make_usage())]
+    provider, client = _make_provider(chunks)
+    client.chat.completions.create.side_effect = [httpx.ReadError("connection lost")]
+    sleep = AsyncMock(side_effect=asyncio.CancelledError())
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.chat.completions.create.call_count == 1
 
 
 # 功能：验证 DeepSeek V4 Flash 使用官方 1M 上下文长度计算预算占比

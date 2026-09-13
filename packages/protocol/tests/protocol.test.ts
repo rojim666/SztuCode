@@ -86,6 +86,21 @@ test("runtime validation covers cancellation, session lifecycle and invalid valu
   assert.equal(validateJsonRpcRequest({ jsonrpc: "1.0", id: "1", method: "core.ping", params: { client: "ok" } }).ok, false);
 });
 
+test("permission.respond validates tool_use_id with legacy permission_id fallback", () => {
+  // Issue #118: canonical ownership fields; run_id/session_id accompany the
+  // request so responses can be attributed to the right run/session.
+  assert.equal(
+    validateRequestParams("permission.respond", { tool_use_id: "t1", run_id: "r1", session_id: "s1", decision: "allow_once" }).ok,
+    true,
+  );
+  assert.equal(validateRequestParams("permission.respond", { tool_use_id: "t1", decision: "deny_once" }).ok, true);
+  // Legacy alias stays accepted for older clients.
+  assert.equal(validateRequestParams("permission.respond", { permission_id: "t1", decision: "allow_once" }).ok, true);
+  // Missing both id fields, or an unknown decision, is rejected.
+  assert.equal(validateRequestParams("permission.respond", { decision: "allow_once" }).ok, false);
+  assert.equal(validateRequestParams("permission.respond", { tool_use_id: "t1", decision: "maybe" }).ok, false);
+});
+
 test("runtime event envelope remains NDJSON event-compatible", () => {
   const envelope = { kind: "event", event: { type: "session.snapshot", session_id: "s1", snapshot: { session_id: "s1", mode: "chat", status: "active", title: "Chat", updated_at: "2026-01-01T00:00:00Z", run_count: 0, archived: false, pinned: false, workspace_id: null, latest_run_id: null }, ts: "2026-01-01T00:00:00Z" } };
   assert.equal(isEventEnvelope(envelope), true);
