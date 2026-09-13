@@ -42,6 +42,12 @@
             "csp": null
         }
     },
+    "plugins": {
+        "updater": {
+            "pubkey": "",
+            "endpoints": []
+        }
+    },
     "bundle": {
         "active": true,
         "targets": "all",

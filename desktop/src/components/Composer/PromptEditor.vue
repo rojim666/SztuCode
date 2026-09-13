@@ -4,6 +4,7 @@ import { ref, watch, onMounted } from "vue";
 const props = defineProps<{ modelValue: string; skill: { name: string } | null; plugins: { id: string; display_name: string }[]; disabled?: boolean; placeholder: string }>();
 const emit = defineEmits<{ 'update:modelValue': [value: string]; input: []; 'remove-skill': []; 'remove-plugin': [id: string]; keydown: [event: KeyboardEvent]; paste: [event: ClipboardEvent] }>();
 const editor = ref<HTMLDivElement>();
+const isEmpty = ref(true);
 let composing = false;
 function textValue() {
   const visit = (node: Node): string => {
@@ -14,6 +15,10 @@ function textValue() {
     return node.nodeName === "DIV" && node !== editor.value && node.previousSibling ? "\n" + value : value;
   };
   return editor.value ? visit(editor.value).replace(/\u200b/g, "") : "";
+}
+function updateEmptyState(root = editor.value) {
+  if (!root) return;
+  isEmpty.value = !textValue().length && !root.querySelector('[data-token]');
 }
 function sync() {
   const root = editor.value;
@@ -32,6 +37,7 @@ function sync() {
     root.append(span);
   }
   root.append(document.createTextNode(props.modelValue || '\u200b'));
+  updateEmptyState(root);
   if (focused) focus();
 }
 function focus() {
@@ -46,9 +52,12 @@ function focus() {
   selection?.addRange(range);
 }
 function input() {
+  const root = editor.value;
+  if (!root) return;
+  updateEmptyState(root);
   if (composing) return;
-  if (props.skill && !editor.value?.querySelector('[data-token="skill"]')) emit('remove-skill');
-  const ids = Array.from(editor.value?.querySelectorAll('[data-token]') ?? []).map(n => (n as HTMLElement).dataset.token);
+  if (props.skill && !root.querySelector('[data-token="skill"]')) emit('remove-skill');
+  const ids = Array.from(root.querySelectorAll('[data-token]')).map(n => (n as HTMLElement).dataset.token);
   for (const p of props.plugins) if (!ids.includes(p.id)) emit('remove-plugin', p.id);
   emit('update:modelValue', textValue());
   emit('input');
@@ -58,6 +67,14 @@ function paste(event: ClipboardEvent) {
   if (event.defaultPrevented) return;
   event.preventDefault();
   document.execCommand('insertText', false, event.clipboardData?.getData('text/plain') ?? '');
+}
+function compositionstart() {
+  composing = true;
+  isEmpty.value = false;
+}
+function compositionend() {
+  composing = false;
+  input();
 }
 function keydown(event: KeyboardEvent) {
   emit('keydown', event);
@@ -72,12 +89,12 @@ defineExpose({ focus });
 </script>
 
 <template>
-  <div ref="editor" class="prompt-editor" role="textbox" aria-multiline="true" :aria-disabled="disabled" :contenteditable="!disabled" :data-placeholder="placeholder" :class="{ 'is-empty': !modelValue && !skill && !plugins.length }" @input="input" @keydown="keydown" @paste="paste" @compositionstart="composing = true" @compositionend="composing = false; input()" />
+  <div ref="editor" class="prompt-editor" role="textbox" aria-multiline="true" :aria-disabled="disabled" :contenteditable="!disabled" :data-placeholder="placeholder" :class="{ 'is-empty': isEmpty }" @input="input" @keydown="keydown" @paste="paste" @compositionstart="compositionstart" @compositionend="compositionend" />
 </template>
 
 <style>
 .prompt-editor { min-width: 0; min-height: 72px; padding: 8px 10px; color: var(--text, #30343a); background: transparent; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; outline: none; cursor: text; }
-.prompt-editor.is-empty::before { content: attr(data-placeholder); color: var(--text-muted, #9298a1); pointer-events: none; float: left; height: 0; }
+.prompt-editor.is-empty::before { content: attr(data-placeholder); color: var(--text-muted, #9298a1); opacity: .62; pointer-events: none; float: left; height: 0; user-select: none; }
 .prompt-editor[aria-disabled="true"] { opacity: .6; cursor: default; }
 .prompt-editor .prompt-inline-token { display: inline-flex; align-items: center; gap: 5px; margin-right: 7px; color: #2583e9; font-size: 13px; font-weight: 600; vertical-align: baseline; user-select: all; }
 .prompt-inline-token svg { flex: none; align-self: center; }

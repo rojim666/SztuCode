@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 import sharp from "sharp";
+import { readFileSync } from "node:fs";
+
+const appPackage = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
 
 test("workspace corner exposes the same background as the surrounding chrome", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -921,7 +924,7 @@ test("settings opens as an appearance dialog from the workbench footer", async (
   await expect(dialog).toBeHidden();
 });
 
-test("about settings displays the desktop version and project link", async ({ page }) => {
+test("about settings displays the desktop version, project link and update button", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "设置" }).click();
@@ -929,8 +932,11 @@ test("about settings displays the desktop version and project link", async ({ pa
 
   await dialog.getByRole("button", { name: "关于", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "关于", exact: true })).toBeVisible();
-  await expect(dialog.getByText("v1.0.1", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(`v${appPackage.version}`, { exact: true })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "打开项目链接" })).toContainText("github.com/rojim666/SztuCode");
+  await dialog.getByRole("button", { name: "检查更新", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("请在桌面应用中检查更新。");
+  await expect(dialog.getByRole("button", { name: "检查更新", exact: true })).toBeEnabled();
 });
 
 test("appearance settings offer distinct interface font previews", async ({ page }) => {

@@ -9,7 +9,7 @@
     "prebuild": "node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
-    "test:unit": "tsx --test tests/attachment-source.test.ts tests/composer-draft.test.ts tests/composer-submission.test.ts tests/context-files.test.ts tests/context-evolution.test.ts tests/playwright-chromium.test.ts tests/platform.test.ts tests/pipeline-phase.test.ts tests/reasoning-summary.test.ts tests/session-stats.test.ts tests/source-control-draft.test.ts tests/timeline-stream.test.ts tests/tray-permissions.test.ts",
+    "test:unit": "tsx --test tests/app-updater.test.ts tests/attachment-source.test.ts tests/composer-draft.test.ts tests/composer-submission.test.ts tests/context-files.test.ts tests/context-evolution.test.ts tests/playwright-chromium.test.ts tests/platform.test.ts tests/pipeline-phase.test.ts tests/reasoning-summary.test.ts tests/session-stats.test.ts tests/source-control-draft.test.ts tests/timeline-stream.test.ts tests/tray-permissions.test.ts",
     "test:visual": "playwright test"
   },
   "dependencies": {
@@ -17,6 +17,8 @@
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.11.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "dompurify": "^3.4.12",

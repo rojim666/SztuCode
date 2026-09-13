@@ -19,6 +19,7 @@ import {
 } from "../../services/appearance";
 import AgentLogo from "../timeline/AgentLogo.vue";
 import ModelManager from "../ModelConfig/ModelManager.vue";
+import AppUpdater from "./AppUpdater.vue";
 
 type SettingsSection = "appearance" | "general" | "agent" | "integrations" | "about";
 
@@ -667,6 +668,7 @@ function selectLocale(value: AppLocale) {
                   </dd>
                 </div>
               </dl>
+              <AppUpdater />
               <p v-if="aboutError" class="form-error" role="alert">{{ aboutError }}</p>
             </section>
           </template>

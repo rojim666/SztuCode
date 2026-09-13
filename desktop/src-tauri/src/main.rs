@@ -2027,6 +2027,16 @@ fn tray_icon_image(scale: f64) -> tauri::image::Image<'static> {
     tauri::image::Image::new(rgba, size, size)
 }
 
+#[tauri::command]
+fn updater_configured(app: tauri::AppHandle) -> bool {
+    app.config().plugins.0.get("updater").is_some_and(|config| {
+        config.get("pubkey").and_then(|value| value.as_str())
+            .is_some_and(|key| !key.trim().is_empty())
+            && config.get("endpoints").and_then(|value| value.as_array())
+                .is_some_and(|endpoints| !endpoints.is_empty())
+    })
+}
+
 // 主入口：注册受控 IPC 桥与系统目录选择能力。
 fn main() {
     tauri::Builder::default()
@@ -2036,7 +2046,10 @@ fn main() {
         .manage(wechat_bridge::WeChatLoginProcess::new())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            updater_configured,
             ipc_connect,
             ipc_send,
             daemon_start,

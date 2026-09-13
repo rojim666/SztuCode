@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { webcrypto } from "node:crypto";
+import { test } from "node:test";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import { appUpdateState as state, checkAppUpdate, installAppUpdate, restartAfterUpdate } from "../src/services/app-updater";
+
+test("updater guards unsupported builds, serializes checks, and supports install/restart retries", async () => {
+  Object.assign(globalThis, { window: { crypto: webcrypto }, isTauri: false });
+  await checkAppUpdate();
+  assert.equal(state.message, "desktopOnly");
+  Object.assign(globalThis, { isTauri: true });
+  let configured = false;
+  let release: object | null = null;
+  let failDownload = false;
+  let failRestart = false;
+  const calls: string[] = [];
+  mockIPC(async (cmd, args) => {
+    calls.push(cmd);
+    if (cmd === "updater_configured") return configured;
+    if (cmd === "plugin:updater|check") return release;
+    if (cmd === "plugin:updater|download") {
+      if (failDownload) throw new Error("network unavailable");
+      const channel = args!.onEvent as { onmessage: (event: unknown) => void };
+      channel.onmessage({ event: "Started", data: { contentLength: 100 } });
+      channel.onmessage({ event: "Progress", data: { chunkLength: 75 } });
+      assert.equal(state.downloaded, 75);
+      assert.equal(state.total, 100);
+      channel.onmessage({ event: "Finished" });
+      return 2;
+    }
+    if (cmd === "plugin:process|restart" && failRestart) throw new Error("restart failed");
+    return null;
+  });
+  await checkAppUpdate();
+  assert.equal(state.message, "notConfigured");
+  assert.equal(calls.includes("plugin:updater|check"), false);
+  configured = true;
+  await checkAppUpdate();
+  assert.equal(state.phase, "latest");
+  release = { rid: 1, currentVersion: "1.0.2", version: "1.0.3", body: "Release notes", rawJson: {} };
+  calls.length = 0;
+  await Promise.all([checkAppUpdate(), checkAppUpdate()]);
+  assert.equal(calls.filter(cmd => cmd === "plugin:updater|check").length, 1);
+  assert.equal(state.phase, "available");
+  assert.equal(state.version, "1.0.3");
+  assert.equal(calls.includes("plugin:updater|install"), false);
+  failDownload = true;
+  await installAppUpdate();
+  assert.equal(state.phase, "available");
+  assert.match(state.error, /network unavailable/);
+  assert.equal(calls.includes("plugin:updater|install"), false);
+  failDownload = false;
+  await Promise.all([installAppUpdate(), installAppUpdate()]);
+  assert.equal(state.phase, "installed");
+  assert.equal(state.error, "");
+  assert.equal(calls.filter(cmd => cmd === "plugin:updater|install").length, 1);
+  await checkAppUpdate();
+  assert.equal(state.phase, "installed");
+  failRestart = true;
+  await restartAfterUpdate();
+  assert.equal(state.phase, "installed");
+  assert.match(state.error, /restart failed/);
+  failRestart = false;
+  await restartAfterUpdate();
+  assert.equal(state.phase, "restarting");
+});
