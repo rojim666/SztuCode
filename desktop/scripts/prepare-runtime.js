@@ -49,7 +49,7 @@ if (process.platform !== "win32") await chmod(bundledNode, 0o755);
 const esbuild = path.join(repositoryRoot, "node_modules", "esbuild", "bin", "esbuild");
 const esbuildArgs = [path.join(repositoryRoot, "packages", "runtime-ts", "src", "main.ts"), "--bundle", "--platform=node", "--format=esm", "--loader:.node=file", `--outfile=${output}`,
   // ESM 产物中 CJS 依赖的动态 require 会落入 esbuild 抛错 shim，注入真实 require
-  `--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);`];
+  `--banner:js=import { createRequire as __sztuBundleCreateRequire } from 'node:module'; const require = __sztuBundleCreateRequire(import.meta.url);`];
 const nativeEsbuild = process.platform === "win32"
   ? path.join(repositoryRoot, "node_modules", "@esbuild", `win32-${process.arch === "ia32" ? "ia32" : process.arch === "arm64" ? "arm64" : "x64"}`, "esbuild.exe")
   : esbuild;
