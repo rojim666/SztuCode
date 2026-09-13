@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from sztu_code.core.permissions.policy import (
     DEFAULT_POLICIES,
@@ -37,6 +37,10 @@ class _PendingRequest:
     session_id: str
     tool_name: str
     run_id: str
+
+
+# 审批响应的归属结果（Issue #118），与 PermissionRespondResult.status 对齐
+RespondStatus = Literal["resolved", "unknown", "mismatch"]
 
 
 # 管理工具调用权限：策略评估、用户审批挂起、session 级和持久化 always 缓存、超时、模式控制
@@ -239,6 +243,20 @@ class PermissionManager:
             )
             return False, "deny_once"
 
+        # Issue #118：重复 tool_use_id 不得静默覆盖已有 pending 请求——否则一次
+        # permission.respond 可能唤醒错误的工具调用。并发 run/子 Agent/测试
+        # Provider 复用同一 ID 时，直接拒绝后到的请求（fail-closed），先到者
+        # 仍由其真正的归属响应解决
+        if tool_use_id in self._pending:
+            logger.warning(
+                "permission: duplicate tool_use_id=%s tool=%s session=%s "
+                "while a request is already pending — denying new request",
+                tool_use_id,
+                tool_name,
+                session_id,
+            )
+            return False, "duplicate_request_id"
+
         loop = asyncio.get_event_loop()
         future: asyncio.Future[str] = loop.create_future()
         pending = _PendingRequest(
@@ -279,23 +297,29 @@ class PermissionManager:
             if self._pending.get(tool_use_id) is pending:
                 self._pending.pop(tool_use_id, None)
 
-    # 处理客户端返回的审批决策，resolve 对应 Future
+    # 处理客户端返回的审批决策，resolve 对应 Future。
+    # 返回归属结果："resolved" 已送达对应请求；"unknown" 表示 ID 不存在或已被
+    # 解决/取消（迟到响应）；"mismatch" 表示 run/session 归属不匹配（请求保留，
+    # 等待真正归属者的响应）。归属字段为 None 或空串时视为未提供，跳过校验。
     def respond(
         self,
         tool_use_id: str,
         decision: str,
         run_id: str | None = None,
         session_id: str | None = None,
-    ) -> None:
-        req = self._pending.pop(tool_use_id, None)
+    ) -> RespondStatus:
+        req = self._pending.get(tool_use_id)
         if req is None:
             logger.warning("permission.respond: unknown tool_use_id=%s", tool_use_id)
-            return
-        # 验证 run_id 和 session_id 匹配，防止不同上下文的请求被错误处理
+            return "unknown"
+        # 验证 run_id 和 session_id 匹配，防止不同上下文的请求被错误处理；
+        # 空串与 None 同样视为未提供，避免客户端缺省字段让所有响应都无法送达
+        expected_run = run_id or None
+        expected_session = session_id or None
         if (
-            run_id is not None
-            and session_id is not None
-            and (req.run_id != run_id or req.session_id != session_id)
+            expected_run is not None
+            and expected_session is not None
+            and (req.run_id != expected_run or req.session_id != expected_session)
         ):
             logger.warning(
                 "permission.respond: context mismatch tool_use_id=%s "
@@ -303,14 +327,14 @@ class PermissionManager:
                 tool_use_id,
                 req.run_id,
                 req.session_id,
-                run_id,
-                session_id,
+                expected_run,
+                expected_session,
             )
-            # 将请求重新放回待处理队列，以避免丢失
-            self._pending[tool_use_id] = req
-            return
+            return "mismatch"
+        self._pending.pop(tool_use_id, None)
         if not req.future.done():
             req.future.set_result(decision)
+        return "resolved"
 
     # 应用审批决策，更新 session + persistent 缓存，返回是否放行
     def _apply_response(self, decision: str, session_id: str, tool_name: str) -> bool:

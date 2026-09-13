@@ -338,8 +338,9 @@ export class ServerService {
         return ok(request.id, { run_id: params.run_id, events: durable });
       }
       case "permission.respond": {
-        const params = request.params as unknown as PermissionRespondParams;
-        const permissionId = params.permission_id ?? (request.params as Record<string, unknown>).tool_use_id;
+        // tool_use_id is the canonical field; permission_id is the legacy alias
+        const params = request.params as unknown as PermissionRespondParams & { permission_id?: string };
+        const permissionId = params.tool_use_id ?? params.permission_id;
         if (typeof permissionId !== "string") throw new Error("tool_use_id is required");
         const accepted = this.runs.permissions.respond(permissionId, params.decision);
         return ok(request.id, { accepted, ok: accepted });
