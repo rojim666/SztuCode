@@ -63,7 +63,7 @@ export class AgentLoop {
     const initialSystem = messages.find((message) => message.role === "system");
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, step: 0, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
-    const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.90, 0, 1);
+    const compactThreshold = this.options.compactThreshold ?? numberEnv("SZTU_COMPACT_THRESHOLD", 0.70, 0, 1);
     const configuredMemoryMode = process.env.SZTU_MEMORY_MODE;
     const memoryMode = this.options.memoryMode ?? (configuredMemoryMode === "token_budget" ? "token_budget" : "compaction");
     const slidingWindowSize = this.options.slidingWindowSize ?? nonNegativeEnv("SZTU_SLIDING_WINDOW_SIZE", 5);
@@ -116,8 +116,8 @@ export class AgentLoop {
       await this.options.onCompacted?.(messages, "");
       return true;
     };
-    const startCompaction = async (step: number): Promise<boolean> => {
-      if (pendingCompaction || compactionRunning || compactThreshold <= 0 || step - lastCompactStep < compactCooldownSteps) return false;
+    const startCompaction = async (step: number, urgent = false): Promise<boolean> => {
+      if (pendingCompaction || compactionRunning || compactThreshold <= 0 || (!urgent && step - lastCompactStep < compactCooldownSteps)) return false;
       // 熔断打开：LLM 摘要不可用，直接走硬丢弃退路（不消耗 LLM 调用）
       if (compactCircuitBreaker > 0 && compactionFailures >= compactCircuitBreaker) {
         lastCompactStep = step;
@@ -133,7 +133,7 @@ export class AgentLoop {
         try {
           // 使用快照上下文进行压缩
           const snapshotContext = new ContextManager(messagesSnapshot, { maxTokens: context.budget.maxTokens, reservedOutputTokens: context.budget.reservedOutputTokens, maxToolResultChars: context.budget.maxToolResultChars }, context.counter);
-          const result = await snapshotContext.compactWithProvider(this.provider, "", { slidingWindow: slidingWindowSize, minimumOldTokens: compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
+          const result = await snapshotContext.compactWithProvider(this.provider, "", { slidingWindow: urgent ? 1 : slidingWindowSize, minimumOldTokens: urgent ? 0 : compactMinimumOldTokens, compactionCount }, signal, { runId, step, purpose: "compaction" });
           span.setAttributes({ removed_messages: result.removedMessages, summary_tokens: result.summaryTokens, failed: Boolean(result.failed) });
           // 附加快照长度信息，用于后续应用时合并
           (result as any).snapshotLength = snapshotLength;
@@ -179,6 +179,7 @@ export class AgentLoop {
       const appendedWhileCompacting = messages.slice(snapshotLength);
       messages.splice(0, messages.length, ...compactMessages, ...appendedWhileCompacting);
       context.notifyMutated();
+      lastContextPct = context.contextPct();
       compactionFailures = 0; compactionCount += 1; compacted = true;
       // 压缩调用成本入账：摘要生成本身消耗的 token 计入运行用量（cache 两字段不动）
       usage.input_tokens += Number(result.usage?.input_tokens ?? 0);
@@ -266,6 +267,25 @@ export class AgentLoop {
         state: `Step ${step} starting`,
       });
 
+      // Check the actual next request, including tool schemas and output headroom.
+      // A resumed conversation can already be full before its first model call.
+      const toolTokens = context.counter.countJson(this.tools.list().map(({ name, description, schema }) => ({ name, description, schema })));
+      const inputLimit = Math.max(1, context.budget.maxTokens - context.budget.reservedOutputTokens);
+      const estimatedInput = () => context.tokenEstimate() + toolTokens;
+      if (compactThreshold > 0 && memoryMode === "compaction" && estimatedInput() >= Math.min(context.budget.maxTokens * compactThreshold, inputLimit)) {
+        const urgent = estimatedInput() >= inputLimit;
+        await startCompaction(step, urgent);
+        // Await even background work here: there is no safe reason to send the
+        // known oversized request while its replacement is still being built.
+        await applyPendingCompaction(true);
+        if (estimatedInput() >= inputLimit) {
+          await startCompaction(step, true);
+          await applyPendingCompaction(true);
+        }
+        if (estimatedInput() >= inputLimit) {
+          throw new Error("Context still exceeds the model input budget after compaction. Reduce attached content or configure the correct model context window.");
+        }
+      }
       const requestTokens = context.tokenEstimate();
       let response: ModelResponse;
       let streamedText = "";
@@ -659,7 +679,7 @@ export class AgentLoop {
       }
       // 兜底：如果还没有启动压缩且需要压缩，则启动（工具执行期间可能已经启动了）
       const addedTokens = Math.max(0, context.tokenEstimate() - requestTokens);
-      if (context.needsCompaction(compactThreshold, responseInputTokens || requestTokens, addedTokens) && !pendingCompaction && memoryMode === "compaction") void startCompaction(step);
+      if (context.needsCompaction(compactThreshold, responseTotalInputTokens || requestTokens, addedTokens) && !pendingCompaction && memoryMode === "compaction") void startCompaction(step);
     }
     throw new Error("Agent stopped unexpectedly");
     } catch (error) {

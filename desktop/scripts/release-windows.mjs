@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const config = JSON.parse(readFileSync(path.join(desktop, "src-tauri/tauri.conf.json"), "utf8"));
 const version = config.version;
+const releaseTag = process.env.SZTU_RELEASE_TAG || `v${version}`;
 const packageVersion = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8")).version;
 const cargo = readFileSync(path.join(desktop, "src-tauri/Cargo.toml"), "utf8");
 if (process.platform !== "win32" || process.arch !== "x64") {
@@ -46,7 +47,7 @@ for (const [kind, name] of [
   if (!signature) throw new Error(`Missing signature for ${name}`);
   platforms[`windows-x86_64-${kind}`] = {
     signature,
-    url: `https://github.com/rojim666/SztuCode/releases/download/v${version}/${name}`,
+    url: `https://github.com/rojim666/SztuCode/releases/download/${encodeURIComponent(releaseTag)}/${name}`,
   };
   checksums.push(`${createHash("sha256").update(readFileSync(installer)).digest("hex")}  ${name}`);
 }

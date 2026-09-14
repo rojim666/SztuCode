@@ -167,11 +167,11 @@ test("agent loop auto-compacts at the configured threshold and preserves the ini
     let agentCalls = 0; const provider: ModelProvider = { complete: async (_messages, _tools, _signal, _onToken, invocation) => {
       purposes.push(invocation?.purpose ?? "agent");
       if (invocation?.purpose === "compaction") return { text: "Goal\nKeep the original task.\nProgress\nOld turns are summarized.\nDecisions\nPreserve recent turns.\nOpen Issues\nNone.\nNext Steps\nFinish.", tool_calls: [], stop_reason: "end_turn", usage: { output_tokens: 24 } };
-      agentCalls += 1; return agentCalls === 1 ? { text: "", tool_calls: [{ id: "read", name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 80, output_tokens: 2 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 80, output_tokens: 2 } };
+      agentCalls += 1; return agentCalls === 1 ? { text: "", tool_calls: [{ id: "read", name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 80_000, output_tokens: 2 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 80_000, output_tokens: 2 } };
     } };
     await writeFile(path.join(root, "package.json"), "{}", "utf8");
     const history = [{ role: "user" as const, content: "original goal" }, ...Array.from({ length: 8 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `turn-${index} ${"detail ".repeat(20)}` }))];
-    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { sessionId: "session-1", contextWindow: 100, compactThreshold: 0.70, slidingWindowSize: 2, compactMinimumOldTokens: 0 }).run("compact-run", "continue", 2, history);
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, events, { check: async () => true }, { sessionId: "session-1", contextWindow: 100_000, compactThreshold: 0.70, slidingWindowSize: 2, compactMinimumOldTokens: 0 }).run("compact-run", "continue", 2, history);
     assert.deepEqual(purposes, ["agent", "compaction", "agent"]); assert.equal(result.compacted, true); assert.equal(result.contextPct, 0.8); assert.equal(result.messages.some((message) => message.content === "original goal"), true); assert.equal(compacted.length, 1);
   } finally { await events.flush(); await rm(root, { recursive: true, force: true }); }
 });
@@ -195,11 +195,11 @@ test("agent loop falls back to hard-drop compaction after the circuit breaker op
     let compactions = 0; let agents = 0;
     const provider: ModelProvider = { complete: async (_messages, _tools, _signal, _onToken, invocation) => {
       if (invocation?.purpose === "compaction") { compactions += 1; return { text: "invalid", tool_calls: [], stop_reason: "end_turn" }; }
-      agents += 1; return agents < 3 ? { text: "", tool_calls: [{ id: `read-${agents}`, name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 90, output_tokens: 1 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 90, output_tokens: 1 } };
+      agents += 1; return agents < 3 ? { text: "", tool_calls: [{ id: `read-${agents}`, name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 90_000, output_tokens: 1 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 90_000, output_tokens: 1 } };
     } };
     await writeFile(path.join(root, "package.json"), "{}", "utf8");
     const history = [{ role: "user" as const, content: "goal" }, ...Array.from({ length: 6 }, (_, index) => ({ role: index % 2 ? "user" as const : "assistant" as const, content: `old-${index} ${"detail ".repeat(20)}` }))];
-    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { contextWindow: 100, compactThreshold: 0.70, compactCooldownSteps: 0, compactCircuitBreaker: 2, compactMinimumOldTokens: 0 }).run("breaker", "continue", 4, history);
+    const result = await new AgentLoop(provider, createWorkspaceTools(), { workspace: new Workspace(root) }, new EventBus(path.join(root, "events.jsonl")), { check: async () => true }, { contextWindow: 100_000, compactThreshold: 0.70, compactCooldownSteps: 0, compactCircuitBreaker: 2, compactMinimumOldTokens: 0 }).run("breaker", "continue", 4, history);
     // LLM 摘要连续失败触发熔断后退化为无模型硬丢弃，上下文不再只增不减
     assert.equal(result.text, "done"); assert.equal(result.compacted, true); assert.equal(compactions, 2);
     assert.ok(result.messages.some((message) => String(message.content).includes("Earlier conversation compacted")));
@@ -462,7 +462,7 @@ test("run manager exposes note tools and injects saved session memory on the nex
       if (calls === 1) { assert.ok(tools.get("note_save")); assert.ok(tools.get("note_update")); return { text: "", tool_calls: [{ id: "remember", name: "note_save", input: { content: "Use PostgreSQL" } }], stop_reason: "tool_use" }; }
       return { text: "done", tool_calls: [], stop_reason: "end_turn" };
     } };
-    const manager = new RunManager(events, provider, root, undefined, () => [], async () => ({ contextWindow: 16_000, maxOutputTokens: 1_000 }), sessions);
+    const manager = new RunManager(events, provider, root, undefined, () => [], async () => ({ contextWindow: 128_000, maxOutputTokens: 1_000 }), sessions);
     manager.permissions.setMode("accept_edits");
     // Full-suite runs can contend with document parsing and semantic-index
     // workers on Windows. Keep the assertion bounded without treating normal
@@ -481,7 +481,7 @@ test("run manager persists full model context separately from visible session hi
     const provider: ModelProvider = { complete: async () => { calls += 1; return calls === 1 ? { text: "", tool_calls: [{ id: "read", name: "read_file", input: { path: "package.json" } }], stop_reason: "tool_use", usage: { input_tokens: 10, output_tokens: 1 } } : { text: "done", tool_calls: [], stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 2 } }; } };
     await writeFile(path.join(root, "package.json"), "{}", "utf8"); await sessions.appendMessage(session.id, { role: "user", content: "inspect" });
     const finished = new Promise<void>((resolve) => events.subscribe((event) => { if (event.type === "run.finished") resolve(); }));
-    new RunManager(events, provider, root, undefined, () => [], async () => ({ contextWindow: 1_000, maxOutputTokens: 100 }), sessions).start("inspect", [], async (messages) => { const assistant = messages.at(-1); if (assistant?.role === "assistant") await sessions.appendMessage(session.id, { role: "assistant", content: assistant.content }); }, root, session.id);
+    new RunManager(events, provider, root, undefined, () => [], async () => ({ contextWindow: 128_000, maxOutputTokens: 100 }), sessions).start("inspect", [], async (messages) => { const assistant = messages.at(-1); if (assistant?.role === "assistant") await sessions.appendMessage(session.id, { role: "assistant", content: assistant.content }); }, root, session.id);
     await finished;
     const modelHistory = await sessions.modelHistory(session.id); const visible = await sessions.history(session.id);
     assert.equal(modelHistory.some((message) => message.role === "tool" && message.tool_call_id === "read"), true);

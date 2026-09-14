@@ -322,8 +322,11 @@ export class ContextManager {
   async compactWithProvider(provider: ContextCompactionProvider, focus = "", slidingWindowOrOptions: number | CompactionOptions = 5, signal?: AbortSignal, invocation?: ModelInvocation): Promise<ContextCompactionResult> {
     const options = typeof slidingWindowOrOptions === "number" ? { slidingWindow: slidingWindowOrOptions, minimumOldTokens: 0, compactionCount: 0 } : slidingWindowOrOptions;
     const slidingWindow = options.slidingWindow ?? 5; const originalTokens = this.tokenEstimate(); const snapshotLength = this.messages.length; const { system, preamble, body } = splitIntoTurns(this.messages);
-    const fullFallback = body.length <= slidingWindow;
-    const oldTurns = fullFallback ? [] : body.slice(0, -slidingWindow); const recentTurns = fullFallback ? [] : body.slice(-slidingWindow);
+    // Small windows can fill before five turns. Still preserve the newest
+    // complete tool exchange instead of summarizing away the current result.
+    const retainedTurns = Math.min(slidingWindow, Math.max(0, body.length - 1));
+    const fullFallback = retainedTurns === 0;
+    const oldTurns = fullFallback ? [] : body.slice(0, -retainedTurns); const recentTurns = fullFallback ? [] : body.slice(-retainedTurns);
     const old = fullFallback ? this.messages.filter((message) => message.role !== "system") : flat(oldTurns); const oldTokens = this.counter.countMessages(old);
     if (!old.length) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };
     if (!fullFallback && oldTokens < (options.minimumOldTokens ?? 2_000)) return { originalTokens, summaryTokens: originalTokens, removedMessages: 0, summaryText: "", usedModel: false, deferred: true };

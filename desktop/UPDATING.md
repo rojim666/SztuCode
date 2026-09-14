@@ -18,6 +18,9 @@ This builds Windows x64 EXE/MSI installers and their signatures, and writes
 `latest.json` and `SHA256SUMS-v<version>.txt` into
 `desktop/src-tauri/target/release/bundle`.
 NSIS and MSI have separate update targets to preserve the installation type.
+The release tag defaults to `v<version>`. Set `SZTU_RELEASE_TAG` when the GitHub
+tag differs from the internal SemVer (the 1.0.3.1 hotfix uses tag `v1.0.3.1`
+and internal version `1.0.4`). The manifest URLs follow that tag.
 
 The local signing key is stored outside the repository at
 `%LOCALAPPDATA%/SztuCode/release-keys/updater.key`. Back up this file securely;
