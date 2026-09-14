@@ -44,8 +44,8 @@
     },
     "plugins": {
         "updater": {
-            "pubkey": "",
-            "endpoints": []
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzQTY2NDU5NEY3REMxNzMKUldSendYMVBXV1NtWTZxL2czbnVpT203c3QrWGpoRXQ4dUczS2UvR29JOXRjbEd0Q3Y5dDhmRlMK",
+            "endpoints": ["https://github.com/rojim666/SztuCode/releases/latest/download/latest.json"]
         }
     },
     "bundle": {
