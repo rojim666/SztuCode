@@ -8,6 +8,7 @@ import openai
 import pytest
 from pydantic import BaseModel
 
+import sztu_code.core.llm.openai_provider as openai_provider_module
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.openai_provider import (
     OpenAIProvider,
@@ -663,6 +664,55 @@ async def test_openai_retry_propagates_cancellation_without_next_attempt(
         await _chat(provider, remaining_s=2.0)
 
     assert client.chat.completions.create.call_count == 1
+
+
+# 功能：验证 OpenAI SDK 的连接异常会进入 Provider 网络重试分支
+# 设计：SDK 会把底层传输异常包装成 APIConnectionError；第二次请求用普通异常终止，检查首次异常已触发一次重试
+async def test_openai_sdk_connection_error_is_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, client = _make_provider()
+    request = httpx.Request("POST", "https://example.com")
+    client.chat.completions.create.side_effect = [
+        openai.APIConnectionError(request=request),
+        ValueError("stop after SDK retry"),
+    ]
+    sleep = AsyncMock()
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(ValueError, match="stop after SDK retry"):
+        await _chat(provider, remaining_s=2.0)
+
+    assert client.chat.completions.create.call_count == 2
+    sleep.assert_awaited_once_with(1.0)
+
+
+# 功能：验证 OpenAI 在计算请求 timeout 后、真正调用 SDK 前重新检查 deadline
+# 设计：模拟构建 timeout 时仍有预算、真正调用前 deadline 已耗尽；过期后不得启动 SDK 请求
+async def test_openai_rechecks_deadline_before_sdk_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = iter([100.5, 101.1])
+    current_time = 100.0
+
+    def monotonic() -> float:
+        nonlocal current_time
+        try:
+            current_time = next(clock)
+        except StopIteration:
+            pass
+        return current_time
+
+    monkeypatch.setattr(openai_provider_module.time, "monotonic", monotonic)
+    provider, client = _make_provider()
+    client.chat.completions.create.side_effect = ValueError("request should not start")
+
+    with pytest.raises(TimeoutError, match="remaining run budget"):
+        await provider._stream_once(
+            [], None, EventBus(), "r1", 0, 1, 100, deadline=101.0
+        )
+
+    assert client.chat.completions.create.call_count == 0
 
 
 # 功能：验证 DeepSeek V4 Flash 使用官方 1M 上下文长度计算预算占比

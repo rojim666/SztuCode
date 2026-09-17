@@ -598,7 +598,12 @@ class OpenAIProvider:
                     max_output_tokens,
                     deadline,
                 )
-            except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as exc:
+            except (
+                openai.APIConnectionError,
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.ConnectError,
+            ) as exc:
                 if attempt == _MAX_STREAM_RETRIES:
                     log.error(
                         "stream failed after %d attempts run_id=%s step=%d: %s",
@@ -664,6 +669,8 @@ class OpenAIProvider:
             # retries for budgeted calls so one attempt cannot consume the
             # same remaining budget multiple times internally.
             request_client = self._client.with_options(max_retries=0)
+        if deadline is not None and (_budget_remaining(deadline) or 0.0) <= 0:
+            raise TimeoutError("OpenAI request exceeded the remaining run budget")
         stream = await request_client.chat.completions.create(**kwargs)
         result = _StreamResult()
         async for chunk in stream:
