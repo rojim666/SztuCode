@@ -6,6 +6,18 @@ tests, and Python project metadata.
 Run commands from the repository root with `npm run daemon` or `npm run cli`.
 For direct Python development, change into this directory and use `uv run`.
 
+## Run 截止时间与工具调用
+
+Python Agent Loop 将同一个 Run 的剩余墙钟时间传给串行和并发工具调用。工具自身的
+timeout 与 Run Remaining time 取较小值；没有 Run 截止时间时，普通工具仍使用默认的
+120 秒上限。声明可无限等待或自行管理 timeout 的工具仍受 Parent Run 的截止时间约束。
+
+工具调用开始前、每次重试前和退避前都会检查剩余时间。截止时间到达后不再启动新的
+工具调用；在清理窗口内完成取消的合作式工具不会留下活动工具 task。若工具或其底层
+同步操作不合作，Python 无法强制终止它；这类结果会标记为 `unknown`，不会自动重试，
+并通过 `deadline_exceeded` 失败分类报告。Bash 调用还会清理其子进程树，避免超时后
+留下继续运行的命令；无法确认进程树已回收时同样保留 `unknown` 状态。
+
 ## 双运行时文件工具回归
 
 Python `read_file` 支持与 TypeScript 相同的 `offset`（从 0 开始）和

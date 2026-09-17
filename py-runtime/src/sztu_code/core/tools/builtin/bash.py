@@ -1,21 +1,36 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import functools
 import os
 import re
 import shutil
+import signal
+import subprocess
 import sys
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
+from sztu_code.core.tools.base import (
+    BaseTool,
+    ToolExecutionState,
+    ToolPermission,
+    ToolResult,
+)
 
 _MAX_OUTPUT_BYTES = 64 * 1024  # 64 KB
 _DEFAULT_TIMEOUT = 30
 _DEFAULT_GIT_TIMEOUT = 20
+_PROCESS_CLEANUP_TIMEOUT = 1.0
+_WINDOWS_CREATE_SUSPENDED = 0x00000004
+_WINDOWS_SNAPSHOT_THREAD = 0x00000004
+_WINDOWS_THREAD_SUSPEND_RESUME = 0x0002
+_WINDOWS_PROCESS_SET_QUOTA = 0x0100
+_WINDOWS_PROCESS_TERMINATE = 0x0001
+_WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 class BashParams(BaseModel):
@@ -150,6 +165,224 @@ def _preprocess_command(command: str) -> str:
     return cmd
 
 
+def _process_group_options() -> dict[str, Any]:
+    if os.name == "nt":
+        return {
+            # Suspend first so the Job Object is attached before the shell can
+            # create descendants; _resume_windows_process releases the gate.
+            "creationflags": (
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | _WINDOWS_CREATE_SUSPENDED
+            ),
+        }
+    return {"start_new_session": True}
+
+
+def _windows_kernel32() -> Any | None:
+    if os.name != "nt":
+        return None
+    win_dll = getattr(ctypes, "WinDLL", None)
+    if win_dll is None:
+        return None
+    try:
+        return win_dll("kernel32", use_last_error=True)
+    except OSError:
+        return None
+
+
+def _native_handle_value(handle: Any) -> int | None:
+    if isinstance(handle, int):
+        return handle or None
+    value = getattr(handle, "value", None)
+    return int(value) if value else None
+
+
+def _create_windows_job(proc: asyncio.subprocess.Process) -> int | None:
+    """Attach the process to a Job so descendants survive parent exit only to cleanup."""
+    kernel32 = _windows_kernel32()
+    if kernel32 is None:
+        return None
+
+    handle_type = ctypes.c_void_p
+    kernel32.CreateJobObjectW.restype = handle_type
+    kernel32.OpenProcess.restype = handle_type
+    kernel32.AssignProcessToJobObject.restype = ctypes.c_int
+    kernel32.CloseHandle.restype = ctypes.c_int
+
+    job = kernel32.CreateJobObjectW(None, None)
+    job_value = _native_handle_value(job)
+    if not job_value:
+        return None
+
+    keep_job = False
+    try:
+        process_handle = kernel32.OpenProcess(
+            _WINDOWS_PROCESS_SET_QUOTA
+            | _WINDOWS_PROCESS_TERMINATE
+            | _WINDOWS_PROCESS_QUERY_LIMITED_INFORMATION,
+            False,
+            proc.pid,
+        )
+        process_value = _native_handle_value(process_handle)
+        if not process_value:
+            return None
+
+        try:
+            assigned = kernel32.AssignProcessToJobObject(
+                handle_type(job_value), handle_type(process_value)
+            )
+        finally:
+            kernel32.CloseHandle(handle_type(process_value))
+
+        if not assigned:
+            return None
+        keep_job = True
+        return int(job_value)
+    except Exception:
+        return None
+    finally:
+        if not keep_job:
+            kernel32.CloseHandle(handle_type(job_value))
+
+
+def _resume_windows_process(pid: int) -> None:
+    """Resume a suspended process after its Job Object has been attached."""
+    if os.name != "nt":
+        return
+    kernel32 = _windows_kernel32()
+    if kernel32 is None:
+        raise RuntimeError("Windows process control is unavailable")
+
+    class _ThreadEntry32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.c_uint32),
+            ("cntUsage", ctypes.c_uint32),
+            ("th32ThreadID", ctypes.c_uint32),
+            ("th32OwnerProcessID", ctypes.c_uint32),
+            ("tpBasePri", ctypes.c_int32),
+            ("tpDeltaPri", ctypes.c_int32),
+            ("dwFlags", ctypes.c_uint32),
+        ]
+
+    handle_type = ctypes.c_void_p
+    kernel32.CreateToolhelp32Snapshot.restype = handle_type
+    kernel32.Thread32First.restype = ctypes.c_int
+    kernel32.Thread32Next.restype = ctypes.c_int
+    kernel32.OpenThread.restype = handle_type
+    kernel32.ResumeThread.restype = ctypes.c_uint32
+    kernel32.CloseHandle.restype = ctypes.c_int
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(_WINDOWS_SNAPSHOT_THREAD, 0)
+    snapshot_value = _native_handle_value(snapshot)
+    if not snapshot_value:
+        raise RuntimeError("Unable to enumerate Windows process threads")
+
+    entry = _ThreadEntry32(dwSize=ctypes.sizeof(_ThreadEntry32))
+    resumed = False
+    try:
+        has_entry = kernel32.Thread32First(
+            handle_type(snapshot_value), ctypes.byref(entry)
+        )
+        while has_entry:
+            if entry.th32OwnerProcessID == pid:
+                thread = kernel32.OpenThread(
+                    _WINDOWS_THREAD_SUSPEND_RESUME,
+                    False,
+                    entry.th32ThreadID,
+                )
+                thread_value = _native_handle_value(thread)
+                if thread_value:
+                    try:
+                        if kernel32.ResumeThread(handle_type(thread_value)) == 0xFFFFFFFF:
+                            raise RuntimeError("Unable to resume Windows process thread")
+                        resumed = True
+                    finally:
+                        kernel32.CloseHandle(handle_type(thread_value))
+            has_entry = kernel32.Thread32Next(
+                handle_type(snapshot_value), ctypes.byref(entry)
+            )
+    finally:
+        kernel32.CloseHandle(handle_type(snapshot_value))
+
+    if not resumed:
+        raise RuntimeError("Windows process primary thread was not found")
+
+
+def _close_windows_job(job_handle: int | None) -> None:
+    if job_handle is None:
+        return
+    kernel32 = _windows_kernel32()
+    if kernel32 is not None:
+        kernel32.CloseHandle(ctypes.c_void_p(job_handle))
+
+
+async def _terminate_process_tree(
+    proc: asyncio.subprocess.Process, job_handle: int | None = None
+) -> None:
+    """Stop the shell and its descendants before the pipe is reaped."""
+    if os.name == "nt":
+        kernel32 = _windows_kernel32()
+        if kernel32 is not None and job_handle is not None:
+            kernel32.TerminateJobObject.restype = ctypes.c_int
+            kernel32.TerminateJobObject(ctypes.c_void_p(job_handle), 1)
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill",
+                "/PID",
+                str(proc.pid),
+                "/T",
+                "/F",
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(
+                killer.communicate(), timeout=_PROCESS_CLEANUP_TIMEOUT
+            )
+        except Exception:
+            # Fall back to killing the shell handle if taskkill is unavailable.
+            pass
+    else:
+        killpg = getattr(os, "killpg", None)
+        if killpg is not None:
+            try:
+                killpg(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+            except (PermissionError, ProcessLookupError):
+                pass
+
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+
+
+async def _reap_process(proc: asyncio.subprocess.Process) -> None:
+    """Reap a terminated process without letting pipe cleanup hang forever."""
+    try:
+        await asyncio.wait_for(
+            proc.communicate(), timeout=_PROCESS_CLEANUP_TIMEOUT
+        )
+    except TimeoutError:
+        # Keep the timeout result UNKNOWN when the process cannot be confirmed
+        # reaped within the bounded cleanup window.
+        pass
+
+
+async def _cleanup_process(
+    proc: asyncio.subprocess.Process, job_handle: int | None
+) -> str | None:
+    """Attempt tree termination and reaping, preserving cleanup failures."""
+    errors: list[str] = []
+    try:
+        await _terminate_process_tree(proc, job_handle)
+    except Exception as exc:
+        errors.append(f"terminate: {exc}")
+    try:
+        await _reap_process(proc)
+    except Exception as exc:
+        errors.append(f"reap: {exc}")
+    return "; ".join(errors) if errors else None
+
+
 class BashTool(BaseTool):
     params_model = BashParams
     name = "bash"
@@ -202,6 +435,8 @@ class BashTool(BaseTool):
 
         # Windows 下优先用 git-bash 执行，否则 cmd.exe 找不到 grep/sed/pwd 等 Unix 工具
         bash = _git_bash_path() if sys.platform == "win32" else None
+        proc: asyncio.subprocess.Process | None = None
+        job_handle: int | None = None
         try:
             if bash:
                 proc = await asyncio.create_subprocess_exec(
@@ -209,6 +444,7 @@ class BashTool(BaseTool):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT,
                     cwd=str(self._workspace_root) if self._workspace_root is not None else None,
+                    **_process_group_options(),
                 )
             else:
                 proc = await asyncio.create_subprocess_shell(
@@ -216,27 +452,56 @@ class BashTool(BaseTool):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.STDOUT,
                     cwd=str(self._workspace_root) if self._workspace_root is not None else None,
+                    **_process_group_options(),
                 )
+            job_handle = _create_windows_job(proc)
+            _resume_windows_process(proc.pid)
             try:
                 stdout_bytes, _ = await asyncio.wait_for(
                     proc.communicate(), timeout=timeout
                 )
             except TimeoutError:
-                proc.kill()
-                await proc.communicate()
+                cleanup_error = await _cleanup_process(proc, job_handle)
+                cleanup_suffix = f"; cleanup failed: {cleanup_error}" if cleanup_error else ""
                 return ToolResult(
-                    content=f"[timeout after {timeout}s]",
+                    content=f"[timeout after {timeout}s]{cleanup_suffix}",
                     is_error=True,
                     error_type="timeout",
+                    execution_state=ToolExecutionState.UNKNOWN,
                 )
+            except asyncio.CancelledError:
+                # Parent Run cancellation must not leave the child process
+                # alive; preserve cancellation after best-effort reaping.
+                try:
+                    await _terminate_process_tree(proc, job_handle)
+                    await _reap_process(proc)
+                except Exception:
+                    pass
+                raise
+            finally:
+                _close_windows_job(job_handle)
         except Exception as exc:
-            return ToolResult(content=str(exc), is_error=True, error_type="runtime_error")
+            cleanup_error = (
+                await _cleanup_process(proc, job_handle) if proc is not None else None
+            )
+            cleanup_suffix = f"; cleanup failed: {cleanup_error}" if cleanup_error else ""
+            return ToolResult(
+                content=f"{exc}{cleanup_suffix}",
+                is_error=True,
+                error_type="runtime_error",
+                execution_state=(
+                    ToolExecutionState.UNKNOWN
+                    if proc is not None
+                    else ToolExecutionState.COMPLETED
+                ),
+            )
 
         output = stdout_bytes.decode("utf-8", errors="replace")
         truncated = len(stdout_bytes) > _MAX_OUTPUT_BYTES
         if truncated:
             output = output[:_MAX_OUTPUT_BYTES] + "\n[truncated]"
 
+        assert proc is not None
         returncode = proc.returncode or 0
         if returncode != 0:
             return ToolResult(

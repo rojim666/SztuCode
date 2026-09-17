@@ -15,7 +15,7 @@ from sztu_code.core.compact.compactor import Compactor
 from sztu_code.core.context import ExecutionContext, TerminationReason
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
-from sztu_code.core.loop import AgentLoop
+from sztu_code.core.loop import AgentLoop, _invoke_scheduled_tool
 from sztu_code.core.permissions.denial_tracker import DenialTracker
 from sztu_code.core.permissions.manager import PermissionManager
 from sztu_code.core.permissions.policy import PermissionDecision, ToolPolicy
@@ -295,6 +295,37 @@ class _TimedTool(BaseTool):
             return ToolResult(content=f"done:{label}")
         finally:
             self._probe.active -= 1
+
+
+class _SlowCancellableTool(BaseTool):
+    name = "slow_cancellable"
+    description = "Waits until the run cancels it"
+    required_permission = ToolPermission.READ_ONLY
+    input_schema: dict[str, object] = {"type": "object", "properties": {}, "required": []}
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.cancelled = asyncio.Event()
+        self._release = asyncio.Event()
+        self.calls = 0
+        self.cancelled_count = 0
+        self.active = 0
+        self.finished = False
+
+    async def invoke(self, params: dict[str, object]) -> ToolResult:
+        self.calls += 1
+        self.active += 1
+        self.started.set()
+        try:
+            await self._release.wait()
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            self.cancelled_count += 1
+            raise
+        finally:
+            self.active -= 1
+        self.finished = True
+        return ToolResult(content="unexpected completion")
 
 
 class _DeadlineAdvancingTool(BaseTool):
@@ -1425,6 +1456,162 @@ async def test_llm_request_is_cancelled_at_run_deadline() -> None:
     assert 0.0 < remaining <= 0.05
     assert ctx.status == "interrupted"
     assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+
+
+# 功能：验证 AgentLoop 将 Run deadline 传给活动工具并等待可取消工具清理
+# 设计：slow fake 工具阻塞在 await，断言 Run 在预算后收口、工具被取消且不发布 finished 事件
+async def test_tool_request_is_cancelled_at_run_deadline() -> None:
+    tool = _SlowCancellableTool()
+    registry = ToolRegistry()
+    registry.register(tool)
+    bus = EventBus()
+    events = await _events(bus)
+    provider = _MockProvider(
+        [
+            LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[_tc("slow_cancellable", {}, uid="slow-tool")],
+            ),
+            LlmResponse(stop_reason="end_turn", text="unexpected follow-up"),
+        ]
+    )
+    loop = AgentLoop(provider, registry, bus)
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 0.05
+
+    await asyncio.wait_for(loop.run(ctx), timeout=0.5)
+
+    assert tool.started.is_set()
+    assert tool.cancelled.is_set()
+    assert not tool.finished
+    assert not any(
+        task is not asyncio.current_task() and not task.done()
+        for task in asyncio.all_tasks()
+    )
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+    assert not any(event.type == "tool.call_finished" for event in events)  # type: ignore[attr-defined]
+    failed = [event for event in events if event.type == "tool.call_failed"]  # type: ignore[attr-defined]
+    assert len(failed) == 1
+    assert failed[0].error_class == "deadline_exceeded"
+
+
+# 功能：验证并发批次中所有活动工具都遵守同一个 Run deadline 并完成清理
+# 设计：两个只读 slow fake 同时进入 await，断言两次调用都收到取消且没有遗留活动调用
+async def test_concurrent_tools_are_cancelled_at_run_deadline() -> None:
+    tool = _SlowCancellableTool()
+    registry = ToolRegistry()
+    registry.register(tool)
+    bus = EventBus()
+    events = await _events(bus)
+    provider = _MockProvider(
+        [
+            LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[
+                    _tc("slow_cancellable", {}, uid="slow-tool-a"),
+                    _tc("slow_cancellable", {}, uid="slow-tool-b"),
+                ],
+            )
+        ]
+    )
+    loop = AgentLoop(provider, registry, bus, tool_max_concurrency=2)
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 0.05
+
+    await asyncio.wait_for(loop.run(ctx), timeout=0.5)
+
+    assert tool.calls == 2
+    assert tool.cancelled_count == 2
+    assert tool.active == 0
+    assert not any(
+        task is not asyncio.current_task() and not task.done()
+        for task in asyncio.all_tasks()
+    )
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+    assert not any(event.type == "tool.call_finished" for event in events)  # type: ignore[attr-defined]
+    failed = [event for event in events if event.type == "tool.call_failed"]  # type: ignore[attr-defined]
+    assert len(failed) == 2
+
+
+# 功能：验证并发批次中的排队工具在 Deadline 后不执行本体，但仍发布未启动失败事件
+# 设计：并发上限为 2、前两个调用推进注入时钟到 Deadline，第三个等待信号量后直接收口
+async def test_queued_tool_is_skipped_after_run_deadline() -> None:
+    clock = [0.0]
+    tool = _DeadlineAdvancingTool(clock, advance_after=2)
+    registry = ToolRegistry()
+    registry.register(tool)
+    bus = EventBus()
+    events = await _events(bus)
+    provider = _MockProvider(
+        [
+            LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[
+                    _tc("deadline_read", {"label": label}, uid=f"queued-{label}")
+                    for label in ("first", "second", "queued")
+                ],
+            )
+        ]
+    )
+    loop = AgentLoop(provider, registry, bus, tool_max_concurrency=2)
+    ctx = _ctx(max_steps=10)
+    ctx.max_wall_clock_s = 1
+    ctx.clock = lambda: clock[0]
+
+    await asyncio.wait_for(loop.run(ctx), timeout=0.5)
+
+    assert tool.started == ["first", "second"]
+    assert provider.calls == 1
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+    failed = [event for event in events if event.type == "tool.call_failed"]  # type: ignore[attr-defined]
+    assert len(failed) == 3
+    assert sorted(event.execution_state for event in failed) == [  # type: ignore[attr-defined]
+        "not_started",
+        "unknown",
+        "unknown",
+    ]
+    assert all(event.error_class == "deadline_exceeded" for event in failed)  # type: ignore[attr-defined]
+
+
+async def test_queued_tool_semaphore_wait_is_bounded_by_run_deadline() -> None:
+    context = _ctx(max_steps=1)
+    context.max_wall_clock_s = 0.05
+    context.start()
+    registry = ToolRegistry()
+    bus = EventBus()
+    events = await _events(bus)
+    semaphore = asyncio.Semaphore(1)
+    await semaphore.acquire()
+
+    try:
+        result = await asyncio.wait_for(
+            _invoke_scheduled_tool(
+                registry,
+                _tc("unknown_tool", uid="queued-deadline"),
+                bus,
+                context.run_id,
+                context,
+                None,
+                "",
+                semaphore,
+                "batch",
+                "concurrent",
+                "",
+                time.monotonic(),
+            ),
+            timeout=0.2,
+        )
+    finally:
+        semaphore.release()
+
+    assert result.error_type == "deadline_exceeded"
+    assert result.execution_state.value == "not_started"
+    assert not any(event.type == "tool.call_started" for event in events)  # type: ignore[attr-defined]
 
 
 # 功能：验证旧版 Provider double 不接受 remaining_s 时仍可运行

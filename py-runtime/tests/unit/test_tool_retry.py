@@ -142,6 +142,7 @@ async def _run(
     *,
     monkeypatch: pytest.MonkeyPatch,
     retry_base_s: float = 0.0,
+    remaining_s: float | None = None,
 ) -> tuple[ToolResult, list]:
     monkeypatch.setattr(inv_mod, "_RETRY_BASE_S", retry_base_s)
     registry = ToolRegistry()
@@ -153,7 +154,13 @@ async def _run(
         events.append(event)
 
     bus.subscribe(_collect)
-    result = await invoke_tool(registry, _call(tool.name), bus, run_id="r")
+    result = await invoke_tool(
+        registry,
+        _call(tool.name),
+        bus,
+        run_id="r",
+        remaining_s=remaining_s,
+    )
     return result, events
 
 
@@ -231,6 +238,70 @@ async def test_safe_retry_uses_exponential_backoff(monkeypatch: pytest.MonkeyPat
     assert not result.is_error
     assert delays == [2.0, 4.0]
     assert [event.retry_delay_ms for event in _failed_events(events)] == [2000, 4000]
+
+
+# 功能：验证剩余 Run 预算不足以覆盖退避时不会启动下一次工具调用
+# 设计：第一次限流后只剩 1 秒、退避需要 2 秒，断言调用次数保持 1 且事件明确停止 retry
+async def test_retry_is_skipped_when_backoff_would_exceed_run_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = _RateLimitedNTimes(1, retry_safe=True)
+
+    result, events = await _run(
+        tool,
+        monkeypatch=monkeypatch,
+        retry_base_s=2.0,
+        remaining_s=1.0,
+    )
+
+    assert result.is_error
+    assert result.error_type == "rate_limited"
+    assert tool.calls == 1
+    failed_events = _failed_events(events)
+    assert len(failed_events) == 1
+    assert failed_events[0].retry_decision == "stop"
+    assert failed_events[0].retry_reason == "run_deadline_would_be_exceeded"
+
+
+async def test_retry_backoff_rechecks_budget_after_failure_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [0.0]
+    sleeps: list[float] = []
+
+    async def _record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(inv_mod, "_RETRY_BASE_S", 2.0)
+    monkeypatch.setattr(inv_mod.asyncio, "sleep", _record_sleep)
+    tool = _RateLimitedNTimes(1, retry_safe=True)
+    registry = ToolRegistry()
+    registry.register(tool)
+    bus = EventBus()
+    events: list = []
+
+    async def _collect(event: object) -> None:
+        events.append(event)
+        if getattr(event, "retry_decision", None) == "retry":
+            clock[0] = 3.0
+
+    bus.subscribe(_collect)
+    result = await invoke_tool(
+        registry,
+        _call(tool.name),
+        bus,
+        run_id="r",
+        remaining_s=3.0,
+        clock=lambda: clock[0],
+    )
+
+    assert result.is_error
+    assert tool.calls == 1
+    assert sleeps == []
+    failed_events = _failed_events(events)
+    assert len(failed_events) == 2
+    assert failed_events[0].retry_decision == "retry"
+    assert failed_events[1].retry_reason == "run_deadline_exceeded"
 
 
 # 功能：默认写工具即使限流也不重试
@@ -345,7 +416,14 @@ async def test_timeout_with_unknown_execution_state_is_not_retried(
 # 功能：失败事件的 error_class 保持在约定枚举内
 # 设计：声明 retry_safe 的工具失败一次后成功，运行并检查事件字段
 async def test_failed_event_has_valid_error_class(monkeypatch: pytest.MonkeyPatch) -> None:
-    valid_classes = {"runtime_error", "timeout", "schema_error", "permission_denied", "rate_limited"}
+    valid_classes = {
+        "runtime_error",
+        "timeout",
+        "schema_error",
+        "permission_denied",
+        "rate_limited",
+        "deadline_exceeded",
+    }
     result, events = await _run(_FailNTimes(1, retry_safe=True), monkeypatch=monkeypatch)
     assert not result.is_error
     for e in events:

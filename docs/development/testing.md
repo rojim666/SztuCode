@@ -121,6 +121,19 @@ uv run pytest
 TS 文档或 package 测试不能替代 Python 测试；迁移套件只验证两条 runtime 的
 协议和进程边界。
 
+### Python 工具调用时间边界
+
+工具调用相关改动还应覆盖 Run Remaining time、工具自身 timeout、串行与并发调度、
+重试/退避预算，以及截止时间取消后的清理。截止时间失败使用 `deadline_exceeded`；
+无法确认底层调用是否停止时使用 `unknown` 执行状态，不能自动重试。Bash 的超时回归
+还应检查子进程树已被清理。目标测试可以从 `py-runtime/` 目录运行：
+
+```bash
+uv run pytest tests/unit/test_invocation.py tests/unit/test_tool_retry.py \
+  tests/unit/test_loop.py tests/unit/test_builtin_tools.py \
+  tests/integration/test_deadline_foundation.py
+```
+
 视觉测试入口为：
 
 ```bash
