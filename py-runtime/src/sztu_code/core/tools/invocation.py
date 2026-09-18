@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -35,8 +36,55 @@ if TYPE_CHECKING:
 _DEFAULT_TIMEOUT: float = 120.0
 _MAX_RETRIES: int = 1
 _RETRY_BASE_S: float = 2.0  # backoff base; tests can monkeypatch to 0
+# Give cancellable tools a short cleanup window, then report unresolved state.
+_CLEANUP_TIMEOUT_S: float = 0.1
 # 超时操作可能仍在运行，绝不自动重试；仅重试明确可恢复的瞬时错误
 _RETRYABLE: frozenset[str] = frozenset({"runtime_error", "rate_limited"})
+
+
+class _ToolRaisedTimeout(Exception):
+    """Distinguish a tool's own TimeoutError from the parent await boundary."""
+
+
+class _ToolAwaitTimeout(Exception):
+    """The bounded await expired after the tool task was cancelled and joined."""
+
+
+def _consume_task_result(task: asyncio.Future[ToolResult]) -> None:
+    """Consume a detached task's eventual exception so it cannot leak warnings."""
+    if task.cancelled():
+        return
+    try:
+        task.exception()
+    except BaseException:
+        pass
+
+
+async def _cancel_and_join(task: asyncio.Future[ToolResult]) -> None:
+    """Cancel a tool and wait briefly; leave non-cooperative work unresolved."""
+    task.cancel()
+    done, _ = await asyncio.wait({task}, timeout=_CLEANUP_TIMEOUT_S)
+    if task not in done:
+        task.add_done_callback(_consume_task_result)
+        return
+    _consume_task_result(task)
+
+
+async def _await_tool_with_timeout(
+    awaitable: Awaitable[ToolResult], timeout: float
+) -> ToolResult:
+    """Bound the tool await and report unresolved work after bounded cleanup."""
+    task = asyncio.ensure_future(awaitable)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if task in done:
+            return task.result()
+
+        await _cancel_and_join(task)
+        raise _ToolAwaitTimeout
+    except asyncio.CancelledError:
+        await _cancel_and_join(task)
+        raise
 
 
 def _now() -> str:
@@ -50,6 +98,8 @@ def _retry_reason(
     tool_retry_safe: bool,
     attempt: int,
 ) -> str:
+    if error_class == "deadline_exceeded":
+        return "run_deadline_exceeded"
     if execution_state == ToolExecutionState.UNKNOWN:
         return "execution_state_is_unknown"
     if error_class not in _RETRYABLE:
@@ -78,6 +128,13 @@ def _retry_explanation(reason: str) -> str:
             "Automatic retry was skipped because the tool did not declare this call safe to retry."
         ),
         "retry_limit_exhausted": "Automatic retry stopped because the retry limit was exhausted.",
+        "run_deadline_exceeded": (
+            "Automatic retry was skipped because the run wall-clock deadline was reached."
+        ),
+        "run_deadline_would_be_exceeded": (
+            "Automatic retry was skipped because its backoff would exceed "
+            "the run wall-clock deadline."
+        ),
     }
     return explanations.get(reason, "")
 
@@ -204,17 +261,48 @@ async def invoke_tool(
     queued_at: str = "",
     queued_monotonic: float | None = None,
     classified_permission: ToolPermission | None = None,
+    remaining_s: float | None = None,
+    clock: Callable[[], float] | None = None,
 ) -> ToolResult:
-    t0 = time.monotonic()
+    clock_fn = clock or time.monotonic
+    queue_t0 = time.monotonic()
+    t0 = clock_fn()
     started_at = _now()
-    queue_ms = max(0, int((t0 - queued_monotonic) * 1000)) if queued_monotonic is not None else 0
+    queue_ms = (
+        max(0, int((queue_t0 - queued_monotonic) * 1000))
+        if queued_monotonic is not None
+        else 0
+    )
+
+    def remaining_budget() -> float | None:
+        if remaining_s is None:
+            return None
+        return max(0.0, remaining_s - (clock_fn() - t0))
+
     tool_call.input = registry.enrich_tool_input(tool_call.name, tool_call.input)
     runtime_params = dict(tool_call.input)
     runtime_params.pop("description", None)
     runtime_params.pop(_PERMISSION_GRANT_KEY, None)
 
     def elapsed() -> int:
-        return int((time.monotonic() - t0) * 1000)
+        return int((clock_fn() - t0) * 1000)
+
+    if remaining_s is not None and remaining_s <= 0:
+        return await _fail(
+            bus,
+            run_id,
+            tool_call,
+            "deadline_exceeded",
+            "Tool call skipped because the run wall-clock deadline was reached.",
+            elapsed(),
+            batch_id=batch_id,
+            scheduler_mode=scheduler_mode,
+            queue_ms=queue_ms,
+            queued_at=queued_at,
+            started_at="",
+            execution_state=ToolExecutionState.NOT_STARTED,
+            retry_reason="run_deadline_exceeded",
+        )
 
     try:
         await bus.publish(
@@ -353,19 +441,63 @@ async def invoke_tool(
         execution_state = ToolExecutionState.COMPLETED
 
         try:
-            if tool.allows_indefinite_wait or tool.manages_timeout:
-                result = await tool.invoke(runtime_params)
-            else:
-                result = await asyncio.wait_for(
-                    tool.invoke(runtime_params), timeout=timeout
+            available_s = remaining_budget()
+            if available_s is not None and available_s <= 0:
+                return await _fail(
+                    bus,
+                    run_id,
+                    tool_call,
+                    "deadline_exceeded",
+                    "Tool call skipped because the run wall-clock deadline was reached.",
+                    elapsed(),
+                    attempt=attempt,
+                    batch_id=batch_id,
+                    scheduler_mode=scheduler_mode,
+                    queue_ms=queue_ms,
+                    queued_at=queued_at,
+                    started_at="",
+                    execution_state=ToolExecutionState.NOT_STARTED,
+                    retry_reason="run_deadline_exceeded",
+                    tool_retry_safe=tool_retry_safe,
                 )
+
+            indefinite_wait = tool.allows_indefinite_wait or tool.manages_timeout
+            deadline_limited = available_s is not None and (
+                indefinite_wait or available_s <= timeout
+            )
+
+            async def _invoke() -> ToolResult:
+                try:
+                    return await tool.invoke(runtime_params)
+                except TimeoutError as exc:
+                    raise _ToolRaisedTimeout from exc
+
+            if indefinite_wait:
+                if available_s is None:
+                    result = await _invoke()
+                else:
+                    result = await _await_tool_with_timeout(_invoke(), available_s)
+            else:
+                effective_timeout = timeout if available_s is None else min(timeout, available_s)
+                result = await _await_tool_with_timeout(_invoke(), effective_timeout)
             ms = elapsed()
 
-            if result.is_error:
+            if remaining_budget() == 0.0:
+                error_class = "deadline_exceeded"
+                error_message = (
+                    "Tool call reached the run wall-clock deadline; "
+                    "the operation state is unknown."
+                )
+                execution_state = ToolExecutionState.UNKNOWN
+            elif result.is_error:
                 error_class = result.error_type or "runtime_error"
                 error_message = result.content
                 retryable = result.retryable
-                execution_state = result.execution_state
+                execution_state = (
+                    ToolExecutionState.UNKNOWN
+                    if result.error_type in {"timeout", "deadline_exceeded"}
+                    else result.execution_state
+                )
             else:
                 finished_at = _now()
                 await bus.publish(
@@ -393,15 +525,65 @@ async def invoke_tool(
             retryable = True
             execution_state = ToolExecutionState.NOT_STARTED
         except TimeoutError:
-            error_class = "timeout"
-            execution_state = ToolExecutionState.UNKNOWN
-            error_message = (
-                f"tool timed out after {timeout}s; the operation may still be running. "
-                "Retry the call, increase the timeout, or break it into smaller steps."
+            deadline_hit = deadline_limited or (
+                remaining_s is not None and remaining_budget() == 0.0
             )
+            error_class = "deadline_exceeded" if deadline_hit else "timeout"
+            execution_state = ToolExecutionState.UNKNOWN
+            if deadline_hit:
+                error_message = (
+                    "Tool call reached the run wall-clock deadline; "
+                    "the operation may still be running."
+                )
+            else:
+                error_message = (
+                    f"tool timed out after {timeout}s; the operation may still be running. "
+                    "Retry the call, increase the timeout, or break it into smaller steps."
+                )
+        except _ToolRaisedTimeout:
+            deadline_hit = remaining_s is not None and remaining_budget() == 0.0
+            error_class = "deadline_exceeded" if deadline_hit else "timeout"
+            execution_state = ToolExecutionState.UNKNOWN
+            if deadline_hit:
+                error_message = (
+                    "Tool call reached the run wall-clock deadline; "
+                    "the operation may still be running."
+                )
+            else:
+                error_message = (
+                    f"tool timed out after {timeout}s; the operation may still be running. "
+                    "Retry the call, increase the timeout, or break it into smaller steps."
+                )
+        except _ToolAwaitTimeout:
+            deadline_hit = deadline_limited or (
+                remaining_s is not None and remaining_budget() == 0.0
+            )
+            error_class = "deadline_exceeded" if deadline_hit else "timeout"
+            execution_state = ToolExecutionState.UNKNOWN
+            if deadline_hit:
+                error_message = (
+                    "Tool call reached the run wall-clock deadline; "
+                    "the operation may still be running."
+                )
+            else:
+                error_message = (
+                    f"tool timed out after {timeout}s; the operation may still be running. "
+                    "Retry the call, increase the timeout, or break it into smaller steps."
+                )
         except Exception as exc:
-            error_class = "runtime_error"
-            error_message = str(exc)
+            if (
+                remaining_s is not None
+                and remaining_budget() == 0.0
+            ):
+                error_class = "deadline_exceeded"
+                execution_state = ToolExecutionState.UNKNOWN
+                error_message = (
+                    "Tool call reached the run wall-clock deadline while cleaning up; "
+                    "the operation state is unknown."
+                )
+            else:
+                error_class = "runtime_error"
+                error_message = str(exc)
 
         assert error_class is not None and error_message is not None
         ms = elapsed()
@@ -414,8 +596,28 @@ async def invoke_tool(
             and attempt <= _MAX_RETRIES
         )
         if should_retry:
-            failed_at = _now()
             retry_delay_s = _RETRY_BASE_S * (2 ** (attempt - 1))
+            available_s = remaining_budget()
+            if available_s is not None and retry_delay_s >= available_s:
+                return await _fail(
+                    bus,
+                    run_id,
+                    tool_call,
+                    error_class,
+                    error_message,
+                    ms,
+                    attempt=attempt,
+                    batch_id=batch_id,
+                    scheduler_mode=scheduler_mode,
+                    queue_ms=queue_ms,
+                    queued_at=queued_at,
+                    started_at=started_at,
+                    retryable=retryable,
+                    execution_state=execution_state,
+                    retry_reason="run_deadline_would_be_exceeded",
+                    tool_retry_safe=tool_retry_safe,
+            )
+            failed_at = _now()
             await bus.publish(
                 ToolCallFailedEvent(
                     run_id=run_id,
@@ -443,9 +645,24 @@ async def invoke_tool(
                     started_at=started_at,
                     finished_at=failed_at,
                     ts=failed_at,
-                )
+                    )
             )
-            await asyncio.sleep(retry_delay_s)
+            backoff_timed_out = False
+            available_s = remaining_budget()
+            if available_s is None:
+                await asyncio.sleep(retry_delay_s)
+            elif retry_delay_s >= available_s:
+                backoff_timed_out = True
+            else:
+                try:
+                    async with asyncio.timeout(available_s):
+                        await asyncio.sleep(retry_delay_s)
+                except TimeoutError:
+                    backoff_timed_out = True
+            if backoff_timed_out or remaining_budget() == 0.0:
+                # Let the next attempt's pre-start gate publish the single
+                # terminal event for a retry that could not be started.
+                continue
             continue
 
         return await _fail(

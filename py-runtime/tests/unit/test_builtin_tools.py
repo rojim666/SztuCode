@@ -1,14 +1,57 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
+import signal
+import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from sztu_code.core.tools.base import ToolExecutionState
+from sztu_code.core.tools.builtin import bash as bash_module
 from sztu_code.core.tools.builtin.bash import BashTool
 from sztu_code.core.tools.builtin.list_dir import ListDirTool
 from sztu_code.core.tools.builtin.write_file import WriteFileTool
+
+
+def _process_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+    if os.name != "nt":
+        stat_path = Path(f"/proc/{pid}/stat")
+        if stat_path.exists():
+            try:
+                return stat_path.read_text().split()[2] != "Z"
+            except (OSError, IndexError):
+                pass
+    return True
+
+
+async def _wait_for_file(path: Path, timeout: float = 2.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not path.exists():
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError(f"timed out waiting for {path}")
+        await asyncio.sleep(0.01)
+
+
+async def _wait_for_process_exit(pid: int, timeout: float = 2.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while _process_is_running(pid):
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError(f"process {pid} is still running")
+        await asyncio.sleep(0.01)
+
 
 # ── bash ──────────────────────────────────────────────────────────────────────
 
@@ -36,18 +79,182 @@ async def test_bash_nonzero_exit_is_error() -> None:
 @pytest.mark.asyncio
 async def test_bash_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     process = Mock(returncode=None)
+    process.pid = 123
     process.communicate = AsyncMock(side_effect=[TimeoutError, (b"", None)])
     process.kill = Mock()
     create_process = AsyncMock(return_value=process)
+    killer = Mock()
+    killer.communicate = AsyncMock(return_value=(b"", None))
+    create_killer = AsyncMock(return_value=killer)
     monkeypatch.setattr("sztu_code.core.tools.builtin.bash._git_bash_path", lambda: None)
+    monkeypatch.setattr(bash_module, "_create_windows_job", lambda proc: None)
+    monkeypatch.setattr(bash_module, "_resume_windows_process", lambda pid: None)
     monkeypatch.setattr(asyncio, "create_subprocess_shell", create_process)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_killer)
+
+    result = await BashTool().invoke({"command": "long-running", "timeout": 1})
+
+    assert result.is_error
+    assert result.error_type == "timeout", result.content
+    assert result.execution_state == ToolExecutionState.UNKNOWN
+    process.kill.assert_called_once_with()
+    assert process.communicate.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_windows_cleanup_kills_the_process_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A parent may have exited while a descendant still owns the pipe.
+    process = Mock(returncode=0, pid=123)
+    killer = Mock()
+    killer.communicate = AsyncMock(return_value=(b"", None))
+    create_killer = AsyncMock(return_value=killer)
+    monkeypatch.setattr(bash_module.os, "name", "nt")
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_killer)
+
+    await bash_module._terminate_process_tree(process)  # type: ignore[arg-type]
+
+    create_killer.assert_awaited_once_with(
+        "taskkill",
+        "/PID",
+        "123",
+        "/T",
+        "/F",
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    process.kill.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_posix_cleanup_kills_the_process_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    process = Mock(returncode=None, pid=123)
+    killpg = Mock()
+    monkeypatch.setattr(bash_module.os, "name", "posix")
+    monkeypatch.setattr(bash_module.os, "killpg", killpg, raising=False)
+
+    await bash_module._terminate_process_tree(process)  # type: ignore[arg-type]
+
+    killpg.assert_called_once_with(123, getattr(signal, "SIGKILL", signal.SIGTERM))
+    process.kill.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_bash_timeout_kills_a_real_child_process_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child_code = (
+        "import os,pathlib,time;"
+        "pathlib.Path('child-pid.txt').write_text(str(os.getpid()));"
+        "time.sleep(1.5);"
+        "pathlib.Path('child-survived.txt').write_text('survived')"
+    )
+    parent_code = (
+        "import subprocess,sys,time;"
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]);"
+        "time.sleep(30)"
+    )
+    if bash_module.os.name == "nt":
+        # Keep this process-tree test independent of Git Bash/WSL discovery;
+        # the Windows shell path still exercises CREATE_NEW_PROCESS_GROUP and taskkill /T.
+        monkeypatch.setattr(bash_module, "_git_bash_path", lambda: None)
+        command = subprocess.list2cmdline(["python", "-c", parent_code])
+    else:
+        command = f"python -c {shlex.quote(parent_code)}"
+
+    result = await BashTool(tmp_path).invoke({"command": command, "timeout": 1})
+
+    assert result.is_error
+    assert result.error_type == "timeout"
+    assert result.execution_state == ToolExecutionState.UNKNOWN
+    await _wait_for_file(tmp_path / "child-pid.txt")
+    await _wait_for_process_exit(int((tmp_path / "child-pid.txt").read_text()))
+    assert (tmp_path / "child-pid.txt").exists()
+    assert not (tmp_path / "child-survived.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_bash_timeout_kills_descendant_after_parent_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child_code = (
+        "import os,pathlib,time;"
+        "pathlib.Path('child-pid.txt').write_text(str(os.getpid()));"
+        "time.sleep(2);"
+        "pathlib.Path('child-survived.txt').write_text('survived')"
+    )
+    parent_code = (
+        "import subprocess,sys,time;"
+        f"subprocess.Popen([sys.executable, '-c', {child_code!r}]);"
+        "time.sleep(0.2)"
+    )
+    if bash_module.os.name == "nt":
+        monkeypatch.setattr(bash_module, "_git_bash_path", lambda: None)
+        command = subprocess.list2cmdline(["python", "-c", parent_code])
+    else:
+        command = f"python -c {shlex.quote(parent_code)}"
+
+    result = await BashTool(tmp_path).invoke({"command": command, "timeout": 1})
+
+    assert result.is_error
+    assert result.error_type == "timeout"
+    assert result.execution_state == ToolExecutionState.UNKNOWN
+    await _wait_for_file(tmp_path / "child-pid.txt")
+    await _wait_for_process_exit(int((tmp_path / "child-pid.txt").read_text()))
+    assert not (tmp_path / "child-survived.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_bash_parent_cancellation_kills_and_reaps_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = Mock(returncode=None)
+    process.pid = 123
+    process.communicate = AsyncMock(side_effect=[asyncio.CancelledError, (b"", None)])
+    process.kill = Mock()
+    create_process = AsyncMock(return_value=process)
+    killer = Mock()
+    killer.communicate = AsyncMock(return_value=(b"", None))
+    create_killer = AsyncMock(return_value=killer)
+    monkeypatch.setattr("sztu_code.core.tools.builtin.bash._git_bash_path", lambda: None)
+    monkeypatch.setattr(bash_module, "_create_windows_job", lambda proc: None)
+    monkeypatch.setattr(bash_module, "_resume_windows_process", lambda pid: None)
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", create_process)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_killer)
+
+    with pytest.raises(asyncio.CancelledError):
+        await BashTool().invoke({"command": "long-running", "timeout": 1})
+
+    process.kill.assert_called_once_with()
+    assert process.communicate.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bash_cleanup_failure_keeps_timeout_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = Mock(returncode=None, pid=123)
+    process.communicate = AsyncMock(side_effect=TimeoutError)
+    process.kill = Mock()
+    create_process = AsyncMock(return_value=process)
+    monkeypatch.setattr(bash_module, "_git_bash_path", lambda: None)
+    monkeypatch.setattr(bash_module, "_create_windows_job", lambda proc: None)
+    monkeypatch.setattr(bash_module, "_resume_windows_process", lambda pid: None)
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", create_process)
+
+    async def failed_cleanup(
+        proc: asyncio.subprocess.Process, job_handle: int | None
+    ) -> str:
+        del proc, job_handle
+        return "reap: pipe closed"
+
+    monkeypatch.setattr(bash_module, "_cleanup_process", failed_cleanup)
 
     result = await BashTool().invoke({"command": "long-running", "timeout": 1})
 
     assert result.is_error
     assert result.error_type == "timeout"
-    process.kill.assert_called_once_with()
-    assert process.communicate.await_count == 2
+    assert result.execution_state == ToolExecutionState.UNKNOWN
+    assert "cleanup failed: reap: pipe closed" in result.content
 
 
 # 功能：验证 stderr 被合并到 stdout 输出中
