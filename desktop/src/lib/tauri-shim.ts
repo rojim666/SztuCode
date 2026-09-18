@@ -38,6 +38,7 @@ const browserWindowStub = {
 };
 
 const browserWebviewStub = {
+  onDragDropEvent: (_handler: Parameters<ReturnType<typeof tauriGetCurrentWebview>["onDragDropEvent"]>[0]): Promise<UnlistenFn> => Promise.resolve(() => {}),
   setZoom: () => Promise.resolve(),
   position: () => Promise.resolve({ x: 0, y: 0 }),
   size: () => Promise.resolve({ width: window.innerWidth, height: window.innerHeight }),

@@ -30,6 +30,7 @@ import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "
 import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
+import { createComposerFileDropHandler } from "./utils/composerFileDrop";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
 import { detectVisionSupport } from "./utils/modelVision";
@@ -2811,6 +2812,24 @@ function onPasteImage(event: ClipboardEvent) {
   }
 }
 
+let stopNativeFileDrop: (() => void) | undefined;
+let fileDropDisposed = false;
+const onNativeFileDrop = createComposerFileDropHandler({
+  pixelRatio: () => window.devicePixelRatio || 1,
+  containsPoint: (x, y) => !fileDropDisposed && !!document.elementFromPoint(x, y)?.closest(".sztu-composer"),
+  setHover: (hover) => { isDragOver.value = hover; dragCounter = 0; },
+  addPaths: async (paths) => { addReadAttachments(await readAttachments(paths)); },
+  onError: (error) => { void showProjectNotice(t("app.addAttachment"), friendlyError(error).message, "danger"); },
+});
+
+function preventDefaultDragOver(event: DragEvent) {
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+}
+function preventDefaultDrop(event: DragEvent) {
+  event.preventDefault();
+}
+
 // 拖拽事件处理 - 使用计数器方式处理子元素间移动的问题
 function onDragEnter(event: DragEvent) {
   event.preventDefault();
@@ -2833,7 +2852,7 @@ function onDragOver(event: DragEvent) {
 function onDragLeave(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
-  dragCounter--;
+  dragCounter = Math.max(0, dragCounter - 1);
   if (dragCounter === 0) {
     isDragOver.value = false;
   }
@@ -2845,7 +2864,7 @@ function onDrop(event: DragEvent) {
   dragCounter = 0;
   isDragOver.value = false;
 
-  const files = event.dataTransfer?.files;
+  const files = Array.from(event.dataTransfer?.files ?? []);
   if (!files || files.length === 0) return;
 
   void (async () => {
@@ -3324,20 +3343,16 @@ onMounted(() => {
   window.addEventListener("sztu:inject-element", onInjectElement);
   document.addEventListener("pointerdown", handleDocumentPointerDown);
   // 阻止全局默认拖拽行为，防止浏览器直接打开文件（但允许在 composer 上正常处理）
-  const preventDefaultDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
-  };
-  const preventDefaultDrop = (e: DragEvent) => {
-    // 只在拖拽目标不在 composer 区域内时阻止默认行为
-    const target = e.target as HTMLElement;
-    if (!target.closest(".sztu-composer")) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  };
   document.addEventListener("dragover", preventDefaultDragOver);
   document.addEventListener("drop", preventDefaultDrop);
+  if (IS_TAURI) {
+    void getCurrentWebview().onDragDropEvent(onNativeFileDrop).then((stop) => {
+      if (fileDropDisposed) stop();
+      else stopNativeFileDrop = stop;
+    }).catch((error) => {
+      console.error("Failed to register native file drop", error);
+    });
+  }
   stopDisconnect = onRuntimeDisconnect(() => {
     connected.value = false;
     scheduleRuntimeReconnect();
@@ -3356,6 +3371,10 @@ onMounted(() => {
   nextTick(refreshTurnObserver);
 });
 onBeforeUnmount(() => {
+  fileDropDisposed = true;
+  stopNativeFileDrop?.();
+  document.removeEventListener("dragover", preventDefaultDragOver);
+  document.removeEventListener("drop", preventDefaultDrop);
   window.clearTimeout(projectPreviewCloseTimer);
   if (autoScrollFrame !== undefined) window.cancelAnimationFrame(autoScrollFrame);
   tokenBatcher.clear();
