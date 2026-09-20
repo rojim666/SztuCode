@@ -33,7 +33,6 @@ from sztu_code.core.pricing import PricingCatalog, UnknownPricingPolicy
 from sztu_code.core.stuck_tracker import stuck_signature
 from sztu_code.core.tools.base import (
     _PERMISSION_GRANT_KEY,
-    ToolExecutionState,
     ToolPermission,
     ToolResult,
 )
@@ -155,15 +154,11 @@ async def _invoke_scheduled_tool(
     queued_at: str,
     queued_monotonic: float,
     classified_permission: ToolPermission | None = None,
-) -> ToolResult | None:
-    # A queued call may acquire a semaphore only after another tool has
-    # consumed the run budget. Do not start it after the deadline.
-    if context.wall_clock_exceeded():
-        return None
+) -> ToolResult:
+    acquired = False
     try:
-        async with semaphore:
-            if context.wall_clock_exceeded():
-                return None
+        remaining_s = context.remaining_s()
+        if remaining_s is not None and remaining_s <= 0:
             return await invoke_tool(
                 registry,
                 tool_call,
@@ -176,21 +171,57 @@ async def _invoke_scheduled_tool(
                 queued_at=queued_at,
                 queued_monotonic=queued_monotonic,
                 classified_permission=classified_permission,
+                remaining_s=0.0,
+                clock=context.clock,
             )
+        if remaining_s is None:
+            await semaphore.acquire()
+        else:
+            try:
+                async with asyncio.timeout(remaining_s):
+                    await semaphore.acquire()
+            except TimeoutError:
+                # Reuse invoke_tool's pre-start gate so the queued call gets
+                # the same single deadline failure event as serial dispatch.
+                return await invoke_tool(
+                    registry,
+                    tool_call,
+                    bus,
+                    run_id,
+                    permission_manager=permission_manager,
+                    session_id=session_id,
+                    batch_id=batch_id,
+                    scheduler_mode=scheduler_mode,
+                    queued_at=queued_at,
+                    queued_monotonic=queued_monotonic,
+                    classified_permission=classified_permission,
+                    remaining_s=0.0,
+                    clock=context.clock,
+                )
+        acquired = True
+        return await invoke_tool(
+            registry,
+            tool_call,
+            bus,
+            run_id,
+            permission_manager=permission_manager,
+            session_id=session_id,
+            batch_id=batch_id,
+            scheduler_mode=scheduler_mode,
+            queued_at=queued_at,
+            queued_monotonic=queued_monotonic,
+            classified_permission=classified_permission,
+            remaining_s=context.remaining_s(),
+            clock=context.clock,
+        )
     except asyncio.CancelledError:
         raise
     except Exception as exc:
         # Isolate an unexpected call-level failure from the rest of the batch.
         return ToolResult(content=str(exc), is_error=True, error_type="runtime_error")
-
-
-def _deadline_skipped_tool_result() -> ToolResult:
-    return ToolResult(
-        content="Tool call skipped because the run wall-clock deadline was reached.",
-        is_error=True,
-        error_type="deadline_exceeded",
-        execution_state=ToolExecutionState.NOT_STARTED,
-    )
+    finally:
+        if acquired:
+            semaphore.release()
 
 
 class AgentLoop:
@@ -694,34 +725,25 @@ class AgentLoop:
 
                 for index, tc in enumerate(response.tool_calls):
                     if concurrent_results is None:
-                        if context.wall_clock_exceeded():
-                            context.mark_interrupted(
-                                TerminationReason.MAX_WALL_CLOCK_EXCEEDED
-                            )
-                            result = _deadline_skipped_tool_result()
-                        else:
-                            result = await invoke_tool(
-                                self._registry,
-                                tc,
-                                self._bus,
-                                context.run_id,
-                                permission_manager=self._permission_manager,
-                                session_id=self._session_id,
-                                batch_id=batch_id,
-                                scheduler_mode="serial",
-                                queued_at=queued_at,
-                                queued_monotonic=queued_monotonic,
-                            )
+                        result = await invoke_tool(
+                            self._registry,
+                            tc,
+                            self._bus,
+                            context.run_id,
+                            permission_manager=self._permission_manager,
+                            session_id=self._session_id,
+                            batch_id=batch_id,
+                            scheduler_mode="serial",
+                            queued_at=queued_at,
+                            queued_monotonic=queued_monotonic,
+                            remaining_s=context.remaining_s(),
+                            clock=context.clock,
+                        )
                     else:
                         scheduled_result = concurrent_results[index]
                         if isinstance(scheduled_result, asyncio.CancelledError):
                             raise scheduled_result
-                        if scheduled_result is None:
-                            context.mark_interrupted(
-                                TerminationReason.MAX_WALL_CLOCK_EXCEEDED
-                            )
-                            result = _deadline_skipped_tool_result()
-                        elif not isinstance(scheduled_result, ToolResult):
+                        if not isinstance(scheduled_result, ToolResult):
                             result = ToolResult(
                                 content=str(scheduled_result),
                                 is_error=True,
@@ -757,6 +779,8 @@ class AgentLoop:
                         canvas_summaries.append(first_line)
                     added_estimate += max(1, len(content) // 4)
                     context.add_tool_result(tc.id, content, is_error=result.is_error)
+                    if result.error_type == "deadline_exceeded":
+                        context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
 
                     # [track] 追踪权限拒绝，触发熔断干预
                     if self._denial_tracker is not None:

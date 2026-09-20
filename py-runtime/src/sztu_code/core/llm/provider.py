@@ -262,6 +262,8 @@ class AnthropicProvider:
                 # same remaining budget multiple times internally.
                 request_client = self._client.with_options(max_retries=0)
                 request_kwargs["timeout"] = request_timeout
+            if deadline is not None and (_budget_remaining(deadline) or 0.0) <= 0:
+                raise TimeoutError("Anthropic request exceeded the remaining run budget")
             text_parts = []
             try:
                 async with request_client.messages.stream(**request_kwargs) as stream:
@@ -295,7 +297,12 @@ class AnthropicProvider:
                             thinking_published = True
                     final_message = await stream.get_final_message()
                 break  # success
-            except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as exc:
+            except (
+                anthropic.APIConnectionError,
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.ConnectError,
+            ) as exc:
                 if attempt == _MAX_STREAM_RETRIES:
                     log.error(
                         "stream failed after %d attempts run_id=%s step=%d: %s",

@@ -32,7 +32,8 @@ class ToolExecutionState(StrEnum):
 class ToolResult:
     content: str
     is_error: bool = False
-    # "runtime_error" | "timeout" | "schema_error" | "permission_denied"
+    # "runtime_error" | "timeout" | "schema_error" | "permission_denied" |
+    # "rate_limited" | "deadline_exceeded"
     error_type: str | None = None
     # 供内部组合工具读取的结构化执行元数据，不直接展示给模型
     metadata: dict[str, object] = field(default_factory=dict)

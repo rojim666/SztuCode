@@ -89,7 +89,8 @@ class ToolCallFailedEvent(BaseModel):
     run_id: str
     tool_use_id: str
     tool_name: str
-    # "runtime_error" | "timeout" | "schema_error" | "permission_denied" | "rate_limited"
+    # "runtime_error" | "timeout" | "schema_error" | "permission_denied" |
+    # "rate_limited" | "deadline_exceeded"
     error_class: str
     error_message: str
     elapsed_ms: int
