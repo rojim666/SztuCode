@@ -4,6 +4,7 @@ import asyncio
 import datetime
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC
@@ -37,6 +38,10 @@ class _PendingRequest:
     session_id: str
     tool_name: str
     run_id: str
+
+
+class _PermissionEventEmitterTimeout(Exception):
+    """Keep an emitter-owned TimeoutError distinct from the run timeout."""
 
 
 # 审批响应的归属结果（Issue #118），与 PermissionRespondResult.status 对齐
@@ -168,6 +173,9 @@ class PermissionManager:
         run_id: str = "",
         *,
         tool_permission: Any | None = None,
+        run_remaining_s: float | None = None,
+        run_deadline_at: float | None = None,
+        run_clock: Callable[[], float] | None = None,
     ) -> tuple[bool, str]:
         # 动态权限分级：若提供 registry，以此覆盖工具默认权限级别
         actual_permission = tool_permission
@@ -257,6 +265,21 @@ class PermissionManager:
             )
             return False, "duplicate_request_id"
 
+        def current_run_remaining_s() -> float | None:
+            if run_deadline_at is not None:
+                deadline_clock = run_clock or time.monotonic
+                return max(0.0, run_deadline_at - deadline_clock())
+            return run_remaining_s
+
+        current_remaining_s = current_run_remaining_s()
+        if current_remaining_s is not None and current_remaining_s <= 0:
+            logger.info(
+                "permission: run deadline already exhausted tool_use_id=%s tool=%s",
+                tool_use_id,
+                tool_name,
+            )
+            return False, "deadline_exceeded"
+
         loop = asyncio.get_event_loop()
         future: asyncio.Future[str] = loop.create_future()
         pending = _PendingRequest(
@@ -267,26 +290,94 @@ class PermissionManager:
         )
         self._pending[tool_use_id] = pending
 
-        try:
-            await event_emitter(
-                {
-                    "type": "permission.requested",
-                    "tool_use_id": tool_use_id,
-                    "tool_name": tool_name,
-                    "params": params,
-                    "param_preview": param_preview(tool_name, params),
-                    "session_id": session_id,
-                    "ts": _now(),
-                }
-            )
+        async def _wait_for_response() -> str:
+            if self._timeout_s > 0:
+                return await asyncio.wait_for(future, timeout=self._timeout_s)
+            return await future
+
+        async def _emit_request() -> None:
             try:
-                if self._timeout_s > 0:
-                    raw = await asyncio.wait_for(future, timeout=self._timeout_s)
-                else:
-                    raw = await future
-            except TimeoutError:
-                logger.info("permission: timeout tool_use_id=%s tool=%s", tool_use_id, tool_name)
-                return False, "timeout"
+                await event_emitter(request_event)
+            except TimeoutError as exc:
+                raise _PermissionEventEmitterTimeout from exc
+
+        try:
+            request_event = {
+                "type": "permission.requested",
+                "tool_use_id": tool_use_id,
+                "tool_name": tool_name,
+                "params": params,
+                "param_preview": param_preview(tool_name, params),
+                "session_id": session_id,
+                "ts": _now(),
+            }
+            run_limit_s = current_run_remaining_s()
+            if run_limit_s is None:
+                try:
+                    await _emit_request()
+                except _PermissionEventEmitterTimeout as exc:
+                    raise exc.__cause__ or exc
+                try:
+                    raw = await _wait_for_response()
+                except TimeoutError:
+                    logger.info(
+                        "permission: timeout tool_use_id=%s tool=%s", tool_use_id, tool_name
+                    )
+                    return False, "timeout"
+            else:
+                if run_limit_s <= 0:
+                    logger.info(
+                        "permission: run deadline reached before request event "
+                        "tool_use_id=%s tool=%s",
+                        tool_use_id,
+                        tool_name,
+                    )
+                    return False, "deadline_exceeded"
+                run_timeout = asyncio.timeout(run_limit_s)
+                try:
+                    async with run_timeout:
+                        await _emit_request()
+                        if (
+                            run_deadline_at is not None
+                            and (current_run_remaining_s() or 0.0) <= 0
+                        ):
+                            logger.info(
+                                "permission: run deadline reached after request event "
+                                "tool_use_id=%s tool=%s",
+                                tool_use_id,
+                                tool_name,
+                            )
+                            return False, "deadline_exceeded"
+                        try:
+                            raw = await _wait_for_response()
+                        except TimeoutError:
+                            if not run_timeout.expired():
+                                logger.info(
+                                    "permission: timeout tool_use_id=%s tool=%s",
+                                    tool_use_id,
+                                    tool_name,
+                                )
+                                return False, "timeout"
+                            logger.info(
+                                "permission: run deadline exceeded tool_use_id=%s tool=%s",
+                                tool_use_id,
+                                tool_name,
+                            )
+                            return False, "deadline_exceeded"
+                except _PermissionEventEmitterTimeout as exc:
+                    raise exc.__cause__ or exc
+                except TimeoutError:
+                    # A TimeoutError from event_emitter itself is not a run
+                    # deadline. Only asyncio.timeout's own expired state may
+                    # classify this boundary as deadline_exceeded.
+                    if not run_timeout.expired():
+                        raise
+                    logger.info(
+                        "permission: run deadline exceeded tool_use_id=%s tool=%s",
+                        tool_use_id,
+                        tool_name,
+                    )
+                    return False, "deadline_exceeded"
 
             allowed = self._apply_response(raw, session_id, tool_name)
             return allowed, raw

@@ -405,6 +405,242 @@ async def test_permission_timeout_cleans_up_pending() -> None:
     assert "t_late" not in mgr._pending
 
 
+# 功能：验证 Run deadline 比权限 timeout 更早耗尽时，返回独立 deadline 结果并清理请求
+# 设计：不主动响应审批；deadline 后的响应只能命中 unknown，不能重新放行工具调用
+async def test_permission_run_deadline_returns_distinct_result_and_cleans_pending() -> None:
+    mgr = PermissionManager(timeout_s=0.2)
+    emitted, emitter = await _collect_emitted()
+
+    allowed, decision = await mgr.check_and_wait(
+        tool_use_id="t_run_deadline",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+        run_remaining_s=0.02,
+    )
+
+    assert allowed is False
+    assert decision == "deadline_exceeded"
+    assert len(emitted) == 1
+    assert "t_run_deadline" not in mgr._pending
+    assert mgr.respond("t_run_deadline", "allow_once", run_id="r1", session_id="s1") == "unknown"
+
+
+# 功能：验证进入权限等待前已耗尽 Run deadline 时不创建审批事件或 pending
+# 设计：使用 0 剩余预算覆盖调用前门禁，避免把已结束的 Run 放入审批队列
+async def test_permission_run_deadline_is_checked_before_pending() -> None:
+    mgr = PermissionManager(timeout_s=0.2)
+    emitted, emitter = await _collect_emitted()
+
+    assert await mgr.check_and_wait(
+        tool_use_id="already-expired",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+        run_remaining_s=0.0,
+    ) == (False, "deadline_exceeded")
+    assert emitted == []
+    assert mgr._pending == {}
+
+
+# 功能：验证 permission.requested 发送期间 Run deadline 耗尽也能有界返回并清理
+# 设计：事件回调故意挂起，使用 asyncio.timeout 取消该阶段，不依赖客户端响应
+async def test_permission_run_deadline_expires_during_event_emission() -> None:
+    mgr = PermissionManager(timeout_s=0.2)
+    emitter_started = asyncio.Event()
+    emitter_blocked = asyncio.Event()
+
+    async def emitter(event: dict[str, Any]) -> None:
+        assert event["tool_use_id"] == "event-deadline"
+        emitter_started.set()
+        await emitter_blocked.wait()
+
+    task = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="event-deadline",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r1",
+            run_remaining_s=0.02,
+        )
+    )
+    await emitter_started.wait()
+
+    assert await task == (False, "deadline_exceeded")
+    assert mgr._pending == {}
+
+
+# 功能：验证事件发送返回时已跨过绝对 deadline 不会重新开始等待
+# 设计：推进注入 monotonic clock 后立即复核，不依赖真实 sleep 或 asyncio loop 时钟
+async def test_permission_absolute_deadline_is_not_reset_after_event_emission() -> None:
+    mgr = PermissionManager(timeout_s=60.0)
+    clock = [0.0]
+
+    async def emitter(event: dict[str, Any]) -> None:
+        clock[0] = 2.0
+
+    assert await mgr.check_and_wait(
+        tool_use_id="absolute-deadline",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+        run_deadline_at=1.0,
+        run_clock=lambda: clock[0],
+    ) == (False, "deadline_exceeded")
+    assert mgr._pending == {}
+
+
+# 功能：验证 Run deadline 内收到用户响应时仍按正常审批语义放行
+# 设计：在事件回调中同步响应，确保 Future 在 deadline 前解决
+async def test_permission_response_before_run_deadline_is_applied() -> None:
+    mgr = PermissionManager(timeout_s=0.2)
+    emitted: list[dict[str, Any]] = []
+
+    async def emitter(event: dict[str, Any]) -> None:
+        emitted.append(event)
+        assert mgr.respond("before-deadline", "allow_once", run_id="r1", session_id="s1") == "resolved"
+
+    assert await mgr.check_and_wait(
+        tool_use_id="before-deadline",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+        run_remaining_s=0.2,
+    ) == (True, "allow_once")
+    assert len(emitted) == 1
+
+
+# 功能：验证固定权限 timeout 更短时仍返回 timeout，而不是误报 Run deadline
+# 设计：Run 剩余预算明显长于权限配置上限，确认较短边界优先生效
+async def test_permission_timeout_wins_when_shorter_than_run_deadline() -> None:
+    mgr = PermissionManager(timeout_s=0.02)
+    emitted, emitter = await _collect_emitted()
+
+    assert await mgr.check_and_wait(
+        tool_use_id="permission-timeout",
+        tool_name="bash",
+        params={"command": "echo"},
+        session_id="s1",
+        event_emitter=emitter,
+        run_id="r1",
+        run_remaining_s=0.2,
+    ) == (False, "timeout")
+    assert len(emitted) == 1
+    assert mgr._pending == {}
+
+
+# 功能：验证事件发送器自己的 TimeoutError 不会被误报为 Run deadline
+# 设计：父 deadline 尚未耗尽时让 emitter 主动抛出异常，异常应保留原始语义
+async def test_permission_emitter_timeout_error_is_not_reclassified() -> None:
+    mgr = PermissionManager(timeout_s=0.2)
+
+    async def emitter(event: dict[str, Any]) -> None:
+        raise TimeoutError("emitter timeout")
+
+    with pytest.raises(TimeoutError, match="emitter timeout"):
+        await mgr.check_and_wait(
+            tool_use_id="emitter-timeout",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r1",
+            run_remaining_s=0.2,
+        )
+
+    assert mgr._pending == {}
+
+
+# 功能：验证事件发送器在被父 deadline 取消后自行抛出的 TimeoutError 仍不被改写
+# 设计：模拟 emitter 吞掉 CancelledError 并抛出自己的错误，覆盖 timeout 竞态边界
+async def test_permission_emitter_timeout_after_cancellation_is_not_reclassified() -> None:
+    mgr = PermissionManager(timeout_s=60.0)
+
+    async def emitter(event: dict[str, Any]) -> None:
+        try:
+            await asyncio.sleep(1.0)
+        except asyncio.CancelledError as exc:
+            raise TimeoutError("emitter cleanup timeout") from exc
+
+    with pytest.raises(TimeoutError, match="emitter cleanup timeout"):
+        await mgr.check_and_wait(
+            tool_use_id="emitter-cancel-timeout",
+            tool_name="bash",
+            params={"command": "echo"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="r1",
+            run_remaining_s=0.01,
+        )
+
+    assert mgr._pending == {}
+
+
+# 功能：验证旧 Run 被取消后复用同一 tool_use_id 时，旧请求 finally 不会移除新请求
+# 设计：让旧 emitter 在 cancel_run 后继续挂起，再创建新 Run 请求，覆盖身份保护竞态
+async def test_permission_stale_request_cannot_remove_reused_tool_id() -> None:
+    mgr = PermissionManager(timeout_s=0)
+    first_emitter_started = asyncio.Event()
+    release_first_emitter = asyncio.Event()
+    emitter_calls = 0
+
+    async def emitter(event: dict[str, Any]) -> None:
+        nonlocal emitter_calls
+        emitter_calls += 1
+        if emitter_calls == 1:
+            first_emitter_started.set()
+            await release_first_emitter.wait()
+
+    first = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="reused-id",
+            tool_name="bash",
+            params={"command": "echo old"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="old-run",
+        )
+    )
+    await first_emitter_started.wait()
+
+    mgr.cancel_run("old-run", "s1")
+    second = asyncio.create_task(
+        mgr.check_and_wait(
+            tool_use_id="reused-id",
+            tool_name="bash",
+            params={"command": "echo new"},
+            session_id="s1",
+            event_emitter=emitter,
+            run_id="new-run",
+        )
+    )
+
+    async def wait_for_new_pending() -> None:
+        while "reused-id" not in mgr._pending:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_for_new_pending(), timeout=1.0)
+    assert mgr._pending["reused-id"].run_id == "new-run"
+
+    release_first_emitter.set()
+    assert await first == (False, "deny_once")
+    assert mgr._pending["reused-id"].run_id == "new-run"
+
+    assert mgr.respond("reused-id", "allow_once", run_id="new-run", session_id="s1") == "resolved"
+    assert await second == (True, "allow_once")
+    assert mgr._pending == {}
+
+
 # 功能：验证 check_and_wait 被外部取消时也会清理 pending 请求
 # 设计：先让审批请求进入等待，再取消调用任务；迟到的响应只能命中 unknown/no-op，
 #       不能留下 Future 或重新放行已取消的工具调用
