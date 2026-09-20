@@ -112,8 +112,8 @@ export type ModelRequestSettings = {
   temperature: number | null; top_p: number | null; reasoning_effort: "" | "low" | "medium" | "high" | "xhigh" | "max";
   timeout_s: number; max_retries: number; cache_control: boolean; supports_vision: boolean;
 };
-export type RuntimeSettings = ModelRequestSettings & { provider: "anthropic" | "openai"; model: string; permission_mode: "normal" | "accept_edits" | "plan" | "auto"; base_url?: string };
-export type RuntimeSettingsUpdate = Partial<RuntimeSettings> & { api_key?: string };
+export type RuntimeSettings = ModelRequestSettings & { provider: "anthropic" | "openai"; model: string; permission_mode: "normal" | "accept_edits" | "plan" | "auto"; base_url?: string; experimental_jev?: boolean; jev_model?: string; jev_confidence_threshold?: number; jev_api_key_configured?: boolean };
+export type RuntimeSettingsUpdate = Partial<Omit<RuntimeSettings, "jev_api_key_configured">> & { api_key?: string; jev_api_key?: string };
 export type SkillSummary = {
   id: string; name: string; display_name: string; description: string; short_description: string;
   source: string; scope: "system" | "personal" | "workspace"; path: string; plugin?: string | null;

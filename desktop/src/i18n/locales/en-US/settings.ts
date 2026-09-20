@@ -3,6 +3,15 @@ export const settings = {
   close: "Close settings",
   navAria: "Settings sections",
   brandTagline: "Local-first workbench",
+  jev: {
+    section: "Experimental", title: "LLM + Jev Agent mode",
+    notice: "The main model proposes alternatives at choice points; Jev selects one. Task state and candidates are sent to TypeSafe. Low confidence returns control to the main model. Direct tools and final answers need no Jev approval. Applies to the next main Agent run.",
+    apiKey: "TypeSafe API Key", keyConfigured: "Configured; leave blank to keep the current key", model: "Jev model", threshold: "Minimum confidence",
+    save: "Save", saved: "Saved", unavailable: "Runtime unavailable; settings were not saved",
+    runtimeOutdated: "The local service does not support Jev mode. Update the desktop runtime and restart the local service, then try again.",
+    keyRequired: "Enter a TypeSafe API key before enabling Jev mode. Your primary model's API key cannot be used for Jev.",
+    notApplied: "The local service did not apply the Jev settings. Update and restart the local service, then try again.",
+  },
   sections: {
     appearance: "Appearance",
     general: "General",

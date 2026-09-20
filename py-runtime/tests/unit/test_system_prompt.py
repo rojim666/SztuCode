@@ -8,7 +8,7 @@ import pytest
 
 from sztu_code.core.prompts import build_system_prompt
 from sztu_code.core.prompts.catalog import DEFAULT_PROMPT_CATALOG
-from sztu_code.core.prompts.Sztubuddy import build_base, load_resource
+from sztu_code.core.prompts.workbuddy import build_base, load_resource
 from sztu_code.core.prompts.system_prompt import (
     DYNAMIC_BOUNDARY,
     MAX_INSTRUCTION_FILE_CHARS,

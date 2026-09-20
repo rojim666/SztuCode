@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { RunGetResult, RuntimeEvent } from "@sztucode/protocol";
 import { EventBus } from "./event-bus.js";
-import { AgentLoop, type AgentRunResult } from "./agent-loop.js";
+import { AgentLoop, type AgentRunResult, type AgentLoopOptions } from "./agent-loop.js";
 import { createPlanTools, createSkillTool, createSpawnAgentTool, createSubagentCancelTool, createSubagentResultTool, createSubagentStatusTool, createWorkflowTool, createWorkspaceTools, registerQuestionTool } from "./tools.js";
 import { Workspace } from "./workspace.js";
 import { PermissionManager } from "./permissions.js";
@@ -34,7 +34,7 @@ export class RunManager {
   private readonly runRoots = new Map<string, string>();
   private readonly executions = new Map<string, Promise<void>>();
   readonly permissions: PermissionManager;
-  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<{ contextWindow: number; maxOutputTokens: number; streaming?: boolean; supportsVision?: boolean; provider?: string; model?: string }> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
+  constructor(private readonly events: EventBus, private readonly provider: ModelProvider, workspaceRoot = process.cwd(), private readonly questions?: QuestionManager, private readonly extraTools: () => Tool[] = () => [], private readonly contextConfig: () => Promise<Pick<AgentLoopOptions, "contextWindow" | "maxOutputTokens" | "streaming" | "supportsVision" | "provider" | "model" | "jevDecision">> = async () => ({ contextWindow: 128_000, maxOutputTokens: 8_192 }), private readonly sessions?: SessionStore, private readonly extensions: ExtensionRegistry = new ExtensionRegistry(), private readonly telemetry: TelemetryContext = NOOP_TELEMETRY_CONTEXT, private readonly operations?: OperationStore) {
     this.permissions = new PermissionManager(events, 60_000, undefined, this.telemetry);
     this.events.subscribe((event) => {
       const root = ("workspace_path" in event && typeof event.workspace_path === "string" ? event.workspace_path : undefined) ?? ("run_id" in event ? this.runRoots.get(event.run_id) : undefined) ?? workspaceRoot;

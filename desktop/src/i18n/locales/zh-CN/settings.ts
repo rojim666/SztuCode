@@ -3,6 +3,15 @@ export const settings = {
   close: "关闭设置",
   navAria: "设置分类",
   brandTagline: "本地优先工作台",
+  jev: {
+    section: "实验性功能", title: "LLM + Jev Agent 模式",
+    notice: "仅在存在多种下一步动作时，由主模型提供候选方案、Jev 选择其一。任务状态与候选动作会发送至 TypeSafe；置信度不足时交回主模型继续。普通工具调用与最终回答无需 Jev 审批。设置从下一次主 Agent 运行生效。",
+    apiKey: "TypeSafe API Key", keyConfigured: "已配置；留空保留现有密钥", model: "Jev 模型", threshold: "最低置信度",
+    save: "保存", saved: "已保存", unavailable: "运行时不可用，设置未保存",
+    runtimeOutdated: "当前本地服务版本不支持 Jev 模式。请更新桌面运行时并重启本地服务后重试。",
+    keyRequired: "请先填写 TypeSafe API Key，再开启 Jev 模式。主模型的 API Key 不能用于 Jev。",
+    notApplied: "本地服务未应用 Jev 设置，请更新并重启本地服务后重试。",
+  },
   sections: {
     appearance: "外观",
     general: "通用",

@@ -135,6 +135,12 @@ MCP 工具按只读/写操作细分授权：快照、截图、列表、查询类
 
 ## 权限模式
 
+TypeScript 桌面端的「设置 > 通用 > 实验性功能」可开启默认关闭的
+[LLM + Jev Agent 模式](../architecture/experimental-jev.md)。此模式使用独立的
+TypeSafe API Key（也可设置 `TYPESAFE_API_KEY`）。在存在选择分歧时，大模型提供
+2–3 个候选动作和任务状态，Jev 选择其一；普通工具调用和最终回答无需 Jev 审批。
+置信度不足时，立即交回主模型结合完整上下文继续。配置从下一次主 Agent 运行生效。
+
 | 模式 | 用途 |
 | --- | --- |
 | `normal` | 根据风险请求审批 |

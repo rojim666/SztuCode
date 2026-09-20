@@ -20,6 +20,7 @@ import {
 import AgentLogo from "../timeline/AgentLogo.vue";
 import ModelManager from "../ModelConfig/ModelManager.vue";
 import AppUpdater from "./AppUpdater.vue";
+import JevSettings from "./JevSettings.vue";
 
 type SettingsSection = "tasks" | "appearance" | "general" | "agent" | "integrations" | "about";
 
@@ -565,6 +566,7 @@ function selectLocale(value: AppLocale) {
               </div>
               <p v-if="nativeSettingsError" class="form-error">{{ nativeSettingsError }}</p>
             </section>
+            <JevSettings :settings="runtimeSettings" @updated="handleModelUpdated" />
           </template>
 
           <template v-else-if="activeSection === 'agent'">

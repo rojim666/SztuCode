@@ -2,9 +2,9 @@ import { validateReasoningEffort } from "./providers/reasoning.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { RuntimeSettings, SettingsStore } from "./settings.js";
+import type { RuntimeSettings, SettingsStore, JevSettings } from "./settings.js";
 
-type ProfileSettings = Omit<RuntimeSettings, "permission_mode">;
+type ProfileSettings = Omit<RuntimeSettings, "permission_mode" | "jev_api_key_configured" | keyof JevSettings>;
 export type ModelProfile = ProfileSettings & { id: string; name: string; vendor: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
 type StoredProfile = ProfileSettings & { id: string; name: string; vendor: string; builtin: boolean; api_key?: string; keyless?: boolean };
 type ProfileFile = { profiles: StoredProfile[]; active_model_id: string };

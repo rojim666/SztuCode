@@ -10,7 +10,7 @@ from typing import Any, cast
 from jinja2 import ChainableUndefined
 from jinja2.sandbox import SandboxedEnvironment
 
-RESOURCE_ROOT = Path(__file__).parent / "Sztubuddy"
+RESOURCE_ROOT = Path(__file__).parent / "workbuddy"
 _ENGINE = SandboxedEnvironment(autoescape=False, undefined=ChainableUndefined)
 _ALIASES = dict(
     zip(
@@ -37,6 +37,9 @@ def manifest() -> dict[str, Any]:
 def resource_path(relative: str) -> Path:
     if Path(relative).is_absolute():
         raise ValueError("Resource path must be bundle-relative")
+    # The shared manifest retains its original names; Python resources were renamed.
+    if relative.startswith("main/Sztubuddy-"):
+        relative = relative.replace("main/Sztubuddy-", "main/workbuddy-", 1)
     candidate = (RESOURCE_ROOT / relative).resolve()
     if candidate == RESOURCE_ROOT.resolve() or RESOURCE_ROOT.resolve() not in candidate.parents:
         raise ValueError("Resource path escapes the Sztubuddy bundle")

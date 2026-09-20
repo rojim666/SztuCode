@@ -176,7 +176,7 @@ class ContextInjectedEvent(BaseModel):
     run_id: str
     step: int = 0
     # 新事件统一为 system；其余值用于读取旧版分层注入事件。
-    source: Literal["system", "global", "project", "session"]
+    source: Literal["system", "global", "project", "session", "compaction"]
     label: str  # 展示名（当前为 "上下文注入"）
     chars: int = 0  # 注入内容字符数
     preview: str = ""  # 首行预览（前端折叠行摘要）

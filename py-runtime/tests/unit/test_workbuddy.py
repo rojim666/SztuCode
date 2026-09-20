@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sztu_code.core.agents.loader import AgentProfileLoader
-from sztu_code.core.prompts.Sztubuddy import (
+from sztu_code.core.prompts.workbuddy import (
     RESOURCE_ROOT, build_base, imported_skills, load_resource, manifest,
     mode_prompt, read_resource, render_text, resource_path,
 )

@@ -31,9 +31,10 @@ import { deriveSessionStats } from "./utils/sessionStats";
 import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { createComposerFileDropHandler } from "./utils/composerFileDrop";
+import { needsAttachmentStaging } from "./utils/attachmentSource";
 import { friendlyError } from "./utils/errorNotice";
 import { officeTaskState } from "./utils/officeState";
-import { detectVisionSupport } from "./utils/modelVision";
+import { canAddImageAttachments, detectVisionSupport, imageProcessingMode } from "./utils/modelVision";
 import { recognizeImage, type OcrProgress } from "./utils/ocr";
 import { loadAppearanceSettings, type AppearanceSettings } from "./services/appearance";
 import {
@@ -731,13 +732,12 @@ function showSessionPreview(task: Session, event: MouseEvent | FocusEvent) {
   projectPreviewId.value = null;
   projectActionsOpen.value = null;
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  // 与会话项保持一点间距，避免详情卡片紧贴在左侧栏边缘。
+  // 与项目浮窗保持一致：卡片从侧栏条目右侧直接展开。
   const previewWidth = 254;
-  const previewGap = 8;
   sessionPreview.value = {
     task,
     top: Math.max(8, Math.min(rect.top, window.innerHeight - 150)),
-    left: Math.min(rect.right + previewGap, window.innerWidth - previewWidth - 8),
+    left: Math.min(rect.right, window.innerWidth - previewWidth - 8),
   };
   if (task.workspace_id && !branchCache.value.has(task.workspace_id)) void loadBranch(task.workspace_id);
 }
@@ -2684,15 +2684,36 @@ async function prepareWorkspaceAttachments(): Promise<boolean> {
     || /\.(pdf|docx|xlsx|pptx)$/i.test(file.name)
     || file.mime === "application/pdf");
   if (!attachedFiles.value.length) return true;
-  const root = activeWorkspace.value?.path;
-  if (!root) {
-    if (!requiresWorkspace) return true;
-    await showProjectNotice("请选择项目", "音视频、压缩包、3D 模型和其他二进制素材需要先安全复制到项目中，才能继续分析和编辑。", "danger");
-    return false;
-  }
+  let root = activeWorkspace.value?.path;
+  if (!root && !requiresWorkspace) return true;
   preparingWorkspaceAttachments = true;
   try {
-    const pending = attachedFiles.value.filter((file) => needsAttachmentStaging(file, root));
+    if (!root) {
+      // A running projectless agent has already captured its workspace. Do not
+      // move that session while it can still execute tools in the old directory.
+      if (isRunActive.value) {
+        await showProjectNotice("请稍后发送附件", "请等待当前任务完成后重试，系统会自动创建附件分析工作区。", "neutral");
+        return false;
+      }
+      const sessionId = activeId.value;
+      const unchanged = () => activeId.value === sessionId && !activeWorkspace.value && !isRunActive.value;
+      const path = await invoke<string>("create_attachment_workspace");
+      if (!unchanged()) return false;
+      const project = await openWorkspace(path);
+      if (!unchanged()) return false;
+      workspaces.value = [...workspaces.value.filter((item) => item.workspace_id !== project.workspace_id), project];
+      if (sessionId) {
+        const moved = await moveSession(sessionId, project.workspace_id);
+        sessions.value = sessions.value.map((item) => item.session_id === sessionId ? moved : item);
+        if (activeId.value !== sessionId) return false;
+      } else {
+        indexSelectionInitialized = true;
+        workspace.value = project;
+      }
+      root = project.path;
+    }
+    const stagingRoot = root;
+    const pending = attachedFiles.value.filter((file) => needsAttachmentStaging(file, stagingRoot));
     if (pending.length) {
       const paths = await invoke<string[]>("stage_document_attachments", { workspace: root, paths: pending.map((file) => file.path) });
       pending.forEach((file, index) => { file.workspacePath = paths[index]; file.workspaceRoot = root; });

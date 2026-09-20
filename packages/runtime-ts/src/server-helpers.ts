@@ -35,9 +35,10 @@ export const clientId = (socket: net.Socket): string => `${socket.remoteAddress 
 export const requestRunId = (request: JsonRpcRequest): string | null => typeof request.params?.run_id === "string" ? request.params.run_id : null;
 export const responseRunId = (response: JsonRpcResponse): string | null => "result" in response && response.result && typeof response.result === "object" && typeof (response.result as { run_id?: unknown }).run_id === "string" ? (response.result as { run_id: string }).run_id : null;
 
-type SettingsUpdateKey = keyof import("./settings.js").RuntimeSettings | "api_key";
-type StoredSettingsUpdate = Partial<import("./settings.js").RuntimeSettings> & { api_key?: string; keyless?: boolean };
-const SETTINGS_UPDATE_KEYS: SettingsUpdateKey[] = ["provider", "api_format", "model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode"];
+type SettingsUpdateKey = Exclude<keyof import("./settings.js").RuntimeSettings, "jev_api_key_configured"> | "api_key" | "jev_api_key";
+type StoredSettingsUpdate = Partial<import("./settings.js").RuntimeSettings> & { api_key?: string; keyless?: boolean; jev_api_key?: string };
+const JEV_UPDATE_KEYS = ["experimental_jev", "jev_model", "jev_confidence_threshold", "jev_api_key"] as const;
+const SETTINGS_UPDATE_KEYS: SettingsUpdateKey[] = ["provider", "api_format", "model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode", ...JEV_UPDATE_KEYS];
 
 export function normalizeSettingsUpdate(input: Record<string, unknown>, current: Awaited<ReturnType<SettingsStore["getProviderConfig"]>>): { update: StoredSettingsUpdate; updated: SettingsUpdateKey[] } {
   const update: StoredSettingsUpdate = {}; const updated: SettingsUpdateKey[] = []; const next = { ...current };
@@ -54,7 +55,7 @@ export function normalizeSettingsUpdate(input: Record<string, unknown>, current:
     next.api_format = input.api_format as typeof next.api_format; next.provider = next.api_format === "anthropic_messages" ? "anthropic" : "openai";
     update.api_format = next.api_format; update.provider = next.provider; updated.push("api_format");
   }
-  const remaining: SettingsUpdateKey[] = ["model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode"];
+  const remaining: SettingsUpdateKey[] = ["model", "base_url", "api_key", "max_output_tokens", "temperature", "top_p", "reasoning_effort", "timeout_s", "max_retries", "context_window", "cache_control", "supports_vision", "permission_mode", ...JEV_UPDATE_KEYS];
   for (const key of remaining) {
     const value = input[key];
     if (value === undefined || value === null || value === next[key]) continue;
@@ -75,6 +76,10 @@ export function validateSetting(key: SettingsUpdateKey, value: unknown): void {
   else if (key === "api_format") oneOf(["openai_chat_completions", "anthropic_messages", "openai_responses"]);
   else if (key === "permission_mode") oneOf(["normal", "accept_edits", "plan", "auto"]);
   else if (key === "reasoning_effort") validateReasoningEffort(value);
+  else if (key === "experimental_jev" && typeof value !== "boolean") throw new Error("experimental_jev must be a boolean");
+  else if (key === "jev_model") { text(1, 200); if (!(value as string).trim()) throw new Error("jev_model must be non-empty"); }
+  else if (key === "jev_confidence_threshold") number(0, 1);
+  else if (key === "jev_api_key") text(0, 4_000);
   else if (key === "model") text(1, 200);
   else if (key === "base_url") text(0, 2_000);
   else if (key === "api_key") text(1, 4_000);

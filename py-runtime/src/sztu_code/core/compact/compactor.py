@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sztu_code.core.budget import DEFAULT_MAX_OUTPUT_TOKENS, MIN_OUTPUT_RESERVE_TOKENS
-from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent
+from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent, ContextInjectedEvent
 from sztu_code.core.compact.token_counter import TokenCounter
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.prompts.context_management_prompts import (
     load_context_management_prompt,
 )
-from sztu_code.core.prompts.Sztubuddy import load_resource
+from sztu_code.core.prompts.workbuddy import load_resource
 
 if TYPE_CHECKING:
     from sztu_code.core.context import ExecutionContext
@@ -403,6 +403,19 @@ class Compactor:
 
     async def record_compaction(self, run_id: str, result: CompactionResult) -> None:
         self._write_summary(result.summary_text)
+        # Persist the actual summary as a context snapshot so the workbench can
+        # show the compression details, rather than only the token counters.
+        await self._bus.publish(
+            ContextInjectedEvent(
+                run_id=run_id,
+                source="compaction",
+                label="会话压缩",
+                chars=len(result.summary_text),
+                preview=result.summary_text[:160],
+                text=result.summary_text,
+                ts=_now(),
+            )
+        )
         await self._bus.publish(
             ContextCompactedEvent(
                 session_id=self._session_id,

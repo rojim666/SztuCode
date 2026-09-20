@@ -15,7 +15,7 @@ from zipfile import ZipFile
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictFloat, StrictInt, StrictStr
 
 from sztu_code.core.documents import MAX_FILE_BYTES, DocumentError
-from sztu_code.core.tools.workspace import resolve_workspace_path
+from sztu_code.core.workspace_paths import resolve_workspace_path
 
 CellValue = StrictStr | StrictInt | StrictFloat | StrictBool | None
 

@@ -1138,3 +1138,77 @@
     background-position: 50% 50%;
   }
 }
+
+/* Chrome and capability tabs share a tinted interaction layer instead of flat gray. */
+:root {
+  --control-tint: #b47758;
+  --control-hover: color-mix(in srgb, var(--control-tint) 11%, transparent);
+  --control-selected: color-mix(in srgb, var(--control-tint) 19%, transparent);
+  --control-pressed: color-mix(in srgb, var(--control-tint) 25%, transparent);
+  --control-ring: color-mix(in srgb, var(--control-tint) 28%, transparent);
+}
+:root[data-app-theme="dark"] { --control-tint: #dfb396; }
+:root:is([data-accent="blue"], [data-accent="jade"], [data-accent="coral"]) {
+  --control-tint: var(--accent);
+}
+
+:root .sztu-shell :is(
+  .nav-toggle,
+  .app-menu-item > button,
+  .window-action:not(.window-action--close),
+  .work-header__tools button,
+  .workspace-trigger,
+  .skill-center__topbar nav button,
+  .skill-center__actions > button,
+  .source-tabs button
+):not(:disabled):hover {
+  color: var(--text) !important;
+  background: var(--control-hover) !important;
+}
+
+:root .sztu-shell :is(
+  .app-menu-item > button[aria-expanded="true"],
+  .work-header__tools button.active,
+  .work-header__tools button[aria-expanded="true"],
+  .skill-center__topbar nav button.active,
+  .source-tabs button.active
+):not(:disabled) {
+  color: var(--text) !important;
+  background: var(--control-selected) !important;
+  box-shadow: inset 0 0 0 1px var(--control-ring);
+}
+
+/* The two top-level Skills tabs use a filled pill without an inset outline. */
+:root .sztu-shell .skill-center__topbar nav button.active {
+  box-shadow: none;
+}
+
+/* Match the plugin filter tabs to the same warm active surface. */
+:root .sztu-shell .plugin-tabs button.active {
+  color: var(--text) !important;
+  background: var(--control-selected) !important;
+  box-shadow: none;
+}
+
+:root .sztu-shell :is(
+  .nav-toggle,
+  .app-menu-item > button,
+  .window-action:not(.window-action--close),
+  .work-header__tools button,
+  .workspace-trigger,
+  .skill-center__topbar nav button,
+  .skill-center__actions > button,
+  .source-tabs button
+):not(:disabled):active {
+  background: var(--control-pressed) !important;
+}
+
+/* Keep the close control on the same interaction colors as its neighboring controls. */
+:root .sztu-shell .window-action--close:hover {
+  color: var(--text) !important;
+  background: var(--control-hover) !important;
+}
+:root .sztu-shell .window-action--close:active {
+  color: var(--text) !important;
+  background: var(--control-pressed) !important;
+}

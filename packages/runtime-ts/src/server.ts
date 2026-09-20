@@ -7,6 +7,7 @@ import { SessionStore } from "./session-store.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 import { GitManager } from "./git-manager.js";
 import { SettingsStore } from "./settings.js";
+import { JevController } from "./jev.js";
 import path from "node:path";
 import { ConfigurableProvider } from "./providers/configurable.js";
 import { ModelProfileStore } from "./model-profiles.js";
@@ -63,7 +64,13 @@ export class RuntimeServer {
     this.telemetry = this.trace ? new TraceTelemetryContext(this.trace, { includeAttributes: false }) : NOOP_TELEMETRY_CONTEXT;
     const baseProvider = provider ?? new ConfigurableProvider(this.settings);
     this.provider = this.trace ? new TracingProvider(baseProvider, this.trace, /^(1|true|yes)$/i.test(process.env.SZTU_TRACE_INCLUDE_LLM_PAYLOAD ?? "false"), this.telemetry) : baseProvider;
-    this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => { const settings = await this.settings.get(); return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, supportsVision: settings.supports_vision, provider: settings.provider, model: settings.model, streaming: true }; }, this.sessions, this.extensions, this.telemetry, this.operations);
+    this.runs = new RunManager(this.events, this.provider, process.cwd(), this.questions, () => this.mcp.listTools(), async () => {
+      const settings = await this.settings.getProviderConfig();
+      const jevDecision = settings.experimental_jev === true
+        ? new JevController({ apiKey: settings.jev_api_key?.trim() || process.env.TYPESAFE_API_KEY, defaultModel: settings.jev_model }, settings.jev_confidence_threshold)
+        : undefined;
+      return { contextWindow: settings.context_window, maxOutputTokens: settings.max_output_tokens, supportsVision: settings.supports_vision, provider: settings.provider, model: settings.model, streaming: true, jevDecision };
+    }, this.sessions, this.extensions, this.telemetry, this.operations);
     this.service = new ServerService({ events: this.events, settings: this.settings, sessions: this.sessions, sessionBackend: this.sessionBackend, workspaces: this.workspaces, git: this.git, mcp: this.mcp, models: this.models, questions: this.questions, runs: this.runs, extensions: this.extensions, provider: this.provider, telemetry: this.telemetry, artifacts: this.artifacts, operations: this.operations, scheduler: this.scheduler } satisfies CodingAgentServices);
     this.schedulerRunner = new LocalScheduler(this.scheduler, {
       execute: (task, signal) => this.executeScheduledTask(task, signal),

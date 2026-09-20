@@ -1042,6 +1042,24 @@ async fn read_attachment(
 }
 
 // Keep every original attachment inside the workspace for follow-up inspection and editing.
+#[tauri::command]
+fn create_attachment_workspace(app: tauri::AppHandle) -> Result<String, String> {
+    let parent = app.path().app_data_dir().map_err(|error| error.to_string())?.join("attachment-workspaces");
+    create_attachment_workspace_in(&parent)
+}
+
+fn create_attachment_workspace_in(parent: &Path) -> Result<String, String> {
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let root = parent.join(format!("附件分析-{stamp}-{}", SEQUENCE.fetch_add(1, Ordering::Relaxed)));
+    fs::create_dir(&root).map_err(|error| error.to_string())?;
+    Ok(root.to_string_lossy().into_owned())
+}
+
 fn stage_attachment_files(workspace: &str, paths: &[String]) -> Result<Vec<String>, String> {
     let root = fs::canonicalize(workspace).map_err(|error| error.to_string())?;
     let mut directory = root.clone();
@@ -2070,6 +2088,7 @@ fn main() {
             sandbox_pty_close,
             read_attachment,
             stage_document_attachments,
+            create_attachment_workspace,
             create_persistent_worktree,
             list_external_apps,
             open_path_with_app,
@@ -2306,6 +2325,25 @@ mod tests {
             }
         });
         fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn projectless_attachments_get_persistent_isolated_workspaces() {
+        let parent = std::env::temp_dir().join(format!("sztu-attachment-workspaces-test-{}", std::process::id()));
+        let first = PathBuf::from(create_attachment_workspace_in(&parent).unwrap());
+        let second = PathBuf::from(create_attachment_workspace_in(&parent).unwrap());
+        assert_ne!(first, second);
+        assert!(first.is_dir() && second.is_dir());
+        let source = parent.join("演示文稿.pptx");
+        fs::write(&source, b"original presentation").unwrap();
+        let staged = stage_attachment_files(first.to_str().unwrap(), &[source.to_string_lossy().into_owned()]).unwrap();
+        assert_eq!(fs::read(first.join(&staged[0])).unwrap(), b"original presentation");
+        assert_eq!(fs::read(&source).unwrap(), b"original presentation");
+        assert!(!second.join(&staged[0]).exists());
+        fs::remove_dir_all(&first).unwrap();
+        fs::remove_dir_all(&second).unwrap();
+        fs::remove_file(&source).unwrap();
+        fs::remove_dir(&parent).unwrap();
     }
 
     #[test]

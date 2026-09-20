@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from sztu_code.core.prompts.Sztubuddy import (
+from sztu_code.core.prompts.workbuddy import (
     RESOURCE_ROOT,
     adapt_text,
     imported_plugins,

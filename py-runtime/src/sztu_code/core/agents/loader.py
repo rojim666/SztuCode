@@ -34,7 +34,7 @@ class AgentProfileLoader:
             return None
         for path in self._search_paths(name):
             if path.parent == self._BUILTIN_DIR:
-                from sztu_code.core.prompts.Sztubuddy import (
+                from sztu_code.core.prompts.workbuddy import (
                     imported_agent,
                     load_resource,
                     runtime_contract,
@@ -79,7 +79,7 @@ class AgentProfileLoader:
 
             system_prompt = load_subagent_prompt(prompt_id)
         if resource := agent.get("Sztubuddy_template", ""):
-            from sztu_code.core.prompts.Sztubuddy import load_resource, runtime_contract
+            from sztu_code.core.prompts.workbuddy import load_resource, runtime_contract
 
             system_prompt = "\n\n".join(
                 filter(

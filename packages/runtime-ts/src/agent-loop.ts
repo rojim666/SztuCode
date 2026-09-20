@@ -14,6 +14,7 @@ import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@s
 import { TaskCanvas, type VerifiedStatus } from "./task-canvas.js";
 import { WorkingState, runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 import { ProviderError } from "./providers/errors.js";
+import { JEV_PLANNER_INSTRUCTION, JEV_FALLBACK_INSTRUCTION, JEV_SELECT_TOOL, JevTaskState, selectionTools, parseJevPlan, type JevDecisionProvider, type JevDecision, type JevCandidate } from "./jev.js";
 
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
@@ -23,7 +24,7 @@ export type ModelInvocation = { runId: string; step: number; purpose?: "agent" |
 export interface ModelProvider { complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> }
 export type AgentProgress = { steps: number; usage: ModelUsage; contextPct: number };
 export type AgentRunResult = { text: string; steps: number; messages: ChatMessage[]; usage: ModelUsage; contextPct: number; compacted: boolean; summaries: string[]; taskCanvas?: TaskCanvas };
-export type AgentLoopOptions = { contextWindow?: number; maxOutputTokens?: number; supportsVision?: boolean; provider?: string; model?: string; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; cacheHitTarget?: number; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
+export type AgentLoopOptions = { jevDecision?: JevDecisionProvider; contextWindow?: number; maxOutputTokens?: number; supportsVision?: boolean; provider?: string; model?: string; sessionId?: string; streaming?: boolean; memoryMode?: "compaction" | "token_budget"; stuckMaxFailures?: number; stuckMaxTotal?: number; offloadEnabled?: boolean; offloadMinChars?: number; offloadMinLines?: number; offloadRoot?: string; cacheHitTarget?: number; toolMaxRetries?: number; toolRetryBaseMs?: number; toolMaxConcurrency?: number; maxWallClockMs?: number; maxLlmFailures?: number; compactThreshold?: number; slidingWindowSize?: number; compactCooldownSteps?: number; compactCircuitBreaker?: number; compactMinimumOldTokens?: number; compactBackground?: boolean; onProgress?: (progress: AgentProgress) => void; onCheckpoint?: (checkpoint: { step: number; sequence: number; phase: "tool_batch" | "completed" | "failed"; messages: ChatMessage[]; usage: ModelUsage }) => Promise<void> | void; onCompacted?: (messages: ChatMessage[], summary: string) => Promise<void>; extensions?: ExtensionRegistry; workspaceRoot?: string; telemetry?: TelemetryContext };
 
 // 上下文窗口：0（自动）或未配置时回退到默认窗口。绝不能把 0 直接当窗口用——
 // 否则 contextPct = inputTokens / max(1, 0) 会把占用算成天文数字，前端钳制后恒显 100%。
@@ -60,6 +61,23 @@ export class AgentLoop {
     if (this.tools.permits("read_ref")) this.tools.replace(createReadRefTool(offload));
     const context = new ContextManager([...history, { role: "user", content: userContent }], { maxTokens: resolveContextWindow(this.options.contextWindow), reservedOutputTokens: this.options.maxOutputTokens ?? 8_192, maxToolResultChars: 8_000 });
     const messages = context.messages;
+    let jev = this.options.jevDecision;
+    const jevState = jev ? new JevTaskState(goal, runId) : undefined;
+    let modelTools = jev ? selectionTools(this.tools) : this.tools;
+    let lastJevStateMessage: ChatMessage | undefined;
+    let lastJevStateText = "";
+    const publishJevState = () => {
+      if (jevState) this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "jev-state", message: JSON.stringify(jevState.snapshot()), ts: now() });
+    };
+    if (jev) {
+      const system = messages.find(message => message.role === "system");
+      if (system) {
+        const content = typeof system.content === "string" ? `${system.content}\n\n${JEV_PLANNER_INSTRUCTION}` : [...system.content, { type: "text", text: JEV_PLANNER_INSTRUCTION }];
+        messages[messages.indexOf(system)] = { ...system, content };
+      } else messages.unshift({ role: "system", content: JEV_PLANNER_INSTRUCTION });
+      context.notifyMutated();
+      this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "jev", message: "Experimental LLM + Jev candidate selection enabled for this run", ts: now() });
+    }
     const initialSystem = messages.find((message) => message.role === "system");
     if (initialSystem) { const text = typeof initialSystem.content === "string" ? initialSystem.content : JSON.stringify(initialSystem.content); this.publish({ type: "context.injected", run_id: runId, step: 0, source: "system", label: "上下文注入", chars: text.length, preview: text.slice(0, 160), text, ts: now() }); }
     const usage: ModelUsage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -189,6 +207,17 @@ export class AgentLoop {
       taskCanvas.recordStep({ label: "上下文压缩", summary: `压缩了 ${result.removedMessages} 条消息`, toolNames: [], status: result.failed ? "failed" : "done" });
       await extensions?.dispatch("compact", { messages, summary: result.summaryText, removedMessages: result.removedMessages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       await this.options.onCompacted?.(messages, result.summaryText);
+      if (this.options.sessionId && result.summaryText) this.publish({
+        type: "context.injected",
+        run_id: runId,
+        step: currentStep,
+        source: "compaction",
+        label: "会话压缩",
+        chars: result.summaryText.length,
+        preview: result.summaryText.slice(0, 160),
+        text: result.summaryText,
+        ts: now(),
+      });
       this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "context", message: `Summarized ${result.removedMessages} messages using a ${slidingWindowSize}-turn window`, ts: now() });
       if (this.options.sessionId) this.publish({ type: "context.compacted", session_id: this.options.sessionId, run_id: runId, original_tokens: result.originalTokens, summary_tokens: result.summaryTokens, ts: now() });
       return true;
@@ -203,6 +232,7 @@ export class AgentLoop {
 
       // 墙钟时间预算预检
       if (wallClockExceeded()) {
+        if (jevState) { jevState.value.phase = "stopped"; publishJevState(); }
         this.publish({ type: "log.line", run_id: runId, level: "WARN", source: "loop", message: `Max wall clock time (${maxWallClockMs}ms) exceeded, stopping run`, ts: now() });
         const finalText = "Task stopped due to wall clock time limit exceeded.";
         taskCanvas.recordStep({ label: "超时终止", summary: `墙钟时间 ${maxWallClockMs}ms 已到`, status: "failed" });
@@ -228,6 +258,7 @@ export class AgentLoop {
       const steering = takeSteering?.() ?? [];
       if (steering.length) {
         messages.push(...steering);
+        jevState?.steer(steering);
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Injected ${steering.length} steering message(s)`, ts: now() });
       }
       // Rewriting cached tool results before the compaction threshold repeatedly
@@ -259,6 +290,16 @@ export class AgentLoop {
         }
       }
 
+      if (jevState) {
+        const stateText = `Experimental task state (model_report is unverified; observations are actual tool results, not overall completion):\n${JSON.stringify(jevState.snapshot())}`;
+        if (stateText !== lastJevStateText || !lastJevStateMessage || !messages.includes(lastJevStateMessage)) {
+          lastJevStateMessage = { role: "user", content: stateText };
+          messages.push(lastJevStateMessage);
+          lastJevStateText = stateText;
+          publishJevState();
+        }
+      }
+
       // Recuris: 记录当前步骤的 state 到画布（后面我们会在工具调用后补充其他字段）
       taskCanvas.recordStep({
         label: `Step ${step}`,
@@ -269,7 +310,7 @@ export class AgentLoop {
 
       // Check the actual next request, including tool schemas and output headroom.
       // A resumed conversation can already be full before its first model call.
-      const toolTokens = context.counter.countJson(this.tools.list().map(({ name, description, schema }) => ({ name, description, schema })));
+      const toolTokens = context.counter.countJson(modelTools.list().map(({ name, description, schema }) => ({ name, description, schema })));
       const inputLimit = Math.max(1, context.budget.maxTokens - context.budget.reservedOutputTokens);
       const estimatedInput = () => context.tokenEstimate() + toolTokens;
       if (compactThreshold > 0 && memoryMode === "compaction" && estimatedInput() >= Math.min(context.budget.maxTokens * compactThreshold, inputLimit)) {
@@ -288,18 +329,19 @@ export class AgentLoop {
       }
       const requestTokens = context.tokenEstimate();
       let response: ModelResponse;
+      let selectedCandidate: JevCandidate | undefined;
       let streamedText = "";
       const tokenBuffer = bufferedEmitter((token) => this.publish({ type: "llm.token", run_id: runId, token, ts: now() }));
+      const generationSignal = combineSignals(signal, steeringSignal?.());
       try {
-        const generationSignal = combineSignals(signal, steeringSignal?.());
         const contextText = [
           "## System prompt and conversation",
           ...messages.map((message) => `${message.role}: ${typeof message.content === "string" ? message.content : JSON.stringify(message.content)}`),
           "## Tools",
-          ...this.tools.list().map((tool) => JSON.stringify({ name: tool.name, description: tool.description, schema: tool.schema })),
+          ...modelTools.list().map((tool) => JSON.stringify({ name: tool.name, description: tool.description, schema: tool.schema })),
         ].join("\n\n");
         this.publish({ type: "context.injected", run_id: runId, step, source: "system", label: `第 ${step} 轮上下文`, chars: contextText.length, preview: contextText.slice(0, 160), text: contextText, ts: now() });
-        response = await this.provider.complete(messages, this.tools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
+        response = await this.provider.complete(messages, modelTools, generationSignal, (token) => { streamedText += token; tokenBuffer.push(token); }, { runId, step, purpose: "agent" }, (thinking) => this.publish({ type: "llm.thinking", run_id: runId, step, thinking, ts: now() }));
         tokenBuffer.flush();
         llmFailures = 0;
 
@@ -312,6 +354,7 @@ export class AgentLoop {
           // 中断续跑前补齐事件流尾部帧，UI 文本与 history 保持一致
           tokenBuffer.flush();
           messages.push(...interruptedSteering);
+          jevState?.steer(interruptedSteering);
           this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "session", message: `Interrupted generation and injected ${interruptedSteering.length} steering message(s)`, ts: now() });
           this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
           continue;
@@ -356,8 +399,79 @@ export class AgentLoop {
       this.options.onProgress?.({ steps: step, usage: { ...usage }, contextPct: lastContextPct });
       const usageSnapshot = context.usageSnapshot();
       this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseTotalInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: usageSnapshot.system, summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: usageSnapshot.conversation, tool_tokens: usageSnapshot.tool, ts: now() });
+      if (jevState && response.tool_calls.some(call => call.name === JEV_SELECT_TOOL)) {
+        // Keep the model's original signed reasoning and close ALL original calls.
+        // The selector call receives the actual selected tool result under its original ID.
+        // This preserves signed provider history without fabricating assistant reasoning.
+        if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
+        messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
+        let decision: JevDecision = { action: "defer", confidence: 0, reason: "Candidate selection unavailable." };
+        let selected: JevCandidate | undefined;
+        let invalidReason: string | undefined;
+        let candidates: JevCandidate[] = [];
+        if (jev && response.tool_calls.length === 1 && response.stop_reason !== "max_tokens") {
+          try {
+            const plan = parseJevPlan(response.tool_calls[0].input, this.tools);
+            jevState.value.model_report = plan.model_report;
+            candidates = plan.candidates;
+          } catch (error) { invalidReason = error instanceof Error ? error.message : "Invalid candidates"; }
+        } else invalidReason = "Call jev_select_action alone with a complete candidate set, and only while selection is available.";
+        if (invalidReason) decision.reason = `Invalid candidate set: ${invalidReason}. No tools were executed.`;
+        else {
+          jevState.value.phase = "selecting";
+          publishJevState();
+          try {
+            generationSignal?.throwIfAborted();
+            decision = await jev!.decide(jevState.snapshot(), candidates, this.tools, generationSignal);
+            generationSignal?.throwIfAborted();
+            if (decision.action === "select") selected = candidates.find(candidate => candidate.id === decision.candidateId);
+            if ((decision.action !== "select" && decision.action !== "defer") || (decision.action === "select" && !selected) || !Number.isFinite(decision.confidence) || decision.confidence < 0 || decision.confidence > 1) throw new Error("Invalid selection");
+          } catch (error) {
+            for (const call of response.tool_calls) messages.push({ role: "tool", tool_call_id: call.id, is_error: true, content: "No candidate executed: selection interrupted or unavailable." });
+            if (signal?.aborted) throw error;
+            const steering = takeSteering?.() ?? [];
+            if (steering.length) {
+              messages.push(...steering);
+              jevState.steer(steering);
+              this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
+              if (maxSteps > 0 && step >= maxSteps) throw new Error(`Agent exceeded max steps (${maxSteps}) after steering`);
+              continue;
+            }
+            // SDK errors may include credentials or response bodies. Do not expose them.
+            decision = { action: "defer", confidence: 0, reason: "Jev selection unavailable. Check the TypeSafe credential, model and connection. Continue with the full-context reasoning model." };
+            selected = undefined;
+            // Pairs were already closed above.
+            response = { ...response, tool_calls: [] };
+          }
+        }
+        this.publish({ type: "log.line", run_id: runId, level: decision.action === "select" ? "INFO" : "WARN", source: "jev", message: JSON.stringify({ step, ...decision }), ts: now() });
+        const selectionTimedOut = wallClockExceeded();
+        if (!selected || selectionTimedOut) {
+          for (const call of response.tool_calls) messages.push({ role: "tool", tool_call_id: call.id, is_error: true, content: JSON.stringify({ ...decision, executed: false, next: "No candidates executed. Choose a fresh direct action or ask for missing information." }) });
+        }
+        if (selectionTimedOut) throw new Error("Agent time budget exceeded while waiting for Jev");
+        if (selected) {
+          jevState.value.phase = "executing";
+          jevState.value.selected_candidate = selected.id;
+          selectedCandidate = selected;
+          response = { text: "", tool_calls: [{ id: response.tool_calls[0].id, name: selected.tool.name, input: selected.tool.input }], stop_reason: "tool_use" };
+        } else {
+          jevState.value.phase = "needs_reasoning";
+          jevState.value.selected_candidate = null;
+          // One inconclusive selection hands control back immediately, without retry loops.
+          await applyPendingCompaction(true);
+          jev = undefined;
+          modelTools = this.tools;
+          messages.push({ role: "user", content: JEV_FALLBACK_INSTRUCTION });
+          this.publish({ type: "llm.thinking", run_id: runId, step, thinking: "\nJev 未能确定候选动作，本次运行由主模型结合完整上下文继续；候选动作均未执行。\n", ts: now() });
+          response = { text: "", tool_calls: [], stop_reason: "tool_use" };
+        }
+        publishJevState();
+        context.notifyMutated();
+      }
       if (response.text && (!this.options.streaming || !response.streamed)) this.publish({ type: "llm.token", run_id: runId, token: response.text, ts: now() });
-      if (response.stop_reason === "end_turn") {
+      if (response.stop_reason === "end_turn" && response.tool_calls.length === 0) {
+        if (jevState) { jevState.value.phase = "responded"; publishJevState(); }
         const finalPhase = phases.finish();
         if (finalPhase) this.publish({ type: "phase.changed", run_id: runId, step, phase: finalPhase.to, previous: finalPhase.from, reason: finalPhase.reason, ts: now() });
         this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
@@ -370,7 +484,7 @@ export class AgentLoop {
         this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "canvas", message: taskCanvas.renderMermaid(), ts: now() });
         return { text: response.text, steps: step, messages, usage, contextPct: lastContextPct, compacted, summaries, taskCanvas };
       }
-      messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
+      if (!selectedCandidate && (response.tool_calls.length || response.text || response.thinking_blocks?.length)) messages.push({ role: "assistant", content: responseContent(response), tool_calls: response.tool_calls, ...(response.reasoning_content ? { reasoning_content: response.reasoning_content } : {}) });
 
       // 达到阈值时启动后台压缩（利用工具执行期间的等待时间）
       if (lastContextPct >= compactThreshold && !pendingCompaction) {
@@ -599,6 +713,7 @@ export class AgentLoop {
         if (!entry) continue;
         const { result, elapsedMs, input, tool, toolName, canonicalCall } = entry;
 
+        jevState?.observe(step, { ...canonicalCall, input }, result);
         await extensions?.dispatch("after_tool_call", { toolName, input, toolCallId: call.id, result }, extensionRoot, { runId, sessionId: this.options.sessionId });
         const rawOutput = result.ok ? result.output : [result.output, result.error].filter(Boolean).join("\n") || "Tool failed";
         let contextOutput = rawOutput;
@@ -628,8 +743,12 @@ export class AgentLoop {
           if (tool && isTestCommand(String(input.command ?? ""))) this.publish({ type: "test.result", run_id: runId, tool_use_id: call.id, status: "failed", summary: testSummary(String(input.command ?? ""), result.error ?? "Tool failed"), ts: now() });
         }
         const contextContent = result.ok && result.content?.length ? this.options.supportsVision === false ? result.content.filter((block) => block.type !== "image").concat({ type: "text", text: "[Image omitted: this model does not support visual input; OCR or a vision-capable model is required for visual analysis.]" }) : result.content : contextOutput;
-        messages.push({ role: "tool", tool_call_id: call.id, content: contextContent, is_error: !result.ok });
+        const selectionSummary = selectedCandidate ? `Jev selected candidate ${selectedCandidate.id} (${toolName}). Other candidates were not executed. Result of the selected action (ok=${result.ok}):\n` : "";
+        const resultContent = selectionSummary ? typeof contextContent === "string" ? selectionSummary + contextContent : [{ type: "text" as const, text: selectionSummary }, ...contextContent] : contextContent;
+        messages.push({ role: "tool", tool_call_id: call.id, content: resultContent, is_error: !result.ok });
       }
+
+      publishJevState();
 
       // Recuris: 从工具结果吸收硬证据并更新 TaskCanvas 五元组
       const lastNodeId = taskCanvas.nodes[taskCanvas.nodes.length - 1]?.nodeId ?? "";
@@ -673,6 +792,7 @@ export class AgentLoop {
       await this.options.onCheckpoint?.({ step, sequence: ++checkpointSequence, phase: "tool_batch", messages: [...messages], usage: { ...usage } });
       await extensions?.dispatch("turn_end", { goal, step, messages }, extensionRoot, { runId, sessionId: this.options.sessionId });
       if (maxSteps > 0 && step >= maxSteps) {
+        if (jevState) { jevState.value.phase = "stopped"; publishJevState(); }
         const conclusion = await this.conclude(runId, step, messages, usage, lastContextPct, signal, taskCanvas);
         if (conclusion.complete) return { text: conclusion.text, steps: step, messages, usage, contextPct: conclusion.contextPct, compacted, summaries };
         throw new Error(`Agent exceeded max steps (${maxSteps})${conclusion.text ? `: ${conclusion.text}` : ""}`);
@@ -683,6 +803,7 @@ export class AgentLoop {
     }
     throw new Error("Agent stopped unexpectedly");
     } catch (error) {
+      if (jevState) { jevState.value.phase = "stopped"; publishJevState(); }
       // 失败也带上已积累的对话状态：上层（RunManager）在失败路径持久化，避免多步工作成果随异常蒸发
       if (error instanceof Error && messages.length) {
         const carrier = error as Error & { partialMessages?: ChatMessage[] };
