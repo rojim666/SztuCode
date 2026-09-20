@@ -3704,7 +3704,7 @@ watch(activeWorkspace, (project) => {
               <div class="task-conversation" :class="{ 'task-conversation--empty': !orderedTimeline.length, 'task-conversation--running': runActive || sending }">
                 <div class="task-stream" ref="taskStreamEl" @scroll="handleTaskStreamScroll" @wheel.passive="markUserScrolling" @touchstart.passive="markUserScrolling">
                   <KeepAlive>
-                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-file-in-tree="onOpenFileInTreeFromTimeline" @open-changes="onOpenChangesFromTimeline" />
+                    <ExecutionTimeline :key="active.session_id" :steps="orderedTimeline" :workspace-id="activeWorkspace?.workspace_id ?? undefined" :workspace-path="activeWorkspace?.path" :jev-enabled="runtimeSettings?.experimental_jev === true" @decide="decidePermission" @reverted="handleReverted" @retry="handleRetry" @branch="handleBranch" @review="handleReview" @continue="handleContinue" @open-file="onOpenFileFromTimeline" @open-file-in-tree="onOpenFileInTreeFromTimeline" @open-changes="onOpenChangesFromTimeline" />
                   </KeepAlive>
                 </div>
                 <!-- Trae Work 风格：会话轮次圆点导航（固定可视数量，居中active，hover气泡） -->

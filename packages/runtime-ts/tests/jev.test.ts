@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Socket } from "node:net";
-import { JevController, JEV_PLANNER_INSTRUCTION, JEV_FALLBACK_INSTRUCTION, JEV_SELECT_TOOL, JevTaskState, type JevPlan, type JevDecisionProvider } from "../src/jev.js";
+import { JevController, JEV_PLANNER_INSTRUCTION, JEV_FALLBACK_INSTRUCTION, JEV_SELECT_TOOL, JevTaskState, JevContextProjection, type JevPlan, type JevDecisionProvider } from "../src/jev.js";
 import { AgentLoop, type ChatMessage, type ModelProvider, type ModelResponse } from "../src/agent-loop.js";
 import { ToolRegistry } from "../src/tools.js";
 import { Workspace } from "../src/workspace.js";
@@ -61,6 +61,9 @@ test("SDK selects among candidates with explicit state, independent credentials,
     state.observe(1, proposal.tool_calls[0], { ok: false, output: "Missing file", errorType: "runtime_error" });
     const result = await controller.decide(state.snapshot(), plan().candidates, f.tools);
     assert.equal(result.action, "select"); assert.equal(result.candidateId, "source"); assert.equal(result.inputTokens, 17);
+    assert.equal(result.apiCalled, true);
+    assert.deepEqual(result.probabilities, { source: 0.95 });
+    assert.equal(result.stateBytes, Buffer.byteLength(JSON.stringify(request.state), "utf8"));
     assert.equal(request.model, "jev-latest"); assert.equal(request.questions.next.type, "choice");
     assert.deepEqual(request.state.candidates, plan().candidates);
     assert.equal(request.state.task.observations[0].ok, false);
@@ -75,7 +78,10 @@ test("SDK selects among candidates with explicit state, independent credentials,
     await assert.rejects(invalid.decide(state.snapshot(), plan().candidates, f.tools), /Invalid/);
     const huge = plan(); huge.candidates[0].tool.input.path = "x".repeat(30_000);
     const noFetch = new JevController({ apiKey: "test", fetch: async () => { throw new Error("Must not fetch"); } });
-    assert.match((await noFetch.decide(state.snapshot(), huge.candidates, f.tools)).reason, /too large/);
+    const oversized = await noFetch.decide(state.snapshot(), huge.candidates, f.tools);
+    assert.match(oversized.reason, /too large/);
+    assert.equal(oversized.apiCalled, false);
+    assert.ok(oversized.stateBytes! > 28_000);
   } finally { await f.cleanup(); }
 });
 
@@ -110,6 +116,9 @@ test("only the selected candidate executes once; observations, signed history an
       assert.equal(state.observations.length, 1); assert.equal(state.observations[0].ok, allowed);
       assert.equal(state.observations[0].tool, "inspect");
       assert.equal(f.tools.get(JEV_SELECT_TOOL), undefined, "Do not mutate shared tool registry");
+      const decisionLog = f.logs.map(line => { try { return JSON.parse(line); } catch { return {}; } }).find(log => log.action === "select");
+      assert.equal(decisionLog.candidate_count, 2);
+      assert.ok(decisionLog.elapsed_ms >= 0);
     } finally { await f.cleanup(); }
   }
 });
@@ -250,6 +259,69 @@ test("candidate state survives compaction and later choices see actual failed ou
     const result = await new AgentLoop(provider, f.tools, { workspace: new Workspace(f.root) }, f.events, { check: async () => false }, { jevDecision: jev, contextWindow: 100_000, compactThreshold: 0.7, slidingWindowSize: 2, compactMinimumOldTokens: 0 }).run("r", "inspect", 4, history);
     assert.equal(result.compacted, true); assert.equal(decisions, 2); assert.equal(f.paths.length, 0); assertPaired(result.messages);
   } finally { await f.cleanup(); }
+});
+
+test("LLM task-state deltas avoid repeating tool evidence and unchanged reports", () => {
+  const state = new JevTaskState("Find the contract", "projection");
+  state.value.model_report = plan().model_report;
+  const projection = new JevContextProjection();
+  const messages: ChatMessage[] = [];
+  const first = projection.next(state.snapshot(), messages)!;
+  messages.push(first);
+  assert.match(String(first.content), /snapshot/);
+  assert.equal(projection.next(state.snapshot(), messages), undefined);
+  const evidence: ChatMessage = { role: "tool", tool_call_id: "call-1", content: "UNIQUE_TOOL_EVIDENCE" };
+  messages.push({ role: "assistant", content: "", tool_calls: proposal.tool_calls }, evidence);
+  state.observe(1, proposal.tool_calls[0], { ok: true, output: "UNIQUE_TOOL_EVIDENCE" });
+  const delta = projection.next(state.snapshot(), messages)!;
+  messages.push(delta);
+  assert.match(String(delta.content), /"update_type":"delta"/);
+  assert.match(String(delta.content), /"call_id":"call-1"/);
+  assert.doesNotMatch(String(delta.content), /UNIQUE_TOOL_EVIDENCE|Find the contract|"model_report"/);
+  assert.equal(messages.filter(message => String(message.content).includes("UNIQUE_TOOL_EVIDENCE")).length, 1);
+  assert.equal(state.snapshot().observations[0].output, "UNIQUE_TOOL_EVIDENCE", "Jev still gets the complete bounded state");
+  assert.equal(projection.next(state.snapshot(), messages), undefined);
+  state.steer([{ role: "user", content: "Stop inspecting, explain the issue" }]);
+  const steering = projection.next(state.snapshot(), messages)!;
+  assert.match(String(steering.content), /"model_report":null/);
+  assert.match(String(steering.content), /Stop inspecting/);
+});
+
+test("compaction restores the base and lost evidence even when a later delta survives", () => {
+  const state = new JevTaskState("Keep the real goal", "projection");
+  state.value.model_report = plan().model_report;
+  const projection = new JevContextProjection();
+  const messages: ChatMessage[] = [];
+  messages.push(projection.next(state.snapshot(), messages)!);
+  const evidence: ChatMessage = { role: "tool", tool_call_id: "call-1", content: "Permission denied", is_error: true };
+  messages.push(evidence);
+  state.observe(1, proposal.tool_calls[0], { ok: false, output: "Permission denied", errorType: "permission_denied" });
+  const delta = projection.next(state.snapshot(), messages)!;
+  const compacted = [delta];
+  const restored = projection.next(state.snapshot(), compacted)!;
+  assert.match(String(restored.content), /"update_type":"snapshot"/);
+  assert.match(String(restored.content), /Keep the real goal|Find the documented contract/);
+  assert.match(String(restored.content), /"ok":false/);
+  assert.match(String(restored.content), /Permission denied/);
+  compacted.push(restored);
+  assert.equal(projection.next(state.snapshot(), compacted), undefined);
+});
+
+test("losing referenced evidence alone restores its bounded text without inventing success", () => {
+  const state = new JevTaskState("Inspect", "projection");
+  const projection = new JevContextProjection();
+  const messages: ChatMessage[] = [];
+  messages.push(projection.next(state.snapshot(), messages)!);
+  const evidence: ChatMessage = { role: "tool", tool_call_id: "call-1", content: "Failed check", is_error: true };
+  messages.push(evidence);
+  state.observe(1, proposal.tool_calls[0], { ok: false, output: "Failed check" });
+  messages.push(projection.next(state.snapshot(), messages)!);
+  messages.splice(messages.indexOf(evidence), 1);
+  const restored = projection.next(state.snapshot(), messages)!;
+  assert.match(String(restored.content), /Failed check/);
+  assert.match(String(restored.content), /"completion_verified":false/);
+  messages.push(restored);
+  assert.equal(projection.next(state.snapshot(), messages), undefined);
 });
 
 test("standard loop has no experimental tools, state, or instruction", async () => {

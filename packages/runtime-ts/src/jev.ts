@@ -16,7 +16,7 @@ export type JevPlan = {
   model_report: { subgoal: string; assumptions: string[]; open_questions: string[] };
   candidates: JevCandidate[];
 };
-export type JevDecision = { action: "select" | "defer"; candidateId?: string; confidence: number; reason: string; model?: string; inputTokens?: number; selectedAction?: string; threshold?: number };
+export type JevDecision = { action: "select" | "defer"; candidateId?: string; confidence: number; reason: string; model?: string; inputTokens?: number; selectedAction?: string; threshold?: number; probabilities?: Record<string, number>; stateBytes?: number; apiCalled?: boolean };
 export interface JevDecisionProvider {
   decide(state: JevTaskSnapshot, candidates: JevCandidate[], tools: ToolRegistry, signal?: AbortSignal): Promise<JevDecision>;
 }
@@ -64,6 +64,46 @@ export class JevTaskState {
     this.value.phase = result.ok ? "reasoning" : "needs_reasoning";
   }
   snapshot(): JevTaskSnapshot { return structuredClone(this.value); }
+}
+
+/** Append-only LLM view: reuse tool evidence already in context, preserving cache prefixes. */
+export class JevContextProjection {
+  private previous?: JevTaskSnapshot;
+  private anchors: ChatMessage[] = [];
+  private evidenceSources = new Map<string, ChatMessage>();
+
+  next(state: JevTaskSnapshot, messages: ChatMessage[]): ChatMessage | undefined {
+    const retained = new Set(messages);
+    const key = (observation: JevTaskSnapshot["observations"][number]) => `${observation.step}:${observation.call_id}`;
+    // Losing any delta's base or referenced tool evidence requires a fresh bounded snapshot.
+    const restore = !this.previous || this.previous.run_id !== state.run_id
+      || this.anchors.some(message => !retained.has(message))
+      || state.observations.some(observation => {
+        const source = this.evidenceSources.get(key(observation));
+        return source !== undefined && !retained.has(source);
+      });
+    const { observations, ...metadata } = state;
+    const updates = restore ? { ...metadata } : Object.fromEntries(
+      Object.entries(metadata).filter(([name, value]) => JSON.stringify(value) !== JSON.stringify(this.previous?.[name as keyof JevTaskSnapshot])),
+    );
+    const oldKeys = new Set(restore ? [] : this.previous?.observations.map(key));
+    const changed = observations.filter(observation => !oldKeys.has(key(observation)));
+    if (!restore && !Object.keys(updates).length && !changed.length) return undefined;
+    const toolMessages = new Map(messages.filter(message => message.role === "tool").map(message => [message.tool_call_id, message]));
+    const projected = changed.map(observation => {
+      if (!toolMessages.has(observation.call_id)) return observation;
+      const { output: _output, input_summary: _input, ...outcome } = observation;
+      return { ...outcome, evidence_in: "tool_result" };
+    });
+    const message: ChatMessage = { role: "user", content: `Experimental task state (${restore ? "snapshot" : "delta"}; merge deltas by step/call_id. Model reports are unverified; tool results are evidence, not overall completion):\n${JSON.stringify({ update_type: restore ? "snapshot" : "delta", ...updates, ...(projected.length ? { observations: projected } : {}) })}` };
+    this.anchors = restore ? [message] : [...this.anchors, message];
+    if (restore) this.evidenceSources.clear();
+    for (const observation of changed) this.evidenceSources.set(key(observation), toolMessages.get(observation.call_id) ?? message);
+    const currentKeys = new Set(observations.map(key));
+    for (const stored of this.evidenceSources.keys()) if (!currentKeys.has(stored)) this.evidenceSources.delete(stored);
+    this.previous = structuredClone(state);
+    return message;
+  }
 }
 
 const shortText = { type: "string", minLength: 1, maxLength: 800 };
@@ -127,7 +167,8 @@ export class JevController implements JevDecisionProvider {
       return { name: candidate.tool.name, description: clip(tool?.description ?? "Unknown tool", 500), permission: tool?.classifyPermission?.(candidate.tool.input) ?? tool?.permission ?? "unknown" };
     }) };
     // Never truncate executable arguments. Defer to the LLM instead.
-    if (Buffer.byteLength(JSON.stringify(state), "utf8") > 28_000) return { action: "defer", confidence: 0, reason: "Candidate state is too large. Choose a fresh direct action using your full context." };
+    const stateBytes = Buffer.byteLength(JSON.stringify(state), "utf8");
+    if (stateBytes > 28_000) return { action: "defer", confidence: 0, stateBytes, apiCalled: false, reason: "Candidate state is too large. Choose a fresh direct action using your full context." };
     const choices = Object.fromEntries(candidates.map(candidate => [candidate.id, `Choose candidate ${candidate.id}: ${candidate.purpose}`]));
     choices.insufficient_information = "The evidence does not support choosing among these alternatives; return control to the reasoning model.";
     const response = await this.client.systemOne({ state: state as EntryType, questions: { next: choice(
@@ -137,7 +178,8 @@ export class JevController implements JevDecisionProvider {
     const answer = response.answers?.next;
     if (!answer || !Object.hasOwn(choices, answer.choice) || !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1) throw new Error("Invalid Jev candidate selection");
     const selected = answer.choice !== "insufficient_information" && answer.confidence >= this.confidenceThreshold;
-    return { action: selected ? "select" : "defer", ...(selected ? { candidateId: answer.choice } : {}), confidence: answer.confidence, model: response.model, inputTokens: response.usage?.input_tokens, selectedAction: answer.choice, threshold: this.confidenceThreshold,
+    const probabilities = Object.fromEntries(Object.entries(answer.probabilities ?? {}).filter(([id, probability]) => Object.hasOwn(choices, id) && Number.isFinite(probability) && probability >= 0 && probability <= 1));
+    return { action: selected ? "select" : "defer", ...(selected ? { candidateId: answer.choice } : {}), confidence: answer.confidence, model: response.model, inputTokens: response.usage?.input_tokens, selectedAction: answer.choice, threshold: this.confidenceThreshold, probabilities, stateBytes, apiCalled: true,
       reason: selected ? `Selected candidate ${answer.choice}; execution still requires normal validation and permissions.` : `Jev returned ${answer.choice} at confidence ${answer.confidence.toFixed(2)} (threshold ${this.confidenceThreshold.toFixed(2)}). This is uncertainty, not rejection. Choose a fresh direct action or obtain missing information using the full context.` };
   }
 }

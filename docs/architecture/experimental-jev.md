@@ -83,15 +83,25 @@ A run-local state records:
 - The selected candidate ID. `completion_verified` stays false: this component
   cannot certify overall completion. Check actual tests and acceptance evidence.
 
-State survives context compaction within a run. Updated snapshots are appended
-for the main model and restored after compaction, and Jev receives the in-memory
-snapshot at each selection. The authoritative history remains tool results;
+State survives context compaction within a run. The main model receives append-only
+state deltas, omitting unchanged metadata and referencing tool results already
+present in the conversation instead of duplicating their text. If any delta base
+or referenced evidence disappears during compaction, the runtime restores a
+bounded snapshot and any missing evidence before the next model call. Jev still
+receives the full in-memory snapshot at each selection. Existing prompt prefixes
+are preserved for caching. The authoritative history remains tool results;
 state is a bounded summary, not a replacement for the complete conversation.
 It starts afresh for each run, with prior conversation retained by the main model.
 
 `log.line` events with source `jev-state` expose state transitions and observed
-outcomes; source `jev` records choices, confidence, threshold, resolved model and
-input token usage separately from the main model's counters.
+outcomes; source `jev` records choices, confidence, threshold, resolved model,
+candidate count, probability distribution, UTF-8 state size and selection elapsed
+milliseconds. Input token usage is separate from the main model's counters.
+`api_called` is false for local oversized-state deferral and null when unknown
+(for example, a controller error); unknown usage must not be priced as zero.
+
+See [Coding Agent efficiency research](jev-coding-efficiency.md) for the measured
+state-overhead reduction, live synthetic retrieval pilot and next experiments.
 
 ## Scope and Limits
 

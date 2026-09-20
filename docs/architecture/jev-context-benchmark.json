@@ -1,0 +1,38 @@
+{
+  "kind": "synthetic_offline_context_benchmark",
+  "tokenizer": "o200k_base",
+  "caveats": [
+    "Measures only Jev state-injection overhead, not all task tokens or billed savings.",
+    "Prompt appearances include cached re-reads; do not price them as uncached input.",
+    "No model calls; no evidence of improved coding accuracy or latency."
+  ],
+  "results": [
+    {
+      "scenario": "short-results",
+      "llm_turns": 20,
+      "state_tokens_appended_before": 8441,
+      "state_tokens_appended_after": 1628,
+      "reduction_pct": 80.7,
+      "state_token_appearances_across_prompts_before": 78265,
+      "state_token_appearances_across_prompts_after": 17470
+    },
+    {
+      "scenario": "long-results",
+      "llm_turns": 20,
+      "state_tokens_appended_before": 30735,
+      "state_tokens_appended_after": 1628,
+      "reduction_pct": 94.7,
+      "state_token_appearances_across_prompts_before": 275330,
+      "state_token_appearances_across_prompts_after": 17470
+    },
+    {
+      "scenario": "chinese-results-with-compaction",
+      "llm_turns": 20,
+      "state_tokens_appended_before": 32220,
+      "state_tokens_appended_after": 3219,
+      "reduction_pct": 90,
+      "state_token_appearances_across_prompts_before": 167466,
+      "state_token_appearances_across_prompts_after": 26677
+    }
+  ]
+}

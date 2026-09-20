@@ -14,7 +14,7 @@ import { NOOP_TELEMETRY_CONTEXT, safeStartSpan, type TelemetryContext } from "@s
 import { TaskCanvas, type VerifiedStatus } from "./task-canvas.js";
 import { WorkingState, runMemoryEvolution, shouldEvolve } from "./memory-evolution.js";
 import { ProviderError } from "./providers/errors.js";
-import { JEV_PLANNER_INSTRUCTION, JEV_FALLBACK_INSTRUCTION, JEV_SELECT_TOOL, JevTaskState, selectionTools, parseJevPlan, type JevDecisionProvider, type JevDecision, type JevCandidate } from "./jev.js";
+import { JEV_PLANNER_INSTRUCTION, JEV_FALLBACK_INSTRUCTION, JEV_SELECT_TOOL, JevTaskState, JevContextProjection, selectionTools, parseJevPlan, type JevDecisionProvider, type JevDecision, type JevCandidate } from "./jev.js";
 
 export type ChatMessage = ContextMessage;
 export type ModelToolCall = { id: string; name: string; input: Record<string, unknown> };
@@ -64,10 +64,18 @@ export class AgentLoop {
     let jev = this.options.jevDecision;
     const jevState = jev ? new JevTaskState(goal, runId) : undefined;
     let modelTools = jev ? selectionTools(this.tools) : this.tools;
-    let lastJevStateMessage: ChatMessage | undefined;
-    let lastJevStateText = "";
+    const jevProjection = new JevContextProjection();
     const publishJevState = () => {
       if (jevState) this.publish({ type: "log.line", run_id: runId, level: "INFO", source: "jev-state", message: JSON.stringify(jevState.snapshot()), ts: now() });
+    };
+    const injectJevState = () => {
+      if (!jevState) return;
+      const stateMessage = jevProjection.next(jevState.snapshot(), messages);
+      if (stateMessage) {
+        messages.push(stateMessage);
+        context.notifyMutated();
+        publishJevState();
+      }
     };
     if (jev) {
       const system = messages.find(message => message.role === "system");
@@ -290,15 +298,7 @@ export class AgentLoop {
         }
       }
 
-      if (jevState) {
-        const stateText = `Experimental task state (model_report is unverified; observations are actual tool results, not overall completion):\n${JSON.stringify(jevState.snapshot())}`;
-        if (stateText !== lastJevStateText || !lastJevStateMessage || !messages.includes(lastJevStateMessage)) {
-          lastJevStateMessage = { role: "user", content: stateText };
-          messages.push(lastJevStateMessage);
-          lastJevStateText = stateText;
-          publishJevState();
-        }
-      }
+      injectJevState();
 
       // Recuris: 记录当前步骤的 state 到画布（后面我们会在工具调用后补充其他字段）
       taskCanvas.recordStep({
@@ -319,9 +319,11 @@ export class AgentLoop {
         // Await even background work here: there is no safe reason to send the
         // known oversized request while its replacement is still being built.
         await applyPendingCompaction(true);
+        injectJevState();
         if (estimatedInput() >= inputLimit) {
           await startCompaction(step, true);
           await applyPendingCompaction(true);
+          injectJevState();
         }
         if (estimatedInput() >= inputLimit) {
           throw new Error("Context still exceeds the model input budget after compaction. Reduce attached content or configure the correct model context window.");
@@ -400,6 +402,8 @@ export class AgentLoop {
       const usageSnapshot = context.usageSnapshot();
       this.publish({ type: "llm.usage", run_id: runId, input_tokens: responseInputTokens, output_tokens: Number(response.usage?.output_tokens ?? 0), cache_read_input_tokens: Number(response.usage?.cache_read_input_tokens ?? 0), cache_creation_input_tokens: Number(response.usage?.cache_creation_input_tokens ?? 0), context_pct: lastContextPct, model: response.model ?? "", context_window: contextWindow, available_tokens: Math.max(0, contextWindow - reservedOutputTokens - (responseTotalInputTokens || requestTokens)), reserved_output_tokens: reservedOutputTokens, system_tokens: usageSnapshot.system, summary_tokens: summaries.reduce((sum, summary) => sum + context.counter.count(summary), 0), conversation_tokens: usageSnapshot.conversation, tool_tokens: usageSnapshot.tool, ts: now() });
       if (jevState && response.tool_calls.some(call => call.name === JEV_SELECT_TOOL)) {
+        const selectionStarted = performance.now();
+        let apiAttempted = false;
         // Keep the model's original signed reasoning and close ALL original calls.
         // The selector call receives the actual selected tool result under its original ID.
         // This preserves signed provider history without fabricating assistant reasoning.
@@ -422,6 +426,7 @@ export class AgentLoop {
           publishJevState();
           try {
             generationSignal?.throwIfAborted();
+            apiAttempted = true;
             decision = await jev!.decide(jevState.snapshot(), candidates, this.tools, generationSignal);
             generationSignal?.throwIfAborted();
             if (decision.action === "select") selected = candidates.find(candidate => candidate.id === decision.candidateId);
@@ -444,7 +449,7 @@ export class AgentLoop {
             response = { ...response, tool_calls: [] };
           }
         }
-        this.publish({ type: "log.line", run_id: runId, level: decision.action === "select" ? "INFO" : "WARN", source: "jev", message: JSON.stringify({ step, ...decision }), ts: now() });
+        this.publish({ type: "log.line", run_id: runId, level: decision.action === "select" ? "INFO" : "WARN", source: "jev", message: JSON.stringify({ step, ...decision, candidate_count: candidates.length, elapsed_ms: Math.round(performance.now() - selectionStarted), controller_attempted: apiAttempted, api_called: decision.apiCalled ?? null }), ts: now() });
         const selectionTimedOut = wallClockExceeded();
         if (!selected || selectionTimedOut) {
           for (const call of response.tool_calls) messages.push({ role: "tool", tool_call_id: call.id, is_error: true, content: JSON.stringify({ ...decision, executed: false, next: "No candidates executed. Choose a fresh direct action or ask for missing information." }) });

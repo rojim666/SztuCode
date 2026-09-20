@@ -1,0 +1,560 @@
+{
+  "evaluated_at": "2026-09-20T17:04:06.359Z",
+  "model": "jev-1.13.0",
+  "kind": "small_synthetic_retrieval_pilot",
+  "cases": 12,
+  "caveats": [
+    "Hand-written snippets and labels; not a coding-agent task benchmark or held-out calibration set.",
+    "Variants have different objectives: useful next action versus direct implementation evidence. They are not equivalent classifiers.",
+    "No primary LLM or tool execution. This cannot establish end-to-end savings or coding success.",
+    "Threshold sweeps are descriptive on this tiny set; do not tune production thresholds on it.",
+    "Latency includes network/queue time; no claim about server inference latency. Missing failed-request usage is not zero cost.",
+    "Price estimate uses documented $0.042/M input tokens as of 2026-09-21, not a billing receipt."
+  ],
+  "summaries": [
+    {
+      "variant": "current-candidates",
+      "requests": 12,
+      "completed": 12,
+      "errors": 0,
+      "raw_correct": 10,
+      "raw_accuracy": 0.8333333333333334,
+      "input_tokens": 14034,
+      "estimated_jev_usd": 0.000589428,
+      "latency_p50_ms": 330,
+      "latency_p95_ms": 1674,
+      "thresholds": [
+        {
+          "threshold": 0.5,
+          "automatic_selections": 11,
+          "coverage_over_all_requests": 0.9166666666666666,
+          "automatic_correct": 10,
+          "selective_accuracy": 0.9090909090909091
+        },
+        {
+          "threshold": 0.65,
+          "automatic_selections": 10,
+          "coverage_over_all_requests": 0.8333333333333334,
+          "automatic_correct": 9,
+          "selective_accuracy": 0.9
+        },
+        {
+          "threshold": 0.8,
+          "automatic_selections": 9,
+          "coverage_over_all_requests": 0.75,
+          "automatic_correct": 9,
+          "selective_accuracy": 1
+        },
+        {
+          "threshold": 0.9,
+          "automatic_selections": 8,
+          "coverage_over_all_requests": 0.6666666666666666,
+          "automatic_correct": 8,
+          "selective_accuracy": 1
+        }
+      ]
+    },
+    {
+      "variant": "narrow-retrieval",
+      "requests": 12,
+      "completed": 12,
+      "errors": 0,
+      "raw_correct": 12,
+      "raw_accuracy": 1,
+      "input_tokens": 5876,
+      "estimated_jev_usd": 0.000246792,
+      "latency_p50_ms": 311,
+      "latency_p95_ms": 1314,
+      "thresholds": [
+        {
+          "threshold": 0.5,
+          "automatic_selections": 10,
+          "coverage_over_all_requests": 0.8333333333333334,
+          "automatic_correct": 10,
+          "selective_accuracy": 1
+        },
+        {
+          "threshold": 0.65,
+          "automatic_selections": 10,
+          "coverage_over_all_requests": 0.8333333333333334,
+          "automatic_correct": 10,
+          "selective_accuracy": 1
+        },
+        {
+          "threshold": 0.8,
+          "automatic_selections": 9,
+          "coverage_over_all_requests": 0.75,
+          "automatic_correct": 9,
+          "selective_accuracy": 1
+        },
+        {
+          "threshold": 0.9,
+          "automatic_selections": 9,
+          "coverage_over_all_requests": 0.75,
+          "automatic_correct": 9,
+          "selective_accuracy": 1
+        }
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "case_id": "blank-key",
+      "variant": "current-candidates",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.96,
+      "probabilities": {
+        "B": 0.97,
+        "C": 0,
+        "A": 0,
+        "insufficient_information": 0.03
+      },
+      "input_tokens": 1174,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 1674
+    },
+    {
+      "case_id": "blank-key",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "C": 0,
+        "A": 0,
+        "NONE": 0,
+        "B": 1
+      },
+      "input_tokens": 495,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 1314
+    },
+    {
+      "case_id": "cancel-retry",
+      "variant": "current-candidates",
+      "acceptable": [
+        "A"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 0.91,
+      "probabilities": {
+        "A": 0.93,
+        "insufficient_information": 0.06,
+        "C": 0,
+        "B": 0.01
+      },
+      "input_tokens": 1172,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 350
+    },
+    {
+      "case_id": "cancel-retry",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "A"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 0.94,
+      "probabilities": {
+        "NONE": 0.04,
+        "A": 0.96,
+        "B": 0,
+        "C": 0
+      },
+      "input_tokens": 495,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 677
+    },
+    {
+      "case_id": "persist-setting",
+      "variant": "current-candidates",
+      "acceptable": [
+        "C"
+      ],
+      "choice": "C",
+      "correct": true,
+      "confidence": 0.96,
+      "probabilities": {
+        "C": 0.98,
+        "A": 0,
+        "B": 0,
+        "insufficient_information": 0.02
+      },
+      "input_tokens": 1158,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 330
+    },
+    {
+      "case_id": "persist-setting",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "C"
+      ],
+      "choice": "C",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "B": 0,
+        "C": 1,
+        "A": 0,
+        "NONE": 0
+      },
+      "input_tokens": 483,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 317
+    },
+    {
+      "case_id": "permission",
+      "variant": "current-candidates",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.92,
+      "probabilities": {
+        "A": 0.01,
+        "C": 0,
+        "B": 0.94,
+        "insufficient_information": 0.05
+      },
+      "input_tokens": 1163,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 444
+    },
+    {
+      "case_id": "permission",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "A": 0,
+        "NONE": 0,
+        "C": 0,
+        "B": 1
+      },
+      "input_tokens": 490,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 280
+    },
+    {
+      "case_id": "cache-key",
+      "variant": "current-candidates",
+      "acceptable": [
+        "A"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 0.95,
+      "probabilities": {
+        "A": 0.96,
+        "C": 0,
+        "B": 0,
+        "insufficient_information": 0.04
+      },
+      "input_tokens": 1149,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 270
+    },
+    {
+      "case_id": "cache-key",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "A"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "A": 1,
+        "C": 0,
+        "B": 0,
+        "NONE": 0
+      },
+      "input_tokens": 475,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 255
+    },
+    {
+      "case_id": "zh-compaction",
+      "variant": "current-candidates",
+      "acceptable": [
+        "C"
+      ],
+      "choice": "C",
+      "correct": true,
+      "confidence": 0.92,
+      "probabilities": {
+        "insufficient_information": 0.04,
+        "A": 0,
+        "B": 0.02,
+        "C": 0.94
+      },
+      "input_tokens": 1188,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 436
+    },
+    {
+      "case_id": "zh-compaction",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "C"
+      ],
+      "choice": "C",
+      "correct": true,
+      "confidence": 0.98,
+      "probabilities": {
+        "A": 0,
+        "B": 0,
+        "C": 0.99,
+        "NONE": 0.01
+      },
+      "input_tokens": 501,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 281
+    },
+    {
+      "case_id": "zh-switch",
+      "variant": "current-candidates",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.96,
+      "probabilities": {
+        "insufficient_information": 0.03,
+        "A": 0,
+        "C": 0,
+        "B": 0.97
+      },
+      "input_tokens": 1183,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 286
+    },
+    {
+      "case_id": "zh-switch",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.92,
+      "probabilities": {
+        "NONE": 0.06,
+        "C": 0,
+        "B": 0.94,
+        "A": 0
+      },
+      "input_tokens": 496,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 295
+    },
+    {
+      "case_id": "zh-tail",
+      "variant": "current-candidates",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.9,
+      "probabilities": {
+        "insufficient_information": 0.06,
+        "A": 0.01,
+        "C": 0,
+        "B": 0.93
+      },
+      "input_tokens": 1182,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 302
+    },
+    {
+      "case_id": "zh-tail",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.97,
+      "probabilities": {
+        "A": 0,
+        "B": 0.98,
+        "C": 0,
+        "NONE": 0.02
+      },
+      "input_tokens": 492,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 336
+    },
+    {
+      "case_id": "missing",
+      "variant": "current-candidates",
+      "acceptable": [
+        "NONE"
+      ],
+      "choice": "C",
+      "correct": false,
+      "confidence": 0.43,
+      "probabilities": {
+        "insufficient_information": 0.32,
+        "C": 0.57,
+        "B": 0.02,
+        "A": 0.09
+      },
+      "input_tokens": 1160,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 319
+    },
+    {
+      "case_id": "missing",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "NONE"
+      ],
+      "choice": "NONE",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "B": 0,
+        "C": 0,
+        "NONE": 1,
+        "A": 0
+      },
+      "input_tokens": 483,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 366
+    },
+    {
+      "case_id": "comment-only",
+      "variant": "current-candidates",
+      "acceptable": [
+        "NONE"
+      ],
+      "choice": "A",
+      "correct": false,
+      "confidence": 0.73,
+      "probabilities": {
+        "A": 0.8,
+        "insufficient_information": 0.1,
+        "C": 0,
+        "B": 0.1
+      },
+      "input_tokens": 1161,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 781
+    },
+    {
+      "case_id": "comment-only",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "NONE"
+      ],
+      "choice": "NONE",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "NONE": 1,
+        "C": 0,
+        "A": 0,
+        "B": 0
+      },
+      "input_tokens": 481,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 435
+    },
+    {
+      "case_id": "injected-comment",
+      "variant": "current-candidates",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 0.89,
+      "probabilities": {
+        "A": 0.02,
+        "C": 0,
+        "B": 0.91,
+        "insufficient_information": 0.07
+      },
+      "input_tokens": 1185,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 941
+    },
+    {
+      "case_id": "injected-comment",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "B"
+      ],
+      "choice": "B",
+      "correct": true,
+      "confidence": 1,
+      "probabilities": {
+        "NONE": 0,
+        "B": 1,
+        "C": 0,
+        "A": 0
+      },
+      "input_tokens": 505,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 311
+    },
+    {
+      "case_id": "equivalent-options",
+      "variant": "current-candidates",
+      "acceptable": [
+        "A",
+        "B"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 0.51,
+      "probabilities": {
+        "insufficient_information": 0.28,
+        "A": 0.63,
+        "B": 0.09,
+        "C": 0
+      },
+      "input_tokens": 1159,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 313
+    },
+    {
+      "case_id": "equivalent-options",
+      "variant": "narrow-retrieval",
+      "acceptable": [
+        "A",
+        "B"
+      ],
+      "choice": "A",
+      "correct": true,
+      "confidence": 0.68,
+      "probabilities": {
+        "C": 0,
+        "A": 0.76,
+        "B": 0.22,
+        "NONE": 0.02
+      },
+      "input_tokens": 480,
+      "model": "jev-1.13.0",
+      "elapsed_ms": 275
+    }
+  ]
+}

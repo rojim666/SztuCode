@@ -8,7 +8,7 @@ import { fileTypeIconUrl } from "../../utils/fileIcon";
 import { readContextFiles } from "../../utils/contextFiles";
 import { contextLines, diffContext, previousContextIndex } from "../../utils/contextEvolution";
 
-const props = defineProps<{ entries: ContextInjectionEntry[]; toolCalls: ToolCallEntry[]; workspacePath?: string }>();
+const props = defineProps<{ entries: ContextInjectionEntry[]; toolCalls: ToolCallEntry[]; workspacePath?: string; jevEnabled?: boolean }>();
 // 已读文件记录是在工作区文件树中定位文件，而不是打开变更 diff（后者属于任务摘要）
 const emit = defineEmits<{ openFileInTree: [path: string] }>();
 const { t } = useI18n({ useScope: "global" });
@@ -77,6 +77,7 @@ async function copyContent() {
       <span class="ctx-row__title">{{ t('timeline.context.evolution') }}</span>
       <span class="ctx-row__badge">{{ t('timeline.context.snapshots', { count: entries.length }) }}</span>
       <span class="ctx-row__badge">{{ t('timeline.context.filesCount', { count: files.length }) }}</span>
+      <span v-if="jevEnabled" class="ctx-row__badge ctx-row__badge--jev" :title="t('settings.jev.title')">Jev</span>
       <AppIcon name="ChevronDown" class="ctx-row__chevron" :size="14" />
     </button>
     <div v-if="open" :id="bodyId" class="ctx-row__body">
@@ -148,6 +149,7 @@ async function copyContent() {
 .ctx-row__trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--text-muted); text-align: left; flex-wrap: wrap; }
 .ctx-row__title { color: var(--text); font-weight: 500; }
 .ctx-row__badge { padding: 2px 7px; border-radius: 6px; background: var(--surface-soft); font-size: 11px; }
+.ctx-row__badge--jev { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 .ctx-row__chevron { margin-left: auto; transition: transform .15s; }
 .open .ctx-row__chevron { transform: rotate(180deg); }
 .ctx-row__body { margin-top: 8px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); min-width: 0; }
