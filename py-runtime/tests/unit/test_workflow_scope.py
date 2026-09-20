@@ -9,11 +9,32 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import ToolCallBlock
 from sztu_code.core.permissions.manager import PermissionManager
 from sztu_code.core.permissions.policy import PermissionMode
-from sztu_code.core.tools.base import ToolPermission, ToolResult
+from sztu_code.core.tools.base import BaseTool, ToolPermission, ToolResult
 from sztu_code.core.tools.builtin.write_file import WriteFileTool
 from sztu_code.core.tools.invocation import invoke_tool
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.workflow.scope import ScopeAuditLog, normalize_workspace_relative
+
+
+class _DeadlinePermissionManager:
+    """Return the permission-layer deadline result without waiting on wall time."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def check_and_wait(self, **kwargs: object) -> tuple[bool, str]:
+        self.calls.append(kwargs)
+        return False, "deadline_exceeded"
+
+
+class _PermissionGatedTool(BaseTool):
+    name = "permission_gated"
+    description = "A tool used to test permission deadline mapping"
+    input_schema: dict[str, object] = {"type": "object", "properties": {}}
+    required_permission = ToolPermission.DANGER_FULL_ACCESS
+
+    async def invoke(self, params: dict[str, object]) -> ToolResult:
+        raise AssertionError("permission deadline must prevent tool execution")
 
 
 # 执行一次带权限系统的范围写入，并可在审批事件到达时自动响应
@@ -85,6 +106,47 @@ async def test_out_of_scope_write_stops_after_user_denial(tmp_path: Path) -> Non
     assert not (tmp_path / "docs/result.txt").exists()
     assert "permission.denied" in [event.type for event in events]  # type: ignore[attr-defined]
     assert audit.paths == []
+
+
+# 功能：验证权限等待耗尽 Run deadline 时，工具层保留 deadline 语义而非伪装为用户拒绝
+# 设计：权限管理器返回确定的 deadline 结果；断言剩余预算已透传、无 permission.denied，且不触发重试
+async def test_permission_run_deadline_is_not_reported_as_user_denial() -> None:
+    registry = ToolRegistry()
+    tool = _PermissionGatedTool()
+    registry.register(tool)
+    manager = _DeadlinePermissionManager()
+    bus = EventBus()
+    events: list[BaseModel] = []
+
+    async def collect(event: BaseModel) -> None:
+        events.append(event)
+
+    bus.subscribe(collect)
+    result = await invoke_tool(
+        registry,
+        ToolCallBlock(id="deadline-1", name=tool.name, input={}),
+        bus,
+        run_id="run-deadline",
+        permission_manager=manager,  # type: ignore[arg-type]
+        session_id="session-deadline",
+        remaining_s=10.0,
+        run_deadline_at=10.0,
+        clock=lambda: 0.0,
+    )
+
+    assert result.is_error
+    assert result.error_type == "deadline_exceeded"
+    assert result.metadata["retry_reason"] == "run_deadline_exceeded"
+    assert result.execution_state.value == "not_started"
+    assert len(manager.calls) == 1
+    assert manager.calls[0]["run_remaining_s"] == 10.0
+    assert manager.calls[0]["run_deadline_at"] == 10.0
+    assert callable(manager.calls[0]["run_clock"])
+    assert "permission.denied" not in [event.type for event in events]  # type: ignore[attr-defined]
+    failed = [event for event in events if event.type == "tool.call_failed"]  # type: ignore[attr-defined]
+    assert len(failed) == 1
+    assert failed[0].error_class == "deadline_exceeded"  # type: ignore[attr-defined]
+    assert failed[0].retry_decision == "stop"  # type: ignore[attr-defined]
 
 
 # 功能：验证 full-access（auto）模式会直接放行越界写入而不挂起审批

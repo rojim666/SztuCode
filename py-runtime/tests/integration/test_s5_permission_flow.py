@@ -82,6 +82,38 @@ class _TwoBashProvider:
         return LlmResponse(stop_reason="end_turn", text="done")
 
 
+class _PermissionDeadlineProvider:
+    """Requests one permission-gated tool and then should never be called again."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(
+        self,
+        messages: list[dict],
+        tool_schemas: list[dict],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+    ) -> LlmResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[
+                    ToolCallBlock(
+                        id="permission-deadline-tool",
+                        name="bash",
+                        input={"command": "echo should-not-run"},
+                    )
+                ],
+            )
+        return LlmResponse(stop_reason="end_turn", text="unexpected follow-up")
+
+
 # ── helper ────────────────────────────────────────────────────────────────────
 
 
@@ -208,6 +240,45 @@ async def test_cancelled_permission_wait_does_not_execute_tool(tmp_path: Path) -
 
     assert manager._pending == {}
     assert "tool.call_finished" not in event_types
+
+
+# 功能：验证权限等待耗尽 Run deadline 后 Runner 只发布一次 run.finished
+# 设计：不响应 permission.requested，断言 deadline 分类、终态收尾和 pending 清理保持一致
+async def test_permission_deadline_finishes_run_once_without_denial(tmp_path: Path) -> None:
+    manager = PermissionManager(timeout_s=60.0)
+    config = SztuConfig()
+    config.agent.max_steps = 5
+    config.budget.max_wall_clock_s = 1.0
+    events: list[BaseModel] = []
+
+    async def collect(event: BaseModel) -> None:
+        events.append(event)
+
+    provider = _PermissionDeadlineProvider()
+    runner = AgentRunner(
+        config,
+        provider=provider,  # type: ignore[arg-type]
+        permission_manager=manager,
+        extra_handlers=[collect],
+        runs_dir=tmp_path / "runs",
+    )
+
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("wait for permission", run_id="permission-deadline"),
+        timeout=2.0,
+    )
+
+    finished = [event for event in events if event.type == "run.finished"]  # type: ignore[attr-defined]
+    failed = [event for event in events if event.type == "tool.call_failed"]  # type: ignore[attr-defined]
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "max_wall_clock_exceeded"
+    assert provider.calls == 1
+    assert len(finished) == 1
+    assert finished[0].reason == "max_wall_clock_exceeded"  # type: ignore[attr-defined]
+    assert len(failed) == 1
+    assert failed[0].error_class == "deadline_exceeded"  # type: ignore[attr-defined]
+    assert "permission.denied" not in [event.type for event in events]  # type: ignore[attr-defined]
+    assert manager._pending == {}
 
 
 # 功能：验证真实 SocketServer → CoreApp → PermissionManager 断连清理链路

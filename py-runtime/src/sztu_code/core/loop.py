@@ -172,6 +172,7 @@ async def _invoke_scheduled_tool(
                 queued_monotonic=queued_monotonic,
                 classified_permission=classified_permission,
                 remaining_s=0.0,
+                run_deadline_at=context.deadline_at,
                 clock=context.clock,
             )
         if remaining_s is None:
@@ -196,6 +197,7 @@ async def _invoke_scheduled_tool(
                     queued_monotonic=queued_monotonic,
                     classified_permission=classified_permission,
                     remaining_s=0.0,
+                    run_deadline_at=context.deadline_at,
                     clock=context.clock,
                 )
         acquired = True
@@ -212,6 +214,7 @@ async def _invoke_scheduled_tool(
             queued_monotonic=queued_monotonic,
             classified_permission=classified_permission,
             remaining_s=context.remaining_s(),
+            run_deadline_at=context.deadline_at,
             clock=context.clock,
         )
     except asyncio.CancelledError:
@@ -737,6 +740,7 @@ class AgentLoop:
                             queued_at=queued_at,
                             queued_monotonic=queued_monotonic,
                             remaining_s=context.remaining_s(),
+                            run_deadline_at=context.deadline_at,
                             clock=context.clock,
                         )
                     else:

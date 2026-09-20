@@ -262,6 +262,7 @@ async def invoke_tool(
     queued_monotonic: float | None = None,
     classified_permission: ToolPermission | None = None,
     remaining_s: float | None = None,
+    run_deadline_at: float | None = None,
     clock: Callable[[], float] | None = None,
 ) -> ToolResult:
     clock_fn = clock or time.monotonic
@@ -275,6 +276,8 @@ async def invoke_tool(
     )
 
     def remaining_budget() -> float | None:
+        if run_deadline_at is not None:
+            return max(0.0, run_deadline_at - clock_fn())
         if remaining_s is None:
             return None
         return max(0.0, remaining_s - (clock_fn() - t0))
@@ -377,6 +380,9 @@ async def invoke_tool(
                 run_id=run_id,
                 event_emitter=_emit_permission,
                 tool_permission=tool_permission,
+                run_remaining_s=remaining_budget(),
+                run_deadline_at=run_deadline_at,
+                run_clock=clock_fn,
             )
         except asyncio.CancelledError:
             raise
@@ -408,6 +414,22 @@ async def invoke_tool(
                     )
                 )
         else:
+            if decision == "deadline_exceeded":
+                return await _fail(
+                    bus,
+                    run_id,
+                    tool_call,
+                    "deadline_exceeded",
+                    "Permission request reached the run wall-clock deadline.",
+                    elapsed(),
+                    batch_id=batch_id,
+                    scheduler_mode=scheduler_mode,
+                    queue_ms=queue_ms,
+                    queued_at=queued_at,
+                    started_at=started_at,
+                    execution_state=ToolExecutionState.NOT_STARTED,
+                    retry_reason="run_deadline_exceeded",
+                )
             if decision != "auto_deny":
                 await bus.publish(
                     PermissionDeniedEvent(
