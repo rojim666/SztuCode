@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -934,6 +935,73 @@ async def test_cancelled_run_cancels_pending_compaction(tmp_path: Path) -> None:
     ]
     assert "context.compacted" not in event_types
     assert event_types[-1] == "run.finished"
+
+
+class _DeadlineCompactingProvider:
+    """Triggers compaction on the first call; the compaction request never returns."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+        self.compact_started = asyncio.Event()
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        if run_id == "compact":
+            self.compact_started.set()
+            await asyncio.Future()  # 永不返回：没有时间边界的摘要请求
+            raise AssertionError("unreachable")  # pragma: no cover
+
+        self._calls += 1
+        if self._calls == 1:
+            return LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[ToolCallBlock(id="t1", name="unknown_tool", input={})],
+                usage=UsageStats(
+                    input_tokens=100_000,
+                    output_tokens=10,
+                    context_pct=0.9,
+                ),
+            )
+        return LlmResponse(stop_reason="end_turn", text="done")
+
+
+# 功能：验证 deadline 中断的 run 不会因后台压缩而无界等待，且只发布一次终态事件
+# 设计：provider 的压缩调用永久阻塞；run 只有 1 秒墙钟预算，断言有界内结束、
+#       run.finished 恰好一次、reason 为 max_wall_clock_exceeded
+async def test_deadline_interrupted_run_does_not_wait_for_pending_compaction(
+    tmp_path: Path,
+) -> None:
+    cfg = _config()
+    cfg.compaction.auto_threshold = 0.8
+    cfg.budget.max_wall_clock_s = 1
+    provider = _DeadlineCompactingProvider()
+    runner = AgentRunner(cfg, provider=provider, runs_dir=tmp_path)  # type: ignore[arg-type]
+
+    started_at = time.monotonic()
+    # 无界等待会让 run_and_capture 永远不返回；wait_for 把"挂住"变成明确失败
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("new goal", run_id="run-deadline-compact"),
+        timeout=15.0,
+    )
+    elapsed = time.monotonic() - started_at
+
+    assert provider.compact_started.is_set()
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "max_wall_clock_exceeded"
+    # 远小于 provider 的 120s 默认超时，证明边界来自 Run 预算
+    assert elapsed < 5.0
+    event_types = _read_event_types(tmp_path / "run-deadline-compact" / "events.jsonl")
+    assert event_types.count("run.finished") == 1
 
 
 async def test_run_without_session_waits_for_pending_compaction(tmp_path: Path) -> None:
