@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from sztu_code.core.budget import DEFAULT_MAX_OUTPUT_TOKENS, MIN_OUTPUT_RESERVE_TOKENS
 from sztu_code.core.bus.events import ContextCompactedEvent, ContextCompactingEvent, ContextInjectedEvent
 from sztu_code.core.compact.token_counter import TokenCounter
+from sztu_code.core.deadline import add_remaining_s
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.prompts.context_management_prompts import (
     load_context_management_prompt,
@@ -30,6 +31,19 @@ _token_counter = TokenCounter()
 
 # 压缩摘要请求的固定 system prompt（三个调用点共用，保持前缀缓存稳定）
 _COMPACT_SYSTEM_PROMPT = load_resource("product/context-summary-agent-prompt.tpl")
+
+
+# 压缩请求被 Run wall-clock deadline 截断（Issue #69）：不产生摘要、不安装半成品
+# 结果、不计入压缩熔断器。与 provider 普通失败分开记录，避免把超时误判为摘要质量
+# 失败，也避免一次 deadline 就通过熔断器永久关闭本次 run 的自动压缩。
+class CompactionDeadlineExceeded(Exception):
+    """A compaction request was cut short by the run wall-clock deadline."""
+
+
+# deadline 截断的统一记录点：只记 info 并带上 run_id。集中一处是为了让
+# "截止导致的放弃"与"provider 普通失败"在日志里可区分，且不计入压缩熔断器。
+def _skip_on_run_deadline(context: ExecutionContext, where: str) -> None:
+    logger.info("compactor: run deadline reached, skipping %s run=%s", where, context.run_id)
 
 
 # Token 预算准入（Issue #72）：压缩请求的输入为全量历史，余额不足以覆盖
@@ -232,17 +246,25 @@ class Compactor:
         sliding_window_size: int = 0,
     ) -> CompactionResult | None:
         await self.notify_compacting(context.run_id)
+        # 压缩请求与主循环请求共用同一个 Run 绝对 deadline；没有 run 上下文时
+        # remaining_s 为 None，保持原有不受限行为。
+        remaining_s = context.remaining_s()
         final_result: CompactionResult | None = None
         if sliding_window_size > 0:
-            ret = await self.compact_messages(
-                context.messages,
-                provider,
-                focus=focus,
-                sliding_window_size=sliding_window_size,
-                compaction_count=context.compaction_count,
-                remaining_token_budget=self._remaining_token_budget(context),
-                record_usage=lambda r: self._record_budget_usage(context, r),
-            )
+            try:
+                ret = await self.compact_messages(
+                    context.messages,
+                    provider,
+                    focus=focus,
+                    sliding_window_size=sliding_window_size,
+                    compaction_count=context.compaction_count,
+                    remaining_token_budget=self._remaining_token_budget(context),
+                    record_usage=lambda r: self._record_budget_usage(context, r),
+                    remaining_s=remaining_s,
+                )
+            except CompactionDeadlineExceeded:
+                _skip_on_run_deadline(context, "compaction")
+                return None
             if isinstance(ret, tuple):
                 sliding_result, new_msgs = ret
                 if sliding_result is None or new_msgs is None:
@@ -252,13 +274,18 @@ class Compactor:
             else:
                 return None
         else:
-            ret = await self.compact_messages(
-                context.messages,
-                provider,
-                focus=focus,
-                remaining_token_budget=self._remaining_token_budget(context),
-                record_usage=lambda r: self._record_budget_usage(context, r),
-            )
+            try:
+                ret = await self.compact_messages(
+                    context.messages,
+                    provider,
+                    focus=focus,
+                    remaining_token_budget=self._remaining_token_budget(context),
+                    record_usage=lambda r: self._record_budget_usage(context, r),
+                    remaining_s=remaining_s,
+                )
+            except CompactionDeadlineExceeded:
+                _skip_on_run_deadline(context, "compaction")
+                return None
             if ret is None or isinstance(ret, tuple):
                 return None
             context.messages = [
@@ -298,16 +325,25 @@ class Compactor:
         async def _run() -> None:
             await self.notify_compacting(context.run_id)
             final_result: CompactionResult | None = None
+            # 在任务真正发起请求时读取剩余时间：后台任务可能晚于 compact_async()
+            # 的调用点执行，而 deadline 只会单调收缩。
+            remaining_s = context.remaining_s()
             if sliding_window_size > 0:
-                ret = await self.compact_messages(
-                    snapshot,
-                    provider,
-                    focus=focus,
-                    sliding_window_size=sliding_window_size,
-                    compaction_count=context.compaction_count,
-                    remaining_token_budget=self._remaining_token_budget(context),
-                    record_usage=lambda r: self._record_budget_usage(context, r),
-                )
+                try:
+                    ret = await self.compact_messages(
+                        snapshot,
+                        provider,
+                        focus=focus,
+                        sliding_window_size=sliding_window_size,
+                        compaction_count=context.compaction_count,
+                        remaining_token_budget=self._remaining_token_budget(context),
+                        record_usage=lambda r: self._record_budget_usage(context, r),
+                        remaining_s=remaining_s,
+                    )
+                except CompactionDeadlineExceeded:
+                    # deadline 截断不是摘要质量失败：不计入熔断器，直接放弃本次压缩
+                    _skip_on_run_deadline(context, "background compaction")
+                    return
                 if not isinstance(ret, tuple):
                     context.compaction_failure_count += 1
                     logger.warning(
@@ -336,13 +372,19 @@ class Compactor:
                     context.messages = new_msgs
                 final_result = sliding_result
             else:
-                ret = await self.compact_messages(
-                    snapshot,
-                    provider,
-                    focus=focus,
-                    remaining_token_budget=self._remaining_token_budget(context),
-                    record_usage=lambda r: self._record_budget_usage(context, r),
-                )
+                try:
+                    ret = await self.compact_messages(
+                        snapshot,
+                        provider,
+                        focus=focus,
+                        remaining_token_budget=self._remaining_token_budget(context),
+                        record_usage=lambda r: self._record_budget_usage(context, r),
+                        remaining_s=remaining_s,
+                    )
+                except CompactionDeadlineExceeded:
+                    # 与滑动窗口一致：deadline 截断不计入压缩熔断器
+                    _skip_on_run_deadline(context, "background compaction")
+                    return
                 if ret is None or isinstance(ret, tuple):
                     context.compaction_failure_count += 1
                     logger.warning(
@@ -381,16 +423,37 @@ class Compactor:
         self._pending_tasks.append(task)
         return task
 
-    # 等待所有后台压缩任务完成（runner 收尾时调用）
-    async def wait_pending(self, *, cancel_pending: bool = False) -> None:
+    # 等待所有后台压缩任务完成（循环每轮顶部与 runner 收尾时调用）。
+    # remaining_s 是父 Run 的剩余墙钟预算：等待本身不得跨过 Run deadline。
+    # 否则一次没有时间边界的摘要请求会让已超时的 run 继续挂住，循环也到不了
+    # 自己的 deadline 分支（Issue #69）。
+    async def wait_pending(
+        self,
+        *,
+        cancel_pending: bool = False,
+        remaining_s: float | None = None,
+    ) -> None:
         if not self._pending_tasks:
             return
         tasks = self._pending_tasks[:]
         self._pending_tasks.clear()
-        if cancel_pending:
+        if cancel_pending or (remaining_s is not None and remaining_s <= 0):
             for task in tasks:
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            return
+        if remaining_s is None:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            return
+        try:
+            async with asyncio.timeout(remaining_s):
+                await asyncio.gather(*tasks, return_exceptions=True)
+        except TimeoutError:
+            # Run deadline 在等待期间到达：取消后台摘要请求并等它收尾，
+            # 不把无界等待留给调用方。被取消的压缩不会写半成品摘要。
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def notify_compacting(self, run_id: str) -> None:
         await self._bus.publish(
@@ -440,10 +503,16 @@ class Compactor:
         remaining_token_budget: int = 0,
         # 压缩请求的实际用量记账回调（Issue #72）：防止压缩消耗被预算"退款"
         record_usage: Callable[[LlmResponse], None] | None = None,
+        remaining_s: float | None = None,
     ) -> CompactionResult | None | tuple[CompactionResult | None, list[dict[str, Any]] | None]:
         from sztu_code.core.events.bus import EventBus as _Bus
 
         counter = _token_counter
+
+        # Run 已无剩余时间：不创建 provider 协程，直接放弃本次压缩
+        if remaining_s is not None and remaining_s <= 0:
+            logger.info("compactor: run deadline exhausted before compaction, skipping")
+            raise CompactionDeadlineExceeded
 
         async def _compact_chat(
             req: list[dict[str, object]], output_cap: int | None
@@ -451,24 +520,44 @@ class Compactor:
             # output_cap 仅在预算收缩时传入，与主循环条件传参保持一致，
             # 避免破坏未声明该参数的 provider 实现
             silent_bus = _Bus()
+            chat_kwargs: dict[str, Any] = {
+                "messages": req,
+                "tool_schemas": [],
+                "bus": silent_bus,
+                "run_id": "compact",
+                "step": 0,
+                "system": _COMPACT_SYSTEM_PROMPT,
+            }
             if output_cap is not None:
-                return await provider.chat(
-                    messages=req,
-                    tool_schemas=[],
-                    bus=silent_bus,
-                    run_id="compact",
-                    step=0,
-                    system=_COMPACT_SYSTEM_PROMPT,
-                    max_output_tokens=output_cap,
-                )
-            return await provider.chat(
-                messages=req,
-                tool_schemas=[],
-                bus=silent_bus,
-                run_id="compact",
-                step=0,
-                system=_COMPACT_SYSTEM_PROMPT,
-            )
+                chat_kwargs["max_output_tokens"] = output_cap
+            # 与 AgentLoop._chat 同一接缝：把 Run 剩余时间交给 provider，
+            # 由 provider 取 min(自身 timeout, 剩余时间)；兼容不接受该参数的
+            # 历史测试 double（add_remaining_s 会跳过注入）
+            add_remaining_s(provider.chat, chat_kwargs, remaining_s)
+            if remaining_s is None:
+                return await provider.chat(**chat_kwargs)
+            # 外层可取消边界：provider 未在内部执行该预算时，由这里保证请求不会
+            # 比 Run deadline 活得更久
+            timeout = asyncio.timeout(remaining_s)
+            try:
+                async with timeout:
+                    response = await provider.chat(**chat_kwargs)
+            except TimeoutError as exc:
+                # provider 自身 timeout 先到属于普通失败；外层边界先到才是 deadline
+                if timeout.expired():
+                    raise CompactionDeadlineExceeded from exc
+                raise
+            except Exception as exc:
+                # provider 可能在取消后的清理路径上失败；外层边界一旦到期，结果仍归
+                # deadline 所有，不能记成普通 LLM 失败而触发压缩熔断器
+                if timeout.expired():
+                    raise CompactionDeadlineExceeded from exc
+                raise
+            # provider 可能吞掉取消后仍返回响应。外层边界已到期时该响应是迟到的，
+            # 不能作为已提交摘要安装（与 AgentLoop._chat 同一约束）。
+            if timeout.expired():
+                raise CompactionDeadlineExceeded
+            return response
 
         if sliding_window_size > 0:
             # ─── 滑动窗口模式 ───
@@ -499,6 +588,8 @@ class Compactor:
                     response = await _compact_chat(compact_req, output_cap)
                     if record_usage is not None:
                         record_usage(response)
+                except CompactionDeadlineExceeded:
+                    raise
                 except Exception:
                     logger.exception("compactor: LLM call failed, skipping compaction")
                     return None, None
@@ -559,6 +650,8 @@ class Compactor:
                 response = await _compact_chat(compact_req2, output_cap)
                 if record_usage is not None:
                     record_usage(response)
+            except CompactionDeadlineExceeded:
+                raise
             except Exception:
                 logger.exception("compactor: LLM call failed, skipping compaction")
                 return None, None
@@ -602,6 +695,8 @@ class Compactor:
                 response = await _compact_chat(compress_request, output_cap)
                 if record_usage is not None:
                     record_usage(response)
+            except CompactionDeadlineExceeded:
+                raise
             except Exception:
                 logger.exception("compactor: LLM call failed, skipping compaction")
                 return None

@@ -472,9 +472,12 @@ class AgentLoop:
 
         while not context.is_done():
             # Ensure a prepared summary replaces the oversized snapshot before
-            # the next model request instead of only at runner shutdown.
+            # the next model request instead of only at runner shutdown. The
+            # wait is bounded by the run's remaining budget so the loop always
+            # reaches its own deadline branch below instead of depending on a
+            # pending compaction task happening to bound itself.
             if self._compactor is not None:
-                await self._compactor.wait_pending()
+                await self._compactor.wait_pending(remaining_s=context.remaining_s())
             self._drain_steering(context)
 
             # [budget] 墙钟上限预检：超时直接终止，不再发起 LLM 调用

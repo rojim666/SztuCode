@@ -951,6 +951,79 @@ async def test_loop_auto_compacts_on_max_tokens(tmp_path: Path) -> None:
     assert ctx.status == "success"
 
 
+class _BlockingCompactionProvider:
+    """Triggers compaction on the first call; the compaction request never returns."""
+
+    def __init__(self) -> None:
+        self._calls = 0
+        self.compact_started = asyncio.Event()
+
+    async def chat(
+        self,
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        if run_id == "compact":
+            self.compact_started.set()
+            await asyncio.Future()  # 永不返回：没有时间边界的摘要请求
+            raise AssertionError("unreachable")  # pragma: no cover
+
+        self._calls += 1
+        if self._calls == 1:
+            return LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[_tc(inp={"msg": "hi"})],
+                usage=UsageStats(
+                    input_tokens=100_000,
+                    output_tokens=10,
+                    context_pct=0.9,
+                ),
+            )
+        return LlmResponse(stop_reason="end_turn", text="done")
+
+
+# 功能：验证压缩等待不会让已超出 Run deadline 的循环卡住
+# 设计：注入 compactor，provider 的压缩调用永久阻塞；context 只有 1 秒墙钟预算，
+#       断言 loop 在有界时间内以 interrupted/max_wall_clock_exceeded 结束
+async def test_loop_reaches_deadline_branch_while_compaction_pending(tmp_path: Path) -> None:
+    registry = ToolRegistry()
+    registry.register(_EchoTool())
+    bus = EventBus()
+    provider = _BlockingCompactionProvider()
+    compactor = Compactor(bus, tmp_path, "sess-1")
+    loop = AgentLoop(
+        provider,
+        registry,
+        bus,
+        compactor=compactor,
+        compact_threshold=0.8,
+    )
+    ctx = ExecutionContext(
+        run_id="r1",
+        goal="test goal",
+        max_steps=5,
+        max_wall_clock_s=1,
+    )
+
+    started_at = time.monotonic()
+    # 无界等待会让 loop.run 永远不返回；wait_for 把"挂住"变成明确失败而非卡死测试
+    await asyncio.wait_for(loop.run(ctx), timeout=10.0)
+    elapsed = time.monotonic() - started_at
+
+    assert provider.compact_started.is_set()
+    assert ctx.status == "interrupted"
+    assert ctx.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+    # 远小于 provider 的 120s 默认超时，证明边界来自 Run 预算
+    assert elapsed < 5.0
+
+
 # 功能：验证收到 CancelledError 时 loop 将 context 标记为 cancelled 后继续上抛 CancelledError
 # 设计：用 pytest.raises 捕获 CancelledError，同时检查 context.status，确认优雅退出行为：先记录状态，再传播取消信号
 async def test_cancelled_error_marks_failed_and_reraises() -> None:
