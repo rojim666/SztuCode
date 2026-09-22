@@ -1487,16 +1487,31 @@ function applyRuntimeEventToSession(event: RuntimeEvent, sessionId: string) {
   if (type === "session.message_steered") {
     const content = String(event.content ?? "").trim();
     if (!content) return;
-    const step = stepFor(timelineEvent);
+    const stamp = String(event.ts ?? new Date().toISOString());
+    // 追加指令要能看见：它开启一轮新的用户消息，本轮在此隔断；
+    // run 本身继续执行（不取消、不重开），后续输出落到隔断之后的新步。
+    const steerStep = maxTimelineStep(sessionId) + 1;
     const entry: ContextInjectionEntry = {
-      id: `ctx-steering-${runId}-${Date.now()}`,
+      id: `ctx-steering-${runId}-${steerStep}`,
       source: "steering",
       label: t("app.steeringDirective"),
       chars: content.length,
       preview: content.slice(0, 100),
       text: content,
     };
-    setStep(step, (current) => ({ ...current, contextInjections: [...(current.contextInjections ?? []), entry] }));
+    setSessionStep(steerStep, (current) => ({
+      ...current,
+      status: "thinking",
+      runId: relatedRunId,
+      userMessage: content,
+      userMessageTime: stamp,
+      runStartedAt: current.runStartedAt ?? stamp,
+      model: runtimeSettings.value?.model || current.model,
+      contextInjections: [...(current.contextInjections ?? []), entry],
+    }), sessionId);
+    // 该 run 后续的 token/工具调用从这里继续，才能落在用户消息之后
+    currentStepByRun.set(relatedRunId, steerStep);
+    runToSession.set(relatedRunId, sessionId);
     return;
   }
   if (type === "step.started") {

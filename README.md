@@ -15,12 +15,7 @@
 ### 桌面工作台（TypeScript daemon）
 
 ![SztuCode 桌面工作台首页](docs/images/image1.png)
-
-![SztuCode 桌面工作台任务界面](docs/images/image2.png)
-
-![SztuCode 桌面工作台任务界面](docs/images/image3.png)
-
-![SztuCode 桌面工作台技能界面](docs/images/image4.png)
+![SztuCode 上下文演进功能](docs/images/image2.png)
 
 SztuCode 不只面向代码仓库。作为**全场景办公智能体**，它的工作台覆盖高校学习与日常办公的完整链路：撰写与审阅 Word 文档、处理 Excel 表格与公式、生成汇报 PPT、解析 PDF 资料、操控浏览器检索信息、生成图片，以及软件工程任务本身。桌面工作台连接 TypeScript daemon；命令行可选择 TypeScript 或 Python runtime。后台 daemon 负责运行 Agent Loop、调用工具、管理权限和保存会话，并通过 JSON-RPC 事件流持续反馈执行状态。
 

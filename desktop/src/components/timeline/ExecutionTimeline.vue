@@ -464,7 +464,8 @@ const turns = computed<TurnView[]>(() => {
       aggregatedStep.workflowReviews?.length,
     );
     return {
-      key: steps.find((step) => step.runId)?.runId ?? `turn-${index}`,
+      // 追加指令会把同一个 run 隔断成两轮，key 只有 runId 会重名，用首步步号补足唯一性
+      key: `${steps.find((step) => step.runId)?.runId ?? "turn"}#${steps[0]?.step ?? index}`,
       runId: steps.find((step) => step.runId)?.runId,
       changePaths,
       changeFiles,
