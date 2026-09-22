@@ -1,15 +1,16 @@
 {
   "name": "sztucode-desktop",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "scripts": {
     "predev": "node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
     "dev": "vite",
-    "prebuild": "node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
+    "prebuild": "node scripts/prepare-installer.mjs && node ../scripts/cleanup-desktop-processes.js --apply && npm run build --prefix ../packages/runtime-ts && node scripts/prepare-runtime.js",
     "build": "tsc -b && vite build",
     "tauri": "tauri",
     "release:windows": "node scripts/release-windows.mjs",
+    "test:installer": "node scripts/prepare-installer.mjs && node tests/installer-cleanup.test.cjs",
     "test:unit": "tsx --test tests/app-updater.test.ts tests/attachment-source.test.ts tests/composer-draft.test.ts tests/composer-file-drop.test.ts tests/composer-submission.test.ts tests/context-files.test.ts tests/context-evolution.test.ts tests/playwright-chromium.test.ts tests/platform.test.ts tests/pipeline-phase.test.ts tests/reasoning-summary.test.ts tests/session-stats.test.ts tests/source-control-draft.test.ts tests/timeline-stream.test.ts tests/tray-permissions.test.ts",
     "test:visual": "playwright test"
   },

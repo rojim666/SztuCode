@@ -1,0 +1,13 @@
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <ComponentGroup Id="SztuInstallerCleanup" />
+    <Binary Id="SztuCleanupBinary" SourceFile="$(sys.SOURCEFILEDIR)..\target\installer\stop-runtime.exe" />
+    <!-- Run after directory resolution, before Windows Installer checks locked files.
+         Embedded binary is extracted to temp, so it cannot lock the installation. -->
+    <CustomAction Id="SztuStopRuntime" BinaryKey="SztuCleanupBinary"
+                  ExeCommand="&quot;[INSTALLDIR].&quot;" Execute="immediate" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="SztuStopRuntime" Before="InstallValidate">INSTALLDIR</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

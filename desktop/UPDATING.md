@@ -38,6 +38,22 @@ endpoint and test from an older signed installation.
 Ordinary `tauri build` does not generate signatures. Use the signed command for
 Windows releases. Only publish platform entries for artifacts actually built.
 
+## Windows process cleanup before installation
+
+The Windows prebuild compiles `installer/stop-runtime.rs` into a standalone,
+windowless executable. NSIS preinstall/preuninstall hooks and the MSI action
+before `InstallValidate` run an embedded copy from the installer temp directory.
+It terminates the selected installation's main executable and processes whose
+executable paths are inside its `resources/runtime` directory, including orphaned
+Node/MCP processes, and waits for their handles to signal exit before continuing.
+Other installations and system Node processes are not targeted. Users should
+finish active tasks before starting installation, since cleanup forcibly stops
+the old runtime. Failure to release processes aborts installation instead of
+silently skipping files. Older downloaded installers do not contain these hooks.
+
+Run `npm run test:installer --prefix desktop` on Windows to test real process
+cleanup, directory isolation, repeated cleanup and path validation.
+
 ## Manual configuration for other platforms
 
 1. Reuse the existing release signing key and configured public key on each
