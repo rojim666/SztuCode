@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -265,6 +266,19 @@ class SpawnAgentTool(BaseTool):
                 if self._budget
                 else 0
             ),
+            # 子 Agent 与父 Run 共享同一个绝对 deadline，而不是重新拿一份完整预算
+            # （Issue #69）。clock 必须一起继承，否则绝对 deadline 与时钟源不一致。
+            # 父未建立 deadline（含未配置墙钟上限）时保持原有行为。
+            inherited_deadline_at=(
+                self._parent_context.deadline_at
+                if self._parent_context is not None
+                else None
+            ),
+            clock=(
+                self._parent_context.clock
+                if self._parent_context is not None
+                else time.monotonic
+            ),
         )
 
         child_bus = EventBus()
@@ -372,11 +386,17 @@ class SpawnAgentTool(BaseTool):
             writer.subscribe(child_bus)
             await child_loop.run(child_context)
 
+        # SubagentFinishedEvent.status 的协议词汇只有 "success" | "failed"
+        # （packages/protocol/src/index.ts 的同名单词联合）。子 Agent 被 deadline
+        # 中断时 child_context.status 是 "interrupted"，不属于该词汇，故归一化：
+        # 只有成功才报 success，其余（failed / interrupted）都报 failed；具体原因由
+        # 下方 ToolResult 文本里的 reason 承载，不靠 status 区分。
+        child_event_status = "success" if child_context.status == "success" else "failed"
         await self._parent_bus.publish(
             SubagentFinishedEvent(
                 run_id=child_run_id,
                 parent_run_id=self._parent_run_id,
-                status=child_context.status,
+                status=child_event_status,
                 ts=_now(),
             )
         )
@@ -386,11 +406,13 @@ class SpawnAgentTool(BaseTool):
                 content=child_context.result or "Subagent completed with no text output.",
                 metadata=self._context_metadata(child_context),
             )
+        failure_detail = (
+            f"Subagent interrupted (reason={child_context.reason})"
+            if child_context.status == "interrupted"
+            else f"Subagent failed (status={child_context.status}, reason={child_context.reason})"
+        )
         return ToolResult(
-            content=(
-                child_context.result
-                or f"Subagent failed (status={child_context.status}, reason={child_context.reason})"
-            ),
+            content=child_context.result or failure_detail,
             is_error=True,
             error_type="runtime_error",
             metadata=self._context_metadata(child_context),
@@ -449,6 +471,18 @@ class SpawnAgentTool(BaseTool):
         elif context.status == "success":
             self._task_registry.mark_terminal(
                 run_id, BackgroundTaskStatus.COMPLETED, detail=context.result
+            )
+        elif context.status == "interrupted":
+            # 子 Agent 撞上了 Run deadline——无论这个 deadline 是从父 Run 继承来的，
+            # 还是子自己的 max_wall_clock_s。这是被截止时间中断，不是失败：归入
+            # CANCELLED 并带上具体原因。"为什么"由 reason 字段区分
+            # （max_wall_clock_exceeded / parent_cancelled 等），status 只表达
+            # "不是错误失败"，这样按 reason 聚合时不会把一个 deadline 事件拆成两种
+            # status（Issue #69：所有路径使用一致、可观测的终止原因）。
+            self._task_registry.mark_terminal(
+                run_id,
+                BackgroundTaskStatus.CANCELLED,
+                reason=context.reason or "cancelled",
             )
         else:
             fail_reason = detail or context.reason or context.status

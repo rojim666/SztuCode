@@ -78,6 +78,10 @@ class ExecutionContext:
     clock: Callable[[], float] = field(default=time.monotonic, repr=False, compare=False)
     deadline_at: float | None = field(default=None, init=False)
     _deadline_initialized: bool = field(default=False, init=False, repr=False)
+    # 父 Run 的绝对 deadline（派生子 Agent 时传入，Issue #69）。非 None 时 start() 会在
+    # 它与自身 max_wall_clock_s 之间取更早者，使父 Run 的截止时刻与子自己的预算互相
+    # 都不能放宽对方。必须与父 context 的 clock 一起传入，否则绝对 deadline 与时钟源不一致。
+    inherited_deadline_at: float | None = field(default=None, repr=False, compare=False)
     max_budget_usd: float = 0.0   # USD 成本上限（0 = 不限制）
     # --- Claude Code 风格终止/继续系统 ---
     # 错误累积器：{tool_name: {error_type: count}} — 同一工具同类错误重复 N 次触发熔断
@@ -238,11 +242,17 @@ class ExecutionContext:
 
         start_at = self.started_at if self.started_at > 0 else self.clock()
         self.started_at = start_at
-        self.deadline_at = (
-            start_at + float(self.max_wall_clock_s)
-            if self.max_wall_clock_s > 0
-            else None
+        own_deadline = (
+            start_at + float(self.max_wall_clock_s) if self.max_wall_clock_s > 0 else None
         )
+        if self.inherited_deadline_at is None:
+            self.deadline_at = own_deadline
+        elif own_deadline is None:
+            self.deadline_at = self.inherited_deadline_at
+        else:
+            # 两个边界取更早者：父 Run 的 deadline 与自身的预算都不能被对方放宽。
+            # 与 provider / 工具 / 权限各处 min(自身超时, remaining) 同一口径。
+            self.deadline_at = min(self.inherited_deadline_at, own_deadline)
         self._deadline_initialized = True
 
     # 返回当前 Run 的剩余墙钟秒数；None 表示未配置墙钟上限，耗尽时钳制为 0。
