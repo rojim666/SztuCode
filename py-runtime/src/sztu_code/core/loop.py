@@ -1237,7 +1237,21 @@ class AgentLoop:
         # snapshot task 后再 await，避免持有可变迭代器跨 await
         tasks = [r.task for r in records if r is not None and r.task is not None]
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # 等待后台子 Agent 不得跨过父 Run 的 deadline：否则一次成功收尾会被仍在
+            # 运行的子 Agent 拖出预算，并被改写成 interrupted（Issue #69）
+            remaining_s = context.remaining_s()
+            if remaining_s is None:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            else:
+                try:
+                    async with asyncio.timeout(remaining_s):
+                        await asyncio.gather(*tasks, return_exceptions=True)
+                except TimeoutError:
+                    # deadline 到达：取消后台子 Agent 并等其收尾，不把无界等待留给父 Run
+                    # （循环变量不用 task，避免与下方读取 record.task 的同名变量撞类型）
+                    for pending in tasks:
+                        pending.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
         summaries: list[str] = []
         for rid, record in zip(run_ids, records):
             if record is None:

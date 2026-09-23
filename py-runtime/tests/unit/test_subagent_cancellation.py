@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
 from sztu_code.core.bus.events import SubagentFinishedEvent
-from sztu_code.core.config import SztuConfig
+from sztu_code.core.config import BudgetConfig, SztuConfig
 from sztu_code.core.context import ExecutionContext
 from sztu_code.core.events.bus import EventBus
 from sztu_code.core.llm.types import LlmResponse, ToolCallBlock, UsageStats
@@ -488,7 +489,13 @@ async def test_cancelled_run_emits_subagent_finished(tmp_path: Path) -> None:
 
 
 # 让 root 第一步 spawn 后台阻塞子、然后耗尽 max_steps 变 interrupted 的 provider
-def _spawn_then_loop_provider() -> Any:
+def _spawn_then_loop_provider(parent_run_id: str) -> Any:
+    """父 run 先派生一个**真正阻塞**的后台 child，再每步调未知工具耗尽 max_steps。
+
+    必须按 run_id 区分父子：`SpawnAgentTool` 把同一个 provider 传给子 Agent，若只用
+    一个共享的 spawned 标志，子的第一次调用会走到 unknown_tool 分支并以
+    repeated_error 自行失败，从而根本不会走到"父中断 → 取消 child"这条被测路径。
+    """
     spawn_call = ToolCallBlock(
         id="sp1", name="spawn_agent",
         input={"description": "child", "prompt": "work", "run_in_background": True},
@@ -496,6 +503,10 @@ def _spawn_then_loop_provider() -> Any:
     state = {"spawned": False}
 
     async def chat(messages: list[dict[str, object]], **kwargs: Any) -> LlmResponse:
+        if kwargs.get("run_id") != parent_run_id:
+            # child 的调用：阻塞，直到被父中断取消
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")  # pragma: no cover
         if not state["spawned"]:
             state["spawned"] = True
             return LlmResponse(
@@ -519,8 +530,7 @@ def _spawn_then_loop_provider() -> Any:
 async def test_max_steps_interrupt_cancels_blocking_child(tmp_path: Path) -> None:
     cfg = SztuConfig()
     cfg.agent.max_steps = 3
-    runner = AgentRunner(cfg, provider=_spawn_then_loop_provider(), runs_dir=tmp_path)
-    # root 在 max_steps 内结束（不卡在 _wait_for_background），确定性上限
+    runner = AgentRunner(cfg, provider=_spawn_then_loop_provider("run-maxsteps"), runs_dir=tmp_path)
     outcome = await asyncio.wait_for(
         runner.run_and_capture("goal", run_id="run-maxsteps"), timeout=10.0
     )
@@ -569,6 +579,448 @@ async def test_wall_clock_interrupt_cancels_child(tmp_path: Path) -> None:
     # 无遗留 active task（child 被取消或已完成，不应仍 running）
     active = [r for r in runner._task_registry.all() if r.is_active]  # noqa: SLF001
     assert active == [], f"expected no active tasks, got {active}"
+
+
+# 功能：验证等待后台子 Agent 不会把父 run 拖出自身墙钟预算
+# 设计：父预算 3 秒，先花 1.5 秒工作再派生后台 child 然后 end_turn；断言 run 在预算加
+#       10% margin 内结束。终态按 loop 已文档化的契约处理：deadline 已到时收到的
+#       end_turn 记为 interrupted 但保留结果文本（"preserve late text but expose the
+#       timeout"）。预算取 3 秒使 300ms 绝对 margin 只占 10%，降低 CI 负载下的计时抖动误判。
+async def test_success_run_not_dragged_past_deadline_by_background_child(
+    tmp_path: Path,
+) -> None:
+    spawn_call = ToolCallBlock(
+        id="sp1",
+        name="spawn_agent",
+        input={"description": "child", "prompt": "work", "run_in_background": True},
+    )
+    state = {"n": 0}
+
+    async def chat(messages: list[dict[str, object]], **kwargs: Any) -> LlmResponse:
+        run_id = kwargs.get("run_id")
+        state["n"] += 1
+        if run_id != "run-drag":
+            # child 的调用：挂起，直到被取消
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")  # pragma: no cover
+        if state["n"] == 1:
+            # 父第一步：花 1.5 秒工作后派生后台 child
+            await asyncio.sleep(1.5)
+            return LlmResponse(
+                stop_reason="tool_use",
+                tool_calls=[spawn_call],
+                text="",
+                usage=UsageStats(0, 0, 0, 0, 0.0),
+            )
+        # 父第二步：成功收尾，进入 _wait_for_background
+        return LlmResponse(
+            stop_reason="end_turn", text="done", usage=UsageStats(0, 0, 0, 0, 0.0)
+        )
+
+    provider = MagicMock()
+    provider.chat = chat
+    cfg = SztuConfig()
+    cfg.agent.max_steps = 100
+    cfg.budget.max_wall_clock_s = 3
+
+    runner = AgentRunner(cfg, provider=provider, runs_dir=tmp_path)  # type: ignore[arg-type]
+
+    started = time.monotonic()
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("goal", run_id="run-drag", workspace_root=tmp_path),
+        timeout=20.0,
+    )
+    elapsed = time.monotonic() - started
+
+    # 等待后台子 Agent 不得跨过父 Run 的 deadline（3s 预算 + 300ms margin）
+    assert elapsed <= 3.3, f"run overshot its 3s budget by {elapsed - 3:.3f}s"
+    # deadline 已到时收到的 end_turn：暴露超时，但不得丢弃已产生的结果文本
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "max_wall_clock_exceeded"
+    assert "done" in outcome.result
+
+
+# 功能：验证子 Agent 的 deadline 继承父 Run 剩余时间，而不是拿到全新的完整预算
+# 设计：父 context 用可控 clock，预算 10 秒且已过 7 秒（剩余 3 秒）；budget 同样给 10 秒。
+#       前台派生子 Agent，断言子的 provider 收到的 remaining_s 不超过父剩余时间。
+async def test_child_inherits_parent_remaining_deadline(tmp_path: Path) -> None:
+    now = [100.0]
+    received: list[float | None] = []
+
+    async def chat(
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        received.append(remaining_s)
+        return LlmResponse(stop_reason="end_turn", text="child done", usage=UsageStats(0, 0, 0, 0, 0.0))
+
+    provider = MagicMock()
+    provider.chat = chat
+    registry = BackgroundTaskRegistry()
+    bus = EventBus()
+    tool = _make_tool(tmp_path, provider, "parent-run", registry, bus)
+
+    parent_ctx = ExecutionContext(
+        run_id="parent-run",
+        goal="g",
+        max_steps=5,
+        max_wall_clock_s=10,
+        clock=lambda: now[0],
+    )
+    parent_ctx.start()  # deadline_at = 110
+    now[0] = 107.0  # 父剩余 3 秒
+    tool._parent_context = parent_ctx  # noqa: SLF001
+    tool._budget = BudgetConfig(max_wall_clock_s=10)  # noqa: SLF001
+
+    result = await tool.invoke({"description": "child", "prompt": "work"})
+
+    assert not result.is_error
+    assert received, "child provider was never called"
+    # 继承父 deadline：剩余应约 3 秒，而不是全新预算的 10 秒
+    assert received[0] is not None
+    assert 0 < received[0] <= 3.0
+
+
+# 功能：验证子 Agent 自己的预算仍然生效，不会被继承来的父 deadline 放宽
+# 设计：父 deadline=110（剩余 10 秒），但显式给子 max_wall_clock_s=2；断言子收到的
+#       remaining_s 不超过自己的 2 秒预算——两个边界取更早者，任一方都不能放宽另一方。
+async def test_child_own_budget_is_not_widened_by_inherited_deadline(tmp_path: Path) -> None:
+    now = [100.0]
+    received: list[float | None] = []
+
+    async def chat(
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        received.append(remaining_s)
+        return LlmResponse(stop_reason="end_turn", text="child done", usage=UsageStats(0, 0, 0, 0, 0.0))
+
+    provider = MagicMock()
+    provider.chat = chat
+    registry = BackgroundTaskRegistry()
+    bus = EventBus()
+    tool = _make_tool(tmp_path, provider, "parent-run", registry, bus)
+
+    parent_ctx = ExecutionContext(
+        run_id="parent-run",
+        goal="g",
+        max_steps=5,
+        max_wall_clock_s=10,
+        clock=lambda: now[0],
+    )
+    parent_ctx.start()  # deadline_at = 110，父剩余 10 秒
+    tool._parent_context = parent_ctx  # noqa: SLF001
+    tool._budget = BudgetConfig(max_wall_clock_s=10)  # noqa: SLF001
+
+    # 显式给子 2 秒预算（工作流组合工具的用法，见 workflow/tool.py）
+    result = await tool.invoke({
+        "description": "child", "prompt": "work", "max_wall_clock_s": 2,
+    })
+
+    assert not result.is_error
+    assert received, "child provider was never called"
+    assert received[0] is not None
+    assert 0 < received[0] <= 2.0
+
+
+# 功能：验证嵌套派生时 deadline 逐层传递，剩余时间单调收缩
+# 设计：root context 用可控 clock，deadline=110。root 在剩余 3 秒（clock=107）时派生
+#       child；child 在时钟走到 109（剩余 1 秒）时派生 grandchild。断言两层的
+#       remaining_s 都不超过 root 派生时的剩余，且逐层不增。
+async def test_deadline_shrinks_monotonically_across_nesting(tmp_path: Path) -> None:
+    now = [100.0]
+    seen: dict[str, float | None] = {}
+    child_spawned = {"done": False}
+    grandchild_spawned = asyncio.Event()
+
+    async def chat(
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        *,
+        step: int = 0,
+        system: str | None = None,
+        usage_estimator: object | None = None,
+        remaining_s: float | None = None,
+    ) -> LlmResponse:
+        first_user = next(
+            (m["content"] for m in messages if m["role"] == "user" and isinstance(m["content"], str)),
+            "",
+        )
+        if first_user.endswith("gc work"):
+            seen.setdefault("grandchild", remaining_s)
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")  # pragma: no cover
+        if first_user.endswith("child work"):
+            seen.setdefault("child", remaining_s)
+            if not child_spawned["done"]:
+                child_spawned["done"] = True
+                grandchild_spawned.set()
+                now[0] = 109.0  # 又过 2 秒，root 只剩 1 秒
+                return LlmResponse(
+                    stop_reason="tool_use",
+                    tool_calls=[ToolCallBlock(
+                        id="g1", name="spawn_agent",
+                        input={
+                            "description": "gc",
+                            "prompt": "gc work",
+                            "run_in_background": True,
+                        },
+                    )],
+                    text="",
+                    usage=UsageStats(0, 0, 0, 0, 0.0),
+                )
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")  # pragma: no cover
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    provider = MagicMock()
+    provider.chat = chat
+    registry = BackgroundTaskRegistry()
+    bus = EventBus()
+    tool = _make_tool(tmp_path, provider, "root-run", registry, bus)
+
+    root_ctx = ExecutionContext(
+        run_id="root-run",
+        goal="g",
+        max_steps=5,
+        max_wall_clock_s=10,
+        clock=lambda: now[0],
+    )
+    root_ctx.start()  # deadline_at = 110
+    now[0] = 107.0  # root 剩余 3 秒
+    tool._parent_context = root_ctx  # noqa: SLF001
+    tool._budget = BudgetConfig(max_wall_clock_s=10)  # noqa: SLF001
+
+    result = await tool.invoke({
+        "description": "child",
+        "prompt": "child work",
+        "run_in_background": True,
+    })
+    _extract_run_id(result.content)
+    await asyncio.wait_for(grandchild_spawned.wait(), timeout=5.0)
+    # 等 grandchild 的首次 provider 调用落账
+    for _ in range(200):
+        if len(seen) >= 2:
+            break
+        await asyncio.sleep(0.01)
+
+    try:
+        child_remaining = seen["child"]
+        grandchild_remaining = seen["grandchild"]
+        assert child_remaining is not None and grandchild_remaining is not None
+        # 两层都不超过 root 派生 child 时的剩余（3 秒）
+        assert child_remaining <= 3.0
+        # 逐层单调不增
+        assert grandchild_remaining <= child_remaining
+        # grandchild 派生时时钟已走到 109，剩余应约 1 秒而非全新的 10 秒
+        assert grandchild_remaining <= 1.0
+    finally:
+        await registry.cancel_descendants("root-run", reason="test_cleanup")
+
+
+# 功能：验证父 Run 因 deadline 中断时，子的取消原因继承父的终止原因
+# 设计：父用 wall_clock 触发 max_wall_clock_exceeded 中断，后台 child 真正阻塞；
+#       断言子的终态为 cancelled，且原因是 max_wall_clock_exceeded 而非泛化的 cancelled
+async def test_child_cancel_reason_inherits_parent_deadline_reason(tmp_path: Path) -> None:
+    root_id = "run-reason"
+    spawn_call = ToolCallBlock(
+        id="sp1",
+        name="spawn_agent",
+        input={"description": "child", "prompt": "child work", "run_in_background": True},
+    )
+    state = {"spawned": False}
+
+    async def chat(messages: list[dict[str, object]], **kwargs: Any) -> LlmResponse:
+        if kwargs.get("run_id") != root_id:
+            # child 的调用：阻塞，直到被父中断取消
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")  # pragma: no cover
+        if not state["spawned"]:
+            state["spawned"] = True
+            return LlmResponse(
+                stop_reason="tool_use", tool_calls=[spawn_call], text="",
+                usage=UsageStats(0, 0, 0, 0, 0.0),
+            )
+        # 后续每步调只读工具并稍作等待，让 wall_clock 先于 max_steps 触发
+        await asyncio.sleep(0.05)
+        return LlmResponse(
+            stop_reason="tool_use",
+            tool_calls=[ToolCallBlock(id="t", name="list_dir", input={"path": "."})],
+            text="",
+            usage=UsageStats(0, 0, 0, 0, 0.0),
+        )
+
+    provider = MagicMock()
+    provider.chat = chat
+    cfg = SztuConfig()
+    cfg.agent.max_steps = 100  # 不靠 max_steps 触发
+    cfg.budget.max_wall_clock_s = 1
+    runner = AgentRunner(cfg, provider=provider, runs_dir=tmp_path)  # type: ignore[arg-type]
+
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("goal", run_id=root_id, workspace_root=tmp_path),
+        timeout=20.0,
+    )
+
+    assert outcome.status == "interrupted"
+    assert outcome.reason == "max_wall_clock_exceeded"
+    terminal = [r for r in runner._task_registry.all() if r.is_terminal]  # noqa: SLF001
+    assert len(terminal) == 1, f"expected 1 terminal child, got {terminal}"
+    assert terminal[0].status is BackgroundTaskStatus.CANCELLED
+    # 继承父的终止原因，而不是泛化的 "cancelled"
+    assert terminal[0].terminal_detail == "max_wall_clock_exceeded"
+
+
+# 功能：验证子 Agent 撞上自己的预算（非继承）时也归为 cancelled 而非 failed
+# 设计：不传 parent_context（无继承），只给子 1 秒预算；子的 provider 用 max_tokens
+#       继续状态拖到预算耗尽，断言子的终态为 cancelled 且原因是 max_wall_clock_exceeded。
+#       这锁定了"status 只表达不是错误失败、原因由 reason 区分"的取舍。
+async def test_child_own_deadline_expiry_is_cancelled_not_failed(tmp_path: Path) -> None:
+    async def chat(
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        **kwargs: Any,
+    ) -> LlmResponse:
+        await asyncio.sleep(0.3)
+        # max_tokens 是继续状态：不带工具调用，让 loop 一直转到 deadline
+        return LlmResponse(
+            stop_reason="max_tokens", text="partial", usage=UsageStats(0, 0, 0, 0, 0.0)
+        )
+
+    provider = MagicMock()
+    provider.chat = chat
+    registry = BackgroundTaskRegistry()
+    bus = EventBus()
+    tool = _make_tool(tmp_path, provider, "root-run", registry, bus)
+    # 不设 _parent_context：子只用自己的预算，不继承任何父 deadline
+    tool._budget = BudgetConfig(max_wall_clock_s=1)  # noqa: SLF001
+
+    result = await tool.invoke({
+        "description": "child", "prompt": "work", "run_in_background": True,
+    })
+    child_id = _extract_run_id(result.content)
+
+    for _ in range(100):
+        record = registry.get(child_id)
+        if record is not None and record.is_terminal:
+            break
+        await asyncio.sleep(0.05)
+
+    record = registry.get(child_id)
+    assert record is not None, "child record missing"
+    assert record.status is BackgroundTaskStatus.CANCELLED
+    assert record.terminal_detail == "max_wall_clock_exceeded"
+
+
+# 功能：验证前台派生的子 Agent 被 deadline 中断时，subagent.finished 的 status 不超出协议词汇
+# 设计：父 deadline 已耗尽，前台派生子 Agent；收集 parent_bus 上的 SubagentFinishedEvent，
+#       断言 status 属于 packages/protocol 同名单词联合声明的 "success" | "failed"。
+#       （后台路径走 registry 分类，前台路径原先直接透传 child_context.status，会吐出
+#        协议外的 "interrupted"——该洞先于本 PR 存在，但 deadline 继承让它高概率命中。）
+async def test_foreground_child_deadline_event_status_in_protocol_vocabulary(
+    tmp_path: Path,
+) -> None:
+    now = [100.0]
+    seen: list[SubagentFinishedEvent] = []
+
+    async def chat(
+        messages: list[dict[str, object]],
+        tool_schemas: list[dict[str, object]],
+        bus: EventBus,
+        run_id: str,
+        **kwargs: Any,
+    ) -> LlmResponse:
+        return LlmResponse(
+            stop_reason="end_turn", text="child done", usage=UsageStats(0, 0, 0, 0, 0.0)
+        )
+
+    provider = MagicMock()
+    provider.chat = chat
+    registry = BackgroundTaskRegistry()
+    bus = EventBus()
+    tool = _make_tool(tmp_path, provider, "root-run", registry, bus)
+
+    async def _collect(event: Any) -> None:
+        if isinstance(event, SubagentFinishedEvent):
+            seen.append(event)
+
+    bus.subscribe(_collect)
+
+    parent_ctx = ExecutionContext(
+        run_id="root-run",
+        goal="g",
+        max_steps=5,
+        max_wall_clock_s=10,
+        clock=lambda: now[0],
+    )
+    parent_ctx.start()  # deadline_at = 110
+    now[0] = 200.0  # 已耗尽：子继承到一个已过期的 deadline
+    tool._parent_context = parent_ctx  # noqa: SLF001
+    tool._budget = BudgetConfig(max_wall_clock_s=10)  # noqa: SLF001
+
+    result = await tool.invoke({"description": "child", "prompt": "work"})
+
+    assert result.is_error
+    assert seen, "no SubagentFinishedEvent published"
+    assert seen[-1].status in ("success", "failed")
+
+
+# 功能：验证父 Run 中断后，迟到的子 Agent 终态事件不改变父 Run 的唯一终态
+# 设计：root spawn 阻塞后台 child 后耗尽 max_steps 中断；读取 events.jsonl，断言
+#       run.finished 恰好发布一次、所有 subagent.finished 都在它之前，且 run.finished
+#       记录的 status/reason 与 outcome 一致——子的终态没有把父的终态改写掉。
+async def test_late_child_terminal_does_not_change_parent_unique_terminal(
+    tmp_path: Path,
+) -> None:
+    root_id = "run-late-terminal"
+    cfg = SztuConfig()
+    cfg.agent.max_steps = 2
+    runner = AgentRunner(
+        cfg, provider=_spawn_then_loop_provider(root_id), runs_dir=tmp_path
+    )
+    outcome = await asyncio.wait_for(
+        runner.run_and_capture("goal", run_id=root_id), timeout=15.0
+    )
+
+    raw = [
+        json.loads(line)
+        for line in (tmp_path / root_id / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    types = [e["type"] for e in raw]
+
+    # 父 Run 只有一个终态事件
+    assert types.count("run.finished") == 1, f"run.finished count={types.count('run.finished')}"
+    run_finished_idx = types.index("run.finished")
+    sub_finished_idx = [i for i, t in enumerate(types) if t == "subagent.finished"]
+    assert sub_finished_idx, "no subagent.finished published"
+    # 子的终态事件全部先于父的终态落定
+    assert all(i < run_finished_idx for i in sub_finished_idx), (
+        f"subagent.finished after run.finished: {sub_finished_idx} vs {run_finished_idx}"
+    )
+    # 父终态未被子的终态改写
+    run_finished = raw[run_finished_idx]
+    assert run_finished["status"] == outcome.status
+    assert run_finished["reason"] == outcome.reason
 
 
 # 功能：递归场景——root 的 child 派生阻塞 grandchild，root 中断后两者均取消
@@ -645,7 +1097,7 @@ async def test_interrupt_cancels_recursive_descendants(tmp_path: Path) -> None:
 async def test_interrupt_event_order_and_uniqueness(tmp_path: Path) -> None:
     cfg = SztuConfig()
     cfg.agent.max_steps = 2
-    runner = AgentRunner(cfg, provider=_spawn_then_loop_provider(), runs_dir=tmp_path)
+    runner = AgentRunner(cfg, provider=_spawn_then_loop_provider("run-order-int"), runs_dir=tmp_path)
     await asyncio.wait_for(
         runner.run_and_capture("goal", run_id="run-order-int"), timeout=15.0
     )
