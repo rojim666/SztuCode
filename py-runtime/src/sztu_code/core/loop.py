@@ -33,6 +33,7 @@ from sztu_code.core.pricing import PricingCatalog, UnknownPricingPolicy
 from sztu_code.core.stuck_tracker import stuck_signature
 from sztu_code.core.tools.base import (
     _PERMISSION_GRANT_KEY,
+    ToolExecutionState,
     ToolPermission,
     ToolResult,
 )
@@ -477,7 +478,11 @@ class AgentLoop:
             # reaches its own deadline branch below instead of depending on a
             # pending compaction task happening to bound itself.
             if self._compactor is not None:
-                await self._compactor.wait_pending(remaining_s=context.remaining_s())
+                compaction_deadline_hit = await self._compactor.wait_pending(
+                    remaining_s=context.remaining_s()
+                )
+                if compaction_deadline_hit and not context.deadline_stage:
+                    context.deadline_stage = "compact"
             self._drain_steering(context)
 
             # [budget] 墙钟上限预检：超时直接终止，不再发起 LLM 调用
@@ -586,6 +591,7 @@ class AgentLoop:
                     context.run_id,
                     context.step,
                 )
+                context.deadline_stage = 'llm'
                 context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
                 await self._bus.publish(
                     StepFinishedEvent(run_id=context.run_id, step=context.step, ts=_now())
@@ -787,6 +793,15 @@ class AgentLoop:
                     added_estimate += max(1, len(content) // 4)
                     context.add_tool_result(tc.id, content, is_error=result.is_error)
                     if result.error_type == "deadline_exceeded":
+                        # 权限等待被 deadline 截断时工具尚未启动，invocation 层通过
+                        # metadata 标出具体阶段；其余工具层 deadline 归为 tool
+                        context.deadline_stage = str(
+                            result.metadata.get("deadline_stage") or "tool"
+                        )
+                        # UNKNOWN 执行状态即"无法确认底层调用是否停止"
+                        # （docs/development/testing.md），上报供终态记录标记清理结果
+                        if result.execution_state is ToolExecutionState.UNKNOWN:
+                            context.deadline_cleanup_unknown = True
                         context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
 
                     # [track] 追踪权限拒绝，触发熔断干预
@@ -885,6 +900,9 @@ class AgentLoop:
                     base += "\n\n" + "\n".join(pending_summaries)
                 context.result = base
                 if context.wall_clock_exceeded():
+                    # 只有在没有更具体的阶段（例如等待子 Agent 时超时）时才归到 llm
+                    if not context.deadline_stage:
+                        context.deadline_stage = "llm"
                     context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
                 else:
                     context.mark_success()
@@ -1099,6 +1117,7 @@ class AgentLoop:
         except asyncio.CancelledError:
             raise
         except RunDeadlineExceeded:
+            context.deadline_stage = "wrap_up"
             context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return ""
         except Exception:
@@ -1108,6 +1127,7 @@ class AgentLoop:
             )
             return ""
         if context.wall_clock_exceeded():
+            context.deadline_stage = "wrap_up"
             context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return ""
         if response.usage is not None:
@@ -1188,6 +1208,7 @@ class AgentLoop:
         except asyncio.CancelledError:
             raise
         except RunDeadlineExceeded:
+            context.deadline_stage = "wrap_up"
             context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return (False, "")
         except Exception:
@@ -1197,6 +1218,7 @@ class AgentLoop:
             )
             return (False, "")
         if context.wall_clock_exceeded():
+            context.deadline_stage = "wrap_up"
             context.mark_interrupted(TerminationReason.MAX_WALL_CLOCK_EXCEEDED)
             return (False, "")
         if response.usage is not None:
@@ -1249,6 +1271,7 @@ class AgentLoop:
                 except TimeoutError:
                     # deadline 到达：取消后台子 Agent 并等其收尾，不把无界等待留给父 Run
                     # （循环变量不用 task，避免与下方读取 record.task 的同名变量撞类型）
+                    context.deadline_stage = "subagent"
                     for pending in tasks:
                         pending.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)

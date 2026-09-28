@@ -142,6 +142,14 @@ def _summarize(record: TraceRecord) -> str:
         tc = len(tools) if isinstance(tools, list) else data.get("tool_count", "?")
         return f"msgs={count}  tools={tc}"
 
+    if kind == "deadline":
+        return (
+            f"stage={data.get('stage')}  "
+            f"reason={data.get('reason')}  "
+            f"cleanup={data.get('cleanup')}  "
+            f"cancelled={data.get('cancelled_descendants')}"
+        )
+
     if kind == "api_response":
         usage = data.get("usage", {})
         return (

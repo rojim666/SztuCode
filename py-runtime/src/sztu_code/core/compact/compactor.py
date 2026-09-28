@@ -432,19 +432,24 @@ class Compactor:
         *,
         cancel_pending: bool = False,
         remaining_s: float | None = None,
-    ) -> None:
+    ) -> bool:
+        """等待后台压缩任务落定；返回 True 表示 Run deadline 在等待期间到达。
+
+        调用方（AgentLoop）据此把 deadline 阶段记为 compact。取消后的 gather 仍会等
+        任务收尾，被取消的压缩不会写半成品摘要。
+        """
         if not self._pending_tasks:
-            return
+            return False
         tasks = self._pending_tasks[:]
         self._pending_tasks.clear()
         if cancel_pending or (remaining_s is not None and remaining_s <= 0):
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            return
+            return bool(remaining_s is not None and remaining_s <= 0)
         if remaining_s is None:
             await asyncio.gather(*tasks, return_exceptions=True)
-            return
+            return False
         try:
             async with asyncio.timeout(remaining_s):
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -454,6 +459,8 @@ class Compactor:
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            return True
+        return False
 
     async def notify_compacting(self, run_id: str) -> None:
         await self._bus.publish(
