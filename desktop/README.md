@@ -44,6 +44,17 @@ npm run tauri dev
 
 桌面端通过一个持久 TCP 连接与 daemon 通信。Rust 桥只转发 NDJSON 帧，所有 JSON-RPC 请求关联、事件订阅与重连状态由 `src/lib/ipc.ts` 集中处理。
 
+### 选择 Python daemon
+
+默认仍连接 TypeScript daemon（`127.0.0.1:7438`）。教学或实验时可以让桌面端连接 Python daemon：
+
+```powershell
+$env:SZTU_DESKTOP_RUNTIME = "python"
+npm run --prefix desktop tauri dev
+```
+
+Python 模式使用 `127.0.0.1:7437`。开发仓库中桌面端会优先尝试通过 `uv run --project py-runtime --offline python -m sztu_code.core` 自动启动；也可以先手动运行 `npm run daemon`。如 Python 不在 PATH 中，可通过 `SZTU_PYTHON_EXECUTABLE` 指定解释器。未设置 `SZTU_DESKTOP_RUNTIME` 时行为与之前相同。
+
 如果 Tauri 只显示 `The "beforeDevCommand" terminated with a non-zero status code`，先直接运行前端命令查看真实错误：
 
 ```bash
