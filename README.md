@@ -425,61 +425,61 @@ Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / mode
 
 <p align="center">
   <a href="https://github.com/rojim666" title="rojim666 · 发起人与维护者">
-    <img src="docs/images/contributors/rojim666.png" width="72" height="72" alt="rojim666" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/rojim666-circle.png" width="72" height="72" alt="rojim666" />
   </a>
   <a href="https://github.com/charon2121" title="charon2121">
-    <img src="docs/images/contributors/charon2121.png" width="72" height="72" alt="charon2121" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/charon2121-circle.png" width="72" height="72" alt="charon2121" />
   </a>
   <a href="https://github.com/szzhangkkk" title="szzhangkkk">
-    <img src="docs/images/contributors/szzhangkkk.png" width="72" height="72" alt="szzhangkkk" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/szzhangkkk-circle.png" width="72" height="72" alt="szzhangkkk" />
   </a>
   <a href="https://github.com/GuanG-1008" title="GuanG-1008">
-    <img src="docs/images/contributors/GuanG-1008.png" width="72" height="72" alt="GuanG-1008" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/GuanG-1008-circle.png" width="72" height="72" alt="GuanG-1008" />
   </a>
   <a href="https://github.com/neutronstar238" title="neutronstar238">
-    <img src="docs/images/contributors/neutronstar238.png" width="72" height="72" alt="neutronstar238" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/neutronstar238-circle.png" width="72" height="72" alt="neutronstar238" />
   </a>
   <a href="https://github.com/Shuang-su" title="Shuang-su">
-    <img src="docs/images/contributors/Shuang-su.png" width="72" height="72" alt="Shuang-su" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/Shuang-su-circle.png" width="72" height="72" alt="Shuang-su" />
   </a>
   <a href="https://github.com/crazy19-69" title="crazy19-69">
-    <img src="docs/images/contributors/crazy19-69.png" width="72" height="72" alt="crazy19-69" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/crazy19-69-circle.png" width="72" height="72" alt="crazy19-69" />
   </a>
   <a href="https://github.com/electrojay27" title="electrojay27">
-    <img src="docs/images/contributors/electrojay27.png" width="72" height="72" alt="electrojay27" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/electrojay27-circle.png" width="72" height="72" alt="electrojay27" />
   </a>
   <a href="https://github.com/greykoi" title="greykoi">
-    <img src="docs/images/contributors/greykoi.png" width="72" height="72" alt="greykoi" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/greykoi-circle.png" width="72" height="72" alt="greykoi" />
   </a>
   <a href="https://github.com/JJ704sd" title="JJ704sd">
-    <img src="docs/images/contributors/JJ704sd.png" width="72" height="72" alt="JJ704sd" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/JJ704sd-circle.png" width="72" height="72" alt="JJ704sd" />
   </a>
   <a href="https://github.com/161142272" title="161142272">
-    <img src="docs/images/contributors/161142272.png" width="72" height="72" alt="161142272" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/161142272-circle.png" width="72" height="72" alt="161142272" />
   </a>
   <a href="https://github.com/z2Ace0107" title="Ace">
-    <img src="https://github.com/z2Ace0107.png?size=72" width="72" height="72" alt="Ace" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/Ace-circle.png" width="72" height="72" alt="Ace" />
   </a>
   <a href="https://github.com/taogoing" title="cht">
-    <img src="https://github.com/taogoing.png?size=72" width="72" height="72" alt="cht" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/cht-circle.png" width="72" height="72" alt="cht" />
   </a>
   <a href="https://github.com/47y47" title="47y47">
-    <img src="https://github.com/47y47.png?size=72" width="72" height="72" alt="47y47" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/47y47-circle.png" width="72" height="72" alt="47y47" />
   </a>
   <a href="https://github.com/jasiitay7" title="jasiitay7">
-    <img src="https://github.com/jasiitay7.png?size=72" width="72" height="72" alt="jasiitay7" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/jasiitay7-circle.png" width="72" height="72" alt="jasiitay7" />
   </a>
   <a href="https://github.com/Miqi9880" title="Miqi9880">
-    <img src="https://github.com/Miqi9880.png?size=72" width="72" height="72" alt="Miqi9880" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/Miqi9880-circle.png" width="72" height="72" alt="Miqi9880" />
   </a>
   <a href="https://github.com/xngyan" title="xngyan">
-    <img src="https://github.com/xngyan.png?size=72" width="72" height="72" alt="xngyan" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/xngyan-circle.png" width="72" height="72" alt="xngyan" />
   </a>
   <a href="https://github.com/Zixuan" title="Zixuan">
-    <img src="https://github.com/Zixuan.png?size=72" width="72" height="72" alt="Zixuan" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/Zixuan-circle.png" width="72" height="72" alt="Zixuan" />
   </a>
   <a href="https://github.com/rojim666/SztuCode/graphs/contributors" title="郑中南 · GitHub 账号尚未确认">
-    <img src="https://ui-avatars.com/api/?name=%E9%83%91%E4%B8%AD%E5%8D%97&size=72&background=596579&color=fff&format=svg" width="72" height="72" alt="郑中南" style="border-radius: 50%;" />
+    <img src="docs/images/contributors/zhengzhongnan-circle.png" width="72" height="72" alt="郑中南" />
   </a>
 </p>
 
