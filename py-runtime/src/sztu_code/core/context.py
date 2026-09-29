@@ -82,6 +82,14 @@ class ExecutionContext:
     # 它与自身 max_wall_clock_s 之间取更早者，使父 Run 的截止时刻与子自己的预算互相
     # 都不能放宽对方。必须与父 context 的 clock 一起传入，否则绝对 deadline 与时钟源不一致。
     inherited_deadline_at: float | None = field(default=None, repr=False, compare=False)
+    # 撞上 Run deadline 的阶段（Issue #69 trace 可观测性）：llm / tool / permission /
+    # subagent / compact / wrap_up / loop。由各 deadline 分支在 mark_interrupted 前写入，
+    # 供终态边界发一条带阶段的 trace 记录；空串表示尚未记录到具体阶段。
+    deadline_stage: str = field(default="", repr=False, compare=False)
+    # deadline 清理中是否存在"无法确认已停止"的工作（Issue #69 trace 可观测性）。
+    # 由工具层把 ToolExecutionState.UNKNOWN 的 deadline 结果上报，供终态记录把清理
+    # 结果标成 unknown 而不是 completed / cancelled_bounded。
+    deadline_cleanup_unknown: bool = field(default=False, repr=False, compare=False)
     max_budget_usd: float = 0.0   # USD 成本上限（0 = 不限制）
     # --- Claude Code 风格终止/继续系统 ---
     # 错误累积器：{tool_name: {error_type: count}} — 同一工具同类错误重复 N 次触发熔断

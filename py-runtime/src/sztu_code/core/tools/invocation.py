@@ -197,6 +197,9 @@ async def _fail(
     execution_state: ToolExecutionState = ToolExecutionState.COMPLETED,
     retry_reason: str = "",
     tool_retry_safe: bool = False,
+    # 工具层 deadline 的具体阶段（Issue #69 trace 可观测性）。工具自己的 timeout 与
+    # 调用前 gate 传 "tool"，权限等待被截断传 "permission"；空串表示调用方不区分。
+    deadline_stage: str = "",
 ) -> ToolResult:
     if not retry_reason:
         retry_reason = _retry_reason(
@@ -240,6 +243,7 @@ async def _fail(
             "retry_reason": retry_reason,
             "tool_retry_safe": tool_retry_safe,
             "execution_state": execution_state.value,
+            **({"deadline_stage": deadline_stage} if deadline_stage else {}),
         },
         retryable=retryable,
         execution_state=execution_state,
@@ -429,6 +433,7 @@ async def invoke_tool(
                     started_at=started_at,
                     execution_state=ToolExecutionState.NOT_STARTED,
                     retry_reason="run_deadline_exceeded",
+                    deadline_stage="permission",
                 )
             if decision != "auto_deny":
                 await bus.publish(

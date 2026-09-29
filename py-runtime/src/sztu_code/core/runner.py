@@ -19,7 +19,7 @@ from sztu_code.core.changes import WorkspaceChangeTracker
 from sztu_code.core.compact.compactor import Compactor
 from sztu_code.core.compact.offload import OffloadManager
 from sztu_code.core.config import SztuConfig
-from sztu_code.core.context import ExecutionContext
+from sztu_code.core.context import ExecutionContext, TerminationReason
 from sztu_code.core.events.bus import EventBus, EventHandler
 from sztu_code.core.events.writer import EventWriter
 from sztu_code.core.interaction.user_questions import UserQuestionManager
@@ -62,6 +62,7 @@ from sztu_code.core.tools.builtin import (
 )
 from sztu_code.core.tools.registry import ToolRegistry
 from sztu_code.core.trace.provider import TracingProvider
+from sztu_code.core.trace.record import TraceRecord
 from sztu_code.core.trace.writer import TraceWriter
 from sztu_code.core.verification import (
     RepairCircuitBreaker,
@@ -594,6 +595,7 @@ class AgentRunner:
             # 在 root finalization 可观察前完成清理。覆盖 failed、显式取消和所有
             # interrupted 原因（max_steps/wall_clock/budget/blocking_limit）。
             # 正常 success 的直接子由 _wait_for_background 等待并入结果，此处不处理。
+            cancelled_descendants: list[str] = []
             if context.status != "success":
                 if cancelled:
                     cancel_reason = "parent_cancelled"
@@ -601,7 +603,9 @@ class AgentRunner:
                     cancel_reason = "parent_interrupted"
                 else:
                     cancel_reason = "parent_failed"
-                await self._task_registry.cancel_descendants(run_id, reason=cancel_reason)
+                cancelled_descendants = await self._task_registry.cancel_descendants(
+                    run_id, reason=cancel_reason
+                )
 
             if change_tracker is not None:
                 changes = change_tracker.finalize()
@@ -616,6 +620,35 @@ class AgentRunner:
                     )
             if compactor is not None:
                 await compactor.wait_pending(cancel_pending=cancelled)
+            # Run deadline 终止时补一条带阶段与清理结果的 trace 记录（Issue #69）。
+            # 必须放在清理之后：此时 cancel_descendants 与压缩等待的结果都已知。
+            if (
+                self._trace is not None
+                and context.reason == TerminationReason.MAX_WALL_CLOCK_EXCEEDED
+            ):
+                self._trace.emit(
+                    TraceRecord(
+                        ts=_now(),
+                        direction="CORE",
+                        layer="event",
+                        kind="deadline",
+                        run_id=run_id,
+                        step=context.step,
+                        data={
+                            "stage": context.deadline_stage or "loop",
+                            "reason": str(context.reason),
+                            # 三态优先级：无法确认已停止 > 有界取消 > 无需清理
+                            "cleanup": (
+                                "unknown"
+                                if context.deadline_cleanup_unknown
+                                else "cancelled_bounded"
+                                if cancelled_descendants
+                                else "completed"
+                            ),
+                            "cancelled_descendants": len(cancelled_descendants),
+                        },
+                    )
+                )
             if session is not None and store is not None:
                 if context.compacted:
                     store.write_compacted(session.id, context.messages)
