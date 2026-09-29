@@ -25,6 +25,15 @@ export function reasoningSummary(text: string, running: boolean): string {
 }
 
 /** 将思考区域中的 Markdown 转成安全的内联 HTML。 */
+// 折叠行是否展示实时思考预览：plan 标题（目的标签）优先；否则运行中且有思考文本时
+// 跟随最新一行实时显示。切勿用"从思考推导出的目的"当条件——它随思考非空而恒为真，
+// 会把预览自己遮蔽掉（回归提交 2c31ef3，折叠行于是只剩一条静态目的）。
+export function showLiveThinkingRow(input: { planTitle?: string; running: boolean; thinking?: string }): boolean {
+  if (input.planTitle?.trim()) return false;
+  if (!input.running) return false;
+  return Boolean(input.thinking?.trim());
+}
+
 export function renderReasoningMarkdown(text: string): string {
   if (!text) return "";
   const html = marked.parse(text, { async: false, breaks: true }) as string;

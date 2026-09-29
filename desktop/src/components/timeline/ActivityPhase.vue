@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
 import ToolCallCard from "./ToolCallCard.vue";
 import type { ToolCallEntry } from "./types";
-import { reasoningSummary, firstLine } from "../../utils/reasoningSummary";
+import { reasoningSummary, firstLine, showLiveThinkingRow } from "../../utils/reasoningSummary";
 
 const props = defineProps<{
   thinking?: string;
@@ -199,6 +199,13 @@ const effectivePurpose = computed(() => {
   return purposeSummary.value;
 });
 
+// plan 标题存在时折叠行显示目的标签；否则显示实时思考预览（plan 语义优先）
+const showThinkingPreview = computed(() => showLiveThinkingRow({
+  planTitle: props.stepTitle,
+  running: props.running,
+  thinking: props.thinking,
+}));
+
 // 思考预览行：流式时跟随最后一行，完成后显示首行（不做额外处理，由purposeSummary显示目的）
 const thinkingPreview = computed(() => reasoningSummary(displayedThinking.value, thinkingRunning.value));
 
@@ -240,12 +247,12 @@ watch([thinkingPreview, thinkingRunning], () => {
       </span>
 
       <!-- 行为目的描述 -->
-      <span v-if="effectivePurpose" class="activity-phase__purpose">
+      <span v-if="effectivePurpose && !showThinkingPreview" class="activity-phase__purpose">
         {{ effectivePurpose }}
       </span>
 
       <!-- 思考流式预览：运行中跟随最后一行思考内容 -->
-      <span v-if="running && thinking && !effectivePurpose" ref="previewRef" class="activity-phase__preview" :data-follow-end="thinkingRunning || undefined">
+      <span v-if="showThinkingPreview" ref="previewRef" class="activity-phase__preview" :data-follow-end="thinkingRunning || undefined">
         {{ thinkingPreview }}
       </span>
 
