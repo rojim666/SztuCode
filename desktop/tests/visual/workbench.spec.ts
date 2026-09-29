@@ -740,6 +740,35 @@ test("new task, keyboard shortcut, and primary tools remain interactive", async 
   await expect(page.getByRole("heading", { name: "Think it. Build it.", exact: true })).toBeVisible();
 });
 
+test("new task row spans the sidebar so the whole row is clickable", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  const row = page.locator(".sidebar-command");
+  const button = page.locator(".sidebar-command .new-task-button");
+  const [rowBox, buttonBox] = await Promise.all([row.boundingBox(), button.boundingBox()]);
+  if (!rowBox || !buttonBox) throw new Error("侧栏新建任务所在栏必须存在");
+  // 热区覆盖整栏：按钮贴住左右边缘，右侧不再留下点不动的空白。
+  expect(buttonBox.x).toBeCloseTo(rowBox.x, 0);
+  expect(buttonBox.width).toBeCloseTo(rowBox.width, 0);
+
+  // 切到自动化页后，点击该栏最右侧的空白区域也必须触发新建任务。
+  const farRightX = rowBox.x + rowBox.width - 4;
+  const rowCenterY = rowBox.y + rowBox.height / 2;
+  await page.getByRole("button", { name: "自动化", exact: true }).click();
+  await expect(page.locator(".task-launcher")).toBeHidden();
+
+  const hitTest = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest(".new-task-button")?.className ?? null, { x: farRightX, y: rowCenterY });
+  expect(hitTest).toContain("new-task-button");
+
+  await page.mouse.move(farRightX, rowCenterY);
+  // 悬停高亮同样要铺满整栏；过渡是 120ms，等它落到实际颜色再断言。
+  await expect.poll(() => button.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
+
+  await page.mouse.click(farRightX, rowCenterY);
+  await expect(page.locator(".task-launcher .prompt-editor")).toBeFocused();
+});
+
 test("slash menu groups commands and supports keyboard selection", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "domcontentloaded" });

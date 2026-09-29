@@ -8,7 +8,7 @@ import { bufferedEmitter } from "../src/agent-loop.js";
 import { ToolRegistry } from "../src/tools.js";
 import { AnthropicMessagesProvider } from "../src/providers/anthropic.js";
 import { ConfigurableProvider } from "../src/providers/configurable.js";
-import { detectModelCapabilities, promptCacheMechanism } from "../src/providers/model-capabilities.js";
+import { detectModelCapabilities, promptCacheMechanism, recommendedOpenAiApiFormat } from "../src/providers/model-capabilities.js";
 import { SettingsStore } from "../src/settings.js";
 import { buildSystemPrompt } from "../src/prompt-loader.js";
 
@@ -133,6 +133,13 @@ test("model capabilities map families to cache mechanisms and reasoning styles",
   const glm = detectModelCapabilities("glm-4.6", "anthropic_messages", "https://open.bigmodel.cn/api/anthropic");
   assert.equal(glm.family, "glm");
   assert.equal(glm.cache, "anthropic_cache_control", "GLM's anthropic-compatible endpoint honors cache_control");
+});
+
+test("GPT reasoning models select Responses only on the official OpenAI endpoint", () => {
+  assert.equal(recommendedOpenAiApiFormat("o3-mini", "https://api.openai.com/v1"), "openai_responses");
+  assert.equal(recommendedOpenAiApiFormat("gpt-5.1-codex", "https://api.openai.com/v1"), "openai_responses");
+  assert.equal(recommendedOpenAiApiFormat("gpt-5", "https://gateway.example/v1"), "openai_chat_completions");
+  assert.equal(recommendedOpenAiApiFormat("gpt-4o", "https://api.openai.com/v1"), "openai_chat_completions");
 });
 
 test("system prompt memo returns byte-identical output across runs and tool orders", async () => {

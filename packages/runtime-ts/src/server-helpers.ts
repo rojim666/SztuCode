@@ -4,6 +4,7 @@ import net from "node:net";
 import type { JsonRpcRequest, JsonRpcResponse } from "@sztucode/protocol";
 import { SkillLoader } from "./skills.js";
 import { SettingsStore } from "./settings.js";
+import { recommendedOpenAiApiFormat } from "./providers/model-capabilities.js";
 export class RpcDispatchError extends Error { constructor(readonly code: number, message: string, readonly data?: unknown) { super(message); } }
 const SESSION_BUSY = -32012;
 const INVALID_PARAMS = -32602;
@@ -60,6 +61,13 @@ export function normalizeSettingsUpdate(input: Record<string, unknown>, current:
     const value = input[key];
     if (value === undefined || value === null || value === next[key]) continue;
     (next as Record<string, unknown>)[key] = value; (update as Record<string, unknown>)[key] = value; updated.push(key);
+  }
+  // Selecting an OpenAI reasoning model without explicitly choosing a wire
+  // format should use its native Responses API. An explicit api_format always
+  // wins, which keeps compatible gateways and advanced users in control.
+  if (input.api_format === undefined && next.provider === "openai" && (input.model !== undefined || input.base_url !== undefined)) {
+    const recommended = recommendedOpenAiApiFormat(next.model, next.base_url);
+    if (recommended !== next.api_format) { next.api_format = recommended; update.api_format = recommended; updated.push("api_format"); }
   }
   if (updated.some((key) => key === "model" || key === "base_url")) update.keyless = false;
   return { update, updated };

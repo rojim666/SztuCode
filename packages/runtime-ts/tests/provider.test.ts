@@ -523,6 +523,22 @@ test("OpenAI chat provider adapts sampling parameters for reasoning models", asy
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("official GPT requests enable stateless storage and parallel tool calls", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody: Record<string, any> = {};
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return Response.json({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] });
+  }) as typeof fetch;
+  try {
+    const tools = new ToolRegistry();
+    tools.register({ name: "read_file", description: "read", schema: { type: "object", properties: {} }, permission: "read_only", invoke: async () => ({ ok: true, output: "" }) });
+    await new OpenAiCompatibleProvider({ apiKey: "test", baseUrl: "https://api.openai.com/v1", model: "gpt-4o" }).complete([{ role: "user", content: "hi" }], tools);
+    assert.equal(requestBody.store, false);
+    assert.equal(requestBody.parallel_tool_calls, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("Provider timeout aborts produce retryable ProviderTimeoutError", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {

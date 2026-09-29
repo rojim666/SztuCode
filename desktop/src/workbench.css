@@ -1283,7 +1283,8 @@
 .sidebar-beta-badge { display: none; }
 .task-search-toggle { width: 28px; height: 28px; color: #77847e; }
 .sidebar-command { margin-top: 4px; }
-.agent-sidebar .new-task-button { width: max-content; min-height: 30px; margin-left: -2px; padding: 0 8px 0 7px; gap: 8px; border-radius: 7px; color: #3e4943; font-size: 12px; }
+/* 整行都是点击热区：按钮铺满侧栏一行，右端不再留出空点区域。 */
+.agent-sidebar .new-task-button { width: 100%; min-height: 30px; padding: 0 8px 0 7px; gap: 8px; border-radius: 7px; color: #3e4943; font-size: 12px; }
 .agent-sidebar .new-task-button:hover { background: #efede6; }
 .sidebar-tools { padding: 3px 0 8px; }
 .sidebar-workspace { padding: 3px 1px 10px; }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { openaiReasoningParams } from "./reasoning.js";
-import { detectModelCapabilities, type ModelCapabilities } from "./model-capabilities.js";
+import { detectModelCapabilities, isOfficialOpenAiEndpoint, type ModelCapabilities } from "./model-capabilities.js";
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
 import { ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
@@ -155,7 +155,14 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       const reasoning = isReasoningModel(this.options.model) || Boolean(this.options.reasoningEffort);
       // 采样抑制独立于字段选择：画像判定的思考型端点（如 deepseek-reasoner）同样拒绝采样参数。
       const suppressSampling = reasoning || this.capabilities.suppressSampling;
-      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, true) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? (reasoning ? { max_completion_tokens: this.options.maxOutputTokens } : { max_tokens: this.options.maxOutputTokens }) : {}), ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, false) };
+      // These flags are deliberately limited to the official endpoint. They are
+      // supported by current GPT models, while many OpenAI-compatible gateways
+      // reject unknown fields. Parallel calls reduce round trips for read-only
+      // tool batches; store=false keeps stateless agent runs privacy friendly.
+      const gptHints = this.capabilities.family === "openai" && isOfficialOpenAiEndpoint(this.options.baseUrl)
+        ? { ...(definitions.length ? { parallel_tool_calls: true } : {}), store: false }
+        : {};
+      const body = responses ? { model: this.options.model, ...(system ? { instructions: system } : {}), input, tools: definitions, max_output_tokens: this.options.maxOutputTokens, ...(this.options.stream ? { stream: true } : {}), ...gptHints, ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, true) } : { model: this.options.model, messages: apiMessages, tools: definitions.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })), tool_choice: "auto", ...(this.options.stream ? { stream: true, stream_options: { include_usage: true } } : {}), ...(this.options.maxOutputTokens ? (reasoning ? { max_completion_tokens: this.options.maxOutputTokens } : { max_tokens: this.options.maxOutputTokens }) : {}), ...gptHints, ...this.samplingParams(suppressSampling), ...openaiReasoningParams(this.options.reasoningEffort, false) };
       // Only endpoints with a known routing hint (official OpenAI) carry prompt_cache_key;
       // everything else relies on server-side automatic prefix caching.
       const cacheKey = this.cacheControl && this.capabilities.cache === "openai_prompt_cache_key"

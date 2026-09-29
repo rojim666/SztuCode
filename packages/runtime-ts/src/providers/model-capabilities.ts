@@ -36,7 +36,9 @@ export type ModelCapabilities = {
 
 const FAMILY_PATTERNS: Array<[ModelFamily, RegExp]> = [
   ["anthropic", /claude/i],
-  ["openai", /^(?:o[1-9](?:-|$)|gpt-[3-9](?:[.-]|$)|chatgpt)/i],
+  // Keep this broad enough for newly released GPT variants (for example
+  // gpt-5.1-codex and gpt-oss) while still requiring an OpenAI model prefix.
+  ["openai", /^(?:o[1-9](?:-|$)|gpt(?:-[a-z0-9][a-z0-9.-]*)?|chatgpt)/i],
   ["deepseek", /deepseek/i],
   ["glm", /glm/i],
   ["qwen", /qwen|qwq|qvq/i],
@@ -56,6 +58,22 @@ export function detectModelFamily(model: string): ModelFamily {
 function openaiReasoningModel(model: string): boolean {
   return /^o[1-9]|^gpt-5|reasoning/i.test(model);
 }
+
+export function isOfficialOpenAiEndpoint(baseUrl?: string): boolean {
+  try { return (baseUrl ? new URL(baseUrl).hostname : "api.openai.com") === "api.openai.com"; }
+  catch { return false; }
+}
+
+/**
+ * Responses is the native API for OpenAI reasoning models. Keep ordinary GPT-4
+ * models on Chat Completions for compatibility, but make the safer choice for
+ * o-series/GPT-5 when the official endpoint is selected.
+ */
+export function recommendedOpenAiApiFormat(model: string, baseUrl?: string): "openai_chat_completions" | "openai_responses" {
+  return isOfficialOpenAiEndpoint(baseUrl) && openaiReasoningModel(model) ? "openai_responses" : "openai_chat_completions";
+}
+
+export function isOpenAiReasoningModel(model: string): boolean { return openaiReasoningModel(model); }
 
 /** 推理风格：决定 reasoning_effort 的落参形态（与 reasoning.ts 的模型特判对齐）。 */
 function reasoningStyleFor(model: string): ReasoningStyle {

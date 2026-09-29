@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { RuntimeSettings, SettingsStore, JevSettings } from "./settings.js";
+import { recommendedOpenAiApiFormat } from "./providers/model-capabilities.js";
 
 type ProfileSettings = Omit<RuntimeSettings, "permission_mode" | "jev_api_key_configured" | keyof JevSettings>;
 export type ModelProfile = ProfileSettings & { id: string; name: string; vendor: string; has_api_key: boolean; is_current: boolean; builtin: boolean };
@@ -14,7 +15,15 @@ const OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
 const OPENCODE_ZEN_FREE_MODELS = ["big-pickle", "ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free"];
 // Pollinations 免费端点（免 key，匿名 tier），匿名可用模型见 https://text.pollinations.ai/models
 const POLLINATIONS_BASE_URL = "https://text.pollinations.ai/openai";
+// Official GPT-5.6 family entries. Display names are user-facing; model keeps
+// the canonical API slug so the picker can be used without manual setup.
+const GPT56_PROFILES: StoredProfile[] = [
+  { id: "builtin-openai-gpt-5.6-sol", name: "GPT-5.6 Sol", vendor: "OpenAI", provider: "openai", api_format: "openai_responses", model: "gpt-5.6-sol", base_url: "https://api.openai.com/v1", builtin: true, keyless: false, context_window: 1_050_000, max_output_tokens: 128_000, temperature: null, top_p: null, reasoning_effort: "medium", timeout_s: 180, max_retries: 2, cache_control: true, supports_vision: true },
+  { id: "builtin-openai-gpt-5.6-terra", name: "GPT-5.6 Terra", vendor: "OpenAI", provider: "openai", api_format: "openai_responses", model: "gpt-5.6-terra", base_url: "https://api.openai.com/v1", builtin: true, keyless: false, context_window: 1_050_000, max_output_tokens: 128_000, temperature: null, top_p: null, reasoning_effort: "medium", timeout_s: 180, max_retries: 2, cache_control: true, supports_vision: true },
+  { id: "builtin-openai-gpt-5.6-luna", name: "GPT-5.6 Luna", vendor: "OpenAI", provider: "openai", api_format: "openai_responses", model: "gpt-5.6-luna", base_url: "https://api.openai.com/v1", builtin: true, keyless: false, context_window: 400_000, max_output_tokens: 128_000, temperature: null, top_p: null, reasoning_effort: "none", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: true },
+];
 const BUILTIN_PROFILES: StoredProfile[] = [
+  ...GPT56_PROFILES,
   ...OPENCODE_ZEN_FREE_MODELS.map((model) => ({ id: `builtin-opencode-zen-${model}`, name: model, vendor: "opencode", provider: "openai" as const, api_format: "openai_chat_completions" as const, model, base_url: OPENCODE_ZEN_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: false })),
   { id: "builtin-pollinations-openai-fast", name: "openai-fast", vendor: "pollinations", provider: "openai" as const, api_format: "openai_chat_completions" as const, model: "openai-fast", base_url: POLLINATIONS_BASE_URL, builtin: true, keyless: true, context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: false },
 ];
@@ -34,7 +43,7 @@ export class ModelProfileStore {
     await this.load(); const id = input.id || randomUUID(); if (BUILTIN_PROFILES.some((profile) => profile.id === id)) throw new Error("builtin profiles cannot be edited");
     let profile = this.profiles.find((item) => item.id === id);
     if (!profile) {
-      profile = { id, name: input.name, vendor: input.vendor, provider: input.provider, model: input.model, base_url: input.base_url, builtin: false, api_format: input.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions", context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: input.supports_vision ?? true };
+      profile = { id, name: input.name, vendor: input.vendor, provider: input.provider, model: input.model, base_url: input.base_url, builtin: false, api_format: input.provider === "anthropic" ? "anthropic_messages" : recommendedOpenAiApiFormat(input.model, input.base_url), context_window: 128_000, max_output_tokens: 8192, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 120, max_retries: 2, cache_control: true, supports_vision: input.supports_vision ?? true };
       this.profiles.push(profile);
     }
     const { select: _select, builtin: _builtin, api_key: apiKey, keyless, ...values } = input;
