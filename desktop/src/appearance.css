@@ -599,6 +599,13 @@
 :root[data-app-theme="dark"] :is(.sztu-titlebar, .sidebar-viewport, .sztu-sidebar) {
   background: var(--chrome-bg) !important;
 }
+/* Match the narrow icon rail to the titlebar; keep the project list on a softer gray layer. */
+:root[data-app-theme="dark"] .sidebar-rail {
+  background: var(--chrome-bg) !important;
+}
+:root[data-app-theme="dark"] .sidebar-panel {
+  background: #1e1e1e !important;
+}
 :root[data-app-theme="dark"] .sztu-sidebar :is(
   .sidebar-brand,
   .sidebar-command,
@@ -1201,6 +1208,13 @@
   .source-tabs button
 ):not(:disabled):active {
   background: var(--control-pressed) !important;
+}
+
+/* 项目图标只保留图标本身，聚焦或按下时不再出现灰色方块。 */
+:root .sztu-shell .project-row-caret:is(:hover, :focus-visible, :active) {
+  background: transparent !important;
+  outline: none;
+  box-shadow: none;
 }
 
 /* Keep the close control on the same interaction colors as its neighboring controls. */

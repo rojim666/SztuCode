@@ -625,7 +625,9 @@
   border-radius: 6px;
 }
 .project-row-caret svg { color: currentColor; }
-.project-row-caret:hover { color: #202124; background: #e9edf1; }
+.project-row-caret:hover,
+.project-row-caret:focus-visible,
+.project-row-caret:active { color: #202124; background: transparent; outline: none; }
 
 .project-row-toggle {
   display: grid;
@@ -1222,6 +1224,181 @@
   .agent-sidebar { padding-inline: 7px; }
   .status-task-row small, .sidebar-tools button small { display: none; }
 }
+
+/* Compact navigation rail inspired by the reference layout. The rail stays fixed while
+   the project and conversation list remains independently scrollable. */
+.sidebar-viewport,
+.agent-sidebar { background: #fdfaf8; border: 0; }
+.sidebar-viewport { border-radius: 0; overflow: hidden; }
+.sidebar-viewport { border: 1px solid rgb(80 86 92 / 8%); }
+.agent-sidebar {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.sidebar-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-width: 46px;
+  padding: 14px 8px 12px;
+  background: #fdfaf8;
+  border: 1px solid rgb(80 86 92 / 8%);
+}
+/* 轨道按钮与顶部标题栏按钮共用同一套 chrome 交互底色（--control-*），
+   否则导航轨道会自带一层绿色，与顶栏/其他选中的暖色底不一致。 */
+.sidebar-rail__item {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 10px;
+  transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+.sidebar-rail__item:hover { color: var(--text); background: var(--control-hover); }
+.sidebar-rail__item:active { background: var(--control-pressed); transform: scale(.94); }
+.sidebar-rail__item.is-active { color: var(--text); background: var(--control-selected); box-shadow: none; }
+.sidebar-rail__item:focus-visible { outline: none; }
+.sidebar-rail__spacer { flex: 1 1 auto; min-height: 10px; }
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px 9px 0;
+  background: #fdfaf8;
+  border-radius: 22px 0 0 0;
+  border: 1px solid rgb(80 86 92 / 8%);
+}
+.sidebar-brand { min-height: 31px; padding: 0 4px 0 6px; transform: none; }
+.sidebar-brand h1, .brand-mode-trigger h1 { color: #2e3934; font-size: 15px; font-weight: 650; }
+.sidebar-brand .brand-wordmark { width: 84px; height: 15px; }
+.sidebar-beta-badge { display: none; }
+.task-search-toggle { width: 28px; height: 28px; color: #77847e; }
+.sidebar-command { margin-top: 4px; }
+.agent-sidebar .new-task-button { width: max-content; min-height: 30px; margin-left: -2px; padding: 0 8px 0 7px; gap: 8px; border-radius: 7px; color: #3e4943; font-size: 12px; }
+.agent-sidebar .new-task-button:hover { background: #efede6; }
+.sidebar-tools { padding: 3px 0 8px; }
+.sidebar-workspace { padding: 3px 1px 10px; }
+.agent-sidebar .side-section { margin-top: 14px; }
+.agent-sidebar .side-label { color: #9a9d96; font-size: 12px; letter-spacing: .01em; }
+.agent-sidebar .project-row-shell { min-height: 34px; }
+.agent-sidebar .project-row-shell:has(.project-row-toggle[aria-expanded="true"]):not(:hover) { background: transparent; }
+.agent-sidebar .project-row-toggle { min-height: 32px; color: #424b46; font-size: 12px; }
+.agent-sidebar .project-row-toggle span { font-size: 12px; }
+.agent-sidebar .project-task { min-height: 28px; padding-left: 29px; color: #626a64; font-size: 12px; }
+.agent-sidebar .project-task:hover, .agent-sidebar .conversation-row:hover { background: #f1f0ea; }
+.agent-sidebar .sidebar-session:has(.project-task.active), .agent-sidebar .sidebar-session:has(.conversation-row.active) { background: #ecebe4; border-radius: 8px; }
+.agent-sidebar .sidebar-footer { min-height: 43px; padding: 7px 3px 9px; }
+.service-status { color: #738078; }
+.service-status b { font-size: 10px; }
+.service-status small { font-size: 9px; }
+
+@media (max-width: 760px) {
+  .agent-sidebar { grid-template-columns: 42px minmax(0, 1fr); }
+  .sidebar-rail { min-width: 42px; padding-inline: 5px; }
+  .sidebar-panel { padding-inline: 7px; }
+}
+
+/* The conversation canvas is a straight-edged surface; the soft corner belongs to the
+   SztuCode navigation column. */
+.sztu-main,
+.sztu-main.chat-main,
+.sztu-main.work-active { border-radius: 0 !important; border: 0 !important; }
+.sztu-main,
+.sztu-main.chat-main,
+.sztu-main.work-active { border: 1px solid rgb(80 86 92 / 8%) !important; }
+
+/* Subtle lift around the two large surfaces, replacing hard divider lines. */
+.sidebar-panel {
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 1px 8px rgb(38 43 49 / 4%);
+}
+.sztu-main {
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 1px 10px rgb(38 43 49 / 5%);
+}
+.sztu-titlebar {
+  position: relative;
+  z-index: 90;
+  isolation: isolate;
+  border-bottom: 1px solid rgb(80 86 92 / 6%);
+}
+.sztu-shell::after {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgb(80 86 92 / 5%);
+  content: "";
+}
+
+:root[data-app-theme="dark"] .sidebar-viewport,
+:root[data-app-theme="dark"] .agent-sidebar,
+:root[data-app-theme="dark"] .sidebar-panel {
+  background: #171717;
+}
+:root[data-app-theme="dark"] .sidebar-rail {
+  background: #242424;
+}
+:root[data-app-theme="dark"] .sidebar-panel {
+  border-color: rgb(255 255 255 / 9%);
+}
+:root[data-app-theme="dark"] .sidebar-viewport,
+:root[data-app-theme="dark"] .sidebar-rail,
+:root[data-app-theme="dark"] .sztu-main,
+:root[data-app-theme="dark"] .sztu-main.chat-main,
+:root[data-app-theme="dark"] .sztu-main.work-active {
+  border-color: rgb(255 255 255 / 9%) !important;
+}
+
+/* Only the highlighted outer seams are outlined; interior columns stay borderless. */
+.sidebar-viewport,
+.sidebar-rail,
+.sidebar-panel,
+.sztu-main,
+.sztu-main.chat-main,
+.sztu-main.work-active {
+  border: 0 !important;
+}
+.sidebar-panel {
+  border-top: 1px solid rgb(80 86 92 / 8%) !important;
+  border-left: 1px solid rgb(80 86 92 / 8%) !important;
+}
+.sztu-main,
+.sztu-main.chat-main,
+.sztu-main.work-active {
+  border-top: 1px solid rgb(80 86 92 / 8%) !important;
+}
+:root[data-app-theme="dark"] .sidebar-panel,
+:root[data-app-theme="dark"] .sztu-main,
+:root[data-app-theme="dark"] .sztu-main.chat-main,
+:root[data-app-theme="dark"] .sztu-main.work-active {
+  border-top-color: rgb(255 255 255 / 9%) !important;
+  border-left-color: rgb(255 255 255 / 9%) !important;
+}
+:root[data-app-theme="dark"] .sidebar-panel {
+  box-shadow: 0 1px 10px rgb(0 0 0 / 14%);
+}
+:root[data-app-theme="dark"] .sztu-main {
+  box-shadow: 0 1px 12px rgb(0 0 0 / 20%);
+}
+:root[data-app-theme="dark"] .sztu-titlebar {
+  border-bottom-color: rgb(255 255 255 / 7%);
+}
+:root[data-app-theme="dark"] .sztu-shell::after {
+  border-color: rgb(255 255 255 / 7%);
+}
+/* 轨道按钮的 hover/active 由 --control-* 令牌在深色与各强调色下自动适配，无需再单独覆写。 */
 
 /* 收起右侧面板时隐藏分隔线与面板，避免残留到单列网格的隐式行 */
 .work-layout.no-inspector .layout-divider,

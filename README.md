@@ -79,13 +79,13 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 
 | 维度 | TypeScript 版 | Python 版 |
 | --- | --- | --- |
-| 定位 | 当前产品主线，桌面端只连接它 | 并存镜像实现，生态自选 |
+| 定位 | 当前产品主线，桌面端固定连接它 | 面向 Agent 教学与实验的 Python TUI/CLI runtime |
 | 代码位置 | `packages/`（ai / agent-core / protocol / session / session-fs / server / client / telemetry / runtime-ts / cli / evaluation） | `py-runtime/src/sztu_code/`（core / cli / tui / evaluation） |
 | daemon 入口 | `packages/runtime-ts/src/main.ts` | `py-runtime/src/sztu_code/core/app.py`（`python -m sztu_code.core`） |
 | 默认端口 | `127.0.0.1:7438` | `127.0.0.1:7437` |
 | CLI 命令 | `sztu-ts`（发布包名 `sztucode` / `sztucode-tui`） | `sztu-py` |
 | 终端界面 | Node 终端 chat（无 TUI） | Textual TUI：`sztu-tui [--replay RUN_ID]` |
-| 图形界面 | Tauri 2 + Vue 3 桌面工作台 | 无（连接 TS daemon 的桌面端） |
+| 图形界面 | Tauri 2 + Vue 3 桌面工作台 | 无；Python 版使用 Textual TUI |
 | 依赖管理 | npm workspaces | `uv` + hatchling（PEP 621） |
 | 契约方式 | TS 类型包 + 生成 `wire-protocol.md` | pydantic 模型（`core/bus/*`） |
 | 传输 | TCP / NDJSON / JSON-RPC 2.0（同一套 envelope） | 同左 |
@@ -93,7 +93,9 @@ SztuCode 不是两套独立产品，而是**同一套 daemon/client 架构的双
 | 质量工具 | tsc、tsx --test、e2e 脚本 | ruff、mypy(strict)、pytest |
 | 版本 | 0.2.0 | 0.0.1 |
 
-两套 runtime 使用不同的命令名和默认端口，因此可以并行安装和运行；客户端通过同一套 JSON-RPC 协议连接，Agent 执行状态以所选 daemon 为准。
+两套 runtime 使用不同的命令名和默认端口，因此可以并行安装和运行；各自客户端连接对应的 daemon，Agent 执行状态以实际运行的 runtime 为准。
+
+桌面产品固定使用 TypeScript daemon（7438）。Python runtime 独立服务于终端 TUI、脚本化 CLI、ACP 和 Agent 教学实验（7437），不作为桌面端后端；这样桌面产品能力与教学实验运行时各自保持清晰边界。
 
 ### TypeScript package 分层
 

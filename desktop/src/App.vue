@@ -2110,7 +2110,23 @@ async function chooseTask(id: string) {
   page.value = "work";
   await loadSessionHistory(id);
 }
-async function chooseWorkspace(item: Workspace) { workspace.value = item; projectMenuOpen.value = false; const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id); if (matching) await chooseTask(matching.session_id); }
+async function chooseWorkspace(item: Workspace) {
+  workspace.value = item;
+  projectMenuOpen.value = false;
+  const matching = liveSessions.value.find((session) => session.workspace_id === item.workspace_id);
+  if (matching) {
+    await chooseTask(matching.session_id);
+    return;
+  }
+  // 没有历史会话时也要真正切换到该项目，创建一个空会话作为入口。
+  const sessionId = await createSession(item);
+  const view = ensureSessionView(sessionId);
+  view.timeline = new Map();
+  view.loaded = true;
+  activeId.value = sessionId;
+  page.value = "work";
+  await refreshIndex(false);
+}
 // 解析 URL hash (#session=<id>) 并激活对应会话：支撑"在新窗口打开"与"复制会话链接"，
 // 链接失效或会话已删除时静默回退到默认启动页。
 function consumeSessionHash() {
@@ -3544,6 +3560,15 @@ watch(activeWorkspace, (project) => {
 
     <div class="sidebar-viewport">
       <aside id="primary-navigation" class="sztu-sidebar agent-sidebar">
+      <nav class="sidebar-rail" aria-label="快速导航">
+        <button class="sidebar-rail__item" :class="{ 'is-active': page === 'work' }" type="button" title="首页" aria-label="首页" @click="openPage('work')"><AppIcon name="House" :size="18" /></button>
+        <button class="sidebar-rail__item" :class="{ 'is-active': page === 'automations' }" type="button" title="自动化" aria-label="自动化" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="18" /></button>
+        <button class="sidebar-rail__item" :class="{ 'is-active': page === 'skills' }" type="button" title="技能" aria-label="技能" @click="openPage('skills')"><AppIcon name="Puzzle" :size="18" /></button>
+        <span class="sidebar-rail__spacer" />
+        <button class="sidebar-rail__item" type="button" title="更多工具" aria-label="更多工具" @click="openCommandPalette"><AppIcon name="Ellipsis" :size="18" /></button>
+        <button class="sidebar-rail__item" type="button" :title="t('app.settings')" :aria-label="t('app.settings')" @click="openSettings"><AppIcon name="Settings" :size="18" /></button>
+      </nav>
+      <div class="sidebar-panel">
       <header class="sidebar-brand">
         <h1><BrandWordmark /></h1>
         <span class="sidebar-beta-badge">Beta</span>
@@ -3566,11 +3591,6 @@ watch(activeWorkspace, (project) => {
       <div class="sidebar-command">
         <button class="new-task-button" @click="beginTask()"><AppIcon name="Compose" :size="18" />{{ t('app.newTask') }}</button>
       </div>
-
-      <nav class="sidebar-tools" :aria-label="t('app.workbenchTools')">
-        <button :class="{ active: page === 'automations' }" @click="openPage('automations')"><AppIcon name="CalendarClock" :size="18" /><span>{{ t('app.automations') }}</span></button>
-        <button :class="{ active: page === 'skills' }" @click="openPage('skills')"><AppIcon name="Puzzle" :size="18" /><span>{{ t('app.skills') }}</span></button>
-      </nav>
 
       <div class="sidebar-workspace">
         <section v-if="normalizedTaskQuery && !taskSearchOpen" class="side-section search-results">
@@ -3647,10 +3667,7 @@ watch(activeWorkspace, (project) => {
         </details>
       </div>
 
-      <footer v-if="statusBarVisible" class="sidebar-footer">
-        <button ref="settingsButton" class="settings-link" :title="t('app.settings')" :aria-label="t('app.settings')" :aria-expanded="settingsOpen" @click="openSettings"><AppIcon name="Settings" :size="16" /></button>
-        <div class="service-status" :title="runtimeConnectionError"><i :class="{ online: connected }" /><span><b>{{ t('app.localService') }}</b><small>{{ connected ? t('app.connected') : runtimeConnectionError ? t('app.reconnecting') : t('app.disconnected') }}</small></span></div>
-      </footer>
+      </div>
       </aside>
       <Teleport to="body">
         <div v-if="previewProject" class="project-preview-card project-preview-card--floating" :style="projectPreviewStyle" role="tooltip" @pointerenter="keepProjectPreviewOpen" @pointerdown="keepProjectPreviewOpen" @focusin="keepProjectPreviewOpen" @focusout="handleProjectPreviewFocusOut" @mouseleave="scheduleProjectPreviewClose">
@@ -3694,7 +3711,7 @@ watch(activeWorkspace, (project) => {
                 <span class="session-loading__label">{{ t('app.loadingSessionDots') }}</span>
               </div>
               <header class="work-header">
-                <button v-if="activeWorkspace" class="workspace-trigger" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace.name }}</span><AppIcon name="ChevronDown" :size="14" /></button>
+                <button v-if="activeWorkspace" class="workspace-trigger" type="button" aria-haspopup="menu" :aria-expanded="projectMenuOpen" :class="{ open: projectMenuOpen }" @click="projectMenuOpen = !projectMenuOpen"><span>{{ activeWorkspace.name }}</span><AppIcon name="ChevronDown" :size="14" /></button>
                 <span v-else class="temporary-task-label">{{ t('app.temporaryTask') }}</span>
                 <div v-if="projectMenuOpen && activeWorkspace" class="project-popover"><button v-for="item in activeWorkspaces" :key="item.workspace_id" @click="chooseWorkspace(item)">{{ item.name }}<small>{{ item.path }}</small></button></div>
                 <div class="work-header__tools">

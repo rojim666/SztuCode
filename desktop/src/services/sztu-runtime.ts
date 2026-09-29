@@ -194,22 +194,20 @@ export async function connectRuntime(): Promise<boolean> {
     runtimeConnectionError = error instanceof Error ? error.message : String(error);
     return false;
   }
-  // Rust sidecar 已等待 daemon 就绪后再通知前端，此处仅做轻量重试
+  // Rust sidecar 已等待 TypeScript daemon 就绪后再通知前端，此处仅做轻量重试。
   const attempts = 12;
-  for (const port of [7438]) {
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        await client.connect("127.0.0.1", port);
-        if (!subscribed) {
-          await client.request("event.subscribe", { topics: EVENT_TOPICS, scope: "global" });
-          subscribed = true;
-        }
-        runtimeConnectionError = "";
-        return true;
-      } catch (error) {
-        runtimeConnectionError = error instanceof Error ? error.message : String(error);
-        if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 250));
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await client.connect("127.0.0.1", 7438);
+      if (!subscribed) {
+        await client.request("event.subscribe", { topics: EVENT_TOPICS, scope: "global" });
+        subscribed = true;
       }
+      runtimeConnectionError = "";
+      return true;
+    } catch (error) {
+      runtimeConnectionError = error instanceof Error ? error.message : String(error);
+      if (attempt + 1 < attempts) await new Promise((resolve) => window.setTimeout(resolve, 250));
     }
   }
   return false;

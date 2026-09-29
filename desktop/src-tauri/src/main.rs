@@ -1,4 +1,5 @@
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+// 桌面端始终使用 GUI 子系统，调试运行也不额外弹出控制台窗口。
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 use std::{
     collections::HashMap,
@@ -574,7 +575,8 @@ async fn daemon_start(
     app: tauri::AppHandle,
     state: State<'_, DaemonProcess>,
 ) -> Result<DaemonStartResult, String> {
-    if TcpStream::connect(("127.0.0.1", 7438)).await.is_ok() {
+    let port = 7438u16;
+    if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
         return Ok(DaemonStartResult {
             status: "already_running".into(),
             detail: "本地服务已在运行".into(),
@@ -647,7 +649,7 @@ async fn daemon_start(
             Ok(child) => {
                 *state.child.lock().await = Some(child);
                 for _ in 0..40 {
-                    if TcpStream::connect(("127.0.0.1", 7438)).await.is_ok() {
+                    if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
                         return Ok(DaemonStartResult {
                             status: "started".into(),
                             detail: "本地服务已启动".into(),

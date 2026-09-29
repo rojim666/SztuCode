@@ -52,6 +52,8 @@ const autostart = ref(false);
 const stayAwake = ref(false);
 const nativeSettingsAvailable = ref(false);
 const nativeSettingsError = ref("");
+const runtime = ref<"typescript" | "python">("typescript");
+const runtimeRestartHint = ref(false);
 const notifications = ref(localStorage.getItem("sztu.notifications") !== "false");
 const ccswitchOpen = ref(false);
 const ccswitchLoading = ref(false);
@@ -103,9 +105,22 @@ async function loadNativeSettings() {
     autostart.value = settings.autostart;
     stayAwake.value = settings.stay_awake;
     nativeSettingsAvailable.value = settings.supported;
+    runtime.value = settings.runtime;
     nativeSettingsError.value = "";
   } catch {
     nativeSettingsAvailable.value = false;
+  }
+}
+
+async function selectRuntime(value: "typescript" | "python") {
+  if (value === runtime.value) return;
+  try {
+    const settings = await setNativeSettings({ runtime: value });
+    runtime.value = settings.runtime;
+    runtimeRestartHint.value = true;
+    nativeSettingsError.value = "";
+  } catch (error) {
+    nativeSettingsError.value = error instanceof Error ? error.message : String(error);
   }
 }
 
