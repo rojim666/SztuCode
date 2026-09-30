@@ -6,6 +6,8 @@
 > 基线：阶段五首个增量（operation lifecycle + durable replay），以当前 TypeScript runtime 代码和测试为准。
 > 结论性质：静态工程审计；没有真实 benchmark 时，不声称 SWE-bench、Terminal-Bench 或竞品排名。
 
+> 历史快照：下文保留 2026-08-30 的判断和主观评分。后台子代理、记忆及 operation 模块随后已有变化；当前默认运行链也为 Python。最新核对见 [2026-09-30 能力说明](agent-capabilities-2026-09-30.md)，不应直接沿用本页分数判断现状。
+
 ## 结论先行
 
 当前 TypeScript runtime 综合生产能力仍为 **68/100**。阶段五没有带来“恢复执行”能力，而是把已有 checkpoint 快照接到一个可查询的 operation 生命周期上：run 启动/结束现在有 `operation.started`、`operation.finished`，`run.replay` 在内存事件不存在时可以从 session JSONL 回读，checkpoint 也带 `operation_id`、`sequence` 和 `checkpoint_id`。

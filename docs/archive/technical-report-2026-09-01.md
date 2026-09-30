@@ -1,5 +1,9 @@
 # SztuCode 项目技术报告
 
+[返回文档中心](../README.md)
+
+> 历史快照（2026-09-01）：保留当时的版本、架构及定位，不定义当前默认运行链。当前默认 daemon/CLI 是 Python，桌面端连接 TS daemon；现状见 [能力核对](../evaluations/agent-capabilities-2026-09-30.md)。
+
 > **版本** v0.2.0（TypeScript 主线）/ v0.0.1（Python 镜像） · **许可证** MIT · **文档日期** 2026-09-01
 > **一句话定位**：本地优先、事件驱动、可审计的 AI Coding Agent 运行时，同一套 daemon/client 架构的 TypeScript 与 Python 双语言实现，定位"Agent 时代的教学操作系统"。
 

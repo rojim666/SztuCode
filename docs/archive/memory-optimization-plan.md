@@ -1,7 +1,9 @@
 # SztuCode 记忆与压缩优化方案
 
+[返回文档中心](../README.md)
+
 > 历史方案记录：本文描述 2026-08-05 的 Python runtime 设计与当时的问题清单，不是当前
-> TypeScript runtime 的状态说明。当前实现见 [记忆与压缩系统](memory-compression-system.md)。
+> TypeScript runtime 的状态说明。实现参考见 [记忆与压缩系统](../reference/memory-compression.md)，当前能力边界见 [最新核对快照](../evaluations/agent-capabilities-2026-09-30.md)。
 
 > 参考蓝本：TencentDB Agent Memory（主）+ Hy-Memory 精选理念（辅）
 > 适配框架：SztuCode `szzk_compression` 分支现有架构

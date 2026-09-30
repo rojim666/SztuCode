@@ -4,7 +4,7 @@
 
 ## 系统边界
 
-SztuCode 是本地优先的 daemon/client Agent 系统。TypeScript 与 Python 各自提供 daemon 和 CLI 入口；桌面端连接 TypeScript runtime。客户端通过 TCP 上的 NDJSON/JSON-RPC 2.0 连接，Agent 执行状态以所选 daemon 为准。
+SztuCode 是本地优先的 daemon/client Agent 系统。默认 `npm run daemon` / `npm run cli` 启动 Python；`daemon:ts` / `cli:ts` 使用 TypeScript，桌面端连接 TypeScript runtime。客户端通过 TCP 上的 NDJSON/JSON-RPC 2.0 连接，Agent 执行状态以所选 daemon 为准。
 
 ```text
 Tauri Desktop / Node CLI / Eval

@@ -18,6 +18,7 @@
 | [社区行为准则](CODE_OF_CONDUCT.md) | 协作边界、问题报告与执行原则 |
 | [项目路线图](ROADMAP.md) | 当前版本目标、研究方向和明确非目标 |
 | [开发环境](development/development.md) | 本地开发环境、常用命令和模块修改约束 |
+| [仓库目录地图](development/repository-layout.md) | 两条运行链、文档分类、诊断脚本和本地产物放在哪里 |
 | [测试指南](development/testing.md) | 单元、集成、协议和桌面端测试如何选择与运行 |
 | [文档规范](development/documentation.md) | 文档放置、链接、生成文件和归档规则 |
 | [安全策略](SECURITY.md) | 漏洞报告渠道、敏感信息和 Agent 安全边界 |
@@ -30,11 +31,14 @@
 | [架构决策记录](adr/README.md) | 现行 | 重大技术决策、背景和替代方案 |
 | [Wire Protocol](reference/wire-protocol.md) | 自动生成 | JSON-RPC 命令、事件和 Schema |
 | [系统提示词架构](reference/system-prompts.html) | 参考 | 分层提示词结构的可视化说明 |
-| [Sztubuddy 提示词集成](reference/Sztubuddy-prompts.md) | 现行 | 完整资源、技能、插件、子代理和产品模板的接入方式 |
+| [Workbuddy 提示词集成](reference/workbuddy-prompts.md) | 现行 | 完整资源、技能、插件、子代理和产品模板的接入方式 |
+| [内置插件](reference/builtin-plugins.md) | 参考 | 插件来源、技能目录和启用方式 |
+| [记忆与压缩系统](reference/memory-compression.md) | TS 实现参考 | 包含早期设计材料，能力边界以代码及最新核对为准 |
 | [评估指南](guides/evaluation.md) | 指南 | SWE-bench 与轨迹质量评估方法 |
 | [Terminal-Bench 评测指南](guides/terminal-bench.md) | 指南 | 通过 Harbor 接入 Terminal-Bench 的运行、模型与成本控制 |
 | [微信接入指南](guides/wechat-openclaw-acp.md) | 指南 | 通过 OpenClaw 微信插件，以 ACP 将 SztuCode 接入微信 |
 | [多智能体工作流现状](evaluations/multi-agent-workflow.md) | 现行 | TypeScript DAG、角色化子 Agent 与当前验证边界 |
+| [Agent 能力核对（2026-09-30）](evaluations/agent-capabilities-2026-09-30.md) | 当前核对快照 | Python 默认运行链、TS 桌面链、已验证能力与限制 |
 | [Agent 能力评审](evaluations/agent-capability-review.md) | 评审快照 | Runtime 各项能力打分、性能障碍与分阶段扩展路线 |
 | [Agent 能力审计（第二版）](evaluations/agent-capability-review-v2.md) | 评审快照 | 阶段二、三落地后的重新评分、性能瓶颈、顶级产品差距和 durable 路线 |
 | [Agent 能力审计（第三版）](evaluations/agent-capability-review-v3.md) | 评审快照 | Durable checkpoint 落地后的边界审计、性能回归、故障矩阵和 operation 恢复路线 |
@@ -48,6 +52,12 @@
 - [桌面工作台早期方案](archive/desktop-workbench-plan.md)
 - [外部 Claw-Code 工具系统参考](archive/claw-code-tool-system.md)
 - [阶段性面试复盘](archive/interview-notes.md)
+- [桌面工作台 TS 迁移阶段方案](archive/desktop-workbench-ts-transition.md)
+- [早期记忆优化方案](archive/memory-optimization-plan.md)
+- [旧提示词参考](archive/legacy-prompts.md)
+- [2026-09-01 技术报告](archive/technical-report-2026-09-01.md)
+
+设计提案保留在 `plans/`、`superpowers/`，外部研究材料保留在 `研究参考/`；这些内容不证明功能已经交付。
 
 ## 文档状态约定
 

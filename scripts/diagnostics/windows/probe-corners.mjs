@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import sharp from "sharp";
 
-const requireFromDesktop = createRequire(new URL("./desktop/package.json", import.meta.url));
+const requireFromDesktop = createRequire(new URL("../../../desktop/package.json", import.meta.url));
 const { chromium } = requireFromDesktop("@playwright/test");
 
 const TARGET = "http://127.0.0.1:5173";

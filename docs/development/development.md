@@ -2,7 +2,9 @@
 
 [返回文档中心](../README.md)
 
-## TypeScript 主链开发
+## TypeScript 桌面运行链开发
+
+默认产品 daemon/CLI 是 Python；目录和入口区分见 [仓库目录地图](repository-layout.md)。本节说明桌面端所用的 TS 链。
 
 ```bash
 git clone https://github.com/rojim666/SztuCode.git
@@ -17,10 +19,10 @@ npm run typecheck
 npm test
 npm run build
 npm run test:e2e:ts
-npm run test:migration
+node --import tsx scripts/migration_validation.ts
 ```
 
-`typecheck` 会按依赖顺序检查 `ai`、`session`、`session-fs`、`telemetry`、`agent-core`、`protocol`、`server`、`client`、`runtime-ts`、CLI、评测和 desktop 类型。`npm test` 运行各 package 的 unit test；`test:e2e:ts` 和 `test:migration` 使用真实 TS daemon，后者额外验证旧客户端兼容、重启、fork、compaction、subagent、MCP 和桌面契约。
+`typecheck` 会按依赖顺序检查 `ai`、`session`、`session-fs`、`telemetry`、`agent-core`、`protocol`、`server`、`client`、`runtime-ts`、CLI、评测和 desktop 类型。`npm test` 运行各 package 的 unit test；`test:e2e:ts` 和 `migration_validation.ts` 使用真实 TS daemon 及本地 mock provider，后者额外验证旧客户端兼容、重启、fork、compaction、subagent、MCP 和桌面契约。单独运行迁移脚本前先执行 `npm run build`。
 
 启动 TypeScript daemon 进行手动调试：
 

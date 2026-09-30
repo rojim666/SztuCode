@@ -1,5 +1,9 @@
 # SztuCode 客户端 Codex 化优化方案
 
+[返回文档中心](../README.md)
+
+> 历史快照：本文保留 TS 桌面迁移阶段的原文，其中“Python 已移除”等说法已经过时。当前默认 Python 与 TS 桌面链均存在，见 [能力核对](../evaluations/agent-capabilities-2026-09-30.md)。
+
 > 历史设计记录：本文保留早期桌面工作台规划。当前实现以 TypeScript daemon、Tauri 2 + Vue 3 桌面端和 Node CLI 为准；其中与当前代码冲突的 Python daemon、Pydantic 协议和 React 方案不再是实施依据。
 
 ## 1. 结论与目标

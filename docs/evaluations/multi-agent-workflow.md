@@ -2,9 +2,10 @@
 
 [返回文档中心](../README.md)
 
-当前产品实现位于 `packages/runtime-ts/src/subagent.ts`、`packages/runtime-ts/src/workflow.ts` 和
-`packages/protocol/src/workflow.ts`。早期 Python 工作流场景、pytest 门禁和在线运行脚本已经随旧产品
-Runtime 退役，不再是当前代码的可执行证据。
+本文核对的是 TS 桌面运行链，实现位于 `packages/runtime-ts/src/subagent.ts`、
+`packages/runtime-ts/src/workflow.ts` 和 `packages/protocol/src/workflow.ts`。
+默认 Python runtime 也有独立的工作流实现和 pytest 测试，不能混用两条链的验收结论。
+两条链的总体边界见 [2026-09-30 能力核对](agent-capabilities-2026-09-30.md)。
 
 ## 当前链路
 
@@ -41,6 +42,11 @@ Coder 工作流只开放可审计的工作区文件工具，并要求非空 `all
 - `subagent.started`
 - `subagent.finished`
 
+子代理已支持 `spawn_agent` 返回后台句柄，通过 `subagent_status`、`subagent_result`、
+`subagent_cancel` 查询结果或取消；子会话独立持久化并关联父会话。后台句柄保存在进程内，
+不代表 daemon 重启后能恢复执行。DAG 节点状态会落盘；节点完成后可立即补充就绪任务，
+无需等待同一批中最慢的任务。TS server 也保存运行中 workflow 的取消控制器。
+
 ## 当前可执行证据
 
 运行 TypeScript 主链测试：
@@ -62,6 +68,8 @@ npm test
 | 并发上限和失败传播 | `WorkflowOrchestrator` | `workflow respects the concurrency limit`、`workflow rejects token overages and blocks dependent tasks` |
 | Coder 路径升级证据 | `workflow-scope.ts` + `SubagentManager` | `workflow coder records approved out-of-scope writes...` |
 | Tester/Reviewer 结构化交接 | `parseRolePayload` + handoff 校验 | `workflow role payloads parse fenced JSON...`、`workflow rejects mismatched and incomplete handoff evidence` |
+| 后台句柄与独立子会话 | `SubagentManager.spawn` + child session | `subagent-session.test.ts` |
+| 完成即补充就绪节点 | `WorkflowOrchestrator` | `workflow-scheduler.test.ts` |
 
 `packages/evaluation/tasks/internal-v1.json` 另外提供 10 个确定性 Node/TypeScript Coding Agent
 fixture，其中 collaboration 类任务覆盖范围审计和依赖交接算法。它们验证评测 runner、任务隔离和
@@ -80,8 +88,8 @@ npm run eval -- run \
 
 - Coder 的 `changed_paths` 对 `write_file`/`edit_file` 是运行时证据；工作流主动禁用 `bash`，因此尚未提供任意 shell 写入的路径归属；
 - Tester 的命令、输出和结论及 Reviewer 的 Diff、测试、安全结论来自其独立子 Agent 的结构化结果并经过非空校验，但尚未由 daemon 对命令执行记录和文件 Diff 做二次交叉验证；
-- 当前仓库没有替代旧 Python 五场景门禁的完整 TypeScript 多 Agent E2E 对比测试；
-- `workflow.run` 仍是同步 RPC，尚未提供工作流级取消句柄、全局墙钟/总 Token 预算和运行中任务清理的完整端到端测试矩阵。
+- 当前的 TS mock 测试不等价于真实模型的多 Agent E2E 成功率、成本及质量评估；
+- 已有任务预算和 workflow 取消路径，但没有证明跨 daemon 崩溃恢复、全局预算与任意故障下任务清理的完整端到端矩阵。
 
 因此，当前可以声称的是“TypeScript 工作流 DAG、角色化子 Agent、任务预算、路径升级、结构化交接
 与确定性校验已实现”，不能声称旧 Python 阶段记录的五场景成本、成功率或完整 Reviewer 质量结论
