@@ -361,6 +361,13 @@ export class AgentLoop {
           this.publish({ type: "step.finished", run_id: runId, step, ts: now() });
           continue;
         }
+        if (error instanceof ProviderError && error.details.partialResponse) {
+          // A disconnected stream may already have reached the UI. Preserve
+          // visible text in the failed checkpoint; never execute partial calls.
+          tokenBuffer.flush();
+          if (streamedText) messages.push({ role: "assistant", content: streamedText });
+          throw error;
+        }
         // Provider 已耗尽自己的物理重试预算时，不再由逻辑循环成倍放大请求。
         if (error instanceof ProviderError && error.details.retryExhausted) throw error;
         // 上下文溢出应急通道：本地预判没拦住而 API 拒绝时，立即强制收缩后重试本步，不消耗 llmFailures 预算

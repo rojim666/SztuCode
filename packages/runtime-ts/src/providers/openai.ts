@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { openaiReasoningParams } from "./reasoning.js";
-import { detectModelCapabilities, isOfficialOpenAiEndpoint, type ModelCapabilities } from "./model-capabilities.js";
+import { detectModelCapabilities, isOfficialOpenAiEndpoint, isOpenAiReasoningModel, type ModelCapabilities } from "./model-capabilities.js";
+import { openAiEndpoint } from "./openai-endpoint.js";
 import type { ChatMessage, ModelInvocation, ModelProvider, ModelResponse } from "../agent-loop.js";
-import { ProviderTimeoutError, providerHttpError } from "./errors.js";
+import { ProviderError, ProviderTimeoutError, providerHttpError } from "./errors.js";
 import type { ToolRegistry } from "../tools.js";
 import { streamFromCompletion, usageFromLegacy, type AssistantMessage, type Model, type ModelContext, type ModelEvent, type StreamOptions } from "@sztucode/ai";
 import { normalizeStopReason, parseToolArguments } from "./output-normalization.js";
@@ -10,7 +11,7 @@ import { base64ImageSource, dataUrlFromBase64 } from "./image-utils.js";
 
 type OpenAiResponse = { choices?: Array<{ finish_reason?: string | null; message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> }; delta?: { content?: string | null; reasoning_content?: string | null; tool_calls?: Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }> } }>; usage?: { prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number; prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; input_tokens_details?: { cached_tokens?: number } } };
 type ResponsesOutput = { type?: string; id?: string; call_id?: string; name?: string; arguments?: string; summary?: Array<{ type?: string; text?: string }>; content?: Array<{ type?: string; text?: string }> };
-type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; status?: string; incomplete_details?: { reason?: string | null }; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
+type ResponsesResponse = { output_text?: string; output?: ResponsesOutput[]; status?: string; error?: { message?: string; code?: string }; incomplete_details?: { reason?: string | null }; usage?: { input_tokens?: number; output_tokens?: number; input_tokens_details?: { cached_tokens?: number } } };
 /** 网关类与部分推理模型对标准 OpenAI 请求存在差异，compat 用于逐项修正而不影响默认行为。 */
 export type ProviderCompat = { headers?: Record<string, string>; extraBody?: Record<string, unknown>; dropTemperature?: boolean; dropTopP?: boolean; disableCacheControl?: boolean };
 export type OpenAiProviderOptions = { apiKey?: string; baseUrl?: string; model: string; timeoutMs?: number; apiFormat?: "openai_chat_completions" | "openai_responses"; maxOutputTokens?: number; temperature?: number | null; topP?: number | null; reasoningEffort?: string; stream?: boolean; cacheControl?: boolean; compat?: ProviderCompat };
@@ -24,11 +25,6 @@ function createIdleTimeout(onFire: () => void, ms: number): { reset: () => void;
   const reset = () => { clear(); timer = setTimeout(onFire, ms); };
   reset();
   return { reset, clear };
-}
-
-/** 推理模型（o 系列 / gpt-5 或带 reasoning 标记）拒绝 temperature/top_p 等采样参数。 */
-function isReasoningModel(model: string): boolean {
-  return /^o[1-9]|^gpt-5|reasoning/i.test(model);
 }
 
 function dataUrlFromImageBlock(block: Record<string, unknown>): string {
@@ -106,6 +102,9 @@ function responseInputContent(content: ChatMessage["content"]): string | Array<R
 
 export class OpenAiCompatibleProvider implements ModelProvider {
   private readonly capabilities: ModelCapabilities;
+  // Learned only from explicit HTTP 400/422 parameter rejections. Cached per
+  // provider instance so later agent turns do not repeat rejected requests.
+  private readonly rejectedGatewayParams = new Set<string>();
   constructor(private readonly options: OpenAiProviderOptions) {
     this.capabilities = detectModelCapabilities(options.model, options.apiFormat ?? "openai_chat_completions", options.baseUrl);
   }
@@ -116,13 +115,14 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     }, model, context, options);
   }
   async complete(messages: ChatMessage[], tools: ToolRegistry, signal?: AbortSignal, onToken?: (token: string) => void, _invocation?: ModelInvocation, onThinking?: (thinking: string) => void): Promise<ModelResponse> {
+    signal?.throwIfAborted();
     const timeoutMs = this.options.timeoutMs ?? 120_000;
     const controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener("abort", abort, { once: true });
     let timedOut = false; const timeout = createIdleTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
+      const endpoint = openAiEndpoint(this.options.baseUrl, this.options.apiFormat ?? "openai_chat_completions");
       const definitions = tools.list().slice().sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map((tool) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema }));
       const apiMessages = messages.map((message) => {
         const normalized = normalizeChatContent(message);
@@ -152,7 +152,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
         const content = responseInputContent(message.content);
         return typeof content === "string" ? content : content.filter((block) => block.type === "input_text").map((block) => String(block.text ?? "")).join("\n");
       }).filter(Boolean).join("\n\n");
-      const reasoning = isReasoningModel(this.options.model) || Boolean(this.options.reasoningEffort);
+      const reasoning = isOpenAiReasoningModel(this.options.model) || Boolean(this.options.reasoningEffort);
       // 采样抑制独立于字段选择：画像判定的思考型端点（如 deepseek-reasoner）同样拒绝采样参数。
       const suppressSampling = reasoning || this.capabilities.suppressSampling;
       // These flags are deliberately limited to the official endpoint. They are
@@ -167,11 +167,20 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       // everything else relies on server-side automatic prefix caching.
       const cacheKey = this.cacheControl && this.capabilities.cache === "openai_prompt_cache_key"
         ? { prompt_cache_key: createHash("sha256").update(JSON.stringify([this.options.model, system, definitions])).digest("hex") } : {};
-      const response = await fetch(`${base}/${responses ? "responses" : "chat/completions"}`, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json" }, body: JSON.stringify({ ...body, ...cacheKey, ...(this.options.compat?.extraBody ?? {}) }), signal: controller.signal });
-      if (!response.ok) throw await providerHttpError(response, "OpenAI-compatible");
+      const requestBody: Record<string, unknown> = { ...body, ...cacheKey, ...(this.options.compat?.extraBody ?? {}) };
+      this.applyGatewayParams(requestBody);
+      let response: Response;
+      for (let attempt = 0; ; attempt += 1) {
+        response = await fetch(endpoint, { method: "POST", headers: { ...(this.options.apiKey ? { authorization: `Bearer ${this.options.apiKey}` } : {}), ...(this.options.compat?.headers ?? {}), "content-type": "application/json", accept: this.options.stream ? "text/event-stream, application/json" : "application/json" }, body: JSON.stringify(requestBody), signal: controller.signal });
+        if (response.ok) break;
+        const error = await providerHttpError(response, "OpenAI-compatible");
+        if (attempt >= 2 || !this.learnGatewayParam(error, requestBody)) throw error;
+        this.applyGatewayParams(requestBody);
+      }
       timeout.reset();
-      if (this.options.stream && response.body && response.headers.get("content-type")?.includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking, timeout.reset);
+      if (this.options.stream && response.body && response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")) return await this.parseStream(response, responses, onToken, onThinking, timeout.reset, controller.signal);
       const payload = await response.json() as OpenAiResponse & ResponsesResponse;
+      if (payload.error || payload.status === "failed") throw streamApiError(payload.error);
       if (responses) return this.parseResponses(payload, onThinking);
       const selectedChoice = payload.choices?.[0];
       const choice = selectedChoice?.message;
@@ -183,35 +192,88 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       });
       if (choice.reasoning_content) onThinking?.(choice.reasoning_content);
       return { text: choice.content ?? "", ...(choice.reasoning_content ? { reasoning_content: choice.reasoning_content } : {}), tool_calls: toolCalls, stop_reason: normalizeStopReason(selectedChoice?.finish_reason, toolCalls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(totalInputTokens(payload.usage), cacheReadTokens(payload.usage)), output_tokens: Number(payload.usage?.output_tokens ?? payload.usage?.completion_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(payload.usage) } };
-    } catch (error) { if (timedOut) throw new ProviderTimeoutError("OpenAI-compatible", timeoutMs); throw error; } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      if (error instanceof ProviderError && error.details.partialResponse) throw error;
+      if (timedOut) throw new ProviderTimeoutError("OpenAI-compatible", timeoutMs);
+      if (error instanceof TypeError && /fetch failed/i.test(error.message)) {
+        const code = (error.cause as { code?: unknown } | undefined)?.code;
+        throw new ProviderError(`OpenAI-compatible connection failed${typeof code === "string" ? ` (${code})` : ""}; check the API address, port, network and TLS certificate`, { retryable: true, billingEffect: "unknown" });
+      }
+      throw error;
+    } finally { timeout.clear(); signal?.removeEventListener("abort", abort); }
   }
 
   private get cacheControl(): boolean { return Boolean(this.options.cacheControl) && !this.options.compat?.disableCacheControl; }
+  private applyGatewayParams(body: Record<string, unknown>): void {
+    for (const param of this.rejectedGatewayParams) {
+      if (param === "max_completion_tokens" && body[param] !== undefined) body.max_tokens = body[param];
+      delete body[param];
+    }
+  }
+
+  private learnGatewayParam(error: ProviderError, body: Record<string, unknown>): boolean {
+    if (isOfficialOpenAiEndpoint(this.options.baseUrl) || ![400, 422].includes(error.details.status ?? 0)) return false;
+    if (!/unsupported|unknown|unrecognized|not supported|not allowed|unexpected|extra inputs are not permitted/i.test(error.message)) return false;
+    // Never silently drop reasoning, tools, authentication or change APIs.
+    const param = ["stream_options", "max_completion_tokens"].find((key) => body[key] !== undefined && new RegExp(`\\b${key}\\b`).test(error.message));
+    if (!param || (param === "max_completion_tokens" && body.max_tokens !== undefined)) return false;
+    this.rejectedGatewayParams.add(param);
+    return true;
+  }
   private samplingParams(suppressSampling = false): Record<string, unknown> {
     const { temperature, topP, compat } = this.options;
     return { ...(temperature != null && !suppressSampling && !compat?.dropTemperature ? { temperature } : {}), ...(topP != null && !suppressSampling && !compat?.dropTopP ? { top_p: topP } : {}) };
   }
 
-  private async parseStream(response: Response, responses: boolean, onToken?: (token: string) => void, onThinking?: (thinking: string) => void, onProgress?: () => void): Promise<ModelResponse> {
+  private async parseStream(response: Response, responses: boolean, onToken?: (token: string) => void, onThinking?: (thinking: string) => void, onProgress?: () => void, signal?: AbortSignal): Promise<ModelResponse> {
     const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = ""; let text = ""; let reasoning_content = ""; let stopReason: string | null | undefined; const calls = new Map<number, { id: string; name: string; args: string }>(); let usage: ResponsesResponse["usage"] & OpenAiResponse["usage"] = {};
+    let terminal = false; let doneMarker = false;
     const consume = (raw: string) => {
-      if (raw === "[DONE]") return;
-      let event: any; try { event = JSON.parse(raw); } catch { return; }
+      if (raw === "[DONE]") { doneMarker = true; if (!responses) terminal = true; return; }
+      let event: any;
+      try { event = JSON.parse(raw); }
+      catch { throw new ProviderError("OpenAI-compatible stream contains invalid JSON", { retryable: true, billingEffect: "unknown" }); }
+      if (event.type === "error" || event.type === "response.failed" || event.error) throw streamApiError(event.error ?? event.response?.error ?? event);
       if (responses) {
         if (event.type === "response.output_text.delta") { const token = String(event.delta ?? ""); text += token; onToken?.(token); }
         else if (event.type === "response.reasoning_summary_text.delta" || event.type === "response.reasoning_text.delta") { const thinking = String(event.delta ?? ""); if (thinking) { reasoning_content += thinking; onThinking?.(thinking); } }
         else if (event.type === "response.function_call_arguments.delta") { const index = Number(event.output_index ?? 0); const current = calls.get(index) ?? { id: String(event.item_id ?? `call_${index}`), name: "", args: "" }; current.args += String(event.delta ?? ""); calls.set(index, current); }
         else if (event.type === "response.output_item.added" && event.item?.type === "function_call") { const index = Number(event.output_index ?? calls.size); calls.set(index, { id: String(event.item.call_id ?? event.item.id ?? `call_${index}`), name: String(event.item.name ?? ""), args: String(event.item.arguments ?? "") }); }
-        else if (event.type === "response.completed" || event.type === "response.incomplete") { usage = event.response?.usage ?? {}; stopReason = responsesStopReason(event.response?.status, event.response?.incomplete_details); }
+        else if (event.type === "response.output_item.done" && event.item?.type === "function_call") { const index = Number(event.output_index ?? 0); calls.set(index, { id: String(event.item.call_id ?? event.item.id ?? `call_${index}`), name: String(event.item.name ?? ""), args: String(event.item.arguments ?? calls.get(index)?.args ?? "") }); }
+        else if (event.type === "response.completed" || event.type === "response.incomplete") { usage = event.response?.usage ?? {}; stopReason = responsesStopReason(event.response?.status, event.response?.incomplete_details); terminal = true; }
       } else {
-        const chunk = event as OpenAiResponse; const choice = chunk.choices?.[0]; const delta = choice?.delta; if (choice?.finish_reason) stopReason = choice.finish_reason; const reasoning = delta?.reasoning_content ?? ""; if (reasoning) { reasoning_content += reasoning; onThinking?.(reasoning); } const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
+        const chunk = event as OpenAiResponse; const choice = chunk.choices?.[0]; const delta = choice?.delta; if (choice?.finish_reason) { stopReason = choice.finish_reason; terminal = true; } const reasoning = delta?.reasoning_content ?? ""; if (reasoning) { reasoning_content += reasoning; onThinking?.(reasoning); } const token = delta?.content ?? ""; if (token) { text += token; onToken?.(token); } for (const call of delta?.tool_calls ?? []) { const index = Number(call.index ?? 0); const current = calls.get(index) ?? { id: call.id ?? `call_${index}`, name: "", args: "" }; if (call.id) current.id = call.id; if (call.function?.name) current.name += call.function.name; if (call.function?.arguments) current.args += call.function.arguments; calls.set(index, current); } if (chunk.usage) usage = chunk.usage; }
     };
-    while (true) { const { value, done } = await reader.read(); if (done) break; onProgress?.(); buffer += decoder.decode(value, { stream: true }); const rows = buffer.split(/\r?\n\r?\n/); buffer = rows.pop() ?? ""; for (const row of rows) { const data = row.split(/\r?\n/).find((line) => line.startsWith("data:")); if (data) consume(data.slice(5).trim()); } }
+    const consumeFrame = (frame: string) => {
+      const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n").trim();
+      if (data) consume(data);
+    };
+    try {
+      while (!doneMarker && !(responses && terminal)) {
+        signal?.throwIfAborted();
+        const { value, done } = await reader.read();
+        if (done) { buffer += decoder.decode(); if (buffer.trim()) consumeFrame(buffer); break; }
+        onProgress?.(); buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split(/\r?\n\r?\n/); buffer = frames.pop() ?? "";
+        for (const frame of frames) { consumeFrame(frame); if (doneMarker || (responses && terminal)) break; }
+      }
+      if (!terminal) throw new ProviderError("OpenAI-compatible stream disconnected before completion", { retryable: true, billingEffect: "unknown" });
+    } catch (error) {
+      const partialResponse = Boolean(text || reasoning_content || calls.size);
+      if (signal?.aborted && !partialResponse) throw error;
+      const details = error instanceof ProviderError ? error.details : { retryable: true, billingEffect: "unknown" as const };
+      throw new ProviderError(error instanceof Error ? error.message : "OpenAI-compatible stream failed", { ...details, partialResponse, ...(partialResponse ? { retryable: false, retryExhausted: true } : {}) });
+    } finally {
+      try { await reader.cancel(); } catch { /* Failed streams may already be closed. */ }
+      reader.releaseLock();
+    }
     const tool_calls = [...calls.values()].filter((call) => call.name).map((call) => ({ id: call.id, name: call.name, input: parseToolArguments(call.args) }));
     return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(stopReason, tool_calls.length > 0), model: this.options.model, streamed: true, usage: { input_tokens: netInputTokens(totalInputTokens(usage), cacheReadTokens(usage)), output_tokens: Number((usage as any).output_tokens ?? (usage as any).completion_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(usage) } };
   }
 
   private parseResponses(payload: ResponsesResponse, onThinking?: (thinking: string) => void): ModelResponse {
+    if (!Array.isArray(payload.output) && typeof payload.output_text !== "string") throw new ProviderError("OpenAI-compatible response did not contain Responses output; check the selected API format", { retryable: false, billingEffect: "unknown" });
     const output = Array.isArray(payload.output) ? payload.output : [];
     const text = payload.output_text ?? output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []).filter((part) => part.type === "output_text" || part.type === "text").map((part) => part.text ?? "").join("");
     const reasoning_content = output.filter((item) => item.type === "reasoning").flatMap((item) => item.summary ?? item.content ?? []).filter((part) => part.type === "summary_text" || part.type === "reasoning_text" || part.type === "text").map((part) => part.text ?? "").join("\n");
@@ -222,6 +284,13 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     });
     return { text, ...(reasoning_content ? { reasoning_content } : {}), tool_calls, stop_reason: normalizeStopReason(responsesStopReason(payload.status, payload.incomplete_details), tool_calls.length > 0), model: this.options.model, usage: { input_tokens: netInputTokens(Number(payload.usage?.input_tokens ?? 0), cacheReadTokens(payload.usage)), output_tokens: Number(payload.usage?.output_tokens ?? 0), cache_read_input_tokens: cacheReadTokens(payload.usage) } };
   }
+}
+
+function streamApiError(error?: { message?: string; code?: string }): ProviderError {
+  const code = error?.code ?? "";
+  return new ProviderError(`OpenAI-compatible API error${code ? ` (${code})` : ""}: ${error?.message ?? "Response generation failed"}`, {
+    retryable: /server_error|rate_limit|overload|timeout/i.test(code), billingEffect: "unknown",
+  });
 }
 
 function responsesStopReason(status?: string, details?: { reason?: string | null }): string | undefined {

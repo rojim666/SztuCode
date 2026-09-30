@@ -1,10 +1,13 @@
-import { anthropicReasoningParams, openaiReasoningParams, validateReasoningEffort } from "./providers/reasoning.js";
+import { anthropicReasoningParams, validateReasoningEffort } from "./providers/reasoning.js";
 import path from "node:path";
 import net from "node:net";
 import type { JsonRpcRequest, JsonRpcResponse } from "@sztucode/protocol";
 import { SkillLoader } from "./skills.js";
 import { SettingsStore } from "./settings.js";
 import { recommendedOpenAiApiFormat } from "./providers/model-capabilities.js";
+import { OpenAiCompatibleProvider } from "./providers/openai.js";
+import { ToolRegistry } from "./tools.js";
+import { credentialFor } from "./providers/configurable.js";
 export class RpcDispatchError extends Error { constructor(readonly code: number, message: string, readonly data?: unknown) { super(message); } }
 const SESSION_BUSY = -32012;
 const INVALID_PARAMS = -32602;
@@ -103,15 +106,28 @@ export function validateSetting(key: SettingsUpdateKey, value: unknown): void {
 export async function probeModel(input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const started = Date.now(); const apiFormat = String(input.api_format ?? (input.provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions")); const model = String(input.model ?? "").trim();
   if (!model) return { success: false, api_format: apiFormat, model, elapsed_ms: Date.now() - started, input_tokens: 0, output_tokens: 0, error: "model is required" };
-  const base = String(input.base_url ?? "").replace(/\/$/, "") || (apiFormat === "anthropic_messages" ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1");
-  const headers: Record<string, string> = { "content-type": "application/json" }; const apiKey = typeof input.api_key === "string" ? input.api_key : "";
-  if (input.keyless !== true && apiKey) { if (apiFormat === "anthropic_messages") { headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01"; } else headers.authorization = `Bearer ${apiKey}`; }
-  const url = `${base}/${apiFormat === "anthropic_messages" ? "messages" : apiFormat === "openai_responses" ? "responses" : "chat/completions"}`;
+  validateSetting("api_format", apiFormat);
+  const apiKey = typeof input.api_key === "string" ? input.api_key.trim() : "";
   const effort = input.reasoning_effort ?? "";
   validateReasoningEffort(effort);
   const maxTokens = effort ? Number(input.max_output_tokens ?? 8192) : 64;
   validateSetting("max_output_tokens", maxTokens);
-  const body = apiFormat === "anthropic_messages" ? { model, ...anthropicReasoningParams(effort, maxTokens), messages: [{ role: "user", content: "Reply OK." }] } : apiFormat === "openai_responses" ? { model, input: "Reply OK.", max_output_tokens: maxTokens, ...openaiReasoningParams(effort, true) } : { model, messages: [{ role: "user", content: "Reply OK." }], max_completion_tokens: maxTokens, ...openaiReasoningParams(effort, false) };
+  if (apiFormat === "openai_chat_completions" || apiFormat === "openai_responses") {
+    try {
+      const result = await new OpenAiCompatibleProvider({
+        model, apiFormat, baseUrl: String(input.base_url ?? ""), apiKey: input.keyless === true ? undefined : apiKey || credentialFor(String(input.provider ?? "openai")),
+        reasoningEffort: effort, maxOutputTokens: maxTokens, stream: true, timeoutMs: Math.min(300, Math.max(1, Number(input.timeout_s ?? 30))) * 1000,
+      }).complete([{ role: "user", content: "Reply OK." }], new ToolRegistry());
+      return { success: true, api_format: apiFormat, model, elapsed_ms: Date.now() - started, input_tokens: Number(result.usage?.input_tokens ?? 0) + Number(result.usage?.cache_read_input_tokens ?? 0), output_tokens: Number(result.usage?.output_tokens ?? 0), error: null };
+    } catch (cause) {
+      return { success: false, api_format: apiFormat, model, elapsed_ms: Date.now() - started, input_tokens: 0, output_tokens: 0, error: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+  const base = String(input.base_url ?? "").trim().replace(/\/$/, "") || "https://api.anthropic.com/v1";
+  const url = `${base}/messages`;
+  const headers: Record<string, string> = { "content-type": "application/json", "anthropic-version": "2023-06-01" };
+  if (input.keyless !== true && apiKey) headers["x-api-key"] = apiKey;
+  const body = { model, ...anthropicReasoningParams(effort, maxTokens), messages: [{ role: "user", content: "Reply OK." }] };
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), Math.min(300, Math.max(1, Number(input.timeout_s ?? 30))) * 1000);
   try {
     const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });

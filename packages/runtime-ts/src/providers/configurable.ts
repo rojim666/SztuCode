@@ -26,7 +26,7 @@ const PROVIDER_ENV: Record<string, { key?: string; base?: string }> = {
   anthropic: { key: "ANTHROPIC_API_KEY", base: "ANTHROPIC_BASE_URL" },
 };
 function envFor(provider: string) { return PROVIDER_ENV[provider.toLowerCase()] ?? PROVIDER_ENV.openai; }
-function credentialFor(provider: string): string | undefined {
+export function credentialFor(provider: string): string | undefined {
   const env = envFor(provider);
   const name = provider.toUpperCase().replace(/[^A-Z0-9]/g, "_");
   return (env.key ? process.env[env.key] : undefined)
@@ -42,14 +42,14 @@ function providerSignature(config: ProviderConfig): string {
 
 function buildPrimary(config: ProviderConfig): ModelProvider {
   if (config.provider === "anthropic" || config.api_format === "anthropic_messages") {
-    const apiKey = config.api_key ?? credentialFor(config.provider);
+    const apiKey = config.api_key?.trim() || credentialFor(config.provider);
     if (!apiKey) throw new Error("Anthropic API key is not configured");
     return new AnthropicMessagesProvider({ apiKey, baseUrl: config.base_url || process.env.ANTHROPIC_BASE_URL, model: config.model, maxTokens: config.max_output_tokens, timeoutMs: config.timeout_s * 1000, temperature: config.temperature, topP: config.top_p, reasoningEffort: config.reasoning_effort, cacheControl: config.cache_control });
   }
   const env = envFor(config.provider);
   const baseUrl = config.base_url || (env.base ? process.env[env.base] : undefined);
   const envKey = credentialFor(config.provider);
-  const apiKey = config.keyless ? undefined : config.api_key ?? envKey;
+  const apiKey = config.keyless ? undefined : config.api_key?.trim() || envKey;
   if (!config.keyless && !apiKey) throw new Error("OpenAI-compatible API key is not configured");
   return new OpenAiCompatibleProvider({ apiKey, baseUrl, model: config.model, maxOutputTokens: config.max_output_tokens, temperature: config.temperature, topP: config.top_p, reasoningEffort: config.reasoning_effort, timeoutMs: config.timeout_s * 1000, stream: true, cacheControl: config.cache_control, apiFormat: config.api_format });
 }
@@ -62,12 +62,12 @@ function buildAuxiliary(config: ProviderConfig): ModelProvider | null {
   const apiFormat = config.aux_api_format ?? (provider === "anthropic" ? "anthropic_messages" : "openai_chat_completions");
   const timeoutMs = (config.aux_timeout_s ?? 60) * 1000;
   if (provider === "anthropic" || apiFormat === "anthropic_messages") {
-    const apiKey = config.aux_api_key ?? credentialFor(provider);
+    const apiKey = config.aux_api_key?.trim() || credentialFor(provider);
     if (!apiKey) return null;
     return new AnthropicMessagesProvider({ apiKey, baseUrl: config.aux_base_url || process.env.ANTHROPIC_BASE_URL, model, maxTokens: config.aux_max_output_tokens, timeoutMs, cacheControl: config.cache_control });
   }
   const auxEnv = envFor(provider);
-  const apiKey = config.aux_api_key ?? credentialFor(provider);
+  const apiKey = config.aux_api_key?.trim() || credentialFor(provider);
   if (!apiKey) return null;
   return new OpenAiCompatibleProvider({ apiKey, baseUrl: config.aux_base_url || (auxEnv.base ? process.env[auxEnv.base] : undefined), model, apiFormat, maxOutputTokens: config.aux_max_output_tokens, timeoutMs, stream: true, cacheControl: config.cache_control });
 }

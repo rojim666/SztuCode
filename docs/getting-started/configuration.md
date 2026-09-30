@@ -33,6 +33,20 @@ OPENAI_API_KEY=<your-api-key>
 OPENAI_BASE_URL=https://api.example.com/v1
 ```
 
+### TypeScript 版连接外部 OpenAI 网关
+
+在桌面模型管理页填写网关的 **Base URL**、**API Key** 和网关支持的模型 ID，选择对应的 `openai_chat_completions` 或 `openai_responses` 格式。也可以通过 `OPENAI_BASE_URL` 配置地址，例如：
+
+```dotenv
+OPENAI_BASE_URL=https://gateway.example.com:8443/proxy/v1
+```
+
+地址可以包含显式端口、网关路径前缀和查询参数，也可直接填写完整的 `/chat/completions` 或 `/responses` 端点。只填写域名或 `http://127.0.0.1:8080` 时，默认补上 `/v1`；已有路径则保留。完整端点的末尾按选定 API 格式替换，避免重复追加。桌面“测试连接”和 Agent 调用共用地址处理及 OpenAI 请求适配逻辑。
+
+网关明确以 HTTP 400/422 拒绝 `stream_options` 时，运行时移除该可选字段；拒绝 `max_completion_tokens` 时改用 `max_tokens`，保持原 token 上限。每次调用最多做两次适配，成功识别的参数限制由当前 Provider 实例记住。推理、工具和 API 格式不会因参数错误而被自动更改。官方专用缓存提示和存储字段不发送给第三方网关。
+
+流式连接使用首字节及空闲超时，有数据或心跳到达时续期。断流、格式损坏和 API 错误会明确失败；已经收到文本、思考或工具调用片段后，不再自动重放请求。API Key 留空时，正式调用回退到对应环境变量；免密网关仍需显式启用 keyless。外部地址配置用于出站 API 请求，daemon 的 `SZTU_TS_PORT` 是独立配置。
+
 免密 OpenAI-compatible 端点必须显式启用 keyless：
 
 ```dotenv

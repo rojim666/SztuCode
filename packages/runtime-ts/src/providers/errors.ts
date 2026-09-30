@@ -52,10 +52,12 @@ export function retryableProviderError(error: unknown): boolean {
 }
 
 export async function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
   if (delayMs <= 0) return;
   await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, delayMs);
-    const abort = () => { clearTimeout(timer); reject(signal?.reason instanceof Error ? signal.reason : new Error("Provider retry aborted")); };
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const timer = setTimeout(() => { cleanup(); resolve(); }, delayMs);
+    const abort = () => { clearTimeout(timer); cleanup(); reject(signal?.reason instanceof Error ? signal.reason : new Error("Provider retry aborted")); };
     signal?.addEventListener("abort", abort, { once: true });
   });
 }

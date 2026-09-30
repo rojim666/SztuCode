@@ -50,17 +50,18 @@ const FAMILY_PATTERNS: Array<[ModelFamily, RegExp]> = [
 ];
 
 export function detectModelFamily(model: string): ModelFamily {
-  for (const [family, pattern] of FAMILY_PATTERNS) if (pattern.test(model)) return family;
+  const modelId = model.replace(/^openai\//i, "");
+  for (const [family, pattern] of FAMILY_PATTERNS) if (pattern.test(modelId)) return family;
   return "unknown";
 }
 
 /** 与既有行为保持等价：o 系列 / gpt-5+ / 名字带 reasoning 的模型按推理模型处理。 */
 function openaiReasoningModel(model: string): boolean {
-  return /^o[1-9]|^gpt-5|reasoning/i.test(model);
+  return /^o[1-9](?:-|$)|^gpt-(?:[5-9]|[1-9]\d)(?:[.-]|$)|reasoning/i.test(model.replace(/^openai\//i, ""));
 }
 
 export function isOfficialOpenAiEndpoint(baseUrl?: string): boolean {
-  try { return (baseUrl ? new URL(baseUrl).hostname : "api.openai.com") === "api.openai.com"; }
+  try { return (baseUrl?.trim() ? new URL(baseUrl.trim()).hostname : "api.openai.com") === "api.openai.com"; }
   catch { return false; }
 }
 
@@ -99,12 +100,7 @@ function suppressSamplingFor(model: string): boolean {
  */
 export function promptCacheMechanism(apiFormat: "anthropic_messages" | "openai_chat_completions" | "openai_responses", baseUrl?: string): PromptCacheMechanism {
   if (apiFormat === "anthropic_messages") return "anthropic_cache_control";
-  try {
-    const hostname = baseUrl ? new URL(baseUrl).hostname : "api.openai.com";
-    return hostname === "api.openai.com" ? "openai_prompt_cache_key" : "server_auto_prefix";
-  } catch {
-    return "server_auto_prefix";
-  }
+  return isOfficialOpenAiEndpoint(baseUrl) ? "openai_prompt_cache_key" : "server_auto_prefix";
 }
 
 export function detectModelCapabilities(model: string, apiFormat: "anthropic_messages" | "openai_chat_completions" | "openai_responses", baseUrl?: string): ModelCapabilities {
