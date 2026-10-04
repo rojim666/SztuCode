@@ -175,16 +175,44 @@ class AnthropicProvider:
 
         text_parts: list[str] = []
         final_message: Any = None
+        # 标记本step 是否已流式发布过思考，避免结束时重复补发整块
+        streamed_thinking = False
 
         for attempt in range(1, _MAX_STREAM_RETRIES + 1):
             text_parts = []
+            streamed_thinking = False
             try:
                 async with self._client.messages.stream(**kwargs) as stream:
-                    async for text in stream.text_stream:
-                        # Only publish token events on the first attempt to avoid TUI duplicates
-                        if attempt == 1:
-                            await bus.publish(LlmTokenEvent(run_id=run_id, token=text, ts=_now()))
-                        text_parts.append(text)
+                    # 优先迭代底层事件流，可同时拿到 text_delta 与 thinking_delta，
+                    # 使思考与正文都能逐段流出；SDK 未暴露该接口时回退到 text_stream
+                    raw_stream = getattr(stream, "__stream__", None)
+                    if raw_stream is None:
+                        async for text in stream.text_stream:
+                            if attempt == 1 and text:
+                                await bus.publish(
+                                    LlmTokenEvent(run_id=run_id, token=str(text), ts=_now())
+                                )
+                            text_parts.append(str(text))
+                    else:
+                        async for event in raw_stream():
+                            event_type = getattr(event, "type", "")
+                            if event_type == "text":
+                                text = str(getattr(event, "text", "") or "")
+                                # 仅首次尝试发布 token 事件，避免重试时 TUI 出现重复内容
+                                if attempt == 1 and text:
+                                    await bus.publish(
+                                        LlmTokenEvent(run_id=run_id, token=text, ts=_now())
+                                    )
+                                text_parts.append(text)
+                            elif event_type == "thinking" and attempt == 1:
+                                delta = str(getattr(event, "thinking", "") or "")
+                                if delta:
+                                    streamed_thinking = True
+                                    await bus.publish(
+                                        LlmThinkingEvent(
+                                            run_id=run_id, step=step, thinking=delta, ts=_now()
+                                        )
+                                    )
                     final_message = await stream.get_final_message()
                 break  # success
             except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as exc:
@@ -246,7 +274,8 @@ class AnthropicProvider:
                     }
                 )
 
-        if thinking_blocks:
+        # 思考已在流式阶段逐段发布，这里仅在未流式发布过（例如全部重试失败后走兜底）时补发整块
+        if thinking_blocks and not streamed_thinking:
             await bus.publish(
                 LlmThinkingEvent(
                     run_id=run_id,

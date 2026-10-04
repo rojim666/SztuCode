@@ -7,7 +7,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
+from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -77,6 +79,50 @@ class LLMStreamBlock(Static):
         self._finalized = True
         if self._text.strip():
             self.update(Markdown(self._text, code_theme="monokai"))
+
+
+class ThinkingBlock(Static):
+    """累积模型思考过程的块，标签随完成状态在「当前判断」与「过程说明」间切换。"""
+
+    DEFAULT_CSS = """
+    ThinkingBlock { height: auto; padding: 0 2; color: $text-muted; }
+    ThinkingBlock > .thinking-label { color: $text-muted; }
+    ThinkingBlock > .thinking-body { color: $text-muted; }
+    """
+
+    # 初始化为空思考块
+    def __init__(self) -> None:
+        super().__init__("")
+        self._text = ""
+        self._finalized = False
+
+    # 追加一段思考内容并刷新显示
+    def append_thinking(self, text: str) -> None:
+        if self._finalized or not text:
+            return
+        self._text += text
+        self._repaint()
+
+    # 将思考块标记为已完成并固定标签
+    def finalize(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        if self._text.strip():
+            self._repaint()
+
+    # 依据当前完成状态选择标签并重绘
+    def _render_body(self) -> Group:
+        label = "过程说明" if self._finalized else "当前判断"
+        parts: list[RenderableType] = [Text(label, style="dim")]
+        body = self._text.strip()
+        if body:
+            parts.append(Text(body, style="dim"))
+        return Group(*parts)
+
+    # 触发重新渲染
+    def _repaint(self) -> None:
+        self.update(self._render_body())
 
 
 class ToolCallBlock(Widget):
@@ -714,6 +760,7 @@ class KamaTuiApp(App[None]):
         self._replay_run_id = replay_run_id
         self._client: SocketClient | None = None
         self._current_llm: LLMStreamBlock | None = None
+        self._current_thinking: ThinkingBlock | None = None
         self._pending_tool_blocks: dict[str, ToolCallBlock] = {}
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = None
@@ -1231,6 +1278,10 @@ class KamaTuiApp(App[None]):
         if self._current_llm is not None:
             self._current_llm.finalize_markdown()
         self._current_llm = None
+        # 思考块随流式段落结束而定稿，标签从「当前判断」切换为「过程说明」
+        if self._current_thinking is not None:
+            self._current_thinking.finalize()
+        self._current_thinking = None
 
     # 将选择控件挂载到 Screen 顶层（#prompt 之前），避免 VerticalScroll 争抢焦点
     def _mount_permission_select(self, select: PermissionSelect) -> None:
@@ -1327,9 +1378,8 @@ class KamaTuiApp(App[None]):
                         "run.*",
                         "step.*",
                         "tool.*",
-                        "llm.model_selected",
-                        "llm.token",
-                        "llm.usage",
+                        # 用通配符覆盖 llm.thinking 等全部 LLM 事件，避免逐个枚举时遗漏
+                        "llm.*",
                         "log.*",
                         "permission.*",
                         "context.*",
@@ -1407,6 +1457,17 @@ class KamaTuiApp(App[None]):
                 self._append(llm_block)
                 self._current_llm = llm_block
             self._current_llm.append_token(token)
+            return
+
+        if t == "llm.thinking":
+            thinking = str(event.get("thinking") or "")
+            if not thinking:
+                return
+            if self._current_thinking is None:
+                thinking_block = ThinkingBlock()
+                self._append(thinking_block)
+                self._current_thinking = thinking_block
+            self._current_thinking.append_thinking(thinking)
             return
 
         self._break_llm()

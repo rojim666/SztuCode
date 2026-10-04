@@ -217,3 +217,89 @@ async def test_thinking_block_published_to_timeline() -> None:
     assert thinking_events[0].step == 0  # type: ignore[attr-defined]
     assert thinking_events[0].thinking == "inspect project structure"  # type: ignore[attr-defined]
     assert result.thinking_blocks[0]["thinking"] == "inspect project structure"
+
+
+class _FakeRawEvent:
+    """模拟 Anthropic SDK 的流式事件对象，仅提供 type 与对应负载字段。"""
+
+    def __init__(self, type_: str, text: str = "", thinking: str = "") -> None:
+        self.type = type_
+        self.text = text
+        self.thinking = thinking
+
+
+class _FakeRawStream(FakeStream):
+    """暴露 __stream__ 的假流，用于验证 thinking 增量与正文增量同时流出。"""
+
+    def __init__(self, events: list[_FakeRawEvent], final: MagicMock) -> None:
+        super().__init__([], final)
+        self._events = events
+
+    def __stream__(self):  # type: ignore[override]
+        async def _gen():
+            for event in self._events:
+                yield event
+
+        return _gen()
+
+
+def _make_raw_provider(
+    events: list[_FakeRawEvent], content: list[MagicMock]
+) -> AnthropicProvider:
+    final = _make_final("end_turn", content, 100, 50, 0)
+    client = MagicMock()
+    client.messages.stream.return_value = _FakeRawStream(events, final)
+    return AnthropicProvider(model="test-model", client=client)
+
+
+# 功能：验证 Anthropic 思考随流式增量逐段发布，且与最终整块不重复
+# 设计：构造含两次 thinking 增量与一次 text 增量的原始事件流，断言发布两个 llm.thinking
+#      且内容分别为两段增量、正文仍逐 token 发布；final 同时带 thinking block，
+#      用于验证流式已发布后不再补发整块，避免客户端收到重复内容
+async def test_thinking_streamed_incrementally_without_duplicate_final() -> None:
+    thinking_block = MagicMock()
+    thinking_block.type = "thinking"
+    thinking_block.thinking = "part1part2"
+    thinking_block.signature = "sig-1"
+    provider = _make_raw_provider(
+        [
+            _FakeRawEvent("thinking", thinking="part1"),
+            _FakeRawEvent("text", text="answer"),
+            _FakeRawEvent("thinking", thinking="part2"),
+        ],
+        [thinking_block],
+    )
+
+    result, events = await _chat(provider)
+
+    thinking_events = [e for e in events if e.type == "llm.thinking"]  # type: ignore[attr-defined]
+    assert len(thinking_events) == 2
+    assert thinking_events[0].thinking == "part1"  # type: ignore[attr-defined]
+    assert thinking_events[1].thinking == "part2"  # type: ignore[attr-defined]
+
+    token_events = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
+    assert [t.token for t in token_events] == ["answer"]  # type: ignore[attr-defined]
+
+    # 流式内容必须原样保留在响应里，供后续请求逐字回传thinking block
+    assert result.thinking_blocks[0]["thinking"] == "part1part2"
+    assert result.thinking_blocks[0]["signature"] == "sig-1"
+
+
+# 功能：验证 SDK 未暴露 __stream__ 时回退到 text_stream，思考改由结束时整块补发
+# 设计：FakeStream 只提供 text_stream（无 __stream__），断言正文仍逐 token 发布，
+#      且思考事件恰好一个、内容为 final 中的整块，覆盖降级路径不丢思考
+async def test_thinking_falls_back_to_text_stream_when_raw_stream_missing() -> None:
+    thinking_block = MagicMock()
+    thinking_block.type = "thinking"
+    thinking_block.thinking = "whole-block"
+    thinking_block.signature = "sig-2"
+    provider, _ = _make_provider(texts=["a", "b"], content=[thinking_block])
+
+    _result, events = await _chat(provider)
+
+    tokens = [e for e in events if e.type == "llm.token"]  # type: ignore[attr-defined]
+    assert [t.token for t in tokens] == ["a", "b"]  # type: ignore[attr-defined]
+
+    thinking_events = [e for e in events if e.type == "llm.thinking"]  # type: ignore[attr-defined]
+    assert len(thinking_events) == 1
+    assert thinking_events[0].thinking == "whole-block"  # type: ignore[attr-defined]
