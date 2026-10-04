@@ -7,7 +7,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from rich.console import Group, RenderableType
 from rich.markdown import Markdown
+from rich.text import Text
 from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -115,6 +117,68 @@ class LLMStreamBlock(Static):
         self._flush_pending = False
         if self._text.strip():
             self.update(Markdown(self._text, code_theme="monokai"))
+
+
+class ThinkingBlock(Static):
+    """累积模型思考过程，标签随完成状态在「当前判断」与「过程说明」间切换。"""
+
+    DEFAULT_CSS = "ThinkingBlock { height: auto; padding: 0 2; color: $text-muted; }"
+
+    # 流式刷新最小间隔：与 LLMStreamBlock 一致，避免高频思考分片触发整块重渲染
+    _MIN_FLUSH_INTERVAL = 0.03
+
+    # 初始化为空思考块
+    def __init__(self) -> None:
+        super().__init__("")
+        self._text = ""
+        self._finalized = False
+        self._last_flush = 0.0
+        self._flush_pending = False
+
+    # 追加一段思考内容；达到节流间隔才刷新，未刷新的内容由定时器兜底
+    def append_thinking(self, text: str) -> None:
+        if self._finalized or not text:
+            return
+        self._text += text
+        now = time.monotonic()
+        if now - self._last_flush >= self._MIN_FLUSH_INTERVAL:
+            self._last_flush = now
+            self._flush_pending = False
+            self.update(self._render_body())
+        elif not self._flush_pending:
+            self._flush_pending = True
+            if self.is_attached:
+                self.set_timer(self._MIN_FLUSH_INTERVAL, self._flush)
+            else:
+                # 未挂载（如测试直调）时直接刷新，避免内容滞留
+                self._flush_pending = False
+                self.update(self._render_body())
+
+    # 定时器兜底：补刷节流窗口内滞留的内容
+    def _flush(self) -> None:
+        self._flush_pending = False
+        if self._finalized:
+            return
+        self._last_flush = time.monotonic()
+        self.update(self._render_body())
+
+    # 定稿思考块，标签切换为「过程说明」
+    def finalize(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        self._flush_pending = False
+        if self._text.strip():
+            self.update(self._render_body())
+
+    # 依据当前完成状态渲染标签与思考正文
+    def _render_body(self) -> Group:
+        label = "过程说明" if self._finalized else "当前判断"
+        parts: list[RenderableType] = [Text(label, style="dim")]
+        body = self._text.strip()
+        if body:
+            parts.append(Text(body, style="dim"))
+        return Group(*parts)
 
 
 class ToolCallBlock(Widget):
@@ -946,6 +1010,7 @@ class SztuTuiApp(App[None]):
         self._replay_run_id = replay_run_id
         self._client: SocketClient | None = None
         self._current_llm: LLMStreamBlock | None = None
+        self._current_thinking: ThinkingBlock | None = None
         self._pending_tool_blocks: dict[str, ToolCallBlock] = {}
         self._pending_permission_blocks: dict[str, PermissionBlock] = {}
         self._session_id: str | None = session_id
@@ -1790,6 +1855,8 @@ class SztuTuiApp(App[None]):
             protected.add(self._run_block)
         if self._current_llm is not None:
             protected.add(self._current_llm)
+        if self._current_thinking is not None:
+            protected.add(self._current_thinking)
         protected.update(self._pending_tool_blocks.values())
         protected.update(self._pending_permission_blocks.values())
         removed = 0
@@ -1809,6 +1876,10 @@ class SztuTuiApp(App[None]):
         if self._current_llm is not None:
             self._current_llm.finalize_markdown()
         self._current_llm = None
+        # 思考块随流式段落一起定稿，标签从「当前判断」切换为「过程说明」
+        if self._current_thinking is not None:
+            self._current_thinking.finalize()
+        self._current_thinking = None
 
     # 将选择控件挂载到 Screen 顶层（#prompt 之前），避免 VerticalScroll 争抢焦点
     def _mount_permission_select(self, select: PermissionSelect) -> None:
@@ -1940,9 +2011,8 @@ class SztuTuiApp(App[None]):
                         "run.*",
                         "step.*",
                         "tool.*",
-                        "llm.model_selected",
-                        "llm.token",
-                        "llm.usage",
+                        # 用通配符覆盖 llm.thinking 等全部 LLM 事件，避免逐个枚举时遗漏
+                        "llm.*",
                         "log.*",
                         "permission.*",
                         "context.*",
@@ -2036,6 +2106,17 @@ class SztuTuiApp(App[None]):
                 self._append(llm_block)
                 self._current_llm = llm_block
             self._current_llm.append_token(token)
+            return
+
+        if t == "llm.thinking":
+            thinking = str(event.get("thinking") or "")
+            if not thinking:
+                return
+            if self._current_thinking is None:
+                thinking_block = ThinkingBlock()
+                self._append(thinking_block)
+                self._current_thinking = thinking_block
+            self._current_thinking.append_thinking(thinking)
             return
 
         self._break_llm()
