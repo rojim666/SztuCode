@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, writeFile, cp } from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { ContentBlock, ContextMessage } from "./context.js";
 import { base64ImageSource } from "./providers/image-utils.js";
 
@@ -109,11 +109,16 @@ export class SessionStore {
     const stored = await Promise.all(messages.map(async (message) => ({ ...message, content: await this.offloadContent(id, message.content) })));
     await writeFile(temporary, `${JSON.stringify(stored)}\n`, "utf8"); await rename(temporary, file);
   }
-  async appendRunEvent(id: string, event: SessionRunEvent): Promise<void> { await mkdir(path.join(this.root, id, "runs"), { recursive: true }); await writeFile(path.join(this.root, id, "runs", `${event.run_id ?? "unknown"}.jsonl`), `${JSON.stringify(event)}\n`, { encoding: "utf8", flag: "a" }); }
+  async appendRunEvent(id: string, event: SessionRunEvent): Promise<void> {
+    const stored = await this.mapEventImages(id, event, false);
+    await mkdir(path.join(this.root, id, "runs"), { recursive: true });
+    await writeFile(path.join(this.root, id, "runs", `${event.run_id ?? "unknown"}.jsonl`), `${JSON.stringify(stored)}\n`, { encoding: "utf8", flag: "a" });
+  }
   async runEvents(id: string, runId: string, maxEvents = 2_000): Promise<SessionRunEvent[]> {
     try {
       const rows = (await readFile(path.join(this.root, id, "runs", `${runId}.jsonl`), "utf8")).split(/\r?\n/).filter(Boolean);
-      return rows.slice(-Math.max(1, Math.min(maxEvents, 20_000))).flatMap((line) => { try { return [JSON.parse(line) as SessionRunEvent]; } catch { return []; } });
+      const events = rows.slice(-Math.max(1, Math.min(maxEvents, 20_000))).flatMap((line) => { try { return [JSON.parse(line) as SessionRunEvent]; } catch { return []; } });
+      return Promise.all(events.map((event) => this.mapEventImages(id, event, true)));
     } catch { return []; }
   }
   async findRunSession(runId: string): Promise<string | null> {
@@ -187,20 +192,32 @@ export class SessionStore {
     const bytes = Buffer.from(source.data, "base64");
     if (bytes.length <= SESSION_IMAGE_OFFLOAD_BYTES) return block;
     const imageRef = await this.persistImage(id, source.mediaType, bytes, (block.source as Record<string, unknown>).image_ref);
-    return { ...block, source: { media_type: source.mediaType, image_ref: imageRef, bytes: bytes.length } } as ContentBlock;
+    const { data: _data, ...metadata } = block.source as Record<string, unknown>;
+    return { ...block, source: { ...metadata, media_type: source.mediaType, image_ref: imageRef, bytes: bytes.length } } as ContentBlock;
   }
   private async persistImage(id: string, mediaType: string, bytes: Buffer, existingRef: unknown): Promise<string> {
     const directory = path.join(this.root, id, "images"); await mkdir(directory, { recursive: true });
     if (typeof existingRef === "string" && isSafeImageReference(existingRef)) {
       try { await readFile(path.join(this.root, id, existingRef)); return existingRef; } catch { /* copy the hydrated image below */ }
     }
-    const imageRef = path.posix.join("images", `${randomUUID()}.${imageExtension(mediaType)}`);
+    const imageRef = path.posix.join("images", `${createHash("sha256").update(bytes).digest("hex")}.${imageExtension(mediaType)}`);
     await writeFile(path.join(this.root, id, imageRef), bytes);
     return imageRef;
   }
   private async hydrateContent(id: string, content: string | ContentBlock[]): Promise<string | ContentBlock[]> {
     if (typeof content === "string") return content;
     return Promise.all(content.map((block) => this.hydrateBlock(id, block)));
+  }
+  private async mapEventImages(id: string, event: SessionRunEvent, hydrate: boolean): Promise<SessionRunEvent> {
+    if (!Array.isArray(event.images)) return event;
+    const images = await Promise.all(event.images.map(async (image: { mimeType: string; data?: string; image_ref?: string }) => {
+      const block: ContentBlock = { type: "image", source: { media_type: image.mimeType, data: image.data ?? "", ...(image.image_ref ? { image_ref: image.image_ref } : {}) } };
+      const mapped = hydrate ? await this.hydrateBlock(id, block) : await this.offloadBlock(id, block);
+      if (mapped.type !== "image") return null;
+      const source = mapped.source as Record<string, unknown>;
+      return { mimeType: String(source.media_type), ...(typeof source.data === "string" ? { data: source.data } : {}), ...(typeof source.image_ref === "string" ? { image_ref: source.image_ref } : {}) };
+    }));
+    return { ...event, images: images.filter((image) => image !== null) };
   }
   private async hydrateBlock(id: string, block: ContentBlock): Promise<ContentBlock> {
     if (block.type === "tool_result" && Array.isArray(block.content)) return { ...block, content: await this.hydrateContent(id, block.content) };

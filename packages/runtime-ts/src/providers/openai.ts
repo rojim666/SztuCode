@@ -104,6 +104,29 @@ function responseInputContent(content: ChatMessage["content"]): string | Array<R
   return output;
 }
 
+/** Chat 的 tool 消息只支持文本；图片放在整组工具结果之后，保留调用顺序。 */
+function withToolImages(messages: ChatMessage[]): ChatMessage[] {
+  const output: ChatMessage[] = [];
+  let images: import("../context.js").ContentBlock[] = [];
+  const flush = () => {
+    if (images.length) output.push({ role: "user", content: images });
+    images = [];
+  };
+  for (const message of messages) {
+    if (message.role !== "tool") flush();
+    if (message.role !== "tool" || typeof message.content === "string") {
+      output.push(message);
+      continue;
+    }
+    const media = message.content.filter((block) => block.type === "image" || block.type === "image_url");
+    if (media.length) images.push({ type: "text", text: `Images returned by tool call ${message.tool_call_id ?? "unknown"}:` }, ...media);
+    const text = normalizeChatContent({ ...message, content: message.content.filter((block) => block.type !== "image" && block.type !== "image_url") }).content;
+    output.push({ ...message, content: typeof text === "string" ? text : JSON.stringify(text) });
+  }
+  flush();
+  return output;
+}
+
 export class OpenAiCompatibleProvider implements ModelProvider {
   private readonly capabilities: ModelCapabilities;
   constructor(private readonly options: OpenAiProviderOptions) {
@@ -124,7 +147,8 @@ export class OpenAiCompatibleProvider implements ModelProvider {
     try {
       const base = (this.options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
       const definitions = tools.list().slice().sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0).map((tool) => ({ type: "function", name: tool.name, description: tool.description, parameters: tool.schema }));
-      const apiMessages = messages.map((message) => {
+      const preparedMessages = withToolImages(messages);
+      const apiMessages = preparedMessages.map((message) => {
         const normalized = normalizeChatContent(message);
         return {
           role: message.role,
@@ -137,7 +161,7 @@ export class OpenAiCompatibleProvider implements ModelProvider {
       });
       const responses = this.options.apiFormat === "openai_responses";
       const input: Array<Record<string, unknown>> = [];
-      for (const message of messages) {
+      for (const message of preparedMessages) {
         if (message.role === "system") continue;
         if (message.role === "tool") { input.push({ type: "function_call_output", call_id: message.tool_call_id ?? "", output: typeof message.content === "string" ? message.content : JSON.stringify(message.content) }); continue; }
         if (message.role === "assistant" && message.tool_calls?.length) {

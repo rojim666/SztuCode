@@ -588,9 +588,11 @@ export function createWorkspaceTools(extraTools: Tool[] = []): ToolRegistry {
   for (const tool of createOfficeTools()) registry.register(tool);
   // bash 后台任务管理器：闭包持有，bash/bash_status/bash_output/bash_kill 共用
   const jobManager = new BashJobManager();
-  registry.register({ name: "view_image", timeoutMs: 30_000, description: "View a PNG, JPEG, WebP, or GIF image inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] }, async invoke(params, context) {
+  registry.register({ name: "view_image", timeoutMs: 30_000, description: "View a PNG, JPEG, WebP, or GIF image inside the workspace", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, max_dimension: { type: "integer", minimum: 512, maximum: 4096, default: 2048 } }, required: ["path"] }, async invoke(params, context) {
     const file = str(params, "path"); if (!file) return fail("path is required", "schema_error");
-    try { const target = await context.workspace.resolveExisting(file); const info = await stat(target); const image = await imageToContentBlock(target); return { ok: true, output: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)`, content: [{ type: "text", text: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)` }, image] }; }
+    const dimension = params.max_dimension ?? 2048;
+    if (!Number.isInteger(dimension) || Number(dimension) < 512 || Number(dimension) > 4096) return fail("max_dimension must be an integer between 512 and 4096", "schema_error");
+    try { const target = await context.workspace.resolveExisting(file); const info = await stat(target); const image = await imageToContentBlock(target, undefined, Number(dimension)); return { ok: true, images: [{ mimeType: image.source.media_type, data: image.source.data }], output: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)`, content: [{ type: "text", text: `Image: ${file} (${image.source.media_type}, ${info.size} bytes)` }, image] }; }
     catch (error) { return fail(error instanceof Error ? error.message : String(error)); }
   }});
   registry.register({ name: "read_file", timeoutMs: 30_000, description: "Read a UTF-8 file inside the workspace with line numbers and optional line pagination", permission: "read_only", schema: { type: "object", properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0, description: "Zero-based first line" }, limit: { type: "integer", minimum: 1, maximum: 2000, description: "Maximum lines" } }, required: ["path"] }, async invoke(params, context) {

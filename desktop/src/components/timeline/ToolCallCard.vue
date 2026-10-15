@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "../icons/AppIcon.vue";
+import ImageLightbox from "../ImageLightbox.vue";
 import type { ToolCallEntry } from "./types";
 
 const props = withDefaults(defineProps<{ call: ToolCallEntry; expanded?: boolean; compact?: boolean }>(), {
@@ -126,13 +127,16 @@ const zoomedImage = ref<number | null>(null);
               :src="url"
               :class="{ zoomed: zoomedImage === index }"
               :alt="t('timeline.tool.screenshotAlt', { index: index + 1 })"
-              @click="zoomedImage = zoomedImage === index ? null : index"
+                @click="zoomedImage = index"
             />
           </div>
         </template>
       </div>
     </transition>
   </section>
+  <Teleport to="body">
+    <ImageLightbox v-if="zoomedImage !== null" :images="imageUrls.map((src, index) => ({ src, alt: t('timeline.tool.screenshotAlt', { index: index + 1 }) }))" :index="zoomedImage" @change="zoomedImage = $event" @close="zoomedImage = null" />
+  </Teleport>
 </template>
 
 <style scoped>
