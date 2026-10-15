@@ -282,4 +282,9 @@ export const app = {
 
   // IDE
   openIdeFailed: "Unable to open IDE",
+  semanticIndex: {
+    not_started: "Semantic index not built", indexing: "Building semantic index", ready: "Semantic index ready", failed: "Semantic index failed", unavailable: "Semantic index unavailable",
+    manage: "Manage semantic index", counts: "{files} files · {chunks} chunks", build: "Rebuild index", clear: "Clear index",
+    hint: "The first search builds the index automatically and downloads a local model. No API key is required. Clearing the index keeps source files.",
+  },
 };

@@ -1,3 +1,4 @@
+import { workspaceIndexes } from "./indexing/index-manager.js";
 import net from "node:net";
 import type { JsonRpcRequest, JsonRpcResponse, AgentRunParams, PingParams, RunCancelParams, RunGetParams, RunReplayParams, PermissionRespondParams, SessionCreateParams, SessionForkParams, SessionGetParams, SessionListParams, SessionHistoryParams, SessionSendMessageParams, SessionCommand, MessageImageBlock } from "@sztucode/protocol";
 import { ok, error, RpcDispatchError, toSessionSummary, toProtocolSessionSnapshot, mimeType, publicSkill, matchesSubscription, probeModel, benchmarkModel, normalizeSettingsUpdate } from "./server-helpers.js";
@@ -108,6 +109,22 @@ export class ServerService {
 
   async dispatch(this: any, request: JsonRpcRequest, socket: net.Socket): Promise<JsonRpcResponse> {
     switch (request.method) {
+      case "index.status":
+      case "index.stats":
+      case "index.build":
+      case "index.update":
+      case "index.clear": {
+        const params = request.params as unknown as import("@sztucode/protocol").SemanticIndexUpdateParams;
+        if (typeof params.workspace_id !== "string" || !params.workspace_id) throw new Error("workspace_id is required");
+        const workspace = await this.workspaces.get(params.workspace_id);
+        if (request.method === "index.update") {
+          if (!Array.isArray(params.files) || params.files.length > 10_000 || !params.files.every((file: unknown) => typeof file === "string" && file.trim())) throw new Error("files must be an array of workspace paths");
+          return ok(request.id, await workspaceIndexes.update(workspace.path, params.files));
+        }
+        if (request.method === "index.build") return ok(request.id, await workspaceIndexes.startBuild(workspace.path));
+        if (request.method === "index.clear") return ok(request.id, await workspaceIndexes.clear(workspace.path));
+        return ok(request.id, await workspaceIndexes.status(workspace.path));
+      }
       case "core.ping": {
         const params = request.params as unknown as PingParams;
         if (typeof params.client !== "string") throw new Error("client is required");

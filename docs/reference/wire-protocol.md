@@ -78,6 +78,11 @@
 - `file.search`
 - `git.commit`
 - `git.history`
+- `index.status`
+- `index.stats`
+- `index.build`
+- `index.update`
+- `index.clear`
 - `artifact.create`
 - `artifact.register`
 - `artifact.get`
@@ -136,6 +141,30 @@
 
 
 ## Shared Request and Result Types
+
+### SemanticIndexParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `workspace_id` | `string` | yes |
+
+### SemanticIndexUpdateParams
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `files` | `string[]` | yes |
+
+### SemanticIndexStatus
+
+| Field | Type | Required |
+| --- | --- | --- |
+| `state` | `"not_started" \| "indexing" \| "ready" \| "failed"` | yes |
+| `files` | `number` | yes |
+| `chunks` | `number` | yes |
+| `processed` | `number` | yes |
+| `total` | `number` | yes |
+| `updated_at` | `string \| null` | yes |
+| `error` | `string \| null` | yes |
 
 ### ProtocolError
 
@@ -996,7 +1025,8 @@
 | --- | --- | --- |
 | `type` | `"context.injected"` | yes |
 | `run_id` | `string` | yes |
-| `source` | `"system" \| "global" \| "project" \| "session" \| "intervention" \| "steering"` | yes |
+| `step` | `number` | no |
+| `source` | `"system" \| "global" \| "project" \| "session" \| "compaction" \| "intervention" \| "steering"` | yes |
 | `label` | `string` | yes |
 | `chars` | `number` | yes |
 | `preview` | `string` | yes |

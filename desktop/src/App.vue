@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SemanticIndexStatus from "./components/SemanticIndexStatus.vue";
 import { computed, KeepAlive, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import AppIcon from "./components/icons/AppIcon.vue";
@@ -3918,6 +3919,7 @@ watch(activeWorkspace, (project) => {
 
       <section v-if="page === 'skills'" class="chat-main"><SkillCenter :connected="connected" :workspace-id="activeWorkspace?.workspace_id ?? null" :workspace-name="activeWorkspace?.name ?? null" @use-in-chat="useSkillInChat" /></section>
 
+      <SemanticIndexStatus v-if="statusBarVisible && activeWorkspace" :workspace-id="activeWorkspace.workspace_id" :connected="connected" />
     </main>
 
     <Teleport to="body">

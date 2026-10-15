@@ -14,11 +14,9 @@ import { SkillLoader } from "./skills.js";
 import { detectDocumentFormat } from "./document-parser/detect.js";
 import type { ParsedDocument } from "./document-parser/types.js";
 import { createOfficeTools, invokeOffice } from "./office-tools.js";
-import { createTransformersEmbedder, type Embedder } from "./embedding/index.js";
-import type { Chunk } from "./chunking/index.js";
-import { WorkspaceIndexer } from "./indexing/index.js";
-import { JsonlVectorStore } from "./vector-store/index.js";
-import { deduplicateBySource, LexicalIndex, mergeHybridResults } from "./retrieval/index.js";
+import type { Embedder } from "./embedding/index.js";
+import { IndexManager, workspaceIndexes } from "./indexing/index-manager.js";
+import { deduplicateBySource, mergeHybridResults } from "./retrieval/index.js";
 import type { ContentBlock } from "./context.js";
 import { getMimeTypeFromPath, imageToContentBlock } from "./providers/image-utils.js";
 import { inspectAsset } from "./asset-inspector.js";
@@ -444,38 +442,9 @@ export interface SemanticSearchToolOptions {
   createEmbedder?: () => Embedder;
 }
 
-type SemanticIndexState = {
-  embedder: Embedder;
-  indexer: WorkspaceIndexer;
-  store: JsonlVectorStore;
-  lexical: LexicalIndex;
-  indexPromise?: Promise<{ files_indexed: number; chunks_indexed: number }>;
-};
-
 /** 创建按工作区懒加载的语义搜索工具。 */
 export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}): Tool {
-  const states = new Map<string, Promise<SemanticIndexState>>();
-  const getState = (root: string): Promise<SemanticIndexState> => {
-    const existing = states.get(root);
-    if (existing) return existing;
-    const statePromise = (async () => {
-      const embedder = options.createEmbedder?.() ?? createTransformersEmbedder();
-      const store = await JsonlVectorStore.open(path.join(root, ".sztu", "vector", "semantic-index.jsonl"), embedder.dimensions, "jsonl", { embedderName: embedder.name });
-      const lexical = new LexicalIndex();
-      const chunksBySource = new Map<string, Array<{ text: string; metadata: Record<string, string | number | boolean> }>>();
-      for (const record of store.exportRecords()) {
-        const source = String(record.metadata.source ?? "");
-        const chunks = chunksBySource.get(source) ?? [];
-        chunks.push({ text: record.text, metadata: { ...record.metadata } });
-        chunksBySource.set(source, chunks);
-      }
-      for (const [source, chunks] of chunksBySource) lexical.replace(source, chunks as Chunk[]);
-      return { embedder, indexer: new WorkspaceIndexer(root, embedder, store, (source, chunks) => lexical.replace(source, chunks)), store, lexical };
-    })();
-    states.set(root, statePromise);
-    void statePromise.catch(() => states.delete(root));
-    return statePromise;
-  };
+  const manager = options.createEmbedder ? new IndexManager(options.createEmbedder) : workspaceIndexes;
 
   return {
     name: "semantic_search",
@@ -507,67 +476,39 @@ export function createSemanticSearchTool(options: SemanticSearchToolOptions = {}
       if (relativePath.split("/").some((part) => part === "..")) return fail("path must stay inside the workspace", "schema_error");
 
       try {
-        const state = await getState(context.workspace.root);
         const autoIndex = params.auto_index === undefined ? true : Boolean(params.auto_index);
-        if (await state.store.count() === 0) {
-          if (!autoIndex) return ok("Semantic index is empty. Set auto_index=true or build the index before searching.");
-          state.indexPromise ??= state.indexer.indexAll().catch((error) => { state.indexPromise = undefined; throw error; });
-          await state.indexPromise;
-        }
-        await refreshSemanticIndex(state);
-        const queryVector = await state.embedder.embedQuery(query);
-        const filter = { pathPrefix: relativePath, fileType: fileType as "code" | "markdown" | "document" | "any" };
-        const recordCount = await state.store.count();
-        const candidates = await state.store.search(queryVector, Math.max(1, recordCount), undefined);
-        const semanticCandidates = candidates.filter((result) => {
-          const source = String(result.record.metadata.source ?? "");
-          const type = String(result.record.metadata.type ?? "text");
-          const pathMatches = !relativePath || source === relativePath || source.startsWith(`${relativePath}/`);
-          const typeMatches = fileType === "any" || (fileType === "code" && type === "code") || (fileType === "markdown" && type === "markdown") || (fileType === "document" && type === "document");
-          return pathMatches && typeMatches && result.score >= minScore;
+        return await manager.search(context.workspace.root, autoIndex, async (state) => {
+          if (await state.store.count() === 0 && !autoIndex) return ok("Semantic index is empty. Set auto_index=true or build the index before searching.");
+          const queryVector = await state.embedder.embedQuery(query);
+          const filter = { pathPrefix: relativePath, fileType: fileType as "code" | "markdown" | "document" | "any" };
+          const recordCount = await state.store.count();
+          const candidates = await state.store.search(queryVector, Math.max(1, recordCount), undefined);
+          const semanticCandidates = candidates.filter((result) => {
+            const source = String(result.record.metadata.source ?? "");
+            const type = String(result.record.metadata.type ?? "text");
+            const pathMatches = !relativePath || source === relativePath || source.startsWith(`${relativePath}/`);
+            const typeMatches = fileType === "any" || (fileType === "code" && type === "code") || (fileType === "markdown" && type === "markdown") || (fileType === "document" && type === "document");
+            return pathMatches && typeMatches && result.score >= minScore;
+          });
+          const lexicalCandidates = state.lexical.search(query, Math.max(1, recordCount), filter);
+          const hybrid = mergeHybridResults(semanticCandidates, lexicalCandidates);
+          const filtered = deduplicateBySource(hybrid, topK);
+          if (filtered.length === 0) return ok(`No semantic results for: "${query}"`);
+          const lines = [`Semantic search results for: "${query}"`, "Score | File:Line Range | Preview", "------|-------------------|--------"];
+          for (const result of filtered) {
+            const source = String(result.record.metadata.source);
+            const start = Number(result.record.metadata.start_line ?? 1);
+            const end = Number(result.record.metadata.end_line ?? start);
+            const preview = result.record.text.split(/\r?\n/).slice(0, 3).join(" ").replace(/\s+/g, " ").slice(0, 240);
+            lines.push(`${result.score.toFixed(4)} | ${source}:${start}-${end} | ${preview}`);
+          }
+          return ok(lines.join("\n"));
         });
-        const lexicalCandidates = state.lexical.search(query, Math.max(1, recordCount), filter);
-        const hybrid = mergeHybridResults(semanticCandidates, lexicalCandidates);
-        const filtered = deduplicateBySource(hybrid, topK);
-        if (filtered.length === 0) return ok(`No semantic results for: "${query}"`);
-        const lines = [`Semantic search results for: "${query}"`, "Score | File:Line Range | Preview", "------|-------------------|--------"];
-        for (const result of filtered) {
-          const source = String(result.record.metadata.source);
-          const start = Number(result.record.metadata.start_line ?? 1);
-          const end = Number(result.record.metadata.end_line ?? start);
-          const preview = result.record.text.split(/\r?\n/).slice(0, 3).join(" ").replace(/\s+/g, " ").slice(0, 240);
-          lines.push(`${result.score.toFixed(4)} | ${source}:${start}-${end} | ${preview}`);
-        }
-        return ok(lines.join("\n"));
       } catch (error) {
         return fail(error instanceof Error ? error.message : String(error));
       }
     },
   };
-}
-
-/** 检查已持久化文件的轻量元数据，只增量重建发生变化的文件。 */
-async function refreshSemanticIndex(state: SemanticIndexState): Promise<void> {
-  const sources = new Map<string, Record<string, string | number | boolean>>();
-  for (const record of state.store.exportRecords()) {
-    const source = String(record.metadata.source ?? "");
-    if (source && !sources.has(source)) sources.set(source, record.metadata);
-  }
-  const changed: string[] = [];
-  for (const [source, metadata] of sources) {
-    try {
-      const file = await stat(path.join(state.indexer.workspaceRoot, source));
-      if (!file.isFile() || Number(metadata.mtime_ms) !== file.mtimeMs || Number(metadata.file_size) !== file.size) changed.push(source);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") changed.push(source);
-      else throw error;
-    }
-  }
-  const indexedSources = new Set(sources.keys());
-  for (const source of await state.indexer.discoverFiles()) {
-    if (!indexedSources.has(source)) changed.push(source);
-  }
-  if (changed.length > 0) await state.indexer.updateIndex([...new Set(changed)]);
 }
 
 export function createPlanTools(events: EventBus, runId: string, sessionId = "", tasksDir = path.join(process.env.SZTU_DATA_DIR ?? path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".sztu"), "runs", runId.replace(/[^A-Za-z0-9_.-]/g, "_"), "tasks")): Tool[] {
