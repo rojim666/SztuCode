@@ -185,6 +185,7 @@ from sztu_code.core.events.bus import EventBus
 from sztu_code.core.interaction.user_questions import UserQuestionManager
 from sztu_code.core.llm import create_provider
 from sztu_code.core.llm.ccswitch import get_ccswitch_provider, list_ccswitch_providers
+from sztu_code.core.llm.opencode_catalog import OPENCODE_BASE_URL, OPENCODE_FREE_MODELS
 from sztu_code.core.logging_setup import setup_logging
 from sztu_code.core.mcp.server import McpServerManager
 from sztu_code.core.permissions.manager import PermissionManager
@@ -207,30 +208,21 @@ from sztu_code.core.workspace.manager import Workspace
 
 logger = logging.getLogger(__name__)
 
-# opencode Zen 免费模型（免 key，OpenAI 兼容端点）内置 profile
-# 名单来自 https://opencode.ai/docs/zen/ 的免费模型；仅收录 chat/completions 端点模型
-# （muse-spark-1.2-contributor-free 为 Responses 端点，Python runtime 暂不支持，未收录）
-_OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1"
-_OPENCODE_ZEN_FREE_MODELS: list[str] = [
-    "big-pickle",
-    "ling-3.0-flash-fin-free",
-    "mimo-v2.5-free",
-    "nemotron-3-ultra-free",
-    "nemotron-3.5-lightning-free",
-]
+# 保留历史 profile ID；免费层现仅限 OpenCode 内使用，第三方调用会返回 403。
 _OPENCODE_ZEN_PROFILES: list[dict[str, Any]] = [
     {
         "id": f"builtin-opencode-zen-{model}",
         "name": model,
         "vendor": "opencode",
         "provider": "openai",
+        "api_format": "openai_chat_completions",
         "model": model,
-        "base_url": _OPENCODE_ZEN_BASE_URL,
+        "base_url": OPENCODE_BASE_URL,
         "api_key": "",
         "keyless": True,
         "builtin": True,
     }
-    for model in _OPENCODE_ZEN_FREE_MODELS
+    for model in OPENCODE_FREE_MODELS
 ]
 
 # Pollinations 免费 OpenAI 兼容端点（免 key，匿名 tier 限流较严）；
@@ -1055,8 +1047,10 @@ class CoreApp:
                 }
             ]
         # 过滤掉所有内置 profile，再统一追加，保证定义唯一
-        builtin_ids = {p["id"] for p in _BUILTIN_FREE_PROFILES}
-        profiles = [item for item in profiles if item.get("id") not in builtin_ids]
+        profiles = [
+            item for item in profiles
+            if not item.get("builtin") and not str(item.get("id", "")).startswith("builtin-")
+        ]
         profiles.extend(dict(p) for p in _BUILTIN_FREE_PROFILES)
         return profiles, active_id
 

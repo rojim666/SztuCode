@@ -36,7 +36,7 @@ let models: ModelProfile[] = [
   profile({ id: "custom", name: "自定义模型", model: "custom-model" }),
 ];
 if (new URLSearchParams(location.search).has("many")) {
-  models.push(...["ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free", "openai-fast"].map((name, index) => profile({ id: 'extra-' + index, name, model: name, vendor: "opencode", builtin: true })));
+  models.push(...["big-pickle", "beam-free", "deepseek-v4.1-flash-free", "glm-5.3-flash-free", "longcat-2.5-preview-free", "mimo-v2.6-flash-free", "nemotron-3.5-lightning-free", "nemotron-3.5-super-vl-free", "space-bunny-free"].map(name => profile({ id: 'builtin-opencode-zen-' + name, name, model: name, vendor: "opencode", base_url: "https://opencode.ai/inference/openai/v1", builtin: true })));
 }
 let deleteMode: "success" | "error" = "success";
 let deleteDelayMs = 0;

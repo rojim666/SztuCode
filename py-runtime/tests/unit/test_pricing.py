@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 from sztu_code.core.context import ExecutionContext
+from sztu_code.core.llm.opencode_catalog import OPENCODE_FREE_MODELS, OPENCODE_RETIRED_FREE_MODELS
 from sztu_code.core.pricing import (
     ModelPricing,
     PricingCatalog,
@@ -403,7 +406,8 @@ def test_deepseek_uses_off_peak_price_outside_peak_window() -> None:
 
 # 功能：验证 opencode Zen 内置 free 模型估价为 0
 # 设计：免 key 免费模型不应因为有 usage 而产生预算成本
-def test_builtin_catalog_has_free_opencode_zen_models() -> None:
+@pytest.mark.parametrize("model", (*OPENCODE_FREE_MODELS, *OPENCODE_RETIRED_FREE_MODELS))
+def test_builtin_catalog_has_free_opencode_zen_models(model: str) -> None:
     catalog = get_builtin_catalog()
     usage = TokenUsage(
         input_tokens=1_000_000,
@@ -412,7 +416,7 @@ def test_builtin_catalog_has_free_opencode_zen_models() -> None:
         cache_creation_input_tokens=1_000_000,
     )
 
-    estimate = calculate_cost("openai", "mimo-v2.5-free", usage, catalog)
+    estimate = calculate_cost("openai", model, usage, catalog)
 
     assert estimate.status == "complete"
     assert estimate.amount == Decimal("0")

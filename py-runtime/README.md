@@ -6,6 +6,16 @@ tests, and Python project metadata.
 Run commands from the repository root with `npm run daemon` or `npm run cli`.
 For direct Python development, change into this directory and use `uv run`.
 
+## 命令执行与会话恢复
+
+`run --goal "..."` 只展示本次 `agent.run` 返回的 `run_id` 对应的进度和结果。
+子任务或其他客户端的运行结束不会提前终止当前命令；运行事件早于 RPC 响应到达时，
+客户端会先缓存再按运行标识回放。daemon 在结果到达前断连时，命令报错退出。
+RPC 请求被取消或发送失败后会清理等待记录，断连会唤醒尚未收到响应的请求。
+
+会话压缩先完整写入临时文件，再保留历史备份并原子替换当前上下文。
+序列化、写入或替换失败时保留原始 `thread.jsonl`，避免下次恢复读到半份摘要。
+
 ## Run 截止时间与工具调用
 
 Python Agent Loop 将同一个 Run 的剩余墙钟时间传给串行和并发工具调用。工具自身的

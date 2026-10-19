@@ -151,7 +151,7 @@ onBeforeUnmount(() => { document.removeEventListener("pointerdown", closeOnOutsi
               <span v-else>{{ item.vendor.slice(0, 1).toUpperCase() }}</span>
             </template>
           </i>
-          <span class="model-name-cell"><b :title="item.name">{{ item.name }}</b><small v-if="vendorLabel(item.vendor).toLowerCase() !== item.name.toLowerCase()">{{ vendorLabel(item.vendor) }}</small></span>
+          <span class="model-name-cell"><b :title="item.name">{{ item.name }}</b><small v-if="item.builtin && item.id.startsWith('builtin-opencode-zen-')" :title="t('model.opencodeFreeTierNote')">{{ t("model.opencodeRestricted") }}</small><small v-else-if="vendorLabel(item.vendor).toLowerCase() !== item.name.toLowerCase()">{{ vendorLabel(item.vendor) }}</small></span>
           <AppIcon v-if="selecting === item.id" name="LoaderCircle" class="spin" :size="14" /><AppIcon v-else-if="item.is_current" name="Check" :size="14" />
         </button>
         <p v-if="loading">{{ t("model.loading") }}</p><p v-else-if="!models.length">{{ t("model.empty") }}</p>

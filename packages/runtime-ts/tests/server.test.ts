@@ -292,7 +292,11 @@ test("session lifecycle and model profiles preserve desktop invariants", async (
     await assert.rejects(() => rpc(socket, "settings.update", { max_retries: 11 }), (error: any) => error.code === -32602);
     // 内置 opencode Zen 免 key profile：列表包含 builtin 条目且视为已就绪，不允许删除
     const initialModels = await rpc(socket, "provider.model_list"); assert.ok(Array.isArray(initialModels.models));
-    const zen = initialModels.models.find((item: any) => item.id === "builtin-opencode-zen-mimo-v2.5-free"); assert.ok(zen); assert.equal(zen.base_url, "https://opencode.ai/zen/v1"); assert.equal(zen.has_api_key, true); assert.equal(zen.builtin, true);
+    const zenModels = initialModels.models.filter((item: any) => item.id.startsWith("builtin-opencode-zen-"));
+    assert.deepEqual(zenModels.map((item: any) => item.model), ["big-pickle", "beam-free", "deepseek-v4.1-flash-free", "glm-5.3-flash-free", "longcat-2.5-preview-free", "mimo-v2.6-flash-free", "nemotron-3.5-lightning-free", "nemotron-3.5-super-vl-free", "space-bunny-free"]);
+    for (const item of zenModels) { assert.equal(item.base_url, "https://opencode.ai/inference/openai/v1"); assert.equal(item.api_format, "openai_chat_completions"); assert.equal(item.has_api_key, true); assert.equal(item.builtin, true); }
+    const zen = zenModels.find((item: any) => item.model === "mimo-v2.6-flash-free"); assert.ok(zen);
+    const zenSelected = await rpc(socket, "provider.model_select", { model_id: zen.id }); assert.equal(zenSelected.settings.base_url, "https://opencode.ai/inference/openai/v1");
     await assert.rejects(() => rpc(socket, "provider.model_delete", { model_id: zen.id }), /builtin profiles cannot be deleted/);
 
     const shared = { vendor: "Test", provider: "openai", api_format: "openai_chat_completions", model: "same-model", base_url: "https://example.test/v1", api_key: "secret", context_window: 16_000, max_output_tokens: 1024, temperature: null, top_p: null, reasoning_effort: "", timeout_s: 30, max_retries: 1, cache_control: true };

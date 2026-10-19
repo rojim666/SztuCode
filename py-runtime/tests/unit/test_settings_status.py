@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from sztu_code.core.app import CoreApp
@@ -140,8 +142,13 @@ async def test_model_profiles_save_select_and_delete_without_exposing_keys(
 
 # 功能：验证 opencode Zen 内置免 key 模型出现在列表中且无需凭证即可就绪
 # 设计：使用临时客户端配置隔离用户状态，选择内置项后检查模型、端点和就绪状态
+@pytest.mark.parametrize("model", [
+    "big-pickle", "beam-free", "deepseek-v4.1-flash-free", "glm-5.3-flash-free",
+    "longcat-2.5-preview-free", "mimo-v2.6-flash-free", "nemotron-3.5-lightning-free",
+    "nemotron-3.5-super-vl-free", "space-bunny-free",
+])
 async def test_zen_builtin_profile_keyless(
-    tmp_path, monkeypatch,
+    tmp_path, monkeypatch, model,
 ) -> None:
     monkeypatch.setenv("SZTU_CLIENT_SETTINGS", str(tmp_path / "client-settings.json"))
     app = _configured_app()
@@ -149,22 +156,57 @@ async def test_zen_builtin_profile_keyless(
     listed = await app._model_profile_list_handler({})
     zen = next(
         item for item in listed.models
-        if item.id == "builtin-opencode-zen-mimo-v2.5-free"
+        if item.id == f"builtin-opencode-zen-{model}"
     )
-    assert zen.model == "mimo-v2.5-free"
-    assert zen.base_url == "https://opencode.ai/zen/v1"
+    assert zen.model == model
+    assert zen.base_url == "https://opencode.ai/inference/openai/v1"
+    assert zen.api_format == "openai_chat_completions"
     assert zen.has_api_key is True  # 免 key 端点视为可用
     assert zen.builtin is True
 
     selected = await app._model_profile_select_handler({"model_id": zen.id})
     status = await app._provider_status_handler({})
     assert selected.settings.provider == "openai"
-    assert selected.settings.model == "mimo-v2.5-free"
-    assert selected.settings.base_url == "https://opencode.ai/zen/v1"
+    assert selected.settings.model == model
+    assert selected.settings.base_url == "https://opencode.ai/inference/openai/v1"
     assert status.ready_for_next_run is True
+    # ready 只检查本地配置，不代表服务商允许第三方使用免费层。
+    persisted = get_config()
+    assert persisted.llm.base_url == "https://opencode.ai/inference/openai/v1"
+    assert persisted.llm.keyless is True
 
     with pytest.raises(HandlerError):
         await app._model_profile_delete_handler({"model_id": zen.id})
+
+
+async def test_retired_opencode_profiles_are_removed_without_losing_custom_profiles(
+    tmp_path, monkeypatch,
+) -> None:
+    target = tmp_path / "client-settings.json"
+    monkeypatch.setenv("SZTU_CLIENT_SETTINGS", str(target))
+    retired = ["ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free"]
+    profiles = [
+        {"id": f"builtin-opencode-zen-{model}", "name": model, "model": model,
+         "provider": "openai", "base_url": "https://opencode.ai/zen/v1", "builtin": True}
+        for model in [*retired, "big-pickle"]
+    ]
+    profiles.append({
+        "id": "custom", "name": "Custom gateway", "model": "mimo-v2.5-free",
+        "provider": "openai", "base_url": "https://example.test/v1",
+    })
+    target.write_text(json.dumps({"models": profiles, "active_model_id": "custom"}))
+    app = _configured_app()
+
+    listed = await app._model_profile_list_handler({})
+
+    ids = [item.id for item in listed.models]
+    assert not any(f"builtin-opencode-zen-{model}" in ids for model in retired)
+    assert ids.count("builtin-opencode-zen-big-pickle") == 1
+    custom = next(item for item in listed.models if item.id == "custom")
+    assert custom.is_current is True
+    assert custom.base_url == "https://example.test/v1"
+    updated = next(item for item in listed.models if item.model == "big-pickle")
+    assert updated.base_url == "https://opencode.ai/inference/openai/v1"
 
 
 # 功能：验证 save_tui_settings 只更新 tui 键，reload 后能读回主题与壁纸

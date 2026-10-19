@@ -67,8 +67,8 @@ await new Promise((resolve) => socket.on("connect", resolve));
 console.log("[1/5] ping");
 await send("core.ping", { client: "e2e-browser-click" });
 
-console.log("[2/5] 选择免 key 模型（opencode zen mimo-v2.5-free，可用 MODEL_ID 覆盖）");
-await send("provider.model_select", { model_id: process.env.MODEL_ID ?? "builtin-opencode-zen-mimo-v2.5-free" });
+console.log("[2/5] 使用当前配置模型（可用 MODEL_ID 指定可调用的 profile；OpenCode 免费层仅限其自身使用）");
+if (process.env.MODEL_ID) await send("provider.model_select", { model_id: process.env.MODEL_ID });
 
 console.log("[3/5] 订阅事件 + 创建会话（权限模式临时切到 normal 以验证询问链路）");
 await send("event.subscribe", { topics: ["*"] });

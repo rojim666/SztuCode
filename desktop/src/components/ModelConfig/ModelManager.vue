@@ -305,6 +305,9 @@ onMounted(() => {
       </div>
 
       <!-- 模型列表 -->
+      <p v-if="models.some(item => item.builtin && item.id.startsWith('builtin-opencode-zen-'))" class="model-provider-notice" role="note">
+        {{ t("model.opencodeFreeTierNote") }}
+      </p>
       <div class="model-list">
         <div class="model-list-header">
           <span class="model-list-title">{{ t("model.all") }}</span>
@@ -328,6 +331,7 @@ onMounted(() => {
           <div class="model-card-info">
             <b :title="item.name">{{ item.name }}</b>
             <small :title="item.model">{{ item.model }}</small>
+            <small v-if="item.builtin && item.id.startsWith('builtin-opencode-zen-')" :title="t('model.opencodeFreeTierNote')">{{ t("model.opencodeRestricted") }}</small>
           </div>
           <div class="model-card-actions">
             <span v-if="item.is_current" class="model-badge model-badge--active">{{ t("model.inUse") }}</span>
@@ -1612,6 +1616,18 @@ onMounted(() => {
   color: var(--success, #1f7a46);
   background: var(--success-soft, #eaf5ee);
   border: 1px solid color-mix(in srgb, var(--success, #1f7a46) 25%, transparent);
+}
+
+.model-provider-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 /* 表单中的免费额度提示 */

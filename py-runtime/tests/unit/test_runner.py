@@ -943,6 +943,7 @@ class _DeadlineCompactingProvider:
     def __init__(self) -> None:
         self._calls = 0
         self.compact_started = asyncio.Event()
+        self.compact_cancelled = asyncio.Event()
 
     async def chat(
         self,
@@ -958,7 +959,11 @@ class _DeadlineCompactingProvider:
     ) -> LlmResponse:
         if run_id == "compact":
             self.compact_started.set()
-            await asyncio.Future()  # 永不返回：没有时间边界的摘要请求
+            try:
+                await asyncio.Future()  # 永不返回：没有时间边界的摘要请求
+            except asyncio.CancelledError:
+                self.compact_cancelled.set()
+                raise
             raise AssertionError("unreachable")  # pragma: no cover
 
         self._calls += 1
@@ -979,8 +984,10 @@ class _DeadlineCompactingProvider:
 # 设计：provider 的压缩调用永久阻塞；run 只有 1 秒墙钟预算，断言有界内结束、
 #       run.finished 恰好一次、reason 为 max_wall_clock_exceeded
 async def test_deadline_interrupted_run_does_not_wait_for_pending_compaction(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # 隔离项目画像扫描，让计时只覆盖 deadline 与压缩清理，不依赖当前仓库大小。
+    monkeypatch.chdir(tmp_path)
     cfg = _config()
     cfg.compaction.auto_threshold = 0.8
     cfg.budget.max_wall_clock_s = 1
@@ -996,6 +1003,7 @@ async def test_deadline_interrupted_run_does_not_wait_for_pending_compaction(
     elapsed = time.monotonic() - started_at
 
     assert provider.compact_started.is_set()
+    assert provider.compact_cancelled.is_set()
     assert outcome.status == "interrupted"
     assert outcome.reason == "max_wall_clock_exceeded"
     # 远小于 provider 的 120s 默认超时，证明边界来自 Run 预算

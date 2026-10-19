@@ -36,15 +36,20 @@ class SocketClient:
 
     # 关闭 TCP 连接并等待底层 socket 释放
     async def close(self) -> None:
-        if self._writer is not None:
-            self._writer.close()
+        writer = self._writer
+        self._reader = None
+        self._writer = None
+        for fut in self._pending.values():
+            if not fut.done():
+                # 断连用普通异常唤醒等待者，不将 daemon 崩溃传播为调用方取消。
+                fut.set_exception(ConnectionError("core connection closed before response"))
+        self._pending.clear()
+        if writer is not None:
+            writer.close()
             try:
-                await asyncio.wait_for(self._writer.wait_closed(), timeout=1.0)
+                await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
             except (TimeoutError, ConnectionResetError, BrokenPipeError, OSError):
                 pass
-            finally:
-                self._reader = None
-                self._writer = None
 
     # 注册服务器推送事件的回调，可多次调用以添加多个 handler
     def on_event(self, handler: EventHandler) -> None:
@@ -52,24 +57,38 @@ class SocketClient:
 
     # 发送 JSON-RPC 命令并等待响应，成功返回 result dict，失败抛出 IpcError
     async def send_command(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        if self._writer is None:
+        writer = self._writer
+        if writer is None or writer.is_closing():
             raise RuntimeError("not connected — call connect() first")
         req_id = str(uuid.uuid4())
         request = JsonRpcRequest(id=req_id, method=method, params=params)
         fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._pending[req_id] = fut
-        self._writer.write(request.model_dump_json().encode() + b"\n")
-        await self._writer.drain()
-        return await fut
+        try:
+            writer.write(request.model_dump_json().encode() + b"\n")
+            await writer.drain()
+            return await fut
+        except OSError:
+            if self._writer is writer:
+                await self.close()
+            raise
+        finally:
+            self._pending.pop(req_id, None)
+            if not fut.done():
+                fut.cancel()
+            elif not fut.cancelled():
+                # drain 失败时响应 future 可能已经收到断连异常，仍需取出它。
+                fut.exception()
 
     # 持续读取服务器消息，分发 RPC 响应到 pending future 或事件到 event handler
     async def run_event_loop(self) -> None:
-        if self._reader is None:
+        reader, writer = self._reader, self._writer
+        if reader is None:
             raise RuntimeError("not connected — call connect() first")
         try:
             while True:
                 try:
-                    line = await self._reader.readline()
+                    line = await reader.readline()
                 except (ConnectionResetError, OSError):
                     break
                 except (ValueError, asyncio.LimitOverrunError):
@@ -79,12 +98,8 @@ class SocketClient:
                     break
                 await self._dispatch(line)
         finally:
-            for fut in self._pending.values():
-                if not fut.done():
-                    # 连接丢失不是调用方取消。用普通异常唤醒等待者，避免把 daemon
-                    # 崩溃误传播成 CancelledError 并连带取消上层任务。
-                    fut.set_exception(ConnectionError("core connection closed before response"))
-            self._pending.clear()
+            if self._writer is writer:
+                await self.close()
 
     # 解析单行消息并路由到 pending future（RPC 响应）或 event handler（服务器推送）
     async def _dispatch(self, line: bytes) -> None:

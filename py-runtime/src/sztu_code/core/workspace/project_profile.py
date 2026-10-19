@@ -186,13 +186,13 @@ def detect_project_profile(root: Path) -> ProjectProfile:
     if not workspace_root.is_dir():
         raise ValueError("project profile root must be an existing directory")
     scan = _scan_workspace(workspace_root)
+    files_by_component = _group_component_files(workspace_root, scan.files, scan.candidate_roots)
     projects: list[ProjectComponent] = []
     for component_root in scan.candidate_roots:
         component = _detect_component(
             workspace_root,
             component_root,
-            scan.files,
-            scan.candidate_roots,
+            files_by_component[component_root],
         )
         if component is not None:
             projects.append(component)
@@ -307,24 +307,29 @@ def _component_sort_key(root: Path, component_root: Path) -> tuple[int, str]:
     return (len(relative.parts), relative.as_posix().lower())
 
 
-# 在工作区文件清单中识别某一组件范围内的非嵌套文件。
-def _component_files(
-    component_root: Path,
+# 按最近的候选项目目录分组文件，并缓存目录归属，避免每个组件重复扫描全部文件。
+def _group_component_files(
+    workspace_root: Path,
     files: tuple[Path, ...],
     candidate_roots: tuple[Path, ...],
-) -> list[Path]:
-    nested_roots = [
-        candidate
-        for candidate in candidate_roots
-        if candidate != component_root and _is_within(candidate, component_root)
-    ]
-    result: list[Path] = []
+) -> dict[Path, list[Path]]:
+    result: dict[Path, list[Path]] = {candidate: [] for candidate in candidate_roots}
+    owners: dict[Path, Path | None] = {workspace_root: None}
+    owners.update((candidate, candidate) for candidate in candidate_roots)
     for path in files:
-        if not _is_within(path, component_root):
-            continue
-        if any(_is_within(path, nested_root) for nested_root in nested_roots):
-            continue
-        result.append(path)
+        directory = path.parent
+        uncached: list[Path] = []
+        while directory not in owners:
+            uncached.append(directory)
+            parent = directory.parent
+            if parent == directory:
+                owners[directory] = None
+                break
+            directory = parent
+        owner = owners[directory]
+        owners.update((ancestor, owner) for ancestor in uncached)
+        if owner is not None:
+            result[owner].append(path)
     return result
 
 
@@ -341,10 +346,8 @@ def _is_within(path: Path, parent: Path) -> bool:
 def _detect_component(
     workspace_root: Path,
     component_root: Path,
-    files: tuple[Path, ...],
-    candidate_roots: tuple[Path, ...],
+    component_files: list[Path],
 ) -> ProjectComponent | None:
-    component_files = _component_files(component_root, files, candidate_roots)
     direct_files = _direct_files(component_root, component_files)
     relative_path = _relative_path(workspace_root, component_root)
     signals = _ComponentSignals()

@@ -307,6 +307,63 @@ build-backend = "setuptools.build_meta"
     assert {project.path for project in profile.projects} >= {"apps/web", "services/api"}
 
 
+# 功能：嵌套候选目录各自保留源码证据，相似路径前缀的兄弟项目不会混入父项目。
+# 设计：组合根 C 项目、C++ 子项目、嵌套 Python/C 项目和同前缀兄弟项目，用语言和源码证据检查每层边界。
+def test_keeps_nested_and_similarly_named_component_sources_separate(tmp_path: Path) -> None:
+    native = tmp_path / "modules" / "native"
+    embedded = native / "embedded"
+    leaf = embedded / "leaf"
+    sibling = tmp_path / "modules" / "native-extra"
+    for directory in (tmp_path, native, leaf, sibling):
+        (directory / "src").mkdir(parents=True)
+        (directory / "CMakeLists.txt").write_text("project(component)\n", encoding="utf-8")
+    (embedded / "src").mkdir()
+    (embedded / "pyproject.toml").write_text("[tool.ruff]\n", encoding="utf-8")
+    source_paths = {
+        ".": "src/root.c",
+        "modules/native": "modules/native/src/parent.cpp",
+        "modules/native/embedded": "modules/native/embedded/src/child.py",
+        "modules/native/embedded/leaf": "modules/native/embedded/leaf/src/leaf.c",
+        "modules/native-extra": "modules/native-extra/src/sibling.c",
+    }
+    for source in source_paths.values():
+        (tmp_path / source).write_text("// source\n", encoding="utf-8")
+
+    profile = detect_project_profile(tmp_path)
+    expected_languages = {
+        ".": {"C"},
+        "modules/native": {"C++"},
+        "modules/native/embedded": {"Python"},
+        "modules/native/embedded/leaf": {"C"},
+        "modules/native-extra": {"C"},
+    }
+    assert [project.path for project in profile.projects] == [
+        ".",
+        "modules/native",
+        "modules/native-extra",
+        "modules/native/embedded",
+        "modules/native/embedded/leaf",
+    ]
+    for project in profile.projects:
+        assert _names(project.languages) == expected_languages[project.path]
+        source_evidence = {
+            item.path for item in project.evidence if item.path.endswith((".c", ".cpp", ".py"))
+        }
+        assert source_evidence == {source_paths[project.path]}
+
+
+# 功能：即使嵌套候选目录没有受支持的语言，其源码仍不能用于识别父项目。
+# 设计：父目录仅有通用 CMake，子目录含不确定的 pyproject 和 C++ 源码；父子都应保持未识别。
+def test_unsupported_nested_candidate_still_excludes_sources_from_parent(tmp_path: Path) -> None:
+    (tmp_path / "CMakeLists.txt").write_text("project(parent)\n", encoding="utf-8")
+    child = tmp_path / "child"
+    (child / "src").mkdir(parents=True)
+    (child / "pyproject.toml").write_text("[tool.coverage.run]\n", encoding="utf-8")
+    (child / "src" / "child.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
+
+    assert detect_project_profile(tmp_path).projects == []
+
+
 # 功能：在超大目录中于全局扫描额度耗尽后停止读取目录项。
 # 设计：用追踪 scandir 迭代器统计实际拉取次数，并把额度设得很小，直接防止先完整枚举再检查上限的回归。
 def test_bounds_directory_enumeration_before_sorting(

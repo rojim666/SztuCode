@@ -47,19 +47,23 @@ OPENAI_BASE_URL=https://gateway.example.com:8443/proxy/v1
 
 流式连接使用首字节及空闲超时，有数据或心跳到达时续期。断流、格式损坏和 API 错误会明确失败；已经收到文本、思考或工具调用片段后，不再自动重放请求。API Key 留空时，正式调用回退到对应环境变量；免密网关仍需显式启用 keyless。外部地址配置用于出站 API 请求，daemon 的 `SZTU_TS_PORT` 是独立配置。
 
-免密 OpenAI-compatible 端点必须显式启用 keyless：
+免密 OpenAI-compatible 端点必须显式启用 keyless。以下以本地免密服务为例：
 
 ```dotenv
 SZTU_LLM_PROVIDER=openai
-SZTU_LLM_DEFAULT_MODEL=mimo-v2.5-free
-OPENAI_BASE_URL=https://opencode.ai/zen/v1
+SZTU_LLM_DEFAULT_MODEL=your-local-model
+OPENAI_BASE_URL=http://127.0.0.1:8080/v1
 SZTU_LLM_KEYLESS=true
 ```
 
-桌面模型管理页也提供 opencode Zen 与 Pollinations 的内置免费 profile。选择内置项会自动设置 keyless，无需手工编辑 `.env`：
+桌面模型管理页保留 OpenCode 与 Pollinations 的内置 profile。选择这些内置项会自动设置 keyless：
 
-- opencode Zen（`https://opencode.ai/zen/v1`）：`big-pickle`、`ling-3.0-flash-fin-free`、`mimo-v2.5-free`、`nemotron-3-ultra-free`、`nemotron-3.5-lightning-free`
+- OpenCode（原 Zen，`https://opencode.ai/inference/openai/v1`）：`big-pickle`、`beam-free`、`deepseek-v4.1-flash-free`、`glm-5.3-flash-free`、`longcat-2.5-preview-free`、`mimo-v2.6-flash-free`、`nemotron-3.5-lightning-free`、`nemotron-3.5-super-vl-free`、`space-bunny-free`
 - Pollinations（`https://text.pollinations.ai/openai`）：`openai-fast`（匿名 tier 限流较严）
+
+**OpenCode 免费层使用限制（2026-10-19 实测）**：新旧接口对第三方免 Key 推理请求均返回 HTTP 403 `FreeTierError`，提示免费层仅限 OpenCode 自身使用。SztuCode 保留最新配置供参考，不能将这些模型视为开箱即用的免费服务；配置就绪只表示本地参数完整，不代表服务商允许调用。请添加其他可用的模型服务。
+
+名单取自[官方文档](https://opencode.ai/v2/docs/console/models/)与[实时模型列表](https://opencode.ai/inference/v1/models)的交集，仅包含聊天接口。`jev-1.13-free` 使用 System One 接口，未作为聊天模型收录；`ling-3.0-flash-fin-free`、`mimo-v2.5-free`、`nemotron-3-ultra-free` 已从内置名单移除。升级后重启 daemon，并重新选择保留的内置项以应用新地址；自定义 profile 不自动修改。
 
 模型管理页的服务商目录也标注了各平台的免费额度（OpenRouter、Google AI Studio、Groq、Cerebras、Mistral、GitHub Models、NVIDIA NIM、智谱、硅基流动等），点击"获取 API 密钥"可跳转官网注册领取，再粘贴密钥即可接入。
 

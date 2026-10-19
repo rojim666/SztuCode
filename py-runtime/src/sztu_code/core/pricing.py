@@ -6,11 +6,13 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
+from sztu_code.core.llm.opencode_catalog import OPENCODE_FREE_MODELS, OPENCODE_RETIRED_FREE_MODELS
+
 _PRICING_VERSION = "2026-08-16"
 _OPENAI_PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing"
 _ANTHROPIC_PRICING_SOURCE = "https://docs.anthropic.com/en/docs/about-claude/pricing"
 _DEEPSEEK_PRICING_SOURCE = "https://api-docs.deepseek.com/quick_start/pricing"
-_OPENCODE_ZEN_SOURCE = "https://opencode.ai/zen"
+_OPENCODE_ZEN_SOURCE = "https://opencode.ai/v2/docs/console/models/"
 _DEEPSEEK_PEAK_PRICING_START = datetime(2026, 8, 16, 16, 0, tzinfo=UTC)
 _DEEPSEEK_PEAK_WINDOWS_UTC = (
     (time(1, 0), time(4, 0)),
@@ -389,12 +391,10 @@ def get_builtin_catalog() -> PricingCatalog:
             cache_creation="0.435",
             source=f"{_DEEPSEEK_PRICING_SOURCE}#time-based",
         ),
-        # opencode Zen 内置免 key free 模型
-        _free_openai_compatible_pricing("big-pickle"),
-        _free_openai_compatible_pricing("ling-3.0-flash-fin-free"),
-        _free_openai_compatible_pricing("mimo-v2.5-free"),
-        _free_openai_compatible_pricing("nemotron-3-ultra-free"),
-        _free_openai_compatible_pricing("nemotron-3.5-lightning-free"),
+        # 官方标价免费；第三方可用性受 OpenCode 免费层限制。
+        *(_free_openai_compatible_pricing(model) for model in OPENCODE_FREE_MODELS),
+        # 下线模型仍保留历史零价格，避免已保存的运行变成价格未知。
+        *(_free_openai_compatible_pricing(model) for model in OPENCODE_RETIRED_FREE_MODELS),
         # Pollinations 免 key 免费模型
         _free_openai_compatible_pricing("openai-fast"),
     ]

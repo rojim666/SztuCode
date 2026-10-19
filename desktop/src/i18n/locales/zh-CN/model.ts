@@ -5,6 +5,8 @@ export const model = {
   count: "{n} 个",
   inUse: "使用中",
   builtin: "内置",
+  opencodeRestricted: "仅限 OpenCode",
+  opencodeFreeTierNote: "OpenCode 免费层现仅限 OpenCode 自身使用。此处保留最新模型配置供参考，SztuCode 的免 Key 调用会返回 403（FreeTierError）。请添加其他可用的模型服务。",
   editAria: "编辑 {name}",
   deleteAria: "删除 {name}",
   addFirst: "添加第一个模型",

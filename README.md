@@ -19,7 +19,7 @@
 
 SztuCode 不只面向代码仓库。作为**全场景办公智能体**，它的工作台覆盖高校学习与日常办公的完整链路：撰写与审阅 Word 文档、处理 Excel 表格与公式、生成汇报 PPT、解析 PDF 资料、操控浏览器检索信息、生成图片，以及软件工程任务本身。桌面工作台连接 TypeScript daemon；命令行可选择 TypeScript 或 Python runtime。后台 daemon 负责运行 Agent Loop、调用工具、管理权限和保存会话，并通过 JSON-RPC 事件流持续反馈执行状态。
 
-但它首先是一个**面向高校的实验性场地**。Agent 岗位层出不穷，Agent harness 的设计直接决定智能体的能力上限；可无论是 codex、Claude Code 这类产品，还是 opencode 等开源实现，上手难、理解慢，学生很难真正通过 issue → PR 参与进去。所以我们搭了这么一个校园里触手可及的开源项目，并内置了免费模型——clone 下来就能用 deepseek-v4-flash 和 mimo-v2.5 跑起你的第一个智能体任务。欢迎大家尝试并点个 star。
+但它首先是一个**面向高校的实验性场地**。Agent 岗位层出不穷，Agent harness 的设计直接决定智能体的能力上限；可无论是 codex、Claude Code 这类产品，还是 opencode 等开源实现，上手难、理解慢，学生很难真正通过 issue → PR 参与进去。所以我们搭了这么一个校园里触手可及的开源项目，并提供模型服务配置入口，接入可用服务后即可跑起你的第一个智能体任务。OpenCode 免费层目前仅限其自身使用，第三方调用限制见[模型配置说明](docs/getting-started/configuration.md)。欢迎大家尝试并点个 star。
 
 并不是说要重复造轮子，做一个超越 codex 和 claude code 的产品，而是理解与学习——带着批判的目光去看清现有 agent 真正的运作方式，知己知彼方能百战不殆。
 
@@ -29,7 +29,7 @@ SztuCode 不只面向代码仓库。作为**全场景办公智能体**，它的�
 
 技术民主化有三层内涵：
 
-- **访问的民主**：降低门槛，让高校学生和初学者不需要昂贵的资源、复杂的配置就能接触到前沿技术。我们内置免费模型、提供零配置启动，就是为此。
+- **访问的民主**：降低门槛，让高校学生和初学者更容易接触到前沿技术。我们提供多服务商接入入口，并明确标注免费额度与使用限制。
 - **理解的民主**：真正的民主不是让人"用魔法"，而是让人"理解魔法如何运作"。我们把 Agent Loop、工具调用、权限系统、上下文压缩这些工程细节全部摊开，用双语言实现、详尽的架构文档，让你不仅能用，还能读懂、能修改、能批判。
 - **创造的民主**：从使用者到创造者。我们降低参与开源的门槛，让学生和初学者能通过 Issue → PR → Review 完整参与真实的工程协作，而不是永远停留在"调用 API"的层面。
 
@@ -136,7 +136,7 @@ desktop / packages/cli
 | --- | --- |
 | Agent Runtime | 基于 ReAct 的多步推理、工具调用、结果回填和终止控制；Python 版支持工具并发执行（默认 4），TS 版为串行 |
 | 多种客户端 | Tauri 2 + Vue 3 桌面工作台、Node 终端 chat（TS）；Textual TUI 与脚本化 CLI（Python） |
-| 模型接入 | Anthropic 与 OpenAI-compatible 双协议，可连接兼容服务商；内置 opencode Zen 免费 profile（如 deepseek-v4-flash、mimo-v2.5） |
+| 模型接入 | Anthropic 与 OpenAI-compatible 双协议，可连接兼容服务商；保留 OpenCode 最新模型配置，并提示其免费层仅限 OpenCode 自身使用 |
 | 办公场景 | 桌面端内置 Word / Excel / PPT / PDF 办公插件与 Skills（TS 链）：docx 读写与审阅、表格公式与图表、汇报幻灯片生成、PDF 解析（文本 / OCR / 页面渲染），并可扩展浏览器操控、图片生成、前端设计等场景 |
 | 工作区工具 | 文件读取、目录浏览、搜索、写入、精确编辑和受控 Shell 执行 |
 | 权限系统 | `normal`、`plan`、`accept_edits`、`auto` 四种运行模式，持久化策略与 denial 追踪 |

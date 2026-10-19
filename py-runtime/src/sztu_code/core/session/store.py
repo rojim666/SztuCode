@@ -360,11 +360,13 @@ class SessionStore:
     def write_compacted(self, sid: str, messages: list[dict[str, Any]]) -> None:
         path = self.session_dir(sid) / "thread.jsonl"
         ts_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        bak = self.session_dir(sid) / f"thread_{ts_str}_{uuid.uuid4().hex[:8]}.jsonl.bak"
-        if path.exists():
-            path.rename(bak)
+        name = f"thread_{ts_str}_{uuid.uuid4().hex}"
+        bak = path.parent / f"{name}.jsonl.bak"
+        tmp = path.parent / f"{name}.jsonl.tmp"
+        published = False
         try:
-            with path.open("w", encoding="utf-8") as f:
+            # 先完成临时文件，避免序列化或磁盘写入失败破坏当前上下文。
+            with tmp.open("x", encoding="utf-8") as f:
                 for msg in messages:
                     row: dict[str, Any] = {
                         "ts": _now(),
@@ -372,10 +374,14 @@ class SessionStore:
                         "content": msg["content"],
                     }
                     f.write(json.dumps(row, ensure_ascii=False) + "\n")
-        except Exception:
-            if not path.exists() and bak.exists():
-                bak.rename(path)
-            raise
+            if path.exists():
+                shutil.copy2(path, bak)
+            tmp.replace(path)
+            published = True
+        finally:
+            tmp.unlink(missing_ok=True)
+            if not published:
+                bak.unlink(missing_ok=True)
 
     # 读取 notes.md 全文（仅活跃笔记），文件不存在时返回空字符串
     # Phase 3b: 支持 supersedes 版本化 — 被替代的旧笔记自动隐藏

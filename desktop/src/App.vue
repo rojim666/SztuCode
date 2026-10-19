@@ -28,7 +28,7 @@ import type { ContextInjectionEntry, PermissionDecision, PermissionState, PlanIt
 import { isMacOSPlatform } from "./lib/platform";
 import { appendThinkingBatch, appendTokenBatch, createTokenFrameBatcher } from "./utils/timelineStream";
 import { deriveSessionStats } from "./utils/sessionStats";
-import { resolveComposerSubmitMode, type ComposerSubmitGesture, type QueueDockItem } from "./utils/composerSubmission";
+import type { QueueDockItem } from "./utils/composerSubmission";
 import { loadComposerDraft, saveComposerDraft } from "./utils/composerDraft";
 import { createComposerFileDropHandler } from "./utils/composerFileDrop";
 import { needsAttachmentStaging } from "./utils/attachmentSource";
@@ -424,8 +424,7 @@ const launcherPermissionMenuOpen = ref(false);
 const permissionConfirmOpen = ref(false);
 const permissionSaving = ref(false);
 const permissionSettingsError = ref("");
-// 防止连续按键在 steer 请求尚未返回时重复追加同一条消息。
-const steering = ref(false);
+
 const projectActionsOpen = ref<string | null>(null);
 // 侧栏工具图标点击脉冲：用弹性缩放替代选中变实心的观感
 const pulsingIcon = ref("");
@@ -2199,9 +2198,9 @@ function handleSessionClosed(sessionId: string) {
   if (sessionId === activeId.value) closeActiveSession();
   else void refreshIndex(false);
 }
-async function submit(gesture: ComposerSubmitGesture = "enter") {
+async function submit() {
   const content = prompt.value.trim();
-  if (!content && !selectedSkill.value || steering.value || (sending.value && !isAppending.value)) return;
+  if (!content && !selectedSkill.value || (sending.value && !isAppending.value)) return;
   if (activeId.value && (active.value?.archived || active.value?.status === "closed")) return;
   const mode = ({ "/plan": "plan", "/edits": "accept_edits", "/auto": "auto" } as const)[content as "/plan" | "/edits" | "/auto"];
   if (mode) {
@@ -2215,48 +2214,13 @@ async function submit(gesture: ComposerSubmitGesture = "enter") {
   const { displayText, payload, images, timelineAttachments } = await buildMessagePayload(content);
   const sessionId = activeId.value;
   if (sessionId && isAppending.value) {
-    const submitMode = resolveComposerSubmitMode(true, gesture, true);
-    if (submitMode === "queue") {
-      enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
-      prompt.value = "";
-      attachedFiles.value = [];
-      selectedSkill.value = null;
-      insertedPlugins.value = [];
-    } else {
-      steering.value = true;
-      try {
-        await steerPrompt(sessionId, payload, images);
-        prompt.value = "";
-        attachedFiles.value = [];
-        selectedSkill.value = null;
-        insertedPlugins.value = [];
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        // run 刚好结束时 steer 会被服务拒绝，此时转入队列；其它错误不能静默吞掉草稿。
-        const runStillActive = sessionId ? ensureSessionView(sessionId).runActive : false;
-        if (!runStillActive && sessionId) {
-          // 追加提交与 run.finished 同时到达时，直接启动一个新的 run，
-          // 避免输入框一直停留在追加模式且任务没有进入运行态。
-          const sent = await startSessionRun(sessionId, displayText, payload, images, timelineAttachments);
-          if (sent) {
-            prompt.value = "";
-            attachedFiles.value = [];
-            selectedSkill.value = null;
-            insertedPlugins.value = [];
-          }
-        } else if (/busy|steer unavailable|session busy|运行中|繁忙/i.test(message)) {
-          enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
-          prompt.value = "";
-          attachedFiles.value = [];
-          selectedSkill.value = null;
-          insertedPlugins.value = [];
-        } else {
-          void showProjectNotice(t("app.sendFailed"), friendlyError(error).message, "danger");
-        }
-      } finally {
-        steering.value = false;
-      }
-    }
+    // 运行中提交追加任务一律先落到输入框上方的卡片（队列），不直接注入运行中的 run。
+    // 是否注入由用户在卡片上显式决定（QueueDock 的注入口）；输入框手势不再改变结果。
+    enqueueSubmission(sessionId, displayText, payload, images, timelineAttachments);
+    prompt.value = "";
+    attachedFiles.value = [];
+    selectedSkill.value = null;
+    insertedPlugins.value = [];
     slashMenuDismissed.value = false;
     void nextTick(() => activePrompt.value?.focus());
     return;
@@ -2293,7 +2257,7 @@ function onComposerKeydown(event: KeyboardEvent) {
   if (event.key !== "Enter" || event.shiftKey) return;
   if (event.isComposing || event.keyCode === 229 || event.repeat || event.altKey) return;
   event.preventDefault();
-  void submit(event.ctrlKey || event.metaKey ? "accelerated" : "enter");
+  void submit();
 }
 async function decidePermission(toolUseId: string, decision: PermissionDecision) {
   const context = permissionContexts.get(toolUseId);
@@ -3813,7 +3777,7 @@ watch(activeWorkspace, (project) => {
                           <AppIcon name="Upload" :size="32" />
                           <span>{{ t('app.dropFilesHere') }}</span>
                         </div>
-                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim() || selectedSkill" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() && !selectedSkill || active.archived || active.status === 'closed' || (sending && !isAppending) || steering"><AppIcon name="ArrowUp" :size="15" /></button></div>
+                        <div class="composer-toolbar"><button type="button" class="round" :title="t('app.addContext')" :aria-label="t('app.addContext')" @click="selectAttachments"><AppIcon name="Plus" :size="18" /></button><div class="active-plugin-control"><button type="button" class="composer-plugin pill" :title="t('app.plugins')" :aria-label="t('app.plugins')" aria-haspopup="menu" :aria-expanded="activePluginMenuOpen" @click.stop="toggleActivePluginMenu"><span v-if="launcherPluginIcons.length" class="composer-plugin-icons"><PluginIcon v-for="p in launcherPluginIcons" :key="p.id" :name="p.name" :size="18" /></span><AppIcon v-else name="Puzzle" :size="15" /></button><div v-if="activePluginMenuOpen" class="launcher-popover plugin-picker-popover" role="menu" aria-label="选择插件"><div v-if="launcherPlugins.length" class="plugin-picker-list"><button v-for="p in launcherPlugins" :key="p.id" type="button" role="menuitem" @click="insertPluginToPrompt(p)"><PluginIcon :name="p.name" :size="22" /><span><b>{{ p.display_name }}</b><small>{{ p.description }}</small></span></button></div><p v-else class="project-picker-empty">暂无已启用的插件</p></div></div><button type="button" class="permission" :title="permissionModeLabel" :class="runtimeSettings?.permission_mode === 'auto' ? 'permission--full-access' : 'permission--per-item'" @click="choosePermissionMode(runtimeSettings?.permission_mode === 'auto' ? 'normal' : 'auto')"><AppIcon name="ShieldCheck" :size="15" />{{ runtimeSettings?.permission_mode === 'auto' ? t('app.allowAll') : t('app.perItemApproval') }}<AppIcon name="ChevronDown" :size="13" /></button><span /><ModelConfigMenu :settings="runtimeSettings" :status="providerStatus" @updated="handleModelConfigUpdated" @manage="openModelManager" /><button v-if="isRunActive" class="send stop" type="button" :title="t('app.stopTaskNow')" :aria-label="t('app.stopTask')" @click="stopActiveRun"><AppIcon name="Square" :size="14" /></button><button v-if="!isRunActive || prompt.trim() || selectedSkill" class="send" type="submit" :title="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :aria-label="isRunActive ? t('app.sendAppend') : t('app.sendTask')" :disabled="!prompt.trim() && !selectedSkill || active.archived || active.status === 'closed' || (sending && !isAppending)"><AppIcon name="ArrowUp" :size="15" /></button></div>
                       </div>
                     </form>
                 </QueueDock>

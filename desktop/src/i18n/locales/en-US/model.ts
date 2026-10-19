@@ -5,6 +5,8 @@ export const model = {
   count: "{n}",
   inUse: "In use",
   builtin: "Built-in",
+  opencodeRestricted: "OpenCode only",
+  opencodeFreeTierNote: "OpenCode's free tier is now limited to OpenCode itself. These model configurations are kept for reference; keyless requests from SztuCode return 403 (FreeTierError). Add another available model provider to run tasks.",
   editAria: "Edit {name}",
   deleteAria: "Delete {name}",
   addFirst: "Add your first model",

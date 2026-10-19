@@ -135,6 +135,10 @@ async def test_run_event_loop_exits_on_server_close() -> None:
         client = SocketClient("127.0.0.1", port)
         await client.connect()
         await asyncio.wait_for(client.run_event_loop(), timeout=2.0)
+        assert client._reader is None
+        assert client._writer is None
+        with pytest.raises(RuntimeError, match="not connected"):
+            await asyncio.wait_for(client.send_command("core.ping", {}), timeout=2.0)
         await client.close()
 
 
@@ -155,3 +159,114 @@ async def test_pending_command_raises_connection_error_when_server_closes() -> N
 
         await loop_task
         await client.close()
+
+
+async def test_cancelled_command_is_removed_and_late_response_is_ignored() -> None:
+    received = asyncio.Event()
+    release = asyncio.Event()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        first = json.loads(await reader.readline())
+        received.set()
+        await release.wait()
+        writer.write(json.dumps({
+            "jsonrpc": "2.0", "id": first["id"], "result": {"late": True},
+        }).encode() + b"\n")
+        second = json.loads(await reader.readline())
+        writer.write(json.dumps({
+            "jsonrpc": "2.0", "id": second["id"], "result": {"pong": True},
+        }).encode() + b"\n")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server, port = await _start_mock_server(handle)
+    async with server:
+        client = SocketClient("127.0.0.1", port)
+        await client.connect()
+        loop_task = asyncio.create_task(client.run_event_loop())
+        command = asyncio.create_task(client.send_command("core.ping", {}))
+        try:
+            await asyncio.wait_for(received.wait(), timeout=2.0)
+            command.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await command
+            assert client._pending == {}
+
+            release.set()
+            assert await asyncio.wait_for(
+                client.send_command("core.ping", {}), timeout=2.0,
+            ) == {"pong": True}
+            await asyncio.wait_for(loop_task, timeout=2.0)
+        finally:
+            release.set()
+            command.cancel()
+            loop_task.cancel()
+            await asyncio.gather(command, loop_task, return_exceptions=True)
+            await client.close()
+
+
+async def test_explicit_close_wakes_pending_command_without_reader_loop() -> None:
+    received = asyncio.Event()
+    disconnected = asyncio.Event()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readline()
+        received.set()
+        await reader.read()
+        writer.close()
+        await writer.wait_closed()
+        disconnected.set()
+
+    server, port = await _start_mock_server(handle)
+    async with server:
+        client = SocketClient("127.0.0.1", port)
+        await client.connect()
+        command = asyncio.create_task(client.send_command("core.ping", {}))
+        try:
+            await asyncio.wait_for(received.wait(), timeout=2.0)
+            await client.close()
+            with pytest.raises(ConnectionError, match="before response"):
+                await asyncio.wait_for(command, timeout=2.0)
+            assert client._pending == {}
+            await asyncio.wait_for(disconnected.wait(), timeout=2.0)
+        finally:
+            command.cancel()
+            await asyncio.gather(command, return_exceptions=True)
+            await client.close()
+
+
+@pytest.mark.parametrize("stage", ["write", "drain"])
+async def test_send_failure_releases_pending_command(
+    stage: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    disconnected = asyncio.Event()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.read()
+        writer.close()
+        await writer.wait_closed()
+        disconnected.set()
+
+    server, port = await _start_mock_server(handle)
+    async with server:
+        client = SocketClient("127.0.0.1", port)
+        await client.connect()
+        writer = client._writer
+        assert writer is not None
+
+        def fail_write(data: bytes) -> None:
+            raise OSError("write failed")
+
+        async def fail_drain() -> None:
+            raise OSError("drain failed")
+
+        monkeypatch.setattr(writer, stage, fail_write if stage == "write" else fail_drain)
+        try:
+            with pytest.raises(OSError, match=f"{stage} failed"):
+                await asyncio.wait_for(client.send_command("core.ping", {}), timeout=2.0)
+            assert client._pending == {}
+            assert client._writer is None
+            await asyncio.wait_for(disconnected.wait(), timeout=2.0)
+        finally:
+            await client.close()

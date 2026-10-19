@@ -10,9 +10,20 @@ export type ModelProfile = ProfileSettings & { id: string; name: string; vendor:
 type StoredProfile = ProfileSettings & { id: string; name: string; vendor: string; builtin: boolean; api_key?: string; keyless?: boolean };
 type ProfileFile = { profiles: StoredProfile[]; active_model_id: string };
 
-// opencode Zen 免费模型（免 key，OpenAI 兼容端点）内置 profile，名单与 py-runtime app.py 保持一致
-const OPENCODE_ZEN_BASE_URL = "https://opencode.ai/zen/v1";
-const OPENCODE_ZEN_FREE_MODELS = ["big-pickle", "ling-3.0-flash-fin-free", "mimo-v2.5-free", "nemotron-3-ultra-free", "nemotron-3.5-lightning-free"];
+// 2026-10-19 官方文档与 /inference/v1/models 的交集，与 Python opencode_catalog.py 保持一致。
+// 保留历史 profile ID；免费层现仅限 OpenCode 内使用，第三方免 key 调用返回 403。
+const OPENCODE_ZEN_BASE_URL = "https://opencode.ai/inference/openai/v1";
+const OPENCODE_ZEN_FREE_MODELS = [
+  "big-pickle",
+  "beam-free",
+  "deepseek-v4.1-flash-free",
+  "glm-5.3-flash-free",
+  "longcat-2.5-preview-free",
+  "mimo-v2.6-flash-free",
+  "nemotron-3.5-lightning-free",
+  "nemotron-3.5-super-vl-free",
+  "space-bunny-free",
+];
 // Pollinations 免费端点（免 key，匿名 tier），匿名可用模型见 https://text.pollinations.ai/models
 const POLLINATIONS_BASE_URL = "https://text.pollinations.ai/openai";
 // Official GPT-5.6 family entries. Display names are user-facing; model keeps

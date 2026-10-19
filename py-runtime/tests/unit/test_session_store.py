@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import IO, Any
+
+import pytest
 
 from sztu_code.core.session.model import RunStats, Session
 from sztu_code.core.session.store import SessionStore
@@ -112,6 +115,83 @@ def test_history_merges_sliding_compaction_backups_without_duplicates(tmp_path: 
         (message["role"], message["content"])
         for message in [*first_turn, *second_turn, *third_turn]
     ]
+
+
+def test_compaction_serialization_failure_preserves_active_thread(tmp_path: Path) -> None:
+    store = SessionStore(tmp_path)
+    store.append_message("sess-1", "user", "original request", run_id="run-1")
+    store.append_message("sess-1", "assistant", "original response", run_id="run-1")
+    path = store.session_dir("sess-1") / "thread.jsonl"
+    original = path.read_bytes()
+
+    with pytest.raises(TypeError):
+        store.write_compacted("sess-1", [
+            {"role": "user", "content": "replacement first row"},
+            {"role": "assistant", "content": object()},
+        ])
+
+    assert path.read_bytes() == original
+    assert list(path.parent.iterdir()) == [path]
+
+
+def test_compaction_write_failure_preserves_active_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SessionStore(tmp_path)
+    store.append_message("sess-1", "user", "original request")
+    path = store.session_dir("sess-1") / "thread.jsonl"
+    original = path.read_bytes()
+    original_open = Path.open
+
+    def fail_second_write(
+        source: Path, mode: str = "r", *args: Any, **kwargs: Any
+    ) -> IO[Any]:
+        stream = original_open(source, mode, *args, **kwargs)
+        if source.parent == path.parent and mode in ("w", "x"):
+            write = stream.write
+            written_rows = 0
+
+            def failing_write(data: str) -> int:
+                nonlocal written_rows
+                written_rows += 1
+                if written_rows == 2:
+                    raise OSError("disk full")
+                return write(data)
+
+            monkeypatch.setattr(stream, "write", failing_write)
+        return stream
+
+    monkeypatch.setattr(Path, "open", fail_second_write)
+    with pytest.raises(OSError, match="disk full"):
+        store.write_compacted("sess-1", [
+            {"role": "user", "content": "summary"},
+            {"role": "assistant", "content": "acknowledged"},
+        ])
+
+    assert path.read_bytes() == original
+    assert list(path.parent.iterdir()) == [path]
+
+
+def test_compaction_publish_failure_preserves_active_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SessionStore(tmp_path)
+    store.append_message("sess-1", "user", "original request")
+    path = store.session_dir("sess-1") / "thread.jsonl"
+    original = path.read_bytes()
+
+    def fail_replace(source: Path, target: Path) -> Path:
+        assert target == path
+        assert path.read_bytes() == original
+        assert source.read_text(encoding="utf-8").endswith("\n")
+        raise OSError("cannot publish compacted thread")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(OSError, match="cannot publish"):
+        store.write_compacted("sess-1", [{"role": "user", "content": "summary"}])
+
+    assert path.read_bytes() == original
+    assert list(path.parent.iterdir()) == [path]
 
 
 def test_backfill_run_stats_from_finished_event(tmp_path: Path) -> None:
