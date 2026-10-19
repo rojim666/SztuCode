@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { ContentBlock, KnownContentBlock } from "../context.js";
@@ -62,9 +62,14 @@ export async function preprocessImage(bytes: Buffer, mediaType: string, options:
   const normalized = mediaType.toLowerCase();
   if (!isSupportedImageType(normalized)) throw new Error(`Unsupported image type: ${mediaType}`);
   const maxLongEdge = options.maxLongEdge ?? 2_048; const maxShortEdge = options.maxShortEdge ?? 2_048; const maxBytes = options.maxBytes ?? 20 * 1024 * 1024;
+  if (![maxLongEdge, maxShortEdge, maxBytes].every((value) => Number.isSafeInteger(value) && value > 0)) throw new Error("Image limits must be positive integers");
+  if (bytes.length > maxBytes) throw new Error(`Image too large: ${bytes.length} bytes (max ${maxBytes})`);
   // Keep sharp external to esbuild: desktop's existing prepare-runtime copies its native binary and libvips.
   const sharp = createRequire(import.meta.url)("sharp") as typeof import("sharp");
   const input = sharp(bytes, { animated: false, limitInputPixels: 40_000_000 }); const metadata = await input.metadata();
+  const formatTypes: Record<string, string> = { png: "image/png", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+  const detectedType = formatTypes[metadata.format ?? ""];
+  if (detectedType !== normalized) throw new Error(`Image content does not match declared type: ${mediaType}`);
   const originalWidth = metadata.width ?? 0; const originalHeight = metadata.height ?? 0;
   if (!(originalWidth > 0 && originalHeight > 0)) throw new Error("Image dimensions could not be determined");
   if (normalized === "image/gif" && (metadata.pages ?? 1) > 1) throw new Error("Animated GIF is not supported; upload a still image instead");
@@ -75,10 +80,11 @@ export async function preprocessImage(bytes: Buffer, mediaType: string, options:
   return { bytes: output.data, mediaType: normalized, width: output.info.width, height: output.info.height, originalWidth, originalHeight, originalBytes: bytes.length };
 }
 
-export async function imageToContentBlock(filePath: string, maxSizeBytes = 20 * 1024 * 1024): Promise<Extract<KnownContentBlock, { type: "image" }>> {
+export async function imageToContentBlock(filePath: string, maxSizeBytes = 20 * 1024 * 1024, maxDimension = 2048): Promise<Extract<KnownContentBlock, { type: "image" }>> {
   const mediaType = getMimeTypeFromPath(filePath);
   if (!mediaType) throw new Error(`Unsupported image type: ${filePath}`);
+  if ((await stat(filePath)).size > maxSizeBytes) throw new Error(`Image too large (max ${maxSizeBytes} bytes)`);
   const bytes = await readFile(filePath);
-  const processed = await preprocessImage(bytes, mediaType, { maxBytes: maxSizeBytes });
+  const processed = await preprocessImage(bytes, mediaType, { maxBytes: maxSizeBytes, maxLongEdge: maxDimension });
   return { type: "image", source: { media_type: processed.mediaType, data: processed.bytes.toString("base64"), width: processed.width, height: processed.height, original_width: processed.originalWidth, original_height: processed.originalHeight, original_bytes: processed.originalBytes } };
 }

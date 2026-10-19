@@ -1,5 +1,11 @@
 import { invoke } from "../lib/tauri-shim";
 import { IpcClient, IpcRequestError } from "../lib/ipc";
+import type { SemanticIndexStatus } from "@sztucode/protocol";
+export type { SemanticIndexStatus } from "@sztucode/protocol";
+
+export async function semanticIndex(workspaceId: string, action: "status" | "build" | "clear" = "status"): Promise<SemanticIndexStatus> {
+  return await client.request(`index.${action}`, { workspace_id: workspaceId }) as unknown as SemanticIndexStatus;
+}
 
 export type Workspace = { workspace_id: string; name: string; path: string; archived: boolean; pinned?: boolean };
 export type NativeSettings = {

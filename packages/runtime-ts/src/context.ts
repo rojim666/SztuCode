@@ -64,7 +64,11 @@ export class TokenCounter {
     return Math.max(1, Math.ceil(cjk + (text.length - cjk) / 4));
   }
   count(text: string): number { return this.rawCount(text) + 4; }
-  rawCountBlock(block: ContentBlock): number { return block.type === "image" ? this.imageEstimator.estimate(block) : this.rawCount(String(block.text ?? block.content ?? "")); }
+  rawCountBlock(block: ContentBlock): number {
+    if (block.type === "image" || block.type === "image_url") return this.imageEstimator.estimate(block);
+    if (Array.isArray(block.content)) return block.content.reduce((sum, child) => sum + this.rawCountBlock(child), 0);
+    return this.rawCount(String(block.text ?? block.content ?? ""));
+  }
   countJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.count(typeof value === "string" ? value : JSON.stringify(value)); }
   rawCountJson(value: unknown): number { return value === null || value === undefined || value === "" ? 0 : this.rawCount(typeof value === "string" ? value : JSON.stringify(value)); }
   countMessages(messages: ContextMessage[]): number { return Math.max(1, messages.reduce((total, message) => total + 4 + (typeof message.content === "string" ? this.rawCount(message.content) : message.content.reduce((sum, block) => sum + this.rawCountBlock(block), 0)), 0)); }

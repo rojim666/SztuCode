@@ -282,4 +282,9 @@ export const app = {
 
   // IDE
   openIdeFailed: "无法打开 IDE",
+  semanticIndex: {
+    not_started: "语义索引尚未建立", indexing: "正在建立语义索引", ready: "语义索引就绪", failed: "语义索引失败", unavailable: "语义索引暂不可用",
+    manage: "语义索引管理", counts: "{files} 个文件 · {chunks} 个片段", build: "重建索引", clear: "清除索引",
+    hint: "首次搜索会自动建立索引。首次使用需下载本地模型，无需 API Key；清除索引不会删除源文件。",
+  },
 };

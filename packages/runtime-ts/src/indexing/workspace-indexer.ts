@@ -61,7 +61,7 @@ export class WorkspaceIndexer {
 
   async indexFile(relativePath: string): Promise<number> {
     const source = this.normalizeRelativePath(relativePath);
-    if (!this.shouldIndex(source)) {
+    if (!this.shouldIndex(source) || await this.isGitIgnored(source)) {
       await this.vectorStore.delete({ source });
       await this.observer?.(source, []);
       return 0;
@@ -139,7 +139,7 @@ export class WorkspaceIndexer {
     const allFiles = await this.listFiles(this.workspace.root);
     const candidates: string[] = [];
     for (const file of allFiles) {
-      if (this.shouldIndex(file) && await this.isTextFile(file) && !(await this.isGitIgnored(file))) candidates.push(file);
+      if (this.shouldIndex(file) && (await this.isTextFile(file) || (this.isOfficeFile(file) && (await stat(await this.workspace.resolveExisting(file))).size <= MAX_FILE_BYTES)) && !(await this.isGitIgnored(file))) candidates.push(file);
     }
     return candidates;
   }
@@ -162,7 +162,7 @@ export class WorkspaceIndexer {
 
   shouldIndex(relativePath: string): boolean {
     const normalized = relativePath.replaceAll("\\", "/").replace(/^\.\//, "");
-    if (!normalized || normalized.startsWith("/") || normalized.split("/").some((part) => part === ".." || ignored.has(part))) return false;
+    if (!normalized || normalized.startsWith("/") || normalized.split("/").some((part) => part === ".." || part === ".sztu" || ignored.has(part))) return false;
     const extension = path.posix.extname(normalized).toLowerCase();
     return DEFAULT_EXTENSIONS.has(extension) && !path.posix.basename(normalized).startsWith(".");
   }
@@ -182,7 +182,7 @@ export class WorkspaceIndexer {
     const walk = async (current: string): Promise<void> => {
       const entries = await readdir(current, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.isDirectory() && ignored.has(entry.name)) continue;
+        if (entry.isDirectory() && (entry.name === ".sztu" || ignored.has(entry.name) || await this.isGitIgnored(path.relative(this.workspace.root, path.join(current, entry.name))))) continue;
         const absolute = path.join(current, entry.name);
         if (entry.isDirectory()) await walk(absolute);
         else if (entry.isFile()) output.push(path.relative(this.workspace.root, absolute).split(path.sep).join("/"));

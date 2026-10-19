@@ -2,10 +2,12 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Tool } from "./tools.js";
 import type { SessionStore } from "./session-store.js";
+import { SemanticMemory, type MemoryQueryMode, type MemoryScope } from "./semantic-memory.js";
+import type { Embedder } from "./embedding/index.js";
 
 type MemoryLayer = "global" | "project" | "session";
 type MemoryDocument = { name: MemoryLayer; content: string; source: string };
-type LiveSources = { sessions?: SessionStore; sessionId?: string; files?: Partial<Record<MemoryLayer, string>> };
+type LiveSources = { sessions?: SessionStore; sessionId?: string; files?: Partial<Record<MemoryLayer, string>>; workspaceRoot?: string; createEmbedder?: () => Embedder };
 const MEMORY_LAYERS: MemoryLayer[] = ["global", "project", "session"];
 const LAYER_SOURCES: Record<MemoryLayer, string> = { global: "~/.sztu/context.md", project: ".sztu/context.md", session: "session/notes.md" };
 const CONTEXT_MAX_BYTES = 256 * 1024; // project/global context.md 写入上限
@@ -13,6 +15,8 @@ const consolidatedPrefix = "## Consolidated notes";
 
 export class MemoryCatalog {
   private readonly documents = new Map<MemoryLayer, MemoryDocument>();
+  private semantic?: SemanticMemory;
+  private semanticEnabled = false;
 
   constructor(documents: MemoryDocument[], private readonly inlineChars = 2_000, private readonly live?: LiveSources) {
     for (const document of documents) if (document.content.trim()) this.documents.set(document.name, { ...document, content: document.content.trim() });
@@ -35,12 +39,35 @@ export class MemoryCatalog {
 
   // 活读：session 层每次现读 notes，global/project 层每次现读文件，保证 run 内写入与外部编辑立即可见
   async readLive(layer: string, query = "", offset = 0, limit = 1_600): Promise<string> {
+    const content = await this.readContent(layer);
+    return this.render(content.trim(), layer, LAYER_SOURCES[layer as MemoryLayer], query, offset, limit);
+  }
+
+  private async readContent(layer: string): Promise<string> {
     if (!MEMORY_LAYERS.includes(layer as MemoryLayer)) throw new Error(`memory layer not found: ${layer}; available: ${MEMORY_LAYERS.join(", ")}`);
     let content: string;
     if (layer === "session" && this.live?.sessions && this.live.sessionId) content = await this.live.sessions.readNotes(this.live.sessionId);
     else if (layer !== "session" && this.live?.files?.[layer as MemoryLayer]) content = await readText(this.live.files[layer as MemoryLayer]!);
     else content = this.documents.get(layer as MemoryLayer)?.content ?? "";
-    return this.render(content.trim(), layer, LAYER_SOURCES[layer as MemoryLayer], query, offset, limit);
+    return content;
+  }
+
+  async query(layer: string, query: string, offset: number, limit: number, mode: MemoryQueryMode, scope: MemoryScope): Promise<string> {
+    if (!["keyword", "semantic", "hybrid"].includes(mode)) throw new Error("query_mode must be keyword, semantic or hybrid");
+    if (!["current", "workspace"].includes(scope)) throw new Error("scope must be current or workspace");
+    if (!MEMORY_LAYERS.includes(layer as MemoryLayer)) throw new Error(`memory layer not found: ${layer}`);
+    if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 4000) throw new Error("offset or limit is invalid");
+    if (!query.trim() || !this.live?.workspaceRoot || (mode === "keyword" && scope === "current")) return this.readLive(layer, query, offset, limit);
+    this.semantic ??= new SemanticMemory(this.live.workspaceRoot, this.live.sessions, this.live.sessionId, (name) => this.readContent(name), this.live.createEmbedder);
+    if (mode !== "keyword") this.semanticEnabled = true;
+    return this.semantic.search(layer, query.trim(), mode, scope, offset, limit);
+  }
+
+  async updateSemanticNotes(): Promise<string> {
+    // 首次语义查询前不下载模型；启用后的 note_save/note_update 同步更新向量。
+    if (!this.semanticEnabled || !this.semantic) return "";
+    try { await this.semantic.search("session", "", "semantic", "current", 0, 1600); return ""; }
+    catch (error) { return `\n笔记已保存，语义索引暂未更新，下次查询会重试：${error instanceof Error ? error.message : String(error)}`; }
   }
 
   private render(content: string, layer: string, source: string, query: string, offset: number, limit: number): string {
@@ -64,7 +91,7 @@ export class MemoryCatalog {
   }
 }
 
-export async function loadMemoryCatalog(workspaceRoot: string, sessions?: SessionStore, sessionId?: string): Promise<MemoryCatalog> {
+export async function loadMemoryCatalog(workspaceRoot: string, sessions?: SessionStore, sessionId?: string, createEmbedder?: () => Embedder): Promise<MemoryCatalog> {
   const homeRoot = process.env.USERPROFILE ?? process.env.HOME ?? process.cwd();
   const globalFile = path.join(homeRoot, ".sztu", "context.md"); const projectFile = path.join(workspaceRoot, ".sztu", "context.md");
   const [globalMemory, projectMemory, sessionMemory] = await Promise.all([
@@ -76,16 +103,16 @@ export async function loadMemoryCatalog(workspaceRoot: string, sessions?: Sessio
     { name: "global", content: globalMemory, source: "~/.sztu/context.md" },
     { name: "project", content: projectMemory, source: ".sztu/context.md" },
     { name: "session", content: sessionMemory, source: "session/notes.md" },
-  ], 2_000, { sessions, sessionId, files: { global: globalFile, project: projectFile } });
+  ], 2_000, { sessions, sessionId, workspaceRoot, createEmbedder, files: { global: globalFile, project: projectFile } });
 }
 
 export function createMemoryTools(catalog: MemoryCatalog, sessions?: SessionStore, sessionId?: string, runId = ""): Tool[] {
   const tools: Tool[] = [];
   // 有 session 时也注册：会话笔记在 run 内增长，readLive 保证随时可读
-  if (catalog.requiresReader() || Boolean(sessions && sessionId)) tools.push({ name: "memory_read", description: "Read a bounded excerpt from global, project, or session memory", permission: "read_only", schema: { type: "object", properties: { layer: { type: "string", enum: ["global", "project", "session"] }, query: { type: "string" }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 4000 } }, required: ["layer"] }, async invoke(params) { try { return { ok: true, output: await catalog.readLive(String(params.layer ?? ""), String(params.query ?? ""), Number(params.offset ?? 0), Number(params.limit ?? 1600)) }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "runtime_error" }; } } });
+  if (catalog.requiresReader() || Boolean(sessions && sessionId)) tools.push({ name: "memory_read", description: "Read global, project, or session memory. Use scope=workspace with layer=session to recall notes from other sessions in this workspace; hybrid search combines keywords and meaning.", permission: "read_only", schema: { type: "object", properties: { layer: { type: "string", enum: ["global", "project", "session"] }, query: { type: "string" }, query_mode: { type: "string", enum: ["keyword", "semantic", "hybrid"], default: "hybrid" }, scope: { type: "string", enum: ["current", "workspace"], default: "current" }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 4000 } }, required: ["layer"] }, async invoke(params) { try { return { ok: true, output: await catalog.query(String(params.layer ?? ""), String(params.query ?? ""), Number(params.offset ?? 0), Number(params.limit ?? 1600), String(params.query_mode ?? "hybrid") as MemoryQueryMode, String(params.scope ?? "current") as MemoryScope) }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "runtime_error" }; } } });
   if (sessions && sessionId) {
-    tools.push({ name: "note_save", description: "Save a concise durable fact or decision to this session", permission: "workspace_write", schema: { type: "object", properties: { content: { type: "string" } }, required: ["content"] }, async invoke(params) { const content = typeof params.content === "string" ? params.content.trim() : ""; if (!content) return { ok: false, output: "", error: "empty content", errorType: "schema_error" }; try { const noteId = await sessions.appendNote(sessionId, content, runId); return { ok: true, output: `saved (${noteId})` }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "schema_error" }; } } });
-    tools.push({ name: "note_update", description: "Replace an active session note while preserving its supersedes history", permission: "workspace_write", schema: { type: "object", properties: { note_id: { type: "string" }, content: { type: "string" } }, required: ["note_id", "content"] }, async invoke(params) { const noteId = typeof params.note_id === "string" ? params.note_id.trim() : ""; const content = typeof params.content === "string" ? params.content.trim() : ""; if (!noteId || !content) return { ok: false, output: "", error: "note_id and content are required", errorType: "schema_error" }; try { const nextId = await sessions.updateNote(sessionId, noteId, content, runId); return nextId ? { ok: true, output: `updated (${noteId} -> ${nextId})` } : { ok: false, output: "", error: `note not found: ${noteId}`, errorType: "runtime_error" }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "schema_error" }; } } });
+    tools.push({ name: "note_save", description: "Save a concise durable fact or decision to this session", permission: "workspace_write", schema: { type: "object", properties: { content: { type: "string" } }, required: ["content"] }, async invoke(params) { const content = typeof params.content === "string" ? params.content.trim() : ""; if (!content) return { ok: false, output: "", error: "empty content", errorType: "schema_error" }; try { const noteId = await sessions.appendNote(sessionId, content, runId); return { ok: true, output: `saved (${noteId})${await catalog.updateSemanticNotes()}` }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "schema_error" }; } } });
+    tools.push({ name: "note_update", description: "Replace an active session note while preserving its supersedes history", permission: "workspace_write", schema: { type: "object", properties: { note_id: { type: "string" }, content: { type: "string" } }, required: ["note_id", "content"] }, async invoke(params) { const noteId = typeof params.note_id === "string" ? params.note_id.trim() : ""; const content = typeof params.content === "string" ? params.content.trim() : ""; if (!noteId || !content) return { ok: false, output: "", error: "note_id and content are required", errorType: "schema_error" }; try { const nextId = await sessions.updateNote(sessionId, noteId, content, runId); return nextId ? { ok: true, output: `updated (${noteId} -> ${nextId})${await catalog.updateSemanticNotes()}` } : { ok: false, output: "", error: `note not found: ${noteId}`, errorType: "runtime_error" }; } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "schema_error" }; } } });
     tools.push({ name: "memory_consolidate", description: "Append new active session notes into the project context.md, deduplicated by note id", permission: "workspace_write", schema: { type: "object", properties: {} }, async invoke(_params, context) { try { return await consolidateNotes(sessions, sessionId, path.join(context.workspace.root, ".sztu", "context.md")); } catch (error) { return { ok: false, output: "", error: error instanceof Error ? error.message : String(error), errorType: "runtime_error" }; } } });
   }
   return tools;

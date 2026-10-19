@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import assert from "node:assert/strict";
 import net from "node:net";
 import test from "node:test";
@@ -50,23 +51,20 @@ test("session.send_message forwards the current image blocks to the first model 
   try {
     await rpc(socket, "settings.update", { supports_vision: true });
     const created = await rpc(socket, "session.create", { mode: "chat" });
-    const image = { type: "image", media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" };
+    const data = (await sharp({ create: { width: 2, height: 1, channels: 3, background: "red" } }).png().toBuffer()).toString("base64");
+    const image = { type: "image", media_type: "image/png", data };
     const sent = await rpc(socket, "session.send_message", { session_id: created.session_id, content: "Read this image", images: [image] });
 
     const messages = await providerMessages;
-    assert.deepEqual(messages.at(-1), {
-      role: "user",
-      content: [
-        { type: "text", text: "Read this image" },
-        { type: "image", source: { media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" } },
-      ],
-    });
+    const current = messages.find((message) => message.role === "user" && Array.isArray(message.content) && message.content.some((block: any) => block.type === "image"));
+    assert.ok(current);
+    const received = current.content.find((block: any) => block.type === "image");
+    assert.equal(received.source.width, 2);
+    assert.equal(received.source.height, 1);
+    assert.equal((await sharp(Buffer.from(received.source.data, "base64")).metadata()).width, 2);
     while (server.runs.get(sent.run_id).status === "running") await new Promise((resolve) => setTimeout(resolve, 10));
     const persisted = await server.sessions.modelHistory(created.session_id);
-    assert.deepEqual(persisted.find((message) => message.role === "user" && Array.isArray(message.content))?.content, [
-      { type: "text", text: "Read this image" },
-      { type: "image", source: { media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" } },
-    ]);
+    assert.ok(JSON.stringify(persisted).includes(received.source.data));
     while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
   } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
 });
@@ -89,7 +87,7 @@ test("a persisted image remains in the provider context on the next session turn
     const first = await rpc(socket, "session.send_message", {
       session_id: created.session_id,
       content: "Inspect this image",
-      images: [{ type: "image", media_type: "image/png", data: "aW1hZ2UtYnl0ZXM=" }],
+      images: [{ type: "image", media_type: "image/png", data: (await sharp({ create: { width: 2, height: 1, channels: 3, background: "blue" } }).png().toBuffer()).toString("base64") }],
     });
     while (server.runs.get(first.run_id).status === "running") await new Promise((resolve) => setTimeout(resolve, 10));
     while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
@@ -98,7 +96,9 @@ test("a persisted image remains in the provider context on the next session turn
     while ((await server.sessions.get(created.session_id)).status === "active") await new Promise((resolve) => setTimeout(resolve, 10));
 
     assert.equal(calls.length, 2);
-    assert.ok(calls[1]!.some((message) => Array.isArray(message.content) && message.content.some((block: any) => block.type === "image" && block.source?.data === "aW1hZ2UtYnl0ZXM=")));
+    const firstImage = calls[0]!.flatMap((message) => Array.isArray(message.content) ? message.content : []).find((block: any) => block.type === "image");
+    assert.ok(firstImage);
+    assert.ok(JSON.stringify(calls[1]).includes(firstImage.source.data));
   } finally { socket.destroy(); await server.close(); restoreEnv("SZTU_DATA_DIR", previous); await rm(root, { recursive: true, force: true }); }
 });
 

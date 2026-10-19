@@ -16,7 +16,8 @@ import { preprocessImage } from "../src/providers/image-utils.js";
 test("image utilities create validated provider-neutral base64 blocks", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-image-utils-"));
   const file = path.join(root, "pixel.png");
-  await writeFile(file, Buffer.from("image-bytes"));
+  const pixel = await sharp({ create: { width: 4, height: 2, channels: 3, background: "#123456" } }).png().toBuffer();
+  await writeFile(file, pixel);
   try {
     assert.equal(getMimeTypeFromPath("photo.JPEG"), "image/jpeg");
     assert.equal(isSupportedImageType("image/png"), true);
@@ -25,10 +26,12 @@ test("image utilities create validated provider-neutral base64 blocks", async ()
     assert.deepEqual(validateBase64Image("image/png", "aW1hZ2U=", 16), { mediaType: "image/png", data: "aW1hZ2U=", decodedBytes: 5 });
     assert.throws(() => validateBase64Image("image/png", "not base64", 16), /valid base64/);
     assert.throws(() => validateBase64Image("image/png", "aW1hZ2U=", 4), /Image too large/);
-    assert.deepEqual(await imageToContentBlock(file), {
-      type: "image",
-      source: { media_type: "image/png", data: Buffer.from("image-bytes").toString("base64") },
-    });
+    const block = await imageToContentBlock(file);
+    assert.equal(block.type, "image");
+    assert.equal(block.source.media_type, "image/png");
+    assert.equal(block.source.width, 4);
+    assert.equal(block.source.height, 2);
+    assert.equal((await sharp(Buffer.from(block.source.data, "base64")).metadata()).format, "png");
     await assert.rejects(() => imageToContentBlock(path.join(root, "pixel.svg")), /Unsupported image type/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

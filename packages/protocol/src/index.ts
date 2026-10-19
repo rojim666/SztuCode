@@ -32,6 +32,7 @@ export const PROTOCOL_METHODS = [
   "session.archive", "session.close", "session.compact", "session.delete", "session.fork", "session.pin", "session.rename", "session.resume", "session.set_workspace",
   "change.diff", "change.discard", "change.list", "change.revert", "change.stage", "change.unstage",
   "file.read", "file.search", "git.commit", "git.history",
+  "index.status", "index.stats", "index.build", "index.update", "index.clear",
   "artifact.create", "artifact.register", "artifact.get", "artifact.list", "artifact.verify", "artifact.restore",
   "operation.get", "operation.list", "operation.recover",
   "schedule.create", "schedule.list", "schedule.update", "schedule.pause", "schedule.run", "schedule.delete",
@@ -41,6 +42,18 @@ export const PROTOCOL_METHODS = [
   "workspace.archive", "workspace.delete", "workspace.list", "workspace.open", "workspace.pin", "workspace.profile", "workspace.rename", "workspace.resume", "workspace.status", "workspace.tree",
 ] as const;
 export type ProtocolMethod = (typeof PROTOCOL_METHODS)[number];
+
+export interface SemanticIndexParams { workspace_id: string }
+export interface SemanticIndexUpdateParams extends SemanticIndexParams { files: string[] }
+export interface SemanticIndexStatus {
+  state: "not_started" | "indexing" | "ready" | "failed";
+  files: number;
+  chunks: number;
+  processed: number;
+  total: number;
+  updated_at: string | null;
+  error: string | null;
+}
 
 export const JSON_RPC_ERROR_CODES = {
   PARSE_ERROR: -32700,

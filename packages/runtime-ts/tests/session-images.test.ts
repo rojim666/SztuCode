@@ -6,6 +6,7 @@ import test from "node:test";
 import { IpcClient } from "../../cli/src/client.js";
 import type { ChatMessage, ModelProvider } from "../src/agent-loop.js";
 import { RuntimeServer } from "../src/server.js";
+import sharp from "sharp";
 
 test("session images reach the first model call exactly once and survive history", { timeout: 30_000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "sztu-images-"));
@@ -25,7 +26,7 @@ test("session images reach the first model call exactly once and survive history
     await client.connect();
     await client.request("settings.update", { supports_vision: true });
     const session = await client.request("session.create", { mode: "chat" });
-    const image = { media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN9sAAAAASUVORK5CYII=" };
+    const image = { media_type: "image/png", data: (await sharp({ create: { width: 4096, height: 2048, channels: 3, background: "#123456" } }).png().toBuffer()).toString("base64") };
     const run = await client.request("session.send_message", { session_id: session.session_id, content: "Describe this screenshot", images: [image] });
     for (let i = 0; i < 200; i++) {
       const status = await client.request("session.get", { session_id: session.session_id });
@@ -38,10 +39,16 @@ test("session images reach the first model call exactly once and survive history
     // 动态上下文以尾部 system-reminder 文本块追加到目标消息，不改变图像块的顺序与唯一性。
     const blocks = users[0]!.content as Array<{ type: string; text?: string }>;
     assert.deepEqual(blocks[0], { type: "text", text: "Describe this screenshot" });
-    assert.deepEqual(blocks[1], { type: "image", source: { type: "base64", ...image } });
+    const received = blocks[1] as unknown as { type: string; source: { data: string; width: number; height: number; media_type: string } };
+    assert.equal(received.type, "image");
+    assert.equal(received.source.width, 2048);
+    assert.equal(received.source.height, 1024);
+    assert.equal((await sharp(Buffer.from(received.source.data, "base64")).metadata()).width, 2048);
     for (const block of blocks.slice(2)) assert.equal(block.type, "text");
     const history = await client.request("session.get_history", { session_id: session.session_id });
-    assert.ok(JSON.stringify(history.messages).includes(image.data));
+    assert.ok(JSON.stringify(history.messages).includes(received.source.data));
+    const invalid = await client.request("session.send_message", { session_id: session.session_id, content: "bad image", images: [{ media_type: "image/png", data: Buffer.from("not a PNG").toString("base64") }] }).then(() => null, (error: Error) => error);
+    assert.ok(invalid instanceof Error);
   } finally {
     client?.close();
     await server.close();

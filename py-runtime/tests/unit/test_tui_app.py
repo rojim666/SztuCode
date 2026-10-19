@@ -15,6 +15,7 @@ from sztu_code.tui.app import (
     PermissionSelect,
     RunBlock,
     SztuTuiApp,
+    ThinkingBlock,
     ToolCallBlock,
     _BgRun,
     _param_summary,
@@ -739,3 +740,104 @@ async def test_slash_widget_click_maps_page_offset() -> None:
         popup.on_click(_Click())  # type: ignore[arg-type]
         await pilot.pause()
         assert host.selected == ["cmd12"]  # 10 + 2
+
+
+# 功能：验证 TUI 订阅的 topic 使用 llm.* 通配符，能覆盖 llm.thinking
+# 设计：截取 event.subscribe 的 topics 字面量片段后断言，避免全文件搜索被事件处理分支
+#      里的同名字符串（如 "llm.token" 判断）干扰；这能防止订阅回退成逐个枚举而遗漏新事件
+def test_tui_subscribes_llm_wildcard_instead_of_enumerated_topics() -> None:
+    source = Path(__file__).resolve().parents[2] / "src" / "sztu_code" / "tui" / "app.py"
+    text = source.read_text(encoding="utf-8")
+
+    start = text.index('"topics": [')
+    end = text.index("]", start)
+    topics_block = text[start:end]
+
+    assert '"llm.*"' in topics_block
+    for enumerated in ('"llm.model_selected"', '"llm.token"', '"llm.usage"'):
+        assert enumerated not in topics_block
+
+
+def _plain(renderable: object) -> str:
+    """把 rich renderable 渲染成纯文本，便于断言标签与正文内容。"""
+    from rich.console import Console
+
+    console = Console(width=200, no_color=True)
+    with console.capture() as capture:
+        console.print(renderable)
+    return capture.get()
+
+
+# 功能：验证 llm.thinking 事件会累积到同一个 ThinkingBlock 且标签在完成时切换
+# 设计：连续投喂两段思考断言复用同一 block（流式不换块），再调 _break_llm 定稿，
+#      通过 renderable 的纯文本同时验证标签由「当前判断」变为「过程说明」
+async def test_llm_thinking_accumulates_and_finalizes_label() -> None:
+    app = SztuTuiApp("127.0.0.1", 9999)
+    app._session_id = "sess-1"
+    appended: list[Widget] = []
+    app._append = lambda widget: appended.append(widget)  # type: ignore[method-assign]
+
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "thinking": "先看目录", "ts": "t"})
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "thinking": "再读文件", "ts": "t"})
+
+    assert len(appended) == 1
+    block = appended[0]
+    assert isinstance(block, ThinkingBlock)
+
+    running = _plain(block._render_body())
+    assert "当前判断" in running
+    assert "先看目录" in running and "再读文件" in running
+    assert "过程说明" not in running
+
+    app._break_llm()
+
+    finished = _plain(block._render_body())
+    assert "过程说明" in finished
+    assert "当前判断" not in finished
+    assert "先看目录" in finished
+
+
+# 功能：验证思考内容在同一 step 内连续累积，token 事件不打断思考块
+# 设计：llm.token 分支在 return 前不调用 _break_llm，因此 thinking→token→thinking
+#      只产生「思考块, 文本块」两块，两段思考累积在同一块内且文本块不打断它；
+#      这符合「先推理后作答、单 step 内思考连续」的语义，也避免同一 step 思考被切成多块
+async def test_thinking_block_survives_interleaved_token_stream() -> None:
+    app = SztuTuiApp("127.0.0.1", 9999)
+    app._session_id = "sess-1"
+    appended: list[Widget] = []
+    app._append = lambda widget: appended.append(widget)  # type: ignore[method-assign]
+
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "thinking": "推理A", "ts": "t"})
+    app._handle_event({"type": "llm.token", "run_id": "r", "token": "回答", "ts": "t"})
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "thinking": "推理B", "ts": "t"})
+
+    kinds = [type(widget).__name__ for widget in appended]
+    assert kinds == ["ThinkingBlock", "LLMStreamBlock"]
+
+    # 两段思考应累积进同一块，且在 token 到达时仍未定稿
+    assert isinstance(appended[0], ThinkingBlock)
+    assert appended[0]._text == "推理A推理B"
+    assert appended[0]._finalized is False
+
+    # 显式收尾（如 step 结束）后标签定稿，内容保持完整
+    app._break_llm()
+
+    assert app._current_thinking is None
+    assert appended[0]._finalized is True
+    assert appended[0]._text == "推理A推理B"
+
+
+# 功能：验证空的 thinking 事件不会创建空块
+# 设计：thinking 字段缺失或为空串时直接忽略，断言未追加任何 widget，
+#      避免模型返回空 reasoning_content 时界面出现空的思考面板
+async def test_empty_thinking_event_creates_no_block() -> None:
+    app = SztuTuiApp("127.0.0.1", 9999)
+    app._session_id = "sess-1"
+    appended: list[Widget] = []
+    app._append = lambda widget: appended.append(widget)  # type: ignore[method-assign]
+
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "ts": "t"})
+    app._handle_event({"type": "llm.thinking", "run_id": "r", "thinking": "", "ts": "t"})
+
+    assert appended == []
+    assert app._current_thinking is None

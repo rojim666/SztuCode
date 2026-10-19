@@ -78,7 +78,7 @@ test("note_save followed by memory_read sees fresh session notes within one run"
     const tools = createMemoryTools(catalog, sessions, session.id, "run-live");
     const saved = await invoke(tools, "note_save", { content: "Prefer PostgreSQL for analytics" }, workspace);
     assert.match(saved.output, /saved \(note-[a-f0-9]+\)/);
-    const read = await invoke(tools, "memory_read", { layer: "session", query: "PostgreSQL" }, workspace);
+    const read = await invoke(tools, "memory_read", { layer: "session", query: "PostgreSQL", query_mode: "keyword" }, workspace);
     assert.equal(read.ok, true);
     assert.match(read.output, /Prefer PostgreSQL for analytics/);
   } finally { await cleanup(home, workspace, sessionRoot); }
@@ -90,7 +90,7 @@ test("memory_read sees external edits to project context.md without a restart", 
     const tools = createMemoryTools(catalog, sessions, session.id, "run-live");
     await mkdir(path.join(workspace, ".sztu"), { recursive: true });
     await writeFile(path.join(workspace, ".sztu", "context.md"), "# Ops\nKubernetes rollout on Fridays\n", "utf8");
-    const read = await invoke(tools, "memory_read", { layer: "project", query: "Kubernetes" }, workspace);
+    const read = await invoke(tools, "memory_read", { layer: "project", query: "Kubernetes", query_mode: "keyword" }, workspace);
     assert.equal(read.ok, true);
     assert.match(read.output, /Kubernetes rollout on Fridays/);
   } finally { await cleanup(home, workspace); }

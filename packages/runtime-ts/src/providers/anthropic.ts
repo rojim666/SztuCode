@@ -152,7 +152,7 @@ export function toAnthropicMessages(messages: ChatMessage[]): AnthropicMessage[]
       return {
         type: "tool_result",
         tool_use_id: call.id,
-        content: result ? contentText(result.content) : "Tool execution was interrupted before a result was recorded.",
+        content: result ? (typeof result.content === "string" ? result.content : contentBlocks(result.content)) : "Tool execution was interrupted before a result was recorded.",
         ...(result?.is_error || !result ? { is_error: true } : {}),
       };
     }));
@@ -178,10 +178,6 @@ function contentBlocks(content: ChatMessage["content"]): AnthropicBlock[] {
     }
     return { ...block };
   });
-}
-
-function contentText(content: ChatMessage["content"]): string {
-  return typeof content === "string" ? content : JSON.stringify(content);
 }
 
 type AnthropicStreamState = { text: string; stopReason: string; calls: Map<number, { id: string; name: string; inputJson: string }>; thinking: Map<number, { thinking: string; signature: string }>; usage: ModelResponse["usage"] };
