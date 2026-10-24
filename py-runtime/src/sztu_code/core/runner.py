@@ -35,7 +35,7 @@ from sztu_code.core.runs import RUNS_DIR, new_run_id
 from sztu_code.core.session.model import RunStats, Session
 from sztu_code.core.session.store import SessionStore
 from sztu_code.core.stuck_tracker import StuckLoopTracker
-from sztu_code.core.subagent.registry import BackgroundTaskRegistry
+from sztu_code.core.subagent.registry import BackgroundTaskRegistry, BackgroundTaskStatus
 from sztu_code.core.subagent.tool import AgentResultTool, SpawnAgentTool
 from sztu_code.core.task.manager import TaskManager
 from sztu_code.core.tools.builtin import (
@@ -606,6 +606,16 @@ class AgentRunner:
                 cancelled_descendants = await self._task_registry.cancel_descendants(
                     run_id, reason=cancel_reason
                 )
+                # cancel_descendants 只回报它动手取消的后代。继承父 deadline 后自行
+                # 命中的子 Agent 会先一步终断为 CANCELLED，那时它已不是 active，
+                # 不会被计入——但清理结果必须反映"这次 deadline 终止了子 Agent"，
+                # 否则 trace 会把有界取消误报成 completed。
+                for rid in self._task_registry.descendants(run_id):
+                    if rid in cancelled_descendants:
+                        continue
+                    record = self._task_registry.get(rid)
+                    if record is not None and record.status is BackgroundTaskStatus.CANCELLED:
+                        cancelled_descendants.append(rid)
 
             if change_tracker is not None:
                 changes = change_tracker.finalize()
