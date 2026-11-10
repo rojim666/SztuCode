@@ -4,7 +4,7 @@
 
 SztuCode 的测试范围应与变更风险匹配。不要把“全量测试通过”作为替代针对性测试的理由，也不要为纯文档改动运行会触发外部模型或写入大量状态的测试。
 
-## TypeScript 主链测试
+## TypeScript 运行链测试
 
 ```bash
 npm run typecheck
@@ -70,7 +70,8 @@ npm run trace:permission
 stderr；测试同时断言事件顺序和最终 Session snapshot。运行命令：
 
 ```bash
-npm run test:migration
+npm run build
+node --import tsx scripts/migration_validation.ts
 ```
 
 失败信息包含 `request_id`、`session_id`、`run_id`，同时保留 daemon 输出，便于定位协议、会话或运行级回归。

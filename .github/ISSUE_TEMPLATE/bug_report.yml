@@ -30,7 +30,7 @@ body:
     id: environment
     attributes:
       label: 环境
-      description: 操作系统、Node.js 版本；桌面问题另附 Rust/Tauri 版本。若问题来自 artifact Skill，再补充对应工具版本。
+      description: 操作系统，以及相关的 Python/uv 或 Node.js 版本；原生桌面构建问题另附 Rust/Tauri 版本。不相关的环境无需填写。
     validations:
       required: true
   - type: textarea

@@ -2,6 +2,25 @@
 
 [返回文档中心](../README.md)
 
+## 先选择贡献路径
+
+只改文档不需要运行 daemon 或安装 Rust。Python Agent、TS 桌面链和文档的最小环境及检查见 [贡献指南](../CONTRIBUTING.md)。
+
+默认 Python daemon/CLI 的环境：Python 3.12 或 3.13 与 uv。从仓库根目录安装依赖后启动：
+
+```bash
+uv sync --project py-runtime --frozen
+uv run --project py-runtime python -m sztu_code.core
+```
+
+另一个终端验证连接：
+
+```bash
+uv run --project py-runtime python -m sztu_code.cli ping
+```
+
+基础 ping 不需要模型 Key；实际模型任务按 [配置说明](../getting-started/configuration.md) 配置。Python 测试命令见 [测试指南](testing.md)。
+
 ## TypeScript 桌面运行链开发
 
 默认产品 daemon/CLI 是 Python；目录和入口区分见 [仓库目录地图](repository-layout.md)。本节说明桌面端所用的 TS 链。

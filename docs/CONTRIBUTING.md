@@ -2,172 +2,78 @@
 
 [返回文档中心](README.md)
 
-感谢你参与 SztuCode。项目欢迎代码、测试、文档、设计、评测和问题分析等贡献。为了让学习型协作仍然保持可维护性，所有改动都应通过公开 Issue、分支、Pull Request 和 Review 留下可复现记录。
+欢迎通过代码、测试、文档、设计和评测参与。先完成一个可验证的小改动，不需要先读完所有架构文档或安装整个项目。
 
-## 开始之前
+## 1. 选任务，确定范围
 
-请先阅读：
+- **小修直接 PR**：错别字、文档补充、已有行为的小范围修复不强制先开 Issue。在 PR 中说明问题与验证方法即可。
+- **已有 Issue 先留言**：说明要做的部分和简短方案，检查认领/关联 PR，避免重复。范围明确且无人处理时无需等批准；范围有争议或涉及公共接口、安全、存储格式时先讨论。
+- **大改先 Issue**：新功能、架构调整或研究实验先写清问题、范围、验收条件和风险；达成范围共识后再实现。较大的 Epic 拆成能独立验证的 PR。
 
-- [README](../README.md)：项目定位、架构和运行方式；
-- [路线图](ROADMAP.md)：当前版本目标与非目标；
-- [行为准则](CODE_OF_CONDUCT.md)：社区协作边界；
-- [安全政策](SECURITY.md)：安全问题的非公开报告方式；
-- [架构决策记录](adr/README.md)：重要技术决策及其背景。
+可以从 [good first issue](https://github.com/rojim666/SztuCode/labels/good%20first%20issue) 或 [help wanted](https://github.com/rojim666/SztuCode/labels/help%20wanted) 找任务。没有合适标签也可选一个小问题。认领不是硬性截止承诺；做不完请留言交接，连续 14 天无进展时维护者可重新开放认领。
 
-普通缺陷和功能建议请先创建或认领 Issue。安全漏洞、密钥泄漏或可被利用的权限绕过不得提交公开 Issue，请按安全政策私下报告。
+遵守 [行为准则](CODE_OF_CONDUCT.md)。安全漏洞、权限绕过和凭据泄漏不要公开报告，按 [安全政策](SECURITY.md) 处理。
 
-## 开发环境
+## 2. 建分支，只装需要的环境
 
-基础开发需要：
-
-- Git；
-- Node.js 20+；
-- 可选：Rust stable 和系统依赖，用于桌面端开发。部分 artifact Skill 会按需调用 Python helper，但不属于项目主链依赖。
-
-克隆并安装主运行时依赖：
+没有仓库写权限时先在 GitHub Fork，再克隆自己的 Fork；已有权限也请用分支提交 PR，不直接推 main。
 
 ```bash
-git clone https://github.com/rojim666/SztuCode.git
+# 将 YOUR_ACCOUNT 替换为自己的 GitHub 账号
+git clone https://github.com/YOUR_ACCOUNT/SztuCode.git
 cd SztuCode
-npm install
+git remote add upstream https://github.com/rojim666/SztuCode.git
+git fetch upstream
+git switch -c docs/short-description upstream/main
 ```
 
-运行基础检查：
+有写权限者可克隆原仓库并从 `origin/main` 建分支。默认目标是 `main`，Issue 明确指定其他基线时遵从该基线。分支名用 `docs/`、`fix/`、`feat/` 或 `test/` 加简短描述即可，Issue 编号可选。
+
+### 按目录选环境
+
+| 修改范围 | 环境与入口 |
+| --- | --- |
+| 文档、Issue/PR 模板 | Node.js 20+，根目录 `npm ci`；无需模型 Key、Rust 或启动 daemon |
+| Python Agent、daemon、CLI、评测 | Python 3.12 或 3.13、uv；根目录 `uv sync --project py-runtime --frozen` |
+| TypeScript 运行链、协议、Node CLI | Node.js 20+；根目录 `npm ci` 和 `npm ci --prefix desktop`（根类型检查包含 desktop） |
+| 桌面工作台 | 上述 TS 环境，加 Python/uv 并执行 `uv sync --project py-runtime --frozen`（桌面启动/构建会准备文档解析 runtime）；原生 Tauri 另需 Rust、系统依赖，见 [Desktop README](../desktop/README.md) |
+
+当前默认产品运行时是 `py-runtime/src/sztu_code`；`packages/` 与 `desktop/` 是仍可运行的 TypeScript 桌面链。新增 Agent 产品能力优先落在 Python，不要误把 Skill 中的 Python helper 当成主运行时。目录边界见 [仓库地图](development/repository-layout.md)，编码约定见 [AGENTS.md](../AGENTS.md)。
+
+## 3. 修改与验证
+
+一次 PR 解决一个问题，不夹带无关重构或全仓格式化。修 Bug 补复现测试；新增行为覆盖正常、错误和权限拒绝路径。检查按影响范围选择，不要求纯文档贡献跑所有测试。
+
+| 改动 | 本地验证 |
+| --- | --- |
+| 所有改动 | `git diff --check`；检查 diff 无密钥、缓存、私有内容或未脱敏日志 |
+| 文档和模板 | `npm run docs:links`；预览 Markdown，模板改动检查 YAML 结构 |
+| Python 运行时 | 在 `py-runtime/` 执行 `uv run ruff check src tests`、`uv run mypy src`，以及相关 `uv run pytest tests/...`；核心生命周期/权限改动扩大到相关集成测试 |
+| TS 运行链 | 根目录 `npm run typecheck`、`npm test`、`npm run build`；协议/会话改动补对应集成验证 |
+| TS 协议 | 上述检查外，运行 `npm run docs:protocol`，提交对应生成文档并核对消费者 |
+| 桌面 UI | TS 检查与 `npm run build --prefix desktop`；相关 unit/visual 测试，提供截图；Rust 变更在 `desktop/src-tauri` 运行 `cargo check` |
+
+命令细节见 [测试指南](development/testing.md)。仅改文档不代表 CI 自动跳过代码检查，仍需查看 PR 的实际检查结果。失败时记录命令、错误与是否能在基线复现；不要删测试、弱化断言或绕过合并门禁。环境缺失导致未运行的检查写明原因，不能写成通过。真实模型评测需明确成本和凭据，不是首次贡献的前提。
+
+## 4. 提交 PR，完成 Review
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+git add <本次修改的文件>
+git commit -s -m "docs: simplify contributor workflow"
+git push -u origin HEAD
 ```
 
-如果修改了协议，必须从 `packages/protocol/src` 更新共享类型并核验所有消费者：
+`-s` 添加 [DCO 1.1](https://developercertificate.org/) 的 `Signed-off-by`，表示你有权按项目许可证提交贡献，不转让著作权。提交信息说明具体意图，Conventional Commits 风格推荐但不额外增加格式流程。
 
-```bash
-npm run typecheck
-```
+在 GitHub 向 `rojim666/SztuCode` 的 `main` 提交 PR：
 
-桌面端开发：
+1. 用模板说明**改了什么、为什么、如何验证、剩余风险**。有关联 Issue 就链接；只有完整满足验收时才用 `Closes #编号`。
+2. 已完成的改动可直接 Ready for review；还在实现或希望提前讨论时使用 Draft，不强制每个 PR 先走 Draft。
+3. 回应 Review，更新必要的测试、文档和截图。需要同步基线时处理冲突，不强推覆盖他人的提交。
+4. 由维护者检查范围、验证结果和安全/兼容性后合并，遵守仓库要求的 CI、Review 和 CODEOWNERS 规则；贡献者不必自行找齐所有 Reviewer。
 
-```bash
-cd desktop
-npm install
-npm run build
-npm run test:visual
+不合并含凭据/私有内容、削弱安全边界、验收不明确或未解释失败检查的改动。协议、持久化、并发和权限变化尤其需要对应模块的审查。维护者可要求拆分过大的 PR。
 
-cd src-tauri
-cargo check
-```
+## 卡住时
 
-视觉测试可能需要本机安装 Playwright 浏览器。
-
-## 选择和认领任务
-
-推荐新贡献者从带有 [`good first issue`](https://github.com/rojim666/SztuCode/labels/good%20first%20issue) 标签的任务开始；需要社区协助但范围较大的任务使用 [`help wanted`](https://github.com/rojim666/SztuCode/labels/help%20wanted)。
-
-认领前请在 Issue 下留言，说明准备采取的方案和预计完成时间。维护者确认后再开始实现，避免多人重复工作。若连续 14 天没有进展说明，Issue 可以重新开放认领。
-
-一个适合进入开发的 Issue 应至少包含：
-
-- 可复现的问题或明确的用户价值；
-- 有边界的工作范围；
-- 可验证的验收标准；
-- 已知依赖、风险或非目标。
-
-较大的 Epic 应先拆分为可独立 Review 的子任务。不要在一个 PR 中同时完成无关重构、功能开发和界面改版。
-
-## 分支流程
-
-默认从目标基线分支创建短生命周期分支。当前长期开发分支或默认合并分支以 GitHub 仓库设置和对应 Issue 为准；不确定时先在 Issue 中确认。
-
-建议分支命名：
-
-```text
-feat/<issue-id>-short-name
-fix/<issue-id>-short-name
-docs/<issue-id>-short-name
-test/<issue-id>-short-name
-refactor/<issue-id>-short-name
-```
-
-示例：
-
-```bash
-git fetch origin
-git switch <base-branch>
-git pull --ff-only
-git switch -c feat/12-lsp-tool
-```
-
-提交 PR 前，将分支更新到最新基线并自行处理冲突。不要对已供他人使用的共享分支强制推送；确需整理个人 PR 分支时，也应先确认不会覆盖协作者提交。
-
-## 编码和测试要求
-
-- 遵循现有模块边界和代码风格，不为单一用例引入不必要抽象。
-- TypeScript 代码必须通过严格类型检查和对应测试。
-- 新增或修改行为必须配套测试；修复缺陷时优先先补复现用例。
-- 测试范围与风险匹配：协议、权限、会话和 Agent Loop 变更需要相应集成验证。
-- 新工具必须声明输入模型、权限级别、失败语义和测试。
-- 不在代码、测试、日志、截图或 Issue 中提交 API Key、Token、个人信息和私有仓库内容。
-- 用户可见的桌面端改动应验证构建，并在 PR 中提供截图或录屏。
-- 注释只解释不明显的约束和决策，不重复代码本身。
-
-仓库级编码约定以 [AGENT.md](../AGENT.md) 为准。
-
-## 提交信息
-
-推荐使用简洁的 Conventional Commits 风格：
-
-```text
-feat: add workspace symbol search
-fix: prevent permission cache bypass
-docs: add contributor setup guide
-test: cover context compaction fallback
-refactor: isolate provider message conversion
-```
-
-每个提交应表达一个完整意图，并保持可构建、可测试。避免使用“update”“fix bug”等无法说明改动目的的信息。生成文件应和对应源模型修改放在同一 PR 中。
-
-本项目采用 [Developer Certificate of Origin 1.1](https://developercertificate.org/) 的贡献声明方式。提交时添加 Signed-off-by：
-
-```bash
-git commit -s -m "feat: add workspace symbol search"
-```
-
-签署表示你有权按项目许可证提交该贡献，不代表转让著作权。
-
-## Pull Request 流程
-
-1. 先关联 Issue，确认范围和验收标准。
-2. 创建分支并完成最小、聚焦的实现。
-3. 在本地运行与改动相关的检查和测试。
-4. 推送分支并创建 Draft PR，尽早暴露设计问题。
-5. 填写 PR 模板，说明动机、方案、风险、验证结果和界面证据。
-6. CI 通过且实现稳定后标记 Ready for review。
-7. 回应 Review 时说明处理方式；不同意建议时提供代码或测试依据。
-8. 至少一名有对应模块所有权的 Reviewer 批准后合并。
-
-维护者可以要求拆分过大的 PR。以下情况通常不会合并：
-
-- 没有关联问题或无法说明用户价值；
-- 验收标准不可验证；
-- 降低权限、安全或数据保护边界；
-- 新行为没有测试，且未说明无法测试的原因；
-- 包含密钥、生成缓存、大型构建产物或无关格式化改动；
-- 绕过失败检查或删除测试来获得通过。
-
-## Review 标准
-
-Reviewer 重点检查：
-
-- 行为是否满足 Issue，而不是只检查代码能否运行；
-- 协议、权限、持久化和并发语义是否保持兼容；
-- 失败路径是否可恢复、可观察且不会误报成功；
-- 测试是否覆盖关键边界和回归风险；
-- 文档、协议和界面是否与实现同步；
-- 改动范围是否聚焦，是否影响无关文件。
-
-Review 是共同承担质量责任，不是对贡献者能力的评价。所有反馈应针对代码、行为和证据。
-
-## 获取帮助
-
-环境问题或实现讨论优先放在对应 Issue 或 Pull Request 中，方便后续贡献者检索。涉及安全、隐私或凭据的信息按 [SECURITY.md](SECURITY.md) 私下沟通。
+在 Issue 或 PR 留下：你想完成什么、已做什么、具体错误、需要什么帮助。贴脱敏信息即可，不必先写长报告。流程之外的设计背景按需查阅 [路线图](ROADMAP.md)、[架构决策](adr/README.md) 和 [开发文档](development/development.md)。
