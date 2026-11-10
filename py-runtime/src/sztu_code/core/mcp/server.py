@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from sztu_code.core.config import McpServerConfig
@@ -19,17 +20,29 @@ class McpServerManager:
     # 依次连接每个 MCP server，发现工具后缓存供后续 registry 使用；失败时记录日志并跳过
     async def start_all(self, servers: list[McpServerConfig]) -> None:
         for cfg in servers:
+            if cfg.name in self._clients:
+                continue
+            client: McpClient | None = None
             try:
                 client = await self._connect(cfg)
                 tool_defs = await client.list_tools()
-                for tool_def in tool_defs:
-                    self._tools.append(McpTool(client, cfg.name, tool_def))
+                discovered = [McpTool(client, cfg.name, definition) for definition in tool_defs]
+                self._tools.extend(discovered)
                 self._clients[cfg.name] = client
                 log.info(
                     "mcp: server '%s' connected, %d tool(s) discovered",
                     cfg.name, len(tool_defs),
                 )
+            except asyncio.CancelledError:
+                if client is not None:
+                    await client.close()
+                raise
             except Exception:
+                if client is not None:
+                    try:
+                        await client.close()
+                    except Exception:
+                        log.warning("mcp: error closing failed server %s", cfg.name)
                 log.exception("mcp: server '%s' failed to start, skipping", cfg.name)
 
     # 将所有已发现的 MCP 工具注册到指定 registry
@@ -62,16 +75,21 @@ class McpServerManager:
             except Exception:
                 log.warning("mcp: error closing server '%s'", name)
         self._clients.clear()
+        self._tools.clear()
 
     # 根据 transport 类型建立连接
     async def _connect(self, cfg: McpServerConfig) -> McpClient:
         client = McpClient()
-        if cfg.transport == "stdio":
-            if not cfg.command:
-                raise ValueError(f"mcp server '{cfg.name}': stdio transport requires 'command'")
-            await client.connect_stdio(cfg.command, cfg.args, cfg.env or None)
-        elif cfg.transport == "tcp":
-            await client.connect_tcp(cfg.host, cfg.port)
-        else:
-            raise ValueError(f"mcp server '{cfg.name}': unknown transport '{cfg.transport}'")
+        try:
+            if cfg.transport == "stdio":
+                if not cfg.command:
+                    raise ValueError(f"mcp server '{cfg.name}': stdio transport requires 'command'")
+                await client.connect_stdio(cfg.command, cfg.args, cfg.env or None)
+            elif cfg.transport == "tcp":
+                await client.connect_tcp(cfg.host, cfg.port)
+            else:
+                raise ValueError(f"mcp server '{cfg.name}': unknown transport '{cfg.transport}'")
+        except BaseException:
+            await client.close()
+            raise
         return client

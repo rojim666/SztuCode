@@ -6,6 +6,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from sztu_code.core.mcp.result import McpCallResult, McpResultValidationError
+
 log = logging.getLogger(__name__)
 
 
@@ -23,6 +25,7 @@ class McpToolDef:
     name: str
     description: str
     input_schema: dict[str, Any] = field(default_factory=dict)
+    output_schema: dict[str, Any] | None = None
 
 
 # 通过 stdio 或 TCP 与 MCP server 通信的 JSON-RPC 2.0 客户端
@@ -91,17 +94,14 @@ class McpClient:
                 name=t.get("name", ""),
                 description=t.get("description", ""),
                 input_schema=t.get("inputSchema", {}),
+                output_schema=t.get("outputSchema"),
             ))
         return tools
 
     # 调用 MCP 工具并将连接或工具异常转换为领域异常
-    async def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> McpCallResult:
         response = await self._call("tools/call", {"name": name, "arguments": arguments})
-        parts: list[str] = []
-        for item in response.get("content", []):
-            if item.get("type") == "text":
-                parts.append(str(item["text"]))
-        return "\n".join(parts)
+        return McpCallResult.from_response(response)
 
     # 后台任务：持续读取 stderr 并记录日志，防止管道缓冲区满
     async def _drain_stderr(self) -> None:
@@ -163,6 +163,8 @@ class McpClient:
                 except json.JSONDecodeError:
                     log.debug("mcp: ignoring non-JSON line: %r", line[:200])
                     continue
+                if not isinstance(msg, dict):
+                    raise McpResultValidationError("MCP response must be a JSON object")
                 msg_id = msg.get("id")
                 if msg_id is None:
                     # server-initiated notification，忽略
@@ -171,10 +173,14 @@ class McpClient:
                 if str(msg_id) == req_id_str:
                     if "error" in msg:
                         err = msg["error"]
+                        if not isinstance(err, dict):
+                            raise McpResultValidationError("MCP error must be a JSON object")
                         raise McpToolError(
                             f"{err.get('message', str(err))} (code={err.get('code')})"
                         )
-                    result: dict[str, Any] = msg.get("result", {})
+                    result = msg.get("result")
+                    if not isinstance(result, dict):
+                        raise McpResultValidationError("MCP result must be a JSON object")
                     return result
 
     # 发送 JSON-RPC 通知（无响应）

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from sztu_code.core.mcp.client import McpClient, McpServerUnavailableError, McpToolDef
+from sztu_code.core.mcp.result import McpCallResult
 from sztu_code.core.mcp.tool import McpTool
 
 
@@ -27,7 +28,7 @@ def _make_tool(
 @pytest.mark.asyncio
 async def test_invoke_calls_mcp_client() -> None:
     tool, client = _make_tool()
-    client.call_tool = AsyncMock(return_value="file content here")
+    client.call_tool = AsyncMock(return_value=McpCallResult(content=[{"type": "text", "text": "file content here"}]))
     result = await tool.invoke({"path": "/tmp/test.txt"})
     assert not result.is_error
     assert result.content == "file content here"
