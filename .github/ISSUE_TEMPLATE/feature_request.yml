@@ -13,10 +13,8 @@ body:
   - type: textarea
     id: current
     attributes:
-      label: 当前替代方式
-      description: 目前如何绕过，以及为什么不足。
-    validations:
-      required: true
+      label: 当前替代方式（可选）
+      description: 如果有，说明目前如何绕过以及为什么不足。
   - type: textarea
     id: proposal
     attributes:
@@ -28,7 +26,7 @@ body:
     id: acceptance
     attributes:
       label: 验收标准
-      description: 使用可验证的列表描述完成条件。
+      description: 描述怎样算解决；不确定实现方式也可以先写预期行为。
     validations:
       required: true
   - type: textarea

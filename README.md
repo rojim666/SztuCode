@@ -419,7 +419,9 @@ Python 评测入口位于 `py-runtime/src/sztu_code/evaluation`（harness / mode
 
 欢迎同学、开发者和研究者通过代码、测试、文档、设计、评测和问题分析参与。新贡献者可以从 [`good first issue`](https://github.com/rojim666/SztuCode/labels/good%20first%20issue) 开始，需要社区协作的任务会标注 [`help wanted`](https://github.com/rojim666/SztuCode/labels/help%20wanted)。
 
-开始前请阅读：
+第一次贡献：选一个小任务 → 修改并运行相关检查 → 提交 PR。文档和小修可以直接 PR；已有 Issue 留言认领即可，大改先讨论范围。只安装自己修改部分需要的环境，具体步骤见[贡献指南](CONTRIBUTING.md)。
+
+按需阅读：
 
 - [贡献指南](CONTRIBUTING.md)
 - [社区行为准则](CODE_OF_CONDUCT.md)
