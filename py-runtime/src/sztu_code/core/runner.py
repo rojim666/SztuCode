@@ -600,7 +600,7 @@ class AgentRunner:
                 if cancelled:
                     cancel_reason = "parent_cancelled"
                 elif context.status == "interrupted":
-                    cancel_reason = "parent_interrupted"
+                    cancel_reason = context.reason or "parent_interrupted"
                 else:
                     cancel_reason = "parent_failed"
                 cancelled_descendants = await self._task_registry.cancel_descendants(

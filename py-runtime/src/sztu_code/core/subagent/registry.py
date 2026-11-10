@@ -71,6 +71,8 @@ class BackgroundTaskRecord:
     # 与 parent_run_id（直接父，用于事件 payload）不同：owner 是 sink 路由键，
     # 使 grandchild 的终态事件也能路由回 root 的 sink，而非因 parent=child 找不到 sink 丢失。
     owner_run_id: str = ""
+    # Capture the first parent cancellation request before task.cancel() can run the child.
+    cancellation_reason: str = ""
 
     @property
     def is_terminal(self) -> bool:
@@ -176,7 +178,10 @@ class BackgroundTaskRegistry:
             raise ValueError(f"mark_terminal requires a terminal outcome, got {status!r}")
         record.status = status
         # reason 优先（取消/失败原因），否则用 detail（完成结果文本）；统一存入 terminal_detail
-        record.terminal_detail = reason or detail
+        record.terminal_detail = (
+            record.cancellation_reason or reason or detail
+            if status is BackgroundTaskStatus.CANCELLED else reason or detail
+        )
         record.finished_at = finished_at if finished_at is not None else _now()
         self._tombstones.append((run_id, record.finished_at))
         self.prune(now=record.finished_at)
@@ -217,6 +222,8 @@ class BackgroundTaskRegistry:
             record = self._records.get(rid)
             if record is None or not record.is_active:
                 continue
+            if record.status is BackgroundTaskStatus.RUNNING:
+                record.cancellation_reason = reason
             record.status = BackgroundTaskStatus.CANCELING
             if record.task is not None and not record.task.done():
                 to_cancel.append(record.task)
