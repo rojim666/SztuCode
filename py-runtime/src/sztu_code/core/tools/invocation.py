@@ -200,6 +200,7 @@ async def _fail(
     # 工具层 deadline 的具体阶段（Issue #69 trace 可观测性）。工具自己的 timeout 与
     # 调用前 gate 传 "tool"，权限等待被截断传 "permission"；空串表示调用方不区分。
     deadline_stage: str = "",
+    metadata: dict[str, object] | None = None,
 ) -> ToolResult:
     if not retry_reason:
         retry_reason = _retry_reason(
@@ -239,6 +240,8 @@ async def _fail(
         is_error=True,
         error_type=error_class,
         metadata={
+            # Preserve tool payloads, but wrapper-owned decisions remain authoritative.
+            **{key: value for key, value in (metadata or {}).items() if key != "deadline_stage"},
             "retry_decision": "stop",
             "retry_reason": retry_reason,
             "tool_retry_safe": tool_retry_safe,
@@ -466,6 +469,7 @@ async def invoke_tool(
         error_message: str | None = None
         retryable = False
         execution_state = ToolExecutionState.COMPLETED
+        error_metadata: dict[str, object] = {}
 
         try:
             available_s = remaining_budget()
@@ -508,6 +512,7 @@ async def invoke_tool(
                 effective_timeout = timeout if available_s is None else min(timeout, available_s)
                 result = await _await_tool_with_timeout(_invoke(), effective_timeout)
             ms = elapsed()
+            error_metadata = result.metadata
 
             if remaining_budget() == 0.0:
                 error_class = "deadline_exceeded"
@@ -643,6 +648,7 @@ async def invoke_tool(
                     execution_state=execution_state,
                     retry_reason="run_deadline_would_be_exceeded",
                     tool_retry_safe=tool_retry_safe,
+                    metadata=error_metadata,
             )
             failed_at = _now()
             await bus.publish(
@@ -715,6 +721,7 @@ async def invoke_tool(
                 attempt,
             ),
             tool_retry_safe=tool_retry_safe,
+            metadata=error_metadata,
         )
 
     # unreachable, but keeps mypy happy
